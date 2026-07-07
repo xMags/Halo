@@ -20,6 +20,7 @@ import {
 } from '@halo/core'
 import { useAddons, useStreams } from '@/queries'
 import { getDownload, startDownload } from '@/downloads'
+import { formatBytes } from '@/format'
 import { colors, radius, spacing, type } from '@/theme'
 import { SelectSheet } from '@/components/SelectSheet'
 import { CenterMessage } from '@/components/ui'
@@ -135,9 +136,14 @@ export default function StreamsScreen() {
                   style={[styles.streamRow, index === group.streams.length - 1 && styles.lastRow]}
                 >
                   <Pressable style={styles.streamBody} onPress={() => play(stream)}>
-                    <Text style={styles.streamName} numberOfLines={1}>
-                      {stream.name ?? group.addonName}
-                    </Text>
+                    <View style={styles.streamHead}>
+                      <Text style={[styles.streamName, styles.streamNameFlex]} numberOfLines={1}>
+                        {stream.name ?? group.addonName}
+                      </Text>
+                      {stream.behaviorHints?.videoSize ? (
+                        <Text style={styles.size}>{formatBytes(stream.behaviorHints.videoSize)}</Text>
+                      ) : null}
+                    </View>
                     {stream.title ?? stream.description ? (
                       <Text style={styles.dim} numberOfLines={2}>
                         {stream.title ?? stream.description}
@@ -215,7 +221,10 @@ const styles = StyleSheet.create({
   },
   lastRow: { borderBottomWidth: 0 },
   streamBody: { flex: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2 },
+  streamHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   streamName: { color: colors.text, fontSize: 14, fontWeight: '600' },
+  streamNameFlex: { flexShrink: 1 },
+  size: { color: colors.textDim, fontSize: 12.5, fontWeight: '600', fontVariant: ['tabular-nums'] },
   dim: { color: colors.textDim, fontSize: 12, marginTop: 2 },
   downloadButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   preparing: {

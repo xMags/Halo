@@ -8,6 +8,7 @@ import {
   getSubtitles,
   isPlayableStream,
   type AddonEntry,
+  type CatalogResponse,
   type LibraryItem,
   type MetaDetail,
   type MetaPreview,
@@ -139,6 +140,44 @@ export function useAddonSubtitles(opts: SubtitleOptions) {
       return results
         .filter((r): r is PromiseFulfilledResult<{ subtitles: Subtitle[] }> => r.status === 'fulfilled')
         .flatMap((r) => r.value.subtitles ?? [])
+    },
+  })
+}
+
+/**
+ * Fan-out search across every installed catalog that supports the `search`
+ * extra (Cinemeta's do). Results merge in addon order, deduped by type:id.
+ */
+export function useSearch(term: string) {
+  const { data: addons } = useAddons()
+  const trimmed = term.trim()
+  return useQuery({
+    queryKey: ['search', trimmed],
+    enabled: !!addons && trimmed.length >= 2,
+    staleTime: 60_000,
+    queryFn: async (): Promise<MetaPreview[]> => {
+      const targets = (addons ?? []).flatMap((addon) =>
+        addon.manifest.catalogs
+          .filter(
+            (c) =>
+              (c.extra ?? []).some((e) => e.name === 'search') ||
+              (c.extraSupported ?? []).includes('search'),
+          )
+          .map((c) => ({ transportUrl: addon.transportUrl, type: c.type, id: c.id })),
+      )
+      const results = await Promise.allSettled(
+        targets.map((t) => getCatalog(t.transportUrl, t.type, t.id, { search: trimmed })),
+      )
+      const metas = results
+        .filter((r): r is PromiseFulfilledResult<CatalogResponse> => r.status === 'fulfilled')
+        .flatMap((r) => r.value.metas ?? [])
+      const seen = new Set<string>()
+      return metas.filter((meta) => {
+        const key = `${meta.type}:${meta.id}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
     },
   })
 }

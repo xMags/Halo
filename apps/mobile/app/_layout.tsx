@@ -30,6 +30,7 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="detail/[type]/[id]" options={{ title: '' }} />
         <Stack.Screen name="streams/[type]/[videoId]" options={{ title: 'Sources', presentation: 'modal' }} />
+        <Stack.Screen name="search" options={{ headerShown: false, animation: 'fade', animationDuration: 150 }} />
         <Stack.Screen name="player" options={{ headerShown: false, orientation: 'landscape', autoHideHomeIndicator: true }} />
       </Stack.Protected>
       <Stack.Protected guard={status !== 'ready'}>

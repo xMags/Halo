@@ -9,6 +9,7 @@ import {
   useDownloads,
   type DownloadEntry,
 } from '@/downloads'
+import { formatBytes } from '@/format'
 import { colors, radius, spacing, TAB_BAR_SPACE, type } from '@/theme'
 import { CenterMessage } from '@/components/ui'
 
@@ -134,23 +135,18 @@ function IconButton({
   )
 }
 
-const mb = (n: number) => `${(n / 1024 / 1024).toFixed(0)} MB`
-function gb(n: number): string {
-  return n >= 1024 * 1024 * 1024 ? `${(n / 1024 / 1024 / 1024).toFixed(1)} GB` : mb(n)
-}
-
 function summaryLine(entries: DownloadEntry[]): string {
   const bytes = entries.reduce((sum, e) => sum + (e.totalBytes || e.downloadedBytes), 0)
   const count = entries.length
-  return `${count} ${count === 1 ? 'item' : 'items'} · ${gb(bytes)} on device`
+  return `${count} ${count === 1 ? 'item' : 'items'} · ${formatBytes(bytes)} on device`
 }
 
 function statusLabel(entry: DownloadEntry): string {
   switch (entry.status) {
     case 'done':
-      return `Downloaded · ${gb(entry.totalBytes || entry.downloadedBytes)}`
+      return `Downloaded · ${formatBytes(entry.totalBytes || entry.downloadedBytes)}`
     case 'downloading':
-      return entry.totalBytes > 0 ? `${mb(entry.downloadedBytes)} of ${mb(entry.totalBytes)}` : 'Starting…'
+      return entry.totalBytes > 0 ? `${formatBytes(entry.downloadedBytes)} of ${formatBytes(entry.totalBytes)}` : 'Starting…'
     case 'paused':
       return 'Paused'
     case 'error':

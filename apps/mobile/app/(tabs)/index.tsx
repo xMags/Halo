@@ -104,8 +104,7 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <Text style={type.largeTitle}>Watch</Text>
         <View style={{ marginTop: spacing.sm + 4 }}>
-          {/* UI only — functional search needs a search-catalog query (see report). */}
-          <SearchField />
+          <SearchField onPress={() => router.push('/search')} />
         </View>
         <View style={{ marginTop: spacing.sm + 4 }}>
           <Segmented options={['All', 'Movies', 'Series']} value={filter} onChange={(v) => setFilter(v as Filter)} />
