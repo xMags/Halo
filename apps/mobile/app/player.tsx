@@ -3,11 +3,14 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import Slider from '@react-native-community/slider'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { BlurView } from 'expo-blur'
+import { LinearGradient } from 'expo-linear-gradient'
 import * as FileSystem from 'expo-file-system/legacy'
 import { VLCPlayer } from 'react-native-vlc-media-player'
 import { languageLabel, type Subtitle, type WatchState } from '@halo/core'
 import { useAddonSubtitles, useReportWatchState, useWatchStates } from '@/queries'
-import { colors, spacing } from '@/theme'
+import { colors, radius, spacing } from '@/theme'
 import { SelectSheet, type SelectOption } from '@/components/SelectSheet'
 
 const REPORT_INTERVAL_MS = 15_000
@@ -30,6 +33,7 @@ export default function PlayerScreen() {
     videoSize?: string
   }>()
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const playerRef = useRef<VLCPlayer>(null)
   const isLocal = params.uri.startsWith('file://')
 
@@ -180,6 +184,8 @@ export default function PlayerScreen() {
     playerRef.current?.seek(fraction)
   }
 
+  const hPad = Math.max(insets.left, insets.right, spacing.lg)
+
   return (
     <View style={styles.container}>
       <Pressable style={styles.videoArea} onPress={() => setControlsVisible((v) => !v)}>
@@ -220,52 +226,71 @@ export default function PlayerScreen() {
 
       {controlsVisible && !error ? (
         <View style={styles.controls} pointerEvents="box-none">
-          <View style={styles.topBar}>
+          <LinearGradient
+            colors={['rgba(0,0,0,0.65)', 'rgba(0,0,0,0)']}
+            style={styles.scrimTop}
+            pointerEvents="none"
+          />
+          <LinearGradient
+            colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.75)']}
+            style={styles.scrimBottom}
+            pointerEvents="none"
+          />
+
+          <View style={[styles.topBar, { paddingLeft: hPad, paddingRight: hPad, paddingTop: insets.top + spacing.sm }]}>
             <Pressable onPress={() => router.back()} hitSlop={8}>
-              <Ionicons name="chevron-down" size={26} color={colors.text} />
+              <Ionicons name="chevron-down" size={28} color={colors.text} />
             </Pressable>
             <Text style={styles.title} numberOfLines={1}>
               {params.title}
             </Text>
-            <View style={styles.topActions}>
-              <Pressable onPress={() => setAudioSheetOpen(true)} hitSlop={8} disabled={audioTracks.length === 0}>
+            <BlurView intensity={30} tint="dark" style={styles.trackPill}>
+              <Pressable
+                onPress={() => setAudioSheetOpen(true)}
+                hitSlop={8}
+                disabled={audioTracks.length === 0}
+                style={styles.pillButton}
+              >
                 <Ionicons
                   name="musical-notes"
-                  size={22}
+                  size={20}
                   color={audioTracks.length > 0 ? colors.text : colors.textDim}
                 />
               </Pressable>
-              <Pressable onPress={() => setSubsSheetOpen(true)} hitSlop={8}>
-                <Ionicons name="chatbox-ellipses" size={22} color={colors.text} />
+              <View style={styles.pillDivider} />
+              <Pressable onPress={() => setSubsSheetOpen(true)} hitSlop={8} style={styles.pillButton}>
+                <Ionicons name="chatbox-ellipses" size={20} color={colors.text} />
               </Pressable>
-            </View>
+            </BlurView>
           </View>
 
           <View style={styles.centerControls}>
-            <Pressable onPress={() => seekBy(-10)} hitSlop={12}>
-              <Ionicons name="play-back" size={34} color={colors.text} />
+            <Pressable onPress={() => seekBy(-10)} hitSlop={12} style={styles.seekButton}>
+              <Ionicons name="play-back" size={30} color={colors.text} />
+              <Text style={styles.seekLabel}>10</Text>
             </Pressable>
-            <Pressable onPress={() => setPaused((p) => !p)} hitSlop={12}>
-              <Ionicons name={paused ? 'play' : 'pause'} size={52} color={colors.text} />
+            <Pressable onPress={() => setPaused((p) => !p)} hitSlop={12} style={styles.playPause}>
+              <Ionicons name={paused ? 'play' : 'pause'} size={40} color={colors.text} />
             </Pressable>
-            <Pressable onPress={() => seekBy(30)} hitSlop={12}>
-              <Ionicons name="play-forward" size={34} color={colors.text} />
+            <Pressable onPress={() => seekBy(30)} hitSlop={12} style={styles.seekButton}>
+              <Ionicons name="play-forward" size={30} color={colors.text} />
+              <Text style={styles.seekLabel}>30</Text>
             </Pressable>
           </View>
 
-          <View style={styles.bottomBar}>
+          <View style={[styles.bottomBar, { paddingLeft: hPad, paddingRight: hPad, paddingBottom: insets.bottom + spacing.sm }]}>
             <Text style={styles.time}>{formatTime(position * durationSec)}</Text>
             <Slider
               style={styles.slider}
               value={position}
               minimumValue={0}
               maximumValue={1}
-              minimumTrackTintColor={colors.accent}
-              maximumTrackTintColor={colors.surfaceHigh}
-              thumbTintColor={colors.accent}
+              minimumTrackTintColor="#ffffff"
+              maximumTrackTintColor="rgba(255,255,255,0.3)"
+              thumbTintColor="#ffffff"
               onSlidingComplete={(fraction) => playerRef.current?.seek(fraction)}
             />
-            <Text style={styles.time}>{formatTime(durationSec)}</Text>
+            <Text style={[styles.time, styles.timeTotal]}>{formatTime(durationSec)}</Text>
           </View>
         </View>
       ) : null}
@@ -335,13 +360,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   errorBack: {
-    backgroundColor: colors.accent,
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
   },
   errorBackText: {
-    color: colors.background,
+    color: colors.onPrimary,
     fontWeight: '700',
   },
   controls: {
@@ -350,45 +375,61 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'space-between',
   },
+  scrimTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 120 },
+  scrimBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 140 },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    gap: spacing.md,
   },
   title: {
     flex: 1,
     color: colors.text,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
   },
-  topActions: {
+  trackPill: {
     flexDirection: 'row',
-    gap: spacing.md,
+    alignItems: 'center',
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.16)',
+    overflow: 'hidden',
   },
+  pillButton: { paddingVertical: 8, paddingHorizontal: 14 },
+  pillDivider: { width: StyleSheet.hairlineWidth, height: 18, backgroundColor: 'rgba(255,255,255,0.18)' },
   centerControls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xl,
+    gap: 56,
+  },
+  seekButton: { alignItems: 'center', justifyContent: 'center' },
+  seekLabel: { color: colors.text, fontSize: 11, fontWeight: '700', marginTop: -3 },
+  playPause: {
+    width: 76,
+    height: 76,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.lg,
   },
   slider: {
     flex: 1,
   },
   time: {
     color: colors.text,
-    fontSize: 12,
+    fontSize: 12.5,
+    fontWeight: '500',
     fontVariant: ['tabular-nums'],
+    minWidth: 44,
   },
+  timeTotal: { color: 'rgba(255,255,255,0.7)', textAlign: 'right' },
 })

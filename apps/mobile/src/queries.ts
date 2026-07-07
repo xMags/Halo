@@ -33,20 +33,21 @@ export function useSetAddons() {
   })
 }
 
-export function useCatalog(transportUrl: string, type: string, id: string) {
+export function useCatalog(transportUrl: string, type: string, id: string, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['catalog', transportUrl, type, id],
     queryFn: async () => (await getCatalog(transportUrl, type, id)).metas,
     staleTime: 10 * 60_000,
+    enabled: opts?.enabled ?? true,
   })
 }
 
 /** Meta from the first installed addon that can describe this type/id. */
-export function useMeta(type: string, id: string) {
+export function useMeta(type: string, id: string, opts?: { enabled?: boolean }) {
   const { data: addons } = useAddons()
   return useQuery({
     queryKey: ['meta', type, id],
-    enabled: !!addons,
+    enabled: !!addons && (opts?.enabled ?? true),
     staleTime: 10 * 60_000,
     queryFn: async (): Promise<MetaDetail> => {
       const capable = (addons ?? []).filter((a) => addonSupportsResource(a.manifest, 'meta', type, id))

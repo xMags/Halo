@@ -20,8 +20,9 @@ import {
 } from '@halo/core'
 import { useAddons, useStreams } from '@/queries'
 import { getDownload, startDownload } from '@/downloads'
-import { colors, spacing } from '@/theme'
+import { colors, radius, spacing, type } from '@/theme'
 import { SelectSheet } from '@/components/SelectSheet'
+import { CenterMessage } from '@/components/ui'
 
 export default function StreamsScreen() {
   const params = useLocalSearchParams<{
@@ -115,42 +116,45 @@ export default function StreamsScreen() {
 
   if (!addonStreams || addonStreams.length === 0) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.dim}>
-          No playable sources. Install a stream addon (e.g. a debrid-backed one) in the Addons tab.
-        </Text>
-      </View>
+      <CenterMessage>
+        No playable sources. Install a stream addon (e.g. a debrid-backed one) in Settings.
+      </CenterMessage>
     )
   }
 
   return (
     <>
-      <ScrollView style={styles.container}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {addonStreams.map((group) => (
-          <View key={group.transportUrl}>
+          <View key={group.transportUrl} style={styles.group}>
             <Text style={styles.groupHeading}>{group.addonName}</Text>
-            {group.streams.map((stream, index) => (
-              <View key={`${group.transportUrl}:${index}`} style={styles.streamRow}>
-                <Pressable style={styles.streamBody} onPress={() => play(stream)}>
-                  <Text style={styles.streamName} numberOfLines={1}>
-                    {stream.name ?? group.addonName}
-                  </Text>
-                  {stream.title ?? stream.description ? (
-                    <Text style={styles.dim} numberOfLines={2}>
-                      {stream.title ?? stream.description}
-                    </Text>
-                  ) : null}
-                </Pressable>
-                <Pressable
-                  onPress={() => void prepareDownload(stream)}
-                  hitSlop={8}
-                  style={styles.downloadButton}
-                  disabled={preparingDownload}
+            <View style={styles.card}>
+              {group.streams.map((stream, index) => (
+                <View
+                  key={`${group.transportUrl}:${index}`}
+                  style={[styles.streamRow, index === group.streams.length - 1 && styles.lastRow]}
                 >
-                  <Ionicons name="download-outline" size={22} color={colors.accent} />
-                </Pressable>
-              </View>
-            ))}
+                  <Pressable style={styles.streamBody} onPress={() => play(stream)}>
+                    <Text style={styles.streamName} numberOfLines={1}>
+                      {stream.name ?? group.addonName}
+                    </Text>
+                    {stream.title ?? stream.description ? (
+                      <Text style={styles.dim} numberOfLines={2}>
+                        {stream.title ?? stream.description}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                  <Pressable
+                    onPress={() => void prepareDownload(stream)}
+                    hitSlop={8}
+                    style={styles.downloadButton}
+                    disabled={preparingDownload}
+                  >
+                    <Ionicons name="download-outline" size={22} color={colors.accent} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
           </View>
         ))}
         {preparingDownload ? (
@@ -184,10 +188,8 @@ export default function StreamsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.md },
   center: {
     flex: 1,
     backgroundColor: colors.background,
@@ -196,41 +198,26 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.sm,
   },
-  groupHeading: {
-    color: colors.accent,
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xs,
+  group: { marginBottom: spacing.md },
+  groupHeading: { ...type.overline, color: colors.accent, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
+  card: {
+    backgroundColor: colors.glass,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    overflow: 'hidden',
   },
   streamRow: {
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.hairline,
   },
-  streamBody: {
-    flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  streamName: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  dim: {
-    color: colors.textDim,
-    fontSize: 12,
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  downloadButton: {
-    paddingHorizontal: spacing.md,
-  },
+  lastRow: { borderBottomWidth: 0 },
+  streamBody: { flex: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2 },
+  streamName: { color: colors.text, fontSize: 14, fontWeight: '600' },
+  dim: { color: colors.textDim, fontSize: 12, marginTop: 2 },
+  downloadButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   preparing: {
     flexDirection: 'row',
     alignItems: 'center',

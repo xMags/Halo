@@ -2,20 +2,27 @@ import { useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { fetchManifest } from '@halo/core'
+import { DEFAULT_SERVER_URL } from '@/api'
 import { useAddons, useSetAddons } from '@/queries'
 import { useSession } from '@/session'
-import { colors, spacing } from '@/theme'
+import { colors, radius, spacing, TAB_BAR_SPACE, type } from '@/theme'
 
-export default function AddonsScreen() {
+/**
+ * Settings screen. Route stays `addons` (other code navigates by this path),
+ * but it now houses addon management, server status, and sign-out.
+ */
+export default function SettingsScreen() {
+  const insets = useSafeAreaInsets()
   const { data: addons } = useAddons()
   const setAddons = useSetAddons()
   const { signOut } = useSession()
@@ -59,118 +66,157 @@ export default function AddonsScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.addRow}>
-        <TextInput
-          style={styles.input}
-          value={url}
-          onChangeText={setUrl}
-          placeholder="Addon manifest URL (…/manifest.json)"
-          placeholderTextColor={colors.textDim}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          onSubmitEditing={add}
-        />
-        <Pressable style={styles.addButton} onPress={add} disabled={adding}>
-          {adding ? (
-            <ActivityIndicator color={colors.background} />
-          ) : (
-            <Ionicons name="add" size={22} color={colors.background} />
-          )}
-        </Pressable>
-      </View>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ paddingTop: insets.top + spacing.xs, paddingBottom: TAB_BAR_SPACE, paddingHorizontal: spacing.md }}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      <Text style={[type.largeTitle, styles.title]}>Settings</Text>
 
-      <FlatList
-        data={addons ?? []}
-        keyExtractor={(a) => a.transportUrl}
-        renderItem={({ item }) => (
-          <View style={styles.addonRow}>
+      <Text style={styles.groupLabel}>Addons</Text>
+      <View style={styles.card}>
+        <View style={styles.addRow}>
+          <TextInput
+            style={styles.input}
+            value={url}
+            onChangeText={setUrl}
+            placeholder="https://…/manifest.json"
+            placeholderTextColor={colors.textDim}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            onSubmitEditing={add}
+          />
+          <Pressable style={styles.addButton} onPress={add} disabled={adding}>
+            {adding ? (
+              <ActivityIndicator color={colors.onAccent} size="small" />
+            ) : (
+              <Text style={styles.addButtonText}>Add</Text>
+            )}
+          </Pressable>
+        </View>
+        {(addons ?? []).map((item, i) => (
+          <View
+            key={item.transportUrl}
+            style={[styles.addonRow, i === (addons ?? []).length - 1 && styles.lastRow]}
+          >
+            <View style={styles.addonIcon}>
+              <Ionicons name="extension-puzzle" size={19} color={colors.accent} />
+            </View>
             <View style={styles.addonBody}>
               <Text style={styles.addonName}>
                 {item.manifest.name} <Text style={styles.addonVersion}>v{item.manifest.version}</Text>
               </Text>
               {item.manifest.description ? (
-                <Text style={styles.addonDescription} numberOfLines={2}>
+                <Text style={styles.addonDescription} numberOfLines={1}>
                   {item.manifest.description}
                 </Text>
               ) : null}
             </View>
             <Pressable onPress={() => remove(item.transportUrl, item.manifest.name)} hitSlop={8}>
-              <Ionicons name="trash-outline" size={20} color={colors.danger} />
+              <Ionicons name="close" size={19} color={colors.textDim} />
             </Pressable>
           </View>
-        )}
-      />
+        ))}
+      </View>
 
-      <Pressable style={styles.signOut} onPress={() => void signOut()}>
-        <Text style={styles.signOutText}>Sign out</Text>
+      <Text style={styles.groupLabel}>Server</Text>
+      <View style={styles.card}>
+        <View style={styles.settingRow}>
+          <Text style={styles.settingKey}>Server</Text>
+          <Text style={styles.settingValue} numberOfLines={1}>
+            {DEFAULT_SERVER_URL.replace(/^https?:\/\//, '')}
+          </Text>
+        </View>
+        <View style={[styles.settingRow, styles.lastRow]}>
+          <Text style={styles.settingKey}>Status</Text>
+          <View style={styles.statusValue}>
+            <View style={styles.statusDot} />
+            <Text style={styles.statusText}>Connected</Text>
+          </View>
+        </View>
+      </View>
+
+      <Pressable style={[styles.card, styles.signOut]} onPress={() => void signOut()}>
+        <Text style={styles.signOutText}>Sign Out</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: spacing.md,
+  container: { flex: 1, backgroundColor: colors.background },
+  title: { marginBottom: spacing.md },
+  groupLabel: { ...type.overline, marginTop: spacing.md, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
+  card: {
+    backgroundColor: colors.glass,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    overflow: 'hidden',
   },
   addRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.md,
+    padding: spacing.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.hairline,
   },
   input: {
     flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: radius.sm + 1,
     color: colors.text,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 13.5,
   },
   addButton: {
     backgroundColor: colors.accent,
-    borderRadius: 10,
-    width: 44,
+    borderRadius: radius.sm + 1,
+    paddingHorizontal: 16,
+    minWidth: 56,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  addButtonText: { color: colors.onAccent, fontSize: 14, fontWeight: '600' },
   addonRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    gap: spacing.sm + 4,
+    paddingHorizontal: spacing.sm + 4,
+    paddingVertical: spacing.sm + 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.hairline,
   },
-  addonBody: {
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  addonName: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  addonVersion: {
-    color: colors.textDim,
-    fontWeight: '400',
-    fontSize: 12,
-  },
-  addonDescription: {
-    color: colors.textDim,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  signOut: {
+  addonIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm + 1,
+    backgroundColor: 'rgba(10,132,255,0.14)',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    justifyContent: 'center',
   },
-  signOutText: {
-    color: colors.danger,
-    fontSize: 14,
+  addonBody: { flex: 1 },
+  addonName: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  addonVersion: { color: colors.textDim, fontWeight: '400', fontSize: 12 },
+  addonDescription: { color: colors.textDim, fontSize: 12.5, marginTop: 1 },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.hairline,
   },
+  settingKey: { color: colors.text, fontSize: 15 },
+  settingValue: { color: colors.textDim, fontSize: 14, flexShrink: 1, marginLeft: spacing.md },
+  statusValue: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot: { width: 7, height: 7, borderRadius: 999, backgroundColor: colors.success },
+  statusText: { color: colors.success, fontSize: 14, fontWeight: '500' },
+  lastRow: { borderBottomWidth: 0 },
+  signOut: { marginTop: spacing.lg, alignItems: 'center', paddingVertical: spacing.md },
+  signOutText: { color: colors.danger, fontSize: 15, fontWeight: '600' },
 })

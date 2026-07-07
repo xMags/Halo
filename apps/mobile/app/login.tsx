@@ -11,7 +11,7 @@ import {
 } from 'react-native'
 import { DEFAULT_SERVER_URL } from '@/api'
 import { useSession } from '@/session'
-import { colors, spacing } from '@/theme'
+import { colors, radius, spacing } from '@/theme'
 
 export default function LoginScreen() {
   const { signIn } = useSession()
@@ -62,7 +62,7 @@ export default function LoginScreen() {
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable style={[styles.button, busy && styles.buttonDisabled]} onPress={submit} disabled={busy}>
-          {busy ? <ActivityIndicator color={colors.background} /> : <Text style={styles.buttonText}>Connect</Text>}
+          {busy ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.buttonText}>Connect</Text>}
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -80,25 +80,25 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   logo: {
-    color: colors.accent,
-    fontSize: 42,
+    color: colors.text,
+    fontSize: 48,
     fontWeight: '800',
     textAlign: 'center',
-    letterSpacing: 2,
+    letterSpacing: 1,
   },
   hint: {
     color: colors.textDim,
     textAlign: 'center',
+    fontSize: 14,
+    lineHeight: 20,
     marginBottom: spacing.md,
   },
   input: {
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.fieldFill,
+    borderRadius: radius.md,
     color: colors.text,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: 13,
     fontSize: 15,
   },
   error: {
@@ -107,15 +107,16 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: colors.accent,
-    borderRadius: 10,
-    paddingVertical: 14,
+    borderRadius: radius.md,
+    paddingVertical: 15,
     alignItems: 'center',
+    marginTop: spacing.xs,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   buttonText: {
-    color: colors.background,
+    color: colors.onAccent,
     fontWeight: '700',
     fontSize: 16,
   },

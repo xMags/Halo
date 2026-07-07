@@ -10,14 +10,17 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { MetaVideo } from '@halo/core'
 import { libraryItemFromMeta, useLibrary, useMeta, useUpsertLibrary, useWatchStates } from '@/queries'
-import { colors, spacing } from '@/theme'
+import { colors, radius, spacing } from '@/theme'
 import { SelectSheet } from '@/components/SelectSheet'
+import { HeroScrim, MetaLine } from '@/components/ui'
 
 export default function DetailScreen() {
   const { type, id } = useLocalSearchParams<{ type: string; id: string }>()
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const { data: meta, isLoading, isError } = useMeta(type, id)
   const { data: library } = useLibrary()
   const { data: watchStates } = useWatchStates()
@@ -85,36 +88,38 @@ export default function DetailScreen() {
     return state
   }
 
+  const inLibrary = !!libraryEntry
   const header = (
     <View>
-      <Image source={{ uri: meta.background ?? meta.poster }} style={styles.hero} resizeMode="cover" />
-      <View style={styles.body}>
-        <Text style={styles.name}>{meta.name}</Text>
-        <Text style={styles.dim}>
-          {[meta.releaseInfo, meta.runtime, meta.imdbRating && `★ ${meta.imdbRating}`]
-            .filter(Boolean)
-            .join('  ·  ')}
-        </Text>
-        {meta.description ? <Text style={styles.description}>{meta.description}</Text> : null}
+      <View style={styles.hero}>
+        <Image source={{ uri: meta.background ?? meta.poster }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <HeroScrim />
+        <View style={styles.heroBody}>
+          <Text style={styles.name}>{meta.name}</Text>
+          <MetaLine parts={[meta.releaseInfo, meta.runtime]} rating={meta.imdbRating} />
+        </View>
+      </View>
 
+      <View style={styles.body}>
         <View style={styles.actions}>
           {type === 'movie' ? (
             <Pressable style={styles.playButton} onPress={() => openStreams(id)}>
-              <Ionicons name="play" size={18} color={colors.background} />
+              <Ionicons name="play" size={19} color={colors.onPrimary} />
               <Text style={styles.playButtonText}>Sources</Text>
             </Pressable>
           ) : null}
-          <Pressable style={styles.libraryButton} onPress={toggleLibrary}>
-            <Ionicons
-              name={libraryEntry ? 'bookmark' : 'bookmark-outline'}
-              size={18}
-              color={colors.accent}
-            />
-            <Text style={styles.libraryButtonText}>
-              {libraryEntry ? 'In library' : 'Add to library'}
-            </Text>
+          <Pressable
+            style={[styles.iconAction, type !== 'movie' && styles.iconActionWide]}
+            onPress={toggleLibrary}
+          >
+            <Ionicons name={inLibrary ? 'bookmark' : 'bookmark-outline'} size={20} color={colors.accent} />
+            {type !== 'movie' ? (
+              <Text style={styles.iconActionText}>{inLibrary ? 'In Library' : 'My List'}</Text>
+            ) : null}
           </Pressable>
         </View>
+
+        {meta.description ? <Text style={styles.description}>{meta.description}</Text> : null}
 
         {seasons.length > 0 ? (
           <Pressable style={styles.seasonPicker} onPress={() => setSeasonSheetOpen(true)}>
@@ -130,20 +135,30 @@ export default function DetailScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: meta.name }} />
-      <FlatList
-        style={styles.container}
-        data={type === 'series' ? episodes : []}
-        keyExtractor={(video) => video.id}
-        ListHeaderComponent={header}
-        renderItem={({ item }) => (
-          <EpisodeRow
-            video={item}
-            progress={progressFor(item.id)}
-            onPress={() => openStreams(item.id, episodeTag(item))}
-          />
-        )}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.container}>
+        <FlatList
+          data={type === 'series' ? episodes : []}
+          keyExtractor={(video) => video.id}
+          ListHeaderComponent={header}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}
+          renderItem={({ item }) => (
+            <EpisodeRow
+              video={item}
+              progress={progressFor(item.id)}
+              onPress={() => openStreams(item.id, episodeTag(item))}
+            />
+          )}
+        />
+        <Pressable
+          style={[styles.backButton, { top: insets.top + spacing.xs }]}
+          onPress={() => router.back()}
+          hitSlop={8}
+        >
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
+        </Pressable>
+      </View>
       <SelectSheet
         visible={seasonSheetOpen}
         title="Season"
@@ -205,10 +220,7 @@ function EpisodeRow({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
   center: {
     flex: 1,
     backgroundColor: colors.background,
@@ -217,110 +229,79 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   hero: {
-    width: '100%',
-    height: 210,
+    height: 460,
+    justifyContent: 'flex-end',
     backgroundColor: colors.surface,
   },
-  body: {
-    padding: spacing.md,
+  heroBody: { paddingHorizontal: spacing.md + 2, paddingBottom: spacing.sm },
+  name: { color: colors.text, fontSize: 32, fontWeight: '800', letterSpacing: 0.3, marginBottom: 6 },
+  backButton: {
+    position: 'absolute',
+    left: spacing.md,
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  name: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  dim: {
-    color: colors.textDim,
-    fontSize: 13,
-    marginTop: spacing.xs,
-  },
-  description: {
-    color: colors.text,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: spacing.sm,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
+  body: { paddingHorizontal: spacing.md + 2, paddingTop: spacing.sm },
+  dim: { color: colors.textDim, fontSize: 13, marginTop: spacing.xs, textAlign: 'center' },
+  description: { color: '#c3c9d6', fontSize: 14, lineHeight: 21, marginTop: spacing.md },
+  actions: { flexDirection: 'row', gap: spacing.sm + 2 },
   playButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.accent,
-    borderRadius: 10,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 13,
   },
-  playButtonText: {
-    color: colors.background,
-    fontWeight: '700',
-  },
-  libraryButton: {
-    flexDirection: 'row',
+  playButtonText: { color: colors.onPrimary, fontWeight: '700', fontSize: 16 },
+  iconAction: {
+    width: 52,
+    borderRadius: radius.md,
+    backgroundColor: colors.glass,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
     alignItems: 'center',
-    gap: 6,
-    borderColor: colors.accent,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
   },
-  libraryButtonText: {
-    color: colors.accent,
-    fontWeight: '600',
-  },
+  iconActionWide: { flex: 1, paddingVertical: 13 },
+  iconActionText: { color: colors.accent, fontWeight: '600', fontSize: 15 },
   seasonPicker: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     alignSelf: 'flex-start',
     backgroundColor: colors.surfaceHigh,
-    borderRadius: 8,
+    borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    marginTop: spacing.md,
+    paddingVertical: 9,
+    marginTop: spacing.lg,
   },
-  seasonPickerText: {
-    color: colors.text,
-    fontWeight: '600',
-  },
+  seasonPickerText: { color: colors.text, fontWeight: '600' },
   episode: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    gap: spacing.sm + 2,
   },
-  thumb: {
-    width: 120,
-    height: 68,
-    borderRadius: 6,
-    backgroundColor: colors.surface,
-  },
-  thumbFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  episodeBody: {
-    flex: 1,
-  },
-  episodeTitle: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  thumb: { width: 120, height: 68, borderRadius: radius.sm - 2, backgroundColor: colors.surface },
+  thumbFallback: { alignItems: 'center', justifyContent: 'center' },
+  episodeBody: { flex: 1 },
+  episodeTitle: { color: colors.text, fontSize: 14, fontWeight: '600' },
   progressTrack: {
     height: 3,
     borderRadius: 2,
-    backgroundColor: colors.surfaceHigh,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     marginTop: 6,
     overflow: 'hidden',
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.accent,
-  },
+  progressFill: { height: '100%', backgroundColor: colors.accent },
 })

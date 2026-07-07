@@ -1,6 +1,6 @@
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native'
 import { useCatalog } from '../queries'
-import { colors, spacing } from '../theme'
+import { colors, spacing, POSTER_WIDTH, POSTER_HEIGHT } from '../theme'
 import { PosterCard } from './PosterCard'
 
 interface Props {
@@ -16,7 +16,7 @@ export function CatalogRow({ transportUrl, addonName, type, catalogId, catalogNa
   // Failed or empty catalogs disappear instead of leaving dead headers around.
   if (isError || metas?.length === 0) return null
 
-  const label = `${catalogName ?? addonName} — ${typeLabel(type)}`
+  const label = `${catalogName ?? addonName} · ${typeLabel(type)}`
   return (
     <View style={styles.row}>
       <Text style={styles.heading}>{label}</Text>
@@ -27,7 +27,7 @@ export function CatalogRow({ transportUrl, addonName, type, catalogId, catalogNa
           horizontal
           data={metas}
           keyExtractor={(meta) => meta.id}
-          renderItem={({ item }) => <PosterCard meta={item} />}
+          renderItem={({ item }) => <PosterCard meta={item} width={POSTER_WIDTH} />}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.list}
         />
@@ -48,15 +48,17 @@ const styles = StyleSheet.create({
   },
   heading: {
     color: colors.text,
-    fontSize: 17,
-    fontWeight: '600',
-    marginBottom: spacing.sm,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    marginBottom: spacing.sm + 2,
     paddingHorizontal: spacing.md,
   },
   list: {
     paddingHorizontal: spacing.md,
+    gap: 11,
   },
   loader: {
-    height: 165,
+    height: POSTER_HEIGHT,
   },
 })

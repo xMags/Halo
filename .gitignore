@@ -11,6 +11,9 @@ build/
 apps/mobile/ios/
 apps/mobile/android/
 
+# design exploration artifacts (HTML mockups; implementation is the source of truth)
+apps/mobile/design/
+
 # env & data
 .env
 .env.*
