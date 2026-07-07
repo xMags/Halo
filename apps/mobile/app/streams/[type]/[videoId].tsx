@@ -18,8 +18,9 @@ import {
   type Stream,
   type Subtitle,
 } from '@halo/core'
-import { useAddons, useStreams } from '@/queries'
+import { sortSubtitlesByPreference, useAddons, useStreams } from '@/queries'
 import { getDownload, startDownload, useDownloads } from '@/downloads'
+import { useSettings } from '@/settings'
 import { formatBytes } from '@/format'
 import { colors, radius, spacing, type } from '@/theme'
 import { SelectSheet } from '@/components/SelectSheet'
@@ -48,6 +49,7 @@ export default function StreamsScreen() {
   const { data: addonStreams, isLoading } = useStreams(params.type, params.videoId)
   const { data: addons } = useAddons()
   const downloads = useDownloads()
+  const settings = useSettings()
   const existingDownload = downloads.find((d) => d.id === params.videoId && d.status === 'done')
   const [subtitlePick, setSubtitlePick] = useState<{ stream: Stream; subtitles: Subtitle[] } | null>(null)
   /** Stream key currently fetching subtitles pre-download — drives the per-row spinner. */
@@ -97,9 +99,12 @@ export default function StreamsScreen() {
           ),
         ),
       )
-      const subtitles = results
-        .filter((r): r is PromiseFulfilledResult<{ subtitles: Subtitle[] }> => r.status === 'fulfilled')
-        .flatMap((r) => r.value.subtitles ?? [])
+      const subtitles = sortSubtitlesByPreference(
+        results
+          .filter((r): r is PromiseFulfilledResult<{ subtitles: Subtitle[] }> => r.status === 'fulfilled')
+          .flatMap((r) => r.value.subtitles ?? []),
+        settings.preferredSubtitleLang,
+      )
       setSubtitlePick({ stream, subtitles })
     } finally {
       setPreparingKey(null)
@@ -118,6 +123,7 @@ export default function StreamsScreen() {
       title: params.title,
       showName: params.showName ?? params.title,
       episodeLabel: params.episodeLabel,
+      filename: stream.behaviorHints?.filename,
       poster: params.poster,
       streamUrl: stream.url!,
       subtitle: subtitle ? { url: subtitle.url, lang: subtitle.lang } : undefined,
@@ -196,6 +202,11 @@ export default function StreamsScreen() {
                       {stream.title ?? stream.description ? (
                         <Text style={styles.dim} numberOfLines={2}>
                           {stream.title ?? stream.description}
+                        </Text>
+                      ) : null}
+                      {stream.behaviorHints?.filename ? (
+                        <Text style={styles.filename} numberOfLines={1}>
+                          {stream.behaviorHints.filename}
                         </Text>
                       ) : null}
                     </Pressable>
@@ -278,6 +289,7 @@ const styles = StyleSheet.create({
   streamNameFlex: { flexShrink: 1 },
   size: { color: colors.textDim, fontSize: 12.5, fontWeight: '600', fontVariant: ['tabular-nums'] },
   dim: { color: colors.textDim, fontSize: 12, marginTop: 2 },
+  filename: { color: colors.textDim, fontSize: 10.5, marginTop: 3, fontVariant: ['tabular-nums'], opacity: 0.8 },
   downloadButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minWidth: 54, alignItems: 'center' },
   pressed: { opacity: 0.55 },
   offlineCard: {

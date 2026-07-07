@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { Ionicons } from '@expo/vector-icons'
@@ -8,8 +8,9 @@ import { BlurView } from 'expo-blur'
 import { LinearGradient } from 'expo-linear-gradient'
 import * as FileSystem from 'expo-file-system/legacy'
 import { VLCPlayer } from 'react-native-vlc-media-player'
-import { languageLabel, type Subtitle, type WatchState } from '@halo/core'
-import { useAddonSubtitles, useReportWatchState, useWatchStates } from '@/queries'
+import { languageLabel, languageMatches, type Subtitle, type WatchState } from '@halo/core'
+import { sortSubtitlesByPreference, useAddonSubtitles, useReportWatchState, useWatchStates } from '@/queries'
+import { useSettings } from '@/settings'
 import { colors, radius, spacing } from '@/theme'
 import { SelectSheet, type SelectOption } from '@/components/SelectSheet'
 
@@ -54,15 +55,22 @@ export default function PlayerScreen() {
   const [audioSheetOpen, setAudioSheetOpen] = useState(false)
   const [subsSheetOpen, setSubsSheetOpen] = useState(false)
 
-  // External subtitles only make sense for remote playback — downloads carry
-  // their chosen subtitle file with them.
+  const settings = useSettings()
+
+  // Local files hash from disk, remote streams via range requests — either way
+  // the addon gets videoHash/videoSize for exact-match results.
   const { data: externalSubs } = useAddonSubtitles({
     type: params.type,
     videoId: params.videoId,
     streamUrl: isLocal ? undefined : params.uri,
+    localFileUri: isLocal ? params.uri : undefined,
     filename: params.filename,
     videoSize: params.videoSize ? Number(params.videoSize) : undefined,
   })
+  const sortedSubs = useMemo(
+    () => sortSubtitlesByPreference(externalSubs ?? [], settings.preferredSubtitleLang),
+    [externalSubs, settings.preferredSubtitleLang],
+  )
 
   const { data: watchStates } = useWatchStates()
   const report = useReportWatchState()
@@ -104,6 +112,14 @@ export default function PlayerScreen() {
     // VLC reports "Disable" as id -1; keep real tracks only.
     setTextTracks((info.textTracks ?? []).filter((t) => t.id >= 0))
 
+    // Default audio language: VLC names tracks like "Track 1 - [English]".
+    if (settings.preferredAudioLang) {
+      const match = (info.audioTracks ?? []).find((t) =>
+        trackMatchesLanguage(t.name, settings.preferredAudioLang!),
+      )
+      if (match) setAudioTrack(match.id)
+    }
+
     if (!resumeAppliedRef.current) {
       resumeAppliedRef.current = true
       const prior = (watchStates ?? []).find((s) => s.videoId === params.videoId)
@@ -121,6 +137,27 @@ export default function PlayerScreen() {
     setDurationSec(total)
     progressRef.current = { positionSec: normalizeSeconds(event.currentTime), durationSec: total }
   }
+
+  // Default subtitles: prefer an embedded track in the chosen language, else
+  // the best external match. Runs once per playback, and never overrides a
+  // subtitle that came bundled with a download.
+  const autoSubApplied = useRef(false)
+  useEffect(() => {
+    if (autoSubApplied.current || !loaded || externalSubs === undefined) return
+    if (!settings.preferredSubtitleLang || params.subtitleUri) {
+      autoSubApplied.current = true
+      return
+    }
+    autoSubApplied.current = true
+    const embedded = textTracks.find((t) => trackMatchesLanguage(t.name, settings.preferredSubtitleLang!))
+    if (embedded) {
+      setTextTrack(embedded.id)
+      return
+    }
+    const index = sortedSubs.findIndex((s) => languageMatches(s.lang, settings.preferredSubtitleLang!))
+    if (index >= 0) void selectExternalSub(sortedSubs[index]!, `external:${index}`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, externalSubs, textTracks, settings.preferredSubtitleLang])
 
   const selectExternalSub = async (sub: Subtitle, key: string) => {
     try {
@@ -150,7 +187,7 @@ export default function PlayerScreen() {
       detail: 'Embedded',
       selected: textTrack === t.id,
     })),
-    ...(externalSubs ?? []).map((sub, index) => ({
+    ...sortedSubs.map((sub, index) => ({
       key: `external:${index}`,
       label: languageLabel(sub.lang),
       detail: 'OpenSubtitles',
@@ -173,7 +210,7 @@ export default function PlayerScreen() {
       setActiveExternalSub(null)
     } else if (key.startsWith('external:')) {
       const index = Number(key.slice('external:'.length))
-      const sub = (externalSubs ?? [])[index]
+      const sub = sortedSubs[index]
       if (sub) void selectExternalSub(sub, key)
     }
   }
@@ -323,6 +360,12 @@ export default function PlayerScreen() {
  */
 function normalizeSeconds(value: number): number {
   return value > 50_000 ? value / 1000 : value
+}
+
+/** VLC track names look like "Track 1 - [English]" or just "English". */
+function trackMatchesLanguage(trackName: string, code: string): boolean {
+  const name = trackName.toLowerCase()
+  return name.includes(languageLabel(code).toLowerCase()) || name.includes(`[${code.toLowerCase()}]`)
 }
 
 function formatTime(totalSec: number): string {

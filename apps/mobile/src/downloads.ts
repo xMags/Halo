@@ -14,6 +14,8 @@ export interface DownloadEntry {
   showName?: string
   /** e.g. "S01E02"; unset for movies. */
   episodeLabel?: string
+  /** Release filename from the stream's behaviorHints — improves subtitle matching. */
+  filename?: string
   poster?: string
   streamUrl: string
   fileUri: string
@@ -87,6 +89,7 @@ export interface StartDownloadOptions {
   title: string
   showName?: string
   episodeLabel?: string
+  filename?: string
   poster?: string
   streamUrl: string
   subtitle?: { url: string; lang: string }
@@ -103,6 +106,7 @@ export async function startDownload(opts: StartDownloadOptions): Promise<void> {
     title: opts.title,
     showName: opts.showName,
     episodeLabel: opts.episodeLabel,
+    filename: opts.filename,
     poster: opts.poster,
     streamUrl: opts.streamUrl,
     fileUri,

@@ -11,11 +11,13 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { fetchManifest } from '@halo/core'
+import { fetchManifest, LANGUAGE_OPTIONS, languageLabel } from '@halo/core'
 import { DEFAULT_SERVER_URL } from '@/api'
 import { useAddons, useSetAddons } from '@/queries'
 import { useSession } from '@/session'
+import { useSettings, useUpdateSettings } from '@/settings'
 import { colors, radius, spacing, TAB_BAR_SPACE, type } from '@/theme'
+import { SelectSheet } from '@/components/SelectSheet'
 
 /**
  * Settings screen. Route stays `addons` (other code navigates by this path),
@@ -26,8 +28,14 @@ export default function SettingsScreen() {
   const { data: addons } = useAddons()
   const setAddons = useSetAddons()
   const { signOut } = useSession()
+  const settings = useSettings()
+  const updateSettings = useUpdateSettings()
   const [url, setUrl] = useState('')
   const [adding, setAdding] = useState(false)
+  const [languagePick, setLanguagePick] = useState<'audio' | 'subtitles' | null>(null)
+
+  const preferredFor = (pick: 'audio' | 'subtitles') =>
+    pick === 'audio' ? settings.preferredAudioLang : settings.preferredSubtitleLang
 
   const add = async () => {
     const transportUrl = url.trim()
@@ -121,6 +129,28 @@ export default function SettingsScreen() {
         ))}
       </View>
 
+      <Text style={styles.groupLabel}>Playback</Text>
+      <View style={styles.card}>
+        <Pressable style={styles.settingRow} onPress={() => setLanguagePick('audio')}>
+          <Text style={styles.settingKey}>Default audio language</Text>
+          <View style={styles.settingChevron}>
+            <Text style={styles.settingValue}>
+              {settings.preferredAudioLang ? languageLabel(settings.preferredAudioLang) : 'Auto'}
+            </Text>
+            <Ionicons name="chevron-forward" size={15} color={colors.textDim} />
+          </View>
+        </Pressable>
+        <Pressable style={[styles.settingRow, styles.lastRow]} onPress={() => setLanguagePick('subtitles')}>
+          <Text style={styles.settingKey}>Default subtitles</Text>
+          <View style={styles.settingChevron}>
+            <Text style={styles.settingValue}>
+              {settings.preferredSubtitleLang ? languageLabel(settings.preferredSubtitleLang) : 'Off'}
+            </Text>
+            <Ionicons name="chevron-forward" size={15} color={colors.textDim} />
+          </View>
+        </Pressable>
+      </View>
+
       <Text style={styles.groupLabel}>Server</Text>
       <View style={styles.card}>
         <View style={styles.settingRow}>
@@ -141,6 +171,30 @@ export default function SettingsScreen() {
       <Pressable style={[styles.card, styles.signOut]} onPress={() => void signOut()}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </Pressable>
+
+      <SelectSheet
+        visible={languagePick !== null}
+        title={languagePick === 'audio' ? 'Default audio language' : 'Default subtitles'}
+        options={[
+          {
+            key: 'none',
+            label: languagePick === 'audio' ? 'Auto (first track)' : 'Off',
+            selected: languagePick !== null && !preferredFor(languagePick),
+          },
+          ...LANGUAGE_OPTIONS.map((lang) => ({
+            key: lang.code,
+            label: lang.label,
+            selected: languagePick !== null && preferredFor(languagePick) === lang.code,
+          })),
+        ]}
+        onSelect={(key) => {
+          const value = key === 'none' ? undefined : key
+          updateSettings.mutate(
+            languagePick === 'audio' ? { preferredAudioLang: value } : { preferredSubtitleLang: value },
+          )
+        }}
+        onClose={() => setLanguagePick(null)}
+      />
     </ScrollView>
   )
 }
@@ -213,6 +267,7 @@ const styles = StyleSheet.create({
   },
   settingKey: { color: colors.text, fontSize: 15 },
   settingValue: { color: colors.textDim, fontSize: 14, flexShrink: 1, marginLeft: spacing.md },
+  settingChevron: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statusValue: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statusDot: { width: 7, height: 7, borderRadius: 999, backgroundColor: colors.success },
   statusText: { color: colors.success, fontSize: 14, fontWeight: '500' },

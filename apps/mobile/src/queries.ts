@@ -7,6 +7,7 @@ import {
   getStreams,
   getSubtitles,
   isPlayableStream,
+  languageMatches,
   type AddonEntry,
   type CatalogResponse,
   type LibraryItem,
@@ -17,6 +18,16 @@ import {
   type WatchState,
 } from '@halo/core'
 import { api } from './api'
+import { computeLocalVideoHash } from './localHash'
+
+/** Stable sort: preferred-language subtitles first, original order otherwise. */
+export function sortSubtitlesByPreference(subs: Subtitle[], preferredLang?: string): Subtitle[] {
+  if (!preferredLang) return subs
+  return [...subs].sort(
+    (a, b) =>
+      Number(languageMatches(b.lang, preferredLang)) - Number(languageMatches(a.lang, preferredLang)),
+  )
+}
 
 export function useAddons() {
   return useQuery({
@@ -99,6 +110,8 @@ export interface SubtitleOptions {
   videoId: string
   /** Remote stream URL — used for hash matching. Omit for local playback. */
   streamUrl?: string
+  /** Downloaded file — hashed from disk so offline results are exact matches. */
+  localFileUri?: string
   filename?: string
   videoSize?: number
 }
@@ -111,7 +124,7 @@ export interface SubtitleOptions {
 export function useAddonSubtitles(opts: SubtitleOptions) {
   const { data: addons } = useAddons()
   return useQuery({
-    queryKey: ['subtitles', opts.type, opts.videoId, opts.streamUrl ?? null],
+    queryKey: ['subtitles', opts.type, opts.videoId, opts.streamUrl ?? opts.localFileUri ?? null],
     enabled: !!addons,
     staleTime: Infinity,
     queryFn: async (): Promise<Subtitle[]> => {
@@ -122,14 +135,18 @@ export function useAddonSubtitles(opts: SubtitleOptions) {
 
       let videoHash: string | undefined
       let videoSize = opts.videoSize
-      if (opts.streamUrl) {
-        try {
+      try {
+        if (opts.localFileUri) {
+          const result = await computeLocalVideoHash(opts.localFileUri)
+          videoHash = result.hash
+          videoSize = videoSize ?? result.size
+        } else if (opts.streamUrl) {
           const result = await computeVideoHash(opts.streamUrl)
           videoHash = result.hash
           videoSize = videoSize ?? result.size
-        } catch {
-          // Host rejected range requests — name/id search still works.
         }
+      } catch {
+        // Host rejected ranges / file unreadable — name/id search still works.
       }
 
       const results = await Promise.allSettled(
