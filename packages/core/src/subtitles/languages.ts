@@ -1,0 +1,61 @@
+/**
+ * Human-readable labels for the ISO 639-2 codes subtitle addons emit.
+ * Intl.DisplayNames only accepts 639-1 reliably and is missing from Hermes,
+ * so a static map is the portable answer. Unknown codes fall back to the code.
+ */
+const LANGUAGE_LABELS: Record<string, string> = {
+  ara: 'Arabic',
+  bul: 'Bulgarian',
+  chi: 'Chinese',
+  zho: 'Chinese',
+  cze: 'Czech',
+  ces: 'Czech',
+  dan: 'Danish',
+  dut: 'Dutch',
+  nld: 'Dutch',
+  eng: 'English',
+  est: 'Estonian',
+  fin: 'Finnish',
+  fre: 'French',
+  fra: 'French',
+  ger: 'German',
+  deu: 'German',
+  gre: 'Greek',
+  ell: 'Greek',
+  heb: 'Hebrew',
+  hin: 'Hindi',
+  hrv: 'Croatian',
+  hun: 'Hungarian',
+  ind: 'Indonesian',
+  ita: 'Italian',
+  jpn: 'Japanese',
+  kor: 'Korean',
+  lav: 'Latvian',
+  lit: 'Lithuanian',
+  may: 'Malay',
+  msa: 'Malay',
+  nor: 'Norwegian',
+  per: 'Persian',
+  fas: 'Persian',
+  pol: 'Polish',
+  por: 'Portuguese',
+  pob: 'Portuguese (BR)',
+  rum: 'Romanian',
+  ron: 'Romanian',
+  rus: 'Russian',
+  slo: 'Slovak',
+  slk: 'Slovak',
+  slv: 'Slovenian',
+  spa: 'Spanish',
+  srp: 'Serbian',
+  swe: 'Swedish',
+  tha: 'Thai',
+  tur: 'Turkish',
+  ukr: 'Ukrainian',
+  vie: 'Vietnamese',
+}
+
+export function languageLabel(code: string): string {
+  const normalized = code.trim().toLowerCase()
+  return LANGUAGE_LABELS[normalized] ?? code
+}
