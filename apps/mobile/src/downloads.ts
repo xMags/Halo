@@ -10,6 +10,10 @@ export interface DownloadEntry {
   itemId: string
   type: string
   title: string
+  /** Show/movie name without episode suffix — used to group Downloads by title. */
+  showName?: string
+  /** e.g. "S01E02"; unset for movies. */
+  episodeLabel?: string
   poster?: string
   streamUrl: string
   fileUri: string
@@ -81,6 +85,8 @@ export interface StartDownloadOptions {
   itemId: string
   type: string
   title: string
+  showName?: string
+  episodeLabel?: string
   poster?: string
   streamUrl: string
   subtitle?: { url: string; lang: string }
@@ -95,6 +101,8 @@ export async function startDownload(opts: StartDownloadOptions): Promise<void> {
     itemId: opts.itemId,
     type: opts.type,
     title: opts.title,
+    showName: opts.showName,
+    episodeLabel: opts.episodeLabel,
     poster: opts.poster,
     streamUrl: opts.streamUrl,
     fileUri,

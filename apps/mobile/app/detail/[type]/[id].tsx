@@ -13,6 +13,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { MetaVideo } from '@halo/core'
 import { libraryItemFromMeta, useLibrary, useMeta, useUpsertLibrary, useWatchStates } from '@/queries'
+import { useDownloads } from '@/downloads'
 import { colors, radius, spacing } from '@/theme'
 import { SelectSheet } from '@/components/SelectSheet'
 import { HeroScrim, MetaLine } from '@/components/ui'
@@ -30,6 +31,8 @@ export default function DetailScreen() {
 
   const itemId = `${type}:${id}`
   const libraryEntry = (library ?? []).find((item) => item.id === itemId && !item.removedAt)
+  const downloads = useDownloads()
+  const downloadsById = new Map(downloads.map((d) => [d.id, d]))
 
   const seasons = useMemo(() => {
     const numbers = new Set<number>()
@@ -77,6 +80,8 @@ export default function DetailScreen() {
         videoId,
         itemId,
         title: episodeLabel ? `${meta.name} — ${episodeLabel}` : meta.name,
+        showName: meta.name,
+        ...(episodeLabel ? { episodeLabel } : {}),
         ...(meta.poster ? { poster: meta.poster } : {}),
       },
     })
@@ -147,6 +152,7 @@ export default function DetailScreen() {
             <EpisodeRow
               video={item}
               progress={progressFor(item.id)}
+              downloaded={downloadsById.get(item.id)?.status === 'done'}
               onPress={() => openStreams(item.id, episodeTag(item))}
             />
           )}
@@ -182,10 +188,12 @@ function episodeTag(video: MetaVideo): string {
 function EpisodeRow({
   video,
   progress,
+  downloaded,
   onPress,
 }: {
   video: MetaVideo
   progress: { positionSec: number; durationSec: number; watched: boolean } | null
+  downloaded: boolean
   onPress: () => void
 }) {
   const fraction = progress ? progress.positionSec / progress.durationSec : 0
@@ -214,6 +222,7 @@ function EpisodeRow({
           </View>
         ) : null}
       </View>
+      {downloaded ? <Ionicons name="arrow-down-circle" size={18} color={colors.accent} /> : null}
       {progress?.watched ? <Ionicons name="checkmark-circle" size={18} color={colors.success} /> : null}
     </Pressable>
   )

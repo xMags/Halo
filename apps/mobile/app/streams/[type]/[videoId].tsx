@@ -19,11 +19,20 @@ import {
   type Subtitle,
 } from '@halo/core'
 import { useAddons, useStreams } from '@/queries'
-import { getDownload, startDownload } from '@/downloads'
+import { getDownload, startDownload, useDownloads } from '@/downloads'
 import { formatBytes } from '@/format'
 import { colors, radius, spacing, type } from '@/theme'
 import { SelectSheet } from '@/components/SelectSheet'
 import { CenterMessage } from '@/components/ui'
+
+const HASH_TIMEOUT_MS = 8_000
+
+/** AbortSignal.timeout isn't in Hermes — manual equivalent. */
+function timeoutSignal(ms: number): AbortSignal {
+  const controller = new AbortController()
+  setTimeout(() => controller.abort(), ms)
+  return controller.signal
+}
 
 export default function StreamsScreen() {
   const params = useLocalSearchParams<{
@@ -31,13 +40,18 @@ export default function StreamsScreen() {
     videoId: string
     itemId: string
     title: string
+    showName?: string
+    episodeLabel?: string
     poster?: string
   }>()
   const router = useRouter()
   const { data: addonStreams, isLoading } = useStreams(params.type, params.videoId)
   const { data: addons } = useAddons()
+  const downloads = useDownloads()
+  const existingDownload = downloads.find((d) => d.id === params.videoId && d.status === 'done')
   const [subtitlePick, setSubtitlePick] = useState<{ stream: Stream; subtitles: Subtitle[] } | null>(null)
-  const [preparingDownload, setPreparingDownload] = useState(false)
+  /** Stream key currently fetching subtitles pre-download — drives the per-row spinner. */
+  const [preparingKey, setPreparingKey] = useState<string | null>(null)
 
   const play = (stream: Stream) => {
     router.replace({
@@ -55,9 +69,10 @@ export default function StreamsScreen() {
   }
 
   // Download flow: offer the subtitle choice up front so the file ships with
-  // the video and offline playback keeps subs.
-  const prepareDownload = async (stream: Stream) => {
-    setPreparingDownload(true)
+  // the video and offline playback keeps subs. Everything here is bounded by
+  // a timeout — a slow stream host must not make the button feel dead.
+  const prepareDownload = async (stream: Stream, key: string) => {
+    setPreparingKey(key)
     try {
       const subtitleAddons = (addons ?? []).filter((a) =>
         addonSupportsResource(a.manifest, 'subtitles', params.type, params.videoId),
@@ -65,19 +80,21 @@ export default function StreamsScreen() {
       let videoHash: string | undefined
       let videoSize = stream.behaviorHints?.videoSize
       try {
-        const hash = await computeVideoHash(stream.url!)
+        const hash = await computeVideoHash(stream.url!, { signal: timeoutSignal(HASH_TIMEOUT_MS) })
         videoHash = hash.hash
         videoSize = videoSize ?? hash.size
       } catch {
-        // Range-less host: id/name search still returns candidates.
+        // Range-less or slow host: id/name search still returns candidates.
       }
       const results = await Promise.allSettled(
         subtitleAddons.map((a) =>
-          getSubtitles(a.transportUrl, params.type, params.videoId, {
-            videoHash,
-            videoSize,
-            filename: stream.behaviorHints?.filename,
-          }),
+          getSubtitles(
+            a.transportUrl,
+            params.type,
+            params.videoId,
+            { videoHash, videoSize, filename: stream.behaviorHints?.filename },
+            { signal: timeoutSignal(HASH_TIMEOUT_MS) },
+          ),
         ),
       )
       const subtitles = results
@@ -85,7 +102,7 @@ export default function StreamsScreen() {
         .flatMap((r) => r.value.subtitles ?? [])
       setSubtitlePick({ stream, subtitles })
     } finally {
-      setPreparingDownload(false)
+      setPreparingKey(null)
     }
   }
 
@@ -99,6 +116,8 @@ export default function StreamsScreen() {
       itemId: params.itemId,
       type: params.type,
       title: params.title,
+      showName: params.showName ?? params.title,
+      episodeLabel: params.episodeLabel,
       poster: params.poster,
       streamUrl: stream.url!,
       subtitle: subtitle ? { url: subtitle.url, lang: subtitle.lang } : undefined,
@@ -126,49 +145,82 @@ export default function StreamsScreen() {
   return (
     <>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        {existingDownload ? (
+          <Pressable
+            style={({ pressed }) => [styles.offlineCard, pressed && styles.pressed]}
+            onPress={() =>
+              router.replace({
+                pathname: '/player',
+                params: {
+                  uri: existingDownload.fileUri,
+                  videoId: existingDownload.id,
+                  itemId: existingDownload.itemId,
+                  type: existingDownload.type,
+                  title: existingDownload.title,
+                  ...(existingDownload.subtitleUri ? { subtitleUri: existingDownload.subtitleUri } : {}),
+                },
+              })
+            }
+          >
+            <Ionicons name="arrow-down-circle" size={22} color={colors.success} />
+            <View style={styles.offlineBody}>
+              <Text style={styles.streamName}>Downloaded</Text>
+              <Text style={styles.dim}>On this device · plays offline</Text>
+            </View>
+            <Ionicons name="play" size={20} color={colors.text} />
+          </Pressable>
+        ) : null}
         {addonStreams.map((group) => (
           <View key={group.transportUrl} style={styles.group}>
             <Text style={styles.groupHeading}>{group.addonName}</Text>
             <View style={styles.card}>
-              {group.streams.map((stream, index) => (
-                <View
-                  key={`${group.transportUrl}:${index}`}
-                  style={[styles.streamRow, index === group.streams.length - 1 && styles.lastRow]}
-                >
-                  <Pressable style={styles.streamBody} onPress={() => play(stream)}>
-                    <View style={styles.streamHead}>
-                      <Text style={[styles.streamName, styles.streamNameFlex]} numberOfLines={1}>
-                        {stream.name ?? group.addonName}
-                      </Text>
-                      {stream.behaviorHints?.videoSize ? (
-                        <Text style={styles.size}>{formatBytes(stream.behaviorHints.videoSize)}</Text>
-                      ) : null}
-                    </View>
-                    {stream.title ?? stream.description ? (
-                      <Text style={styles.dim} numberOfLines={2}>
-                        {stream.title ?? stream.description}
-                      </Text>
-                    ) : null}
-                  </Pressable>
-                  <Pressable
-                    onPress={() => void prepareDownload(stream)}
-                    hitSlop={8}
-                    style={styles.downloadButton}
-                    disabled={preparingDownload}
+              {group.streams.map((stream, index) => {
+                const key = `${group.transportUrl}:${index}`
+                return (
+                  <View
+                    key={key}
+                    style={[styles.streamRow, index === group.streams.length - 1 && styles.lastRow]}
                   >
-                    <Ionicons name="download-outline" size={22} color={colors.accent} />
-                  </Pressable>
-                </View>
-              ))}
+                    <Pressable
+                      style={({ pressed }) => [styles.streamBody, pressed && styles.pressed]}
+                      onPress={() => play(stream)}
+                    >
+                      <View style={styles.streamHead}>
+                        <Text style={[styles.streamName, styles.streamNameFlex]} numberOfLines={1}>
+                          {stream.name ?? group.addonName}
+                        </Text>
+                        {stream.behaviorHints?.videoSize ? (
+                          <Text style={styles.size}>{formatBytes(stream.behaviorHints.videoSize)}</Text>
+                        ) : null}
+                      </View>
+                      {stream.title ?? stream.description ? (
+                        <Text style={styles.dim} numberOfLines={2}>
+                          {stream.title ?? stream.description}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                    <Pressable
+                      onPress={() => void prepareDownload(stream, key)}
+                      hitSlop={8}
+                      style={({ pressed }) => [styles.downloadButton, pressed && styles.pressed]}
+                      disabled={preparingKey !== null}
+                    >
+                      {preparingKey === key ? (
+                        <ActivityIndicator size="small" color={colors.accent} />
+                      ) : (
+                        <Ionicons
+                          name="download-outline"
+                          size={22}
+                          color={preparingKey ? colors.textDim : colors.accent}
+                        />
+                      )}
+                    </Pressable>
+                  </View>
+                )
+              })}
             </View>
           </View>
         ))}
-        {preparingDownload ? (
-          <View style={styles.preparing}>
-            <ActivityIndicator color={colors.accent} />
-            <Text style={styles.dim}>Finding subtitles…</Text>
-          </View>
-        ) : null}
       </ScrollView>
 
       <SelectSheet
@@ -226,12 +278,19 @@ const styles = StyleSheet.create({
   streamNameFlex: { flexShrink: 1 },
   size: { color: colors.textDim, fontSize: 12.5, fontWeight: '600', fontVariant: ['tabular-nums'] },
   dim: { color: colors.textDim, fontSize: 12, marginTop: 2 },
-  downloadButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  preparing: {
+  downloadButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minWidth: 54, alignItems: 'center' },
+  pressed: { opacity: 0.55 },
+  offlineCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: spacing.sm + 4,
+    backgroundColor: colors.glass,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 4,
+    marginBottom: spacing.md,
   },
+  offlineBody: { flex: 1 },
 })
