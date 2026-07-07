@@ -1,4 +1,5 @@
-import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useRef } from 'react'
+import { Animated, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { BlurView } from 'expo-blur'
 import { colors, radius, spacing } from '../theme'
@@ -18,57 +19,90 @@ interface Props {
   onClose: () => void
 }
 
-/** Frosted bottom-sheet picker used for audio tracks, subtitles, and seasons. */
+/**
+ * Frosted bottom-sheet picker used for audio tracks, subtitles, and seasons.
+ *
+ * Deliberately NOT an RN <Modal>: with multiple supportedOrientations, iOS
+ * lays the modal container out with stale portrait metrics inside the
+ * landscape-locked player, leaving the sheet floating mid-screen. An in-tree
+ * absolute overlay always gets the screen's real dimensions. Render it as the
+ * LAST sibling of a screen's root view (never inside a ScrollView).
+ */
 export function SelectSheet({ visible, title, options, onSelect, onClose }: Props) {
+  const slide = useRef(new Animated.Value(0)).current
+  // A concrete number: percentage maxHeight resolves against the wrapper,
+  // whose height is undefined, so Yoga would ignore it entirely.
+  const { height: windowHeight } = useWindowDimensions()
+
+  useEffect(() => {
+    if (visible) {
+      slide.setValue(0)
+      Animated.timing(slide, { toValue: 1, duration: 220, useNativeDriver: true }).start()
+    }
+  }, [visible, slide])
+
+  if (!visible) return null
+
+  const translateY = slide.interpolate({ inputRange: [0, 1], outputRange: [80, 0] })
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-      // RN Modal defaults to portrait-only, which yanks the landscape player
-      // back to portrait whenever a sheet opens.
-      supportedOrientations={['portrait', 'portrait-upside-down', 'landscape-left', 'landscape-right']}
-    >
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable onPress={(e) => e.stopPropagation()}>
-          <BlurView intensity={40} tint="dark" style={styles.sheet}>
-            <View style={styles.grabber} />
-            <Text style={styles.title}>{title}</Text>
-            <FlatList
-              data={options}
-              keyExtractor={(o) => o.key}
-              style={styles.list}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={styles.option}
-                  onPress={() => {
-                    onSelect(item.key)
-                    onClose()
-                  }}
-                >
-                  <View style={styles.check}>
-                    {item.selected ? <Ionicons name="checkmark" size={20} color={colors.accent} /> : null}
-                  </View>
-                  <View style={styles.optionText}>
-                    <Text style={[styles.label, item.selected && styles.labelSelected]}>{item.label}</Text>
-                    {item.detail ? <Text style={styles.detail}>{item.detail}</Text> : null}
-                  </View>
-                </Pressable>
-              )}
-            />
-          </BlurView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <View style={styles.overlay} pointerEvents="box-none">
+      <Pressable style={styles.backdrop} onPress={onClose} />
+      <Animated.View style={[styles.sheetWrap, { transform: [{ translateY }], opacity: slide }]}>
+        <BlurView intensity={40} tint="dark" style={[styles.sheet, { maxHeight: windowHeight * 0.7 }]}>
+          <View style={styles.grabber} />
+          <Text style={styles.title}>{title}</Text>
+          <FlatList
+            data={options}
+            keyExtractor={(o) => o.key}
+            style={styles.list}
+            renderItem={({ item }) => (
+              <Pressable
+                style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
+                onPress={() => {
+                  onSelect(item.key)
+                  onClose()
+                }}
+              >
+                <View style={styles.check}>
+                  {item.selected ? <Ionicons name="checkmark" size={20} color={colors.accent} /> : null}
+                </View>
+                <View style={styles.optionText}>
+                  <Text style={[styles.label, item.selected && styles.labelSelected]}>{item.label}</Text>
+                  {item.detail ? <Text style={styles.detail}>{item.detail}</Text> : null}
+                </View>
+              </Pressable>
+            )}
+          />
+        </BlurView>
+      </Animated.View>
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 100,
+    elevation: 100,
+  },
   backdrop: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
+  },
+  sheetWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   sheet: {
     backgroundColor: colors.sheetTint,
@@ -78,7 +112,6 @@ const styles = StyleSheet.create({
     borderColor: colors.glassBorder,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl + spacing.sm,
-    maxHeight: '70%',
     overflow: 'hidden',
   },
   grabber: {
@@ -96,7 +129,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.xs,
   },
-  list: { flexGrow: 0 },
+  list: { flexGrow: 0, flexShrink: 1 },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -106,6 +139,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(255,255,255,0.08)',
   },
+  optionPressed: { backgroundColor: 'rgba(255,255,255,0.06)' },
   check: { width: 22 },
   optionText: { flex: 1 },
   label: { color: 'rgba(255,255,255,0.9)', fontSize: 15.5, fontWeight: '500' },

@@ -171,6 +171,9 @@ function buildContinueWatching(
   const libById = new Map(
     (library ?? []).filter((i) => !i.removedAt).map((i) => [i.id, i]),
   )
+  // One card per show (most recent episode wins) — two in-progress episodes
+  // of the same series must not produce duplicate keys.
+  const seenItems = new Set<string>()
   return (watchStates ?? [])
     .filter((s) => s.durationSec > 0 && !s.watched)
     .map((s) => ({ s, fraction: s.positionSec / s.durationSec }))
@@ -178,7 +181,8 @@ function buildContinueWatching(
     .sort((a, b) => b.s.updatedAt - a.s.updatedAt)
     .flatMap(({ s, fraction }) => {
       const lib = libById.get(s.itemId)
-      if (!lib) return []
+      if (!lib || seenItems.has(s.itemId)) return []
+      seenItems.add(s.itemId)
       const metaId = s.itemId.slice(lib.type.length + 1)
       const meta: MetaPreview = { id: metaId, type: lib.type, name: lib.name, poster: lib.poster }
       return [{ meta, progress: fraction }]

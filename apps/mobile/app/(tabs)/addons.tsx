@@ -74,8 +74,8 @@ export default function SettingsScreen() {
   }
 
   return (
+    <View style={styles.container}>
     <ScrollView
-      style={styles.container}
       contentContainerStyle={{ paddingTop: insets.top + spacing.xs, paddingBottom: TAB_BAR_SPACE, paddingHorizontal: spacing.md }}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
@@ -171,7 +171,9 @@ export default function SettingsScreen() {
       <Pressable style={[styles.card, styles.signOut]} onPress={() => void signOut()}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </Pressable>
+    </ScrollView>
 
+      {/* Sibling of the ScrollView: SelectSheet is an absolute overlay now. */}
       <SelectSheet
         visible={languagePick !== null}
         title={languagePick === 'audio' ? 'Default audio language' : 'Default subtitles'}
@@ -195,7 +197,7 @@ export default function SettingsScreen() {
         }}
         onClose={() => setLanguagePick(null)}
       />
-    </ScrollView>
+    </View>
   )
 }
 
