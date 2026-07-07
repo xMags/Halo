@@ -63,6 +63,22 @@ async function contentLength(url: string, doFetch: typeof fetch, signal?: AbortS
   throw new Error(`Cannot determine file size for ${url}`)
 }
 
+/** The 64 KiB chunk length the OpenSubtitles hash is defined over. */
+export const VIDEO_HASH_CHUNK_BYTES = 65536
+
+/**
+ * Hash from already-read chunks — for local files where the caller reads the
+ * first/last 64 KiB itself (e.g. downloaded videos on device).
+ */
+export function computeVideoHashFromChunks(
+  size: number,
+  head: ArrayBuffer,
+  tail: ArrayBuffer,
+): VideoHashResult {
+  const hash = (BigInt(size) + sumUint64LE(head) + sumUint64LE(tail)) & MASK
+  return { hash: hash.toString(16).padStart(16, '0'), size }
+}
+
 /**
  * Best-effort: callers should catch and fall back to name-based subtitle
  * search when the host rejects ranges.

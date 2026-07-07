@@ -1,4 +1,4 @@
-import type { AddonEntry, LibraryItem, WatchState } from './types'
+import type { AddonEntry, LibraryItem, SettingsPayload, UserSettings, WatchState } from './types'
 
 export class HaloApiError extends Error {
   constructor(
@@ -96,6 +96,15 @@ export class HaloClient {
   /** Batched upsert; the server applies each entry last-write-wins. */
   putWatchStates(states: WatchState[]): Promise<WatchState[]> {
     return this.request<WatchState[]>('PUT', '/watch-state', states)
+  }
+
+  getSettings(): Promise<SettingsPayload> {
+    return this.request<SettingsPayload>('GET', '/settings')
+  }
+
+  /** LWW like watch-state: the server keeps the newest updatedAt. */
+  putSettings(value: UserSettings, updatedAt: number): Promise<SettingsPayload> {
+    return this.request<SettingsPayload>('PUT', '/settings', { value, updatedAt })
   }
 
   /**

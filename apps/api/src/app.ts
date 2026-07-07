@@ -5,7 +5,7 @@ import { z } from 'zod'
 import type { AddonEntry, LibraryItem, Manifest, WatchState } from '@halo/core'
 import { authMiddleware, issueToken, passwordMatches } from './auth'
 import type { Db } from './db'
-import { addons, libraryItems, watchStates } from './schema'
+import { addons, libraryItems, userSettings, watchStates } from './schema'
 import { assertSafeProxyTarget, ProxyTargetError } from './proxyGuard'
 
 export interface AppConfig {
@@ -49,6 +49,18 @@ const librarySchema = z.array(
     updatedAt: z.number().int().positive(),
   }),
 )
+
+// Known fields validated, unknown fields pass through so older servers don't
+// strip newer clients' settings.
+const settingsSchema = z.object({
+  value: z
+    .object({
+      preferredAudioLang: z.string().max(8).optional(),
+      preferredSubtitleLang: z.string().max(8).optional(),
+    })
+    .passthrough(),
+  updatedAt: z.number().int().positive(),
+})
 
 const watchStatesSchema = z.array(
   z.object({
@@ -197,6 +209,26 @@ export function createApp(config: AppConfig) {
       }
     })
     return c.json(db.select().from(watchStates).all().map(rowToWatchState))
+  })
+
+  authed.get('/settings', (c) => {
+    const row = db.select().from(userSettings).where(eq(userSettings.id, 1)).get()
+    return c.json(row ? { value: row.value, updatedAt: row.updatedAt } : { value: {}, updatedAt: 0 })
+  })
+
+  authed.put('/settings', async (c) => {
+    const body = settingsSchema.safeParse(await c.req.json().catch(() => null))
+    if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+    db.insert(userSettings)
+      .values({ id: 1, value: body.data.value, updatedAt: body.data.updatedAt })
+      .onConflictDoUpdate({
+        target: userSettings.id,
+        set: { value: sql`excluded.value`, updatedAt: sql`excluded.updated_at` },
+        setWhere: sql`excluded.updated_at > ${userSettings.updatedAt}`,
+      })
+      .run()
+    const row = db.select().from(userSettings).where(eq(userSettings.id, 1)).get()!
+    return c.json({ value: row.value, updatedAt: row.updatedAt })
   })
 
   authed.get('/addon-proxy', async (c) => {

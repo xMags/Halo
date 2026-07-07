@@ -36,6 +36,11 @@ CREATE TABLE IF NOT EXISTS watch_states (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS watch_states_item_id ON watch_states (item_id);
+CREATE TABLE IF NOT EXISTS user_settings (
+  id INTEGER PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `
 
 export function createDb(path: string) {

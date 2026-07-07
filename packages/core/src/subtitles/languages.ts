@@ -59,3 +59,23 @@ export function languageLabel(code: string): string {
   const normalized = code.trim().toLowerCase()
   return LANGUAGE_LABELS[normalized] ?? code
 }
+
+/**
+ * One entry per language for preference pickers, keyed by the 639-2/B code
+ * subtitle addons actually emit (e.g. "ger" not "deu").
+ */
+export const LANGUAGE_OPTIONS: ReadonlyArray<{ code: string; label: string }> = [
+  'eng', 'spa', 'por', 'pob', 'fre', 'ger', 'ita', 'dut', 'pol', 'rus',
+  'ukr', 'swe', 'nor', 'dan', 'fin', 'cze', 'slo', 'slv', 'hrv', 'srp',
+  'hun', 'rum', 'bul', 'gre', 'tur', 'ara', 'heb', 'per', 'hin', 'tha',
+  'vie', 'ind', 'may', 'chi', 'jpn', 'kor', 'est', 'lav', 'lit',
+].map((code) => ({ code, label: LANGUAGE_LABELS[code]! }))
+
+/** Whether a subtitle's language code matches a preferred code ("pt-br" ≈ "pob" style variants aside, prefix-tolerant). */
+export function languageMatches(subtitleLang: string, preferredCode: string): boolean {
+  const sub = subtitleLang.trim().toLowerCase()
+  const pref = preferredCode.trim().toLowerCase()
+  if (sub === pref) return true
+  // Some addons emit full labels ("Portuguese (BR)") or 639-1 codes.
+  return languageLabel(sub).toLowerCase() === languageLabel(pref).toLowerCase()
+}

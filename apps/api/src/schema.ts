@@ -18,6 +18,13 @@ export const libraryItems = sqliteTable('library_items', {
   updatedAt: integer('updated_at').notNull(),
 })
 
+/** Single-row user settings blob; LWW like everything else. */
+export const userSettings = sqliteTable('user_settings', {
+  id: integer('id').primaryKey(),
+  value: text('value', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
 export const watchStates = sqliteTable('watch_states', {
   videoId: text('video_id').primaryKey(),
   itemId: text('item_id').notNull(),

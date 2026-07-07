@@ -145,6 +145,35 @@ describe('library LWW + tombstones', () => {
   })
 })
 
+describe('settings LWW', () => {
+  let app: ReturnType<typeof makeApp>
+  let token: string
+  beforeEach(async () => {
+    app = makeApp()
+    token = await loginToken(app)
+  })
+
+  it('returns empty defaults before any write', async () => {
+    const res = await app.request('/settings', authedJson(token))
+    expect(await res.json()).toEqual({ value: {}, updatedAt: 0 })
+  })
+
+  it('round-trips and ignores stale writes', async () => {
+    await app.request('/settings', authedJson(token, { value: { preferredSubtitleLang: 'eng' }, updatedAt: 2000 }))
+    const res = await app.request('/settings', authedJson(token, { value: { preferredSubtitleLang: 'ger' }, updatedAt: 1000 }))
+    const body = (await res.json()) as { value: { preferredSubtitleLang: string }; updatedAt: number }
+    expect(body.value.preferredSubtitleLang).toBe('eng')
+    expect(body.updatedAt).toBe(2000)
+  })
+
+  it('preserves unknown fields from newer clients', async () => {
+    await app.request('/settings', authedJson(token, { value: { futureSetting: 42 }, updatedAt: 1000 }))
+    const res = await app.request('/settings', authedJson(token))
+    const body = (await res.json()) as { value: Record<string, unknown> }
+    expect(body.value.futureSetting).toBe(42)
+  })
+})
+
 describe('addons', () => {
   it('round-trips a collection replace', async () => {
     const app = makeApp()

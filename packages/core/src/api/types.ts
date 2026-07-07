@@ -21,6 +21,20 @@ export interface LibraryItem {
   updatedAt: number
 }
 
+/** Synced user preferences. All fields optional; unknown fields round-trip. */
+export interface UserSettings {
+  /** ISO 639-2 code (e.g. "eng") the player auto-selects for audio tracks. */
+  preferredAudioLang?: string
+  /** ISO 639-2 code auto-applied for subtitles; unset = off by default. */
+  preferredSubtitleLang?: string
+}
+
+export interface SettingsPayload {
+  value: UserSettings
+  /** Client-set; the server keeps whichever write is newest (LWW). */
+  updatedAt: number
+}
+
 export interface WatchState {
   /** Meta id for movies, video id (e.g. "tt0944947:1:2") for episodes. */
   videoId: string
