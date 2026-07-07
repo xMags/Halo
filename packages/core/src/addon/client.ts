@@ -143,6 +143,8 @@ function isResourceForType(entry: ManifestResource, resource: ResourceName, type
 }
 
 /** Streams Halo can actually play: direct URLs only (no torrents/yt/external). */
-export function isPlayableStream(stream: { url?: string; infoHash?: string }): stream is { url: string } {
+export function isPlayableStream<T extends { url?: string; infoHash?: string }>(
+  stream: T,
+): stream is T & { url: string } {
   return typeof stream.url === 'string' && /^https?:\/\//.test(stream.url) && !stream.infoHash
 }
