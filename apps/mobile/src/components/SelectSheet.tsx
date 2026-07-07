@@ -21,7 +21,15 @@ interface Props {
 /** Frosted bottom-sheet picker used for audio tracks, subtitles, and seasons. */
 export function SelectSheet({ visible, title, options, onSelect, onClose }: Props) {
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      // RN Modal defaults to portrait-only, which yanks the landscape player
+      // back to portrait whenever a sheet opens.
+      supportedOrientations={['portrait', 'portrait-upside-down', 'landscape-left', 'landscape-right']}
+    >
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable onPress={(e) => e.stopPropagation()}>
           <BlurView intensity={40} tint="dark" style={styles.sheet}>
