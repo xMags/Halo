@@ -10,9 +10,9 @@ import {
 const SERVER_URL_KEY = 'halo.serverUrl'
 const TOKEN_KEY = 'halo.token'
 
-// iOS simulator reaches the host's localhost directly; a physical device needs
-// the LAN address, which the login screen lets you type.
-export const DEFAULT_SERVER_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8787'
+// Local dev overrides via EXPO_PUBLIC_API_URL (e.g. http://localhost:8787 on
+// the simulator) or by typing the address on the login screen.
+export const DEFAULT_SERVER_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://halo.ditto.moe'
 
 let client: HaloClient | null = null
 let onSessionExpired: (() => void) | null = null
