@@ -7,20 +7,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BlurView } from 'expo-blur'
 import { LinearGradient } from 'expo-linear-gradient'
 import * as FileSystem from 'expo-file-system/legacy'
-import { VLCPlayer } from 'react-native-vlc-media-player'
 import { languageLabel, languageMatches, type Subtitle, type WatchState } from '@halo/core'
 import { sortSubtitlesByPreference, useAddonSubtitles, useReportWatchState, useWatchStates } from '@/queries'
 import { useSettings } from '@/settings'
 import { colors, radius, spacing } from '@/theme'
 import { SelectSheet, type SelectOption } from '@/components/SelectSheet'
+import PlayerVideo from '@/components/PlayerVideo'
+import type {
+  PlayerLoadInfo,
+  PlayerProgress,
+  PlayerTrack,
+  PlayerVideoHandle,
+} from '@/components/PlayerVideo.types'
 
 const REPORT_INTERVAL_MS = 15_000
 const WATCHED_THRESHOLD = 0.9
-
-interface Track {
-  id: number
-  name: string
-}
 
 export default function PlayerScreen() {
   const params = useLocalSearchParams<{
@@ -35,7 +36,7 @@ export default function PlayerScreen() {
   }>()
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const playerRef = useRef<VLCPlayer>(null)
+  const playerRef = useRef<PlayerVideoHandle>(null)
   const isLocal = params.uri.startsWith('file://')
 
   const [paused, setPaused] = useState(false)
@@ -44,8 +45,8 @@ export default function PlayerScreen() {
   const [controlsVisible, setControlsVisible] = useState(true)
   const [position, setPosition] = useState(0) // fraction 0..1
   const [durationSec, setDurationSec] = useState(0)
-  const [audioTracks, setAudioTracks] = useState<Track[]>([])
-  const [textTracks, setTextTracks] = useState<Track[]>([])
+  const [audioTracks, setAudioTracks] = useState<PlayerTrack[]>([])
+  const [textTracks, setTextTracks] = useState<PlayerTrack[]>([])
   const [audioTrack, setAudioTrack] = useState<number | undefined>(undefined)
   const [textTrack, setTextTrack] = useState<number | undefined>(undefined)
   const [subtitleUri, setSubtitleUri] = useState<string | undefined>(params.subtitleUri)
@@ -100,42 +101,40 @@ export default function PlayerScreen() {
     }
   }, [reportNow])
 
-  const resumeAppliedRef = useRef(false)
-  const onLoad = (info: {
-    duration: number
-    audioTracks?: Track[]
-    textTracks?: Track[]
-  }) => {
-    setLoaded(true)
-    setDurationSec(normalizeSeconds(info.duration))
-    setAudioTracks(info.audioTracks ?? [])
-    // VLC reports "Disable" as id -1; keep real tracks only.
-    setTextTracks((info.textTracks ?? []).filter((t) => t.id >= 0))
+  // Tracks can arrive before onLoad and keep growing after it (network
+  // streams add elementary streams as they are discovered).
+  const audioLangAppliedRef = useRef(false)
+  const onTracks = (audio: PlayerTrack[], text: PlayerTrack[]) => {
+    setAudioTracks(audio)
+    setTextTracks(text)
 
     // Default audio language: VLC names tracks like "Track 1 - [English]".
-    if (settings.preferredAudioLang) {
-      const match = (info.audioTracks ?? []).find((t) =>
-        trackMatchesLanguage(t.name, settings.preferredAudioLang!),
-      )
+    if (!audioLangAppliedRef.current && audio.length > 0 && settings.preferredAudioLang) {
+      audioLangAppliedRef.current = true
+      const match = audio.find((t) => trackMatchesLanguage(t.name, settings.preferredAudioLang!))
       if (match) setAudioTrack(match.id)
     }
+  }
+
+  const resumeAppliedRef = useRef(false)
+  const onLoad = (info: PlayerLoadInfo) => {
+    setLoaded(true)
+    setDurationSec(info.durationSec)
 
     if (!resumeAppliedRef.current) {
       resumeAppliedRef.current = true
       const prior = (watchStates ?? []).find((s) => s.videoId === params.videoId)
-      const total = normalizeSeconds(info.duration)
-      if (prior && !prior.watched && total > 0 && prior.positionSec > 30) {
-        const fraction = prior.positionSec / total
+      if (prior && !prior.watched && info.durationSec > 0 && prior.positionSec > 30) {
+        const fraction = prior.positionSec / info.durationSec
         if (fraction < 0.95) playerRef.current?.seek(fraction)
       }
     }
   }
 
-  const onProgress = (event: { position: number; duration: number; currentTime: number }) => {
+  const onProgress = (event: PlayerProgress) => {
     setPosition(event.position)
-    const total = normalizeSeconds(event.duration)
-    setDurationSec(total)
-    progressRef.current = { positionSec: normalizeSeconds(event.currentTime), durationSec: total }
+    setDurationSec(event.durationSec)
+    progressRef.current = { positionSec: event.currentTimeSec, durationSec: event.durationSec }
   }
 
   // Default subtitles: prefer an embedded track in the chosen language, else
@@ -226,19 +225,20 @@ export default function PlayerScreen() {
   return (
     <View style={styles.container}>
       <Pressable style={styles.videoArea} onPress={() => setControlsVisible((v) => !v)}>
-        <VLCPlayer
+        <PlayerVideo
           ref={playerRef}
-          style={styles.video}
-          source={{ uri: params.uri, initOptions: ['--sub-text-scale=100'] }}
+          // Remote stream URLs can carry raw spaces; both native players reject
+          // those (Android validates with java.net.URI, iOS VLCKit is lenient
+          // but Android libVLC is not), so encodeURI them. Local file:// paths
+          // are passed untouched — they are already valid/sanitized, and
+          // encoding could corrupt the path.
+          uri={isLocal ? params.uri : encodeURI(params.uri)}
           paused={paused}
-          autoplay
           audioTrack={audioTrack}
           textTrack={textTrack}
           subtitleUri={subtitleUri}
-          playInBackground
-          autoAspectRatio
-          resizeMode="contain"
           onLoad={onLoad}
+          onTracks={onTracks}
           onProgress={onProgress}
           onError={() => setError(true)}
           onEnd={() => {
@@ -354,14 +354,6 @@ export default function PlayerScreen() {
   )
 }
 
-/**
- * The VLC bridge has historically emitted milliseconds while its typings say
- * seconds. Nothing we play is 14+ hours, so values above that are ms.
- */
-function normalizeSeconds(value: number): number {
-  return value > 50_000 ? value / 1000 : value
-}
-
 /** VLC track names look like "Track 1 - [English]" or just "English". */
 function trackMatchesLanguage(trackName: string, code: string): boolean {
   const name = trackName.toLowerCase()
@@ -383,9 +375,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   videoArea: {
-    flex: 1,
-  },
-  video: {
     flex: 1,
   },
   overlayCenter: {
