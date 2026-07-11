@@ -1,9 +1,12 @@
+import type { CatalogResponse, MetaResponse } from '../addon/types'
 import type {
   AddonEntry,
   AddonRef,
   AddonsResponse,
   LibraryItem,
   SettingsPayload,
+  StreamsResult,
+  SubtitlesResult,
   UserSettings,
   WatchState,
 } from './types'
@@ -104,6 +107,40 @@ export class HaloClient {
     return this.request<AddonEntry[]>('PUT', '/addons/global', entries)
   }
 
+  /**
+   * Server-side addon resolution. These hit the API's resolution endpoints
+   * (which walk the caller's effective addon set) rather than talking to addons
+   * directly, so the app doesn't need per-addon URLs or CORS handling.
+   */
+  getCatalog(addon: string, type: string, id: string, extra?: Record<string, string>): Promise<CatalogResponse> {
+    const qs = new URLSearchParams({ addon, type, id, ...(extra ?? {}) })
+    return this.request<CatalogResponse>('GET', `/catalog?${qs.toString()}`)
+  }
+
+  /** First effective addon that can describe this type/id wins; 404 if none. */
+  getMeta(type: string, id: string): Promise<MetaResponse> {
+    const qs = new URLSearchParams({ type, id })
+    return this.request<MetaResponse>('GET', `/meta?${qs.toString()}`)
+  }
+
+  /** Fans out to every effective addon; playable streams grouped by addon. */
+  getStreams(type: string, videoId: string): Promise<StreamsResult> {
+    const qs = new URLSearchParams({ type, videoId })
+    return this.request<StreamsResult>('GET', `/streams?${qs.toString()}`)
+  }
+
+  getSubtitles(
+    type: string,
+    videoId: string,
+    extra?: { videoHash?: string; videoSize?: number; filename?: string },
+  ): Promise<SubtitlesResult> {
+    const qs = new URLSearchParams({ type, videoId })
+    if (extra?.videoHash) qs.set('videoHash', extra.videoHash)
+    if (extra?.videoSize !== undefined) qs.set('videoSize', String(extra.videoSize))
+    if (extra?.filename) qs.set('filename', extra.filename)
+    return this.request<SubtitlesResult>('GET', `/subtitles?${qs.toString()}`)
+  }
+
   getLibrary(): Promise<LibraryItem[]> {
     return this.request<LibraryItem[]>('GET', '/library')
   }
@@ -131,8 +168,9 @@ export class HaloClient {
   }
 
   /**
-   * URL that fetches `target` through the API's CORS proxy. Only origins of
-   * registered addons are allowed server-side.
+   * URL that fetches `target` through the API's CORS proxy. The server does not
+   * origin-allowlist; it authenticates the request and rejects targets that
+   * resolve to private/reserved IPs, re-validating every redirect hop.
    */
   proxyUrl(target: string): string {
     return `${this.baseUrl}/addon-proxy?url=${encodeURIComponent(target)}`

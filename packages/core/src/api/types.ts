@@ -1,4 +1,4 @@
-import type { Manifest } from '../addon/types'
+import type { Manifest, Stream, Subtitle } from '../addon/types'
 
 /** DTOs shared between the Halo API and both clients. Timestamps are Unix ms. */
 
@@ -45,6 +45,31 @@ export interface SettingsPayload {
   value: UserSettings
   /** Client-set; the server keeps whichever write is newest (LWW). */
   updatedAt: number
+}
+
+/** Identifies which effective addon a resolution result came from. */
+export interface AddonSource {
+  name: string
+  transportUrl: string
+}
+
+/** Per-addon failure surfaced by the fan-out resolution endpoints (no stack). */
+export interface AddonError {
+  transportUrl: string
+  message: string
+}
+
+/** Response of GET /streams: playable streams per addon plus per-addon errors. */
+export interface StreamsResult {
+  results: Array<{ addon: AddonSource; streams: Stream[] }>
+  errors: AddonError[]
+}
+
+/** Response of GET /subtitles. `hashMatched` is true iff a videoHash was sent. */
+export interface SubtitlesResult {
+  results: Array<{ addon: AddonSource; subtitles: Subtitle[] }>
+  errors: AddonError[]
+  hashMatched: boolean
 }
 
 export interface WatchState {

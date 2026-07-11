@@ -2,10 +2,13 @@ import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 
 /**
- * SSRF guard for /addon-proxy. The proxy exists so clients can fetch subtitle
- * files and addon responses from hosts without CORS, so it must accept
- * arbitrary public origins — the guard is therefore about what it must NOT
- * reach: anything inside the network the API runs on.
+ * SSRF guard for every server-side addon fetch: /addon-proxy, manifest
+ * resolution, and the catalog/meta/stream/subtitle endpoints. These fetch
+ * subtitle files and addon responses from arbitrary public origins, so the
+ * guard is about what they must NOT reach: anything inside the network the API
+ * runs on. `assertSafeProxyTarget` is the URL/protocol pre-check; `isBlockedIp`
+ * is reused by safeFetch's connect-time lookup hook to close the DNS-rebinding
+ * TOCTOU (an address vetted here can change before the socket connects).
  */
 
 const BLOCKED_V4 = [
@@ -53,7 +56,7 @@ function isBlockedV6(ip: string): boolean {
   return false
 }
 
-function isBlockedIp(ip: string): boolean {
+export function isBlockedIp(ip: string): boolean {
   return isIP(ip) === 4 ? isBlockedV4(ip) : isBlockedV6(ip)
 }
 

@@ -41,10 +41,14 @@ export { HaloApiError, HaloClient } from './api/client'
 export type { HaloClientOptions } from './api/client'
 export type {
   AddonEntry,
+  AddonError,
   AddonRef,
   AddonsResponse,
+  AddonSource,
   LibraryItem,
   SettingsPayload,
+  StreamsResult,
+  SubtitlesResult,
   UserSettings,
   WatchState,
 } from './api/types'
