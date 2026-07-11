@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server'
 import { createApp } from './app'
+import { ensureAdminUser } from './bootstrap'
 import { createDb } from './db'
 import { loadEnv } from './env'
 
@@ -11,9 +12,9 @@ try {
 
 const env = loadEnv()
 const db = createDb(env.dbPath)
+ensureAdminUser(db, env.adminPassword)
 const app = createApp({
   db,
-  adminPassword: env.adminPassword,
   jwtSecret: env.jwtSecret,
   corsOrigins: env.corsOrigins,
 })

@@ -16,6 +16,7 @@ import { colors, radius, spacing } from '@/theme'
 export default function LoginScreen() {
   const { signIn } = useSession()
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL)
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -24,7 +25,7 @@ export default function LoginScreen() {
     setBusy(true)
     setError(null)
     try {
-      await signIn(serverUrl.trim(), password)
+      await signIn(serverUrl.trim(), username.trim(), password)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not connect')
       setBusy(false)
@@ -50,6 +51,16 @@ export default function LoginScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
+        />
+        <TextInput
+          style={styles.input}
+          value={username}
+          onChangeText={setUsername}
+          placeholder="Username"
+          placeholderTextColor={colors.textDim}
+          autoCapitalize="none"
+          autoCorrect={false}
+          textContentType="username"
         />
         <TextInput
           style={styles.input}

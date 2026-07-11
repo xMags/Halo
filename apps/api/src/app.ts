@@ -1,21 +1,44 @@
+import { randomUUID } from 'node:crypto'
 import { eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { z } from 'zod'
-import type { AddonEntry, LibraryItem, Manifest, WatchState } from '@halo/core'
-import { authMiddleware, issueToken, passwordMatches } from './auth'
+import type { LibraryItem, Manifest, WatchState } from '@halo/core'
+import {
+  adminOnly,
+  authMiddleware,
+  hashPassword,
+  issueToken,
+  LoginRateLimiter,
+  verifyPassword,
+  type AuthVariables,
+} from './auth'
 import type { Db } from './db'
-import { addons, libraryItems, userSettings, watchStates } from './schema'
+import { libraryItems, userAddons, users, userSettings, watchStates } from './schema'
 import { assertSafeProxyTarget, ProxyTargetError } from './proxyGuard'
 
 export interface AppConfig {
   db: Db
-  adminPassword: string
   jwtSecret: string
   corsOrigins: string[]
 }
 
-const loginSchema = z.object({ password: z.string().min(1) })
+// Constant scrypt work on unknown usernames too, so a missing user can't be
+// distinguished from a wrong password by response timing.
+const TIMING_DECOY = hashPassword('halo-timing-decoy')
+
+const loginSchema = z.object({ username: z.string().min(1), password: z.string().min(1) })
+const passwordChangeSchema = z.object({ current: z.string().min(1), next: z.string().min(8) })
+const createUserSchema = z.object({
+  username: z
+    .string()
+    .min(1)
+    .max(32)
+    .regex(/^[a-zA-Z0-9_-]+$/)
+    .transform((s) => s.toLowerCase()),
+  password: z.string().min(8),
+  isAdmin: z.boolean().optional(),
+})
 
 // Loose on purpose: manifests come from third-party addons and only these
 // fields are load-bearing for Halo; everything else passes through untouched.
@@ -75,6 +98,7 @@ const watchStatesSchema = z.array(
 
 export function createApp(config: AppConfig) {
   const { db } = config
+  const loginLimiter = new LoginRateLimiter()
   const app = new Hono()
 
   app.use(
@@ -82,7 +106,7 @@ export function createApp(config: AppConfig) {
     cors({
       origin: config.corsOrigins,
       allowHeaders: ['Authorization', 'Content-Type'],
-      allowMethods: ['GET', 'PUT', 'POST', 'OPTIONS'],
+      allowMethods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'],
     }),
   )
 
@@ -90,24 +114,73 @@ export function createApp(config: AppConfig) {
 
   app.post('/auth/login', async (c) => {
     const body = loginSchema.safeParse(await c.req.json().catch(() => null))
-    if (!body.success) return c.json({ error: 'password required' }, 400)
-    if (!passwordMatches(body.data.password, config.adminPassword)) {
-      return c.json({ error: 'invalid password' }, 401)
+    if (!body.success) return c.json({ error: 'username and password required' }, 400)
+    const { username, password } = body.data
+    if (loginLimiter.isBlocked(username)) {
+      return c.json({ error: 'too many attempts, try again later' }, 429)
     }
-    return c.json({ token: await issueToken(config.jwtSecret) })
+    const row = db.select().from(users).where(eq(users.username, username.toLowerCase())).get()
+    // Same generic failure whether the user exists or the password is wrong.
+    const ok = verifyPassword(password, row?.passwordHash ?? TIMING_DECOY) && !!row
+    if (!ok) {
+      loginLimiter.recordFailure(username)
+      return c.json({ error: 'invalid credentials' }, 401)
+    }
+    loginLimiter.reset(username)
+    return c.json({ token: await issueToken(config.jwtSecret, row!.id) })
   })
 
-  const authed = new Hono()
-  authed.use('*', authMiddleware(config.jwtSecret))
+  const authed = new Hono<{ Variables: AuthVariables }>()
+  authed.use('*', authMiddleware(config.jwtSecret, db))
+
+  authed.post('/auth/password', async (c) => {
+    const body = passwordChangeSchema.safeParse(await c.req.json().catch(() => null))
+    if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+    const user = c.get('user')
+    const row = db.select().from(users).where(eq(users.id, user.id)).get()!
+    if (!verifyPassword(body.data.current, row.passwordHash)) {
+      return c.json({ error: 'current password incorrect' }, 401)
+    }
+    db.update(users).set({ passwordHash: hashPassword(body.data.next) }).where(eq(users.id, user.id)).run()
+    return c.json({ ok: true })
+  })
+
+  authed.get('/users', adminOnly, (c) => {
+    const rows = db.select().from(users).all()
+    return c.json(rows.map((r) => ({ username: r.username, isAdmin: r.isAdmin, createdAt: r.createdAt })))
+  })
+
+  authed.post('/users', adminOnly, async (c) => {
+    const body = createUserSchema.safeParse(await c.req.json().catch(() => null))
+    if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+    const { username, password, isAdmin } = body.data
+    const createdAt = Date.now()
+    try {
+      db.insert(users)
+        .values({ id: randomUUID(), username, passwordHash: hashPassword(password), isAdmin: isAdmin ?? false, createdAt })
+        .run()
+    } catch {
+      // UNIQUE violation — also the race where two creates land at once.
+      return c.json({ error: 'username taken' }, 409)
+    }
+    return c.json({ username, isAdmin: isAdmin ?? false, createdAt }, 201)
+  })
+
+  authed.delete('/users/:username', adminOnly, (c) => {
+    const target = (c.req.param('username') ?? '').toLowerCase()
+    if (target === c.get('user').username) {
+      return c.json({ error: 'cannot delete your own account' }, 400)
+    }
+    const row = db.select().from(users).where(eq(users.username, target)).get()
+    if (!row) return c.json({ error: 'not found' }, 404)
+    db.delete(users).where(eq(users.id, row.id)).run() // FK cascade removes their data
+    return c.json({ ok: true })
+  })
 
   authed.get('/addons', (c) => {
-    const rows = db.select().from(addons).orderBy(addons.position).all()
-    const entries: AddonEntry[] = rows.map((r) => ({
-      transportUrl: r.transportUrl,
-      manifest: r.manifest,
-      position: r.position,
-    }))
-    return c.json(entries)
+    const user = c.get('user')
+    const rows = db.select().from(userAddons).where(eq(userAddons.userId, user.id)).orderBy(userAddons.position).all()
+    return c.json(rows.map((r) => ({ transportUrl: r.transportUrl, manifest: r.manifest, position: r.position })))
   })
 
   // Full-collection replace: the addon list is small, ordered, and edited as a
@@ -115,12 +188,14 @@ export function createApp(config: AppConfig) {
   authed.put('/addons', async (c) => {
     const body = addonsSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+    const user = c.get('user')
     const now = Date.now()
     db.transaction((tx) => {
-      tx.delete(addons).run()
+      tx.delete(userAddons).where(eq(userAddons.userId, user.id)).run()
       for (const entry of body.data) {
-        tx.insert(addons)
+        tx.insert(userAddons)
           .values({
+            userId: user.id,
             transportUrl: entry.transportUrl,
             // zod validates only Halo's load-bearing fields; the full manifest
             // shape is the addon's business.
@@ -135,27 +210,21 @@ export function createApp(config: AppConfig) {
   })
 
   authed.get('/library', (c) => {
+    const user = c.get('user')
     // Tombstones (removedAt set) are included so other devices sync removals.
-    const rows = db.select().from(libraryItems).all()
-    const items: LibraryItem[] = rows.map((r) => ({
-      id: r.id,
-      type: r.type,
-      name: r.name,
-      poster: r.poster ?? undefined,
-      addedAt: r.addedAt,
-      removedAt: r.removedAt ?? undefined,
-      updatedAt: r.updatedAt,
-    }))
-    return c.json(items)
+    const rows = db.select().from(libraryItems).where(eq(libraryItems.userId, user.id)).all()
+    return c.json(rows.map(rowToLibraryItem))
   })
 
   authed.put('/library', async (c) => {
     const body = librarySchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+    const user = c.get('user')
     db.transaction((tx) => {
       for (const item of body.data) {
         tx.insert(libraryItems)
           .values({
+            userId: user.id,
             id: item.id,
             type: item.type,
             name: item.name,
@@ -165,7 +234,7 @@ export function createApp(config: AppConfig) {
             updatedAt: item.updatedAt,
           })
           .onConflictDoUpdate({
-            target: libraryItems.id,
+            target: [libraryItems.userId, libraryItems.id],
             set: {
               name: sql`excluded.name`,
               poster: sql`excluded.poster`,
@@ -179,23 +248,25 @@ export function createApp(config: AppConfig) {
           .run()
       }
     })
-    return c.json(db.select().from(libraryItems).all().map(rowToLibraryItem))
+    return c.json(db.select().from(libraryItems).where(eq(libraryItems.userId, user.id)).all().map(rowToLibraryItem))
   })
 
   authed.get('/watch-state', (c) => {
-    const rows = db.select().from(watchStates).all()
+    const user = c.get('user')
+    const rows = db.select().from(watchStates).where(eq(watchStates.userId, user.id)).all()
     return c.json(rows.map(rowToWatchState))
   })
 
   authed.put('/watch-state', async (c) => {
     const body = watchStatesSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+    const user = c.get('user')
     db.transaction((tx) => {
       for (const state of body.data) {
         tx.insert(watchStates)
-          .values(state)
+          .values({ ...state, userId: user.id })
           .onConflictDoUpdate({
-            target: watchStates.videoId,
+            target: [watchStates.userId, watchStates.videoId],
             set: {
               itemId: sql`excluded.item_id`,
               positionSec: sql`excluded.position_sec`,
@@ -208,26 +279,28 @@ export function createApp(config: AppConfig) {
           .run()
       }
     })
-    return c.json(db.select().from(watchStates).all().map(rowToWatchState))
+    return c.json(db.select().from(watchStates).where(eq(watchStates.userId, user.id)).all().map(rowToWatchState))
   })
 
   authed.get('/settings', (c) => {
-    const row = db.select().from(userSettings).where(eq(userSettings.id, 1)).get()
+    const user = c.get('user')
+    const row = db.select().from(userSettings).where(eq(userSettings.userId, user.id)).get()
     return c.json(row ? { value: row.value, updatedAt: row.updatedAt } : { value: {}, updatedAt: 0 })
   })
 
   authed.put('/settings', async (c) => {
     const body = settingsSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+    const user = c.get('user')
     db.insert(userSettings)
-      .values({ id: 1, value: body.data.value, updatedAt: body.data.updatedAt })
+      .values({ userId: user.id, value: body.data.value, updatedAt: body.data.updatedAt })
       .onConflictDoUpdate({
-        target: userSettings.id,
+        target: userSettings.userId,
         set: { value: sql`excluded.value`, updatedAt: sql`excluded.updated_at` },
         setWhere: sql`excluded.updated_at > ${userSettings.updatedAt}`,
       })
       .run()
-    const row = db.select().from(userSettings).where(eq(userSettings.id, 1)).get()!
+    const row = db.select().from(userSettings).where(eq(userSettings.userId, user.id)).get()!
     return c.json({ value: row.value, updatedAt: row.updatedAt })
   })
 

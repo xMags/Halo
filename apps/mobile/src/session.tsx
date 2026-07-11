@@ -5,7 +5,7 @@ type SessionStatus = 'loading' | 'loggedOut' | 'ready'
 
 interface SessionContextValue {
   status: SessionStatus
-  signIn: (serverUrl: string, password: string) => Promise<void>
+  signIn: (serverUrl: string, username: string, password: string) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -21,8 +21,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       .catch(() => setStatus('loggedOut'))
   }, [])
 
-  const signIn = useCallback(async (serverUrl: string, password: string) => {
-    await login(serverUrl, password)
+  const signIn = useCallback(async (serverUrl: string, username: string, password: string) => {
+    await login(serverUrl, username, password)
     setStatus('ready')
   }, [])
 

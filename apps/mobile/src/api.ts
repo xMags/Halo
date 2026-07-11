@@ -44,10 +44,10 @@ export async function restoreSession(): Promise<HaloClient | null> {
   return client
 }
 
-export async function login(serverUrl: string, password: string): Promise<HaloClient> {
+export async function login(serverUrl: string, username: string, password: string): Promise<HaloClient> {
   const normalized = serverUrl.replace(/\/$/, '')
   const fresh = createClient(normalized)
-  await fresh.login(password)
+  await fresh.login(username, password)
   await Promise.all([
     AsyncStorage.setItem(SERVER_URL_KEY, normalized),
     SecureStore.setItemAsync(TOKEN_KEY, fresh.getToken()!),

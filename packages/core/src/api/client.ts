@@ -67,10 +67,15 @@ export class HaloClient {
     return (await res.json()) as T
   }
 
-  async login(password: string): Promise<string> {
-    const { token } = await this.request<{ token: string }>('POST', '/auth/login', { password })
+  async login(username: string, password: string): Promise<string> {
+    const { token } = await this.request<{ token: string }>('POST', '/auth/login', { username, password })
     this.token = token
     return token
+  }
+
+  /** Self-service password change for the authenticated user. */
+  changePassword(current: string, next: string): Promise<{ ok: true }> {
+    return this.request<{ ok: true }>('POST', '/auth/password', { current, next })
   }
 
   getAddons(): Promise<AddonEntry[]> {
