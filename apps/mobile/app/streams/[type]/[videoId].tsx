@@ -18,7 +18,7 @@ import {
   type Stream,
   type Subtitle,
 } from '@halo/core'
-import { sortSubtitlesByPreference, useAddons, useStreams } from '@/queries'
+import { sortSubtitlesByPreference, useEffectiveAddons, useStreams } from '@/queries'
 import { getDownload, startDownload, useDownloads } from '@/downloads'
 import { useSettings } from '@/settings'
 import { formatBytes } from '@/format'
@@ -47,7 +47,7 @@ export default function StreamsScreen() {
   }>()
   const router = useRouter()
   const { data: addonStreams, isLoading } = useStreams(params.type, params.videoId)
-  const { data: addons } = useAddons()
+  const { data: addons } = useEffectiveAddons()
   const downloads = useDownloads()
   const settings = useSettings()
   const existingDownload = downloads.find((d) => d.id === params.videoId && d.status === 'done')

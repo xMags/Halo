@@ -8,7 +8,7 @@ import {
   getSubtitles,
   isPlayableStream,
   languageMatches,
-  type AddonEntry,
+  type AddonRef,
   type CatalogResponse,
   type LibraryItem,
   type MetaDetail,
@@ -29,6 +29,7 @@ export function sortSubtitlesByPreference(subs: Subtitle[], preferredLang?: stri
   )
 }
 
+/** Raw addon split: `{ global, user }`. Use in the settings screen. */
 export function useAddons() {
   return useQuery({
     queryKey: ['addons'],
@@ -37,10 +38,21 @@ export function useAddons() {
   })
 }
 
+/** The effective resolution order: global addons first, then the user's own. */
+export function useEffectiveAddons() {
+  return useQuery({
+    queryKey: ['addons'],
+    queryFn: () => api().getAddons(),
+    staleTime: 5 * 60_000,
+    select: (data) => [...data.global, ...data.user],
+  })
+}
+
+/** Replaces the caller's own addons (server fetches the manifests). */
 export function useSetAddons() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (addons: AddonEntry[]) => api().putAddons(addons),
+    mutationFn: (entries: AddonRef[]) => api().putAddons(entries),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['addons'] }),
   })
 }
@@ -56,7 +68,7 @@ export function useCatalog(transportUrl: string, type: string, id: string, opts?
 
 /** Meta from the first installed addon that can describe this type/id. */
 export function useMeta(type: string, id: string, opts?: { enabled?: boolean }) {
-  const { data: addons } = useAddons()
+  const { data: addons } = useEffectiveAddons()
   return useQuery({
     queryKey: ['meta', type, id],
     enabled: !!addons && (opts?.enabled ?? true),
@@ -84,7 +96,7 @@ export interface AddonStreams {
 
 /** Streams from every capable addon, queried concurrently; failures drop out. */
 export function useStreams(type: string, videoId: string) {
-  const { data: addons } = useAddons()
+  const { data: addons } = useEffectiveAddons()
   return useQuery({
     queryKey: ['streams', type, videoId],
     enabled: !!addons,
@@ -122,7 +134,7 @@ export interface SubtitleOptions {
  * exact matches, otherwise addons fall back to id-based search.
  */
 export function useAddonSubtitles(opts: SubtitleOptions) {
-  const { data: addons } = useAddons()
+  const { data: addons } = useEffectiveAddons()
   return useQuery({
     queryKey: ['subtitles', opts.type, opts.videoId, opts.streamUrl ?? opts.localFileUri ?? null],
     enabled: !!addons,
@@ -166,7 +178,7 @@ export function useAddonSubtitles(opts: SubtitleOptions) {
  * extra (Cinemeta's do). Results merge in addon order, deduped by type:id.
  */
 export function useSearch(term: string) {
-  const { data: addons } = useAddons()
+  const { data: addons } = useEffectiveAddons()
   const trimmed = term.trim()
   return useQuery({
     queryKey: ['search', trimmed],

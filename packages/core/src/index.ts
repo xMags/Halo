@@ -39,4 +39,12 @@ export { LANGUAGE_OPTIONS, languageLabel, languageMatches } from './subtitles/la
 
 export { HaloApiError, HaloClient } from './api/client'
 export type { HaloClientOptions } from './api/client'
-export type { AddonEntry, LibraryItem, SettingsPayload, UserSettings, WatchState } from './api/types'
+export type {
+  AddonEntry,
+  AddonRef,
+  AddonsResponse,
+  LibraryItem,
+  SettingsPayload,
+  UserSettings,
+  WatchState,
+} from './api/types'

@@ -8,6 +8,18 @@ export interface AddonEntry {
   position: number
 }
 
+/** What a client sends to set its addons; the server fetches the manifest. */
+export interface AddonRef {
+  transportUrl: string
+  position: number
+}
+
+/** Global addons (admin-managed, shown to everyone) plus the caller's own. */
+export interface AddonsResponse {
+  global: AddonEntry[]
+  user: AddonEntry[]
+}
+
 export interface LibraryItem {
   /** `${type}:${metaId}`, e.g. "movie:tt0111161". */
   id: string

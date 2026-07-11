@@ -1,4 +1,12 @@
-import type { AddonEntry, LibraryItem, SettingsPayload, UserSettings, WatchState } from './types'
+import type {
+  AddonEntry,
+  AddonRef,
+  AddonsResponse,
+  LibraryItem,
+  SettingsPayload,
+  UserSettings,
+  WatchState,
+} from './types'
 
 export class HaloApiError extends Error {
   constructor(
@@ -78,12 +86,22 @@ export class HaloClient {
     return this.request<{ ok: true }>('POST', '/auth/password', { current, next })
   }
 
-  getAddons(): Promise<AddonEntry[]> {
-    return this.request<AddonEntry[]>('GET', '/addons')
+  /** Global (admin-managed) addons plus the caller's own, each ordered by position. */
+  getAddons(): Promise<AddonsResponse> {
+    return this.request<AddonsResponse>('GET', '/addons')
   }
 
-  putAddons(addons: AddonEntry[]): Promise<AddonEntry[]> {
-    return this.request<AddonEntry[]>('PUT', '/addons', addons)
+  /**
+   * Replaces the caller's own addon list. Only transportUrl + position are sent;
+   * the server fetches and validates each manifest itself.
+   */
+  putAddons(entries: AddonRef[]): Promise<AddonEntry[]> {
+    return this.request<AddonEntry[]>('PUT', '/addons', entries)
+  }
+
+  /** Admin-only: replaces the global addon list shown to every user. */
+  putGlobalAddons(entries: AddonRef[]): Promise<AddonEntry[]> {
+    return this.request<AddonEntry[]>('PUT', '/addons/global', entries)
   }
 
   getLibrary(): Promise<LibraryItem[]> {

@@ -1,11 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as SecureStore from 'expo-secure-store'
-import {
-  DEFAULT_ADDON_URLS,
-  fetchManifest,
-  HaloClient,
-  type AddonEntry,
-} from '@halo/core'
+import { DEFAULT_ADDON_URLS, HaloClient } from '@halo/core'
 
 const SERVER_URL_KEY = 'halo.serverUrl'
 const TOKEN_KEY = 'halo.token'
@@ -72,14 +67,12 @@ export function api(): HaloClient {
 /** First boot: install Cinemeta + OpenSubtitles so the app isn't empty. */
 async function seedDefaultAddons(c: HaloClient): Promise<void> {
   const existing = await c.getAddons()
-  if (existing.length > 0) return
-  const entries: AddonEntry[] = []
-  for (const url of DEFAULT_ADDON_URLS) {
-    try {
-      entries.push({ transportUrl: url, manifest: await fetchManifest(url), position: entries.length })
-    } catch {
-      // A default addon being down must not block first login.
-    }
+  if (existing.global.length + existing.user.length > 0) return
+  try {
+    // The server fetches each manifest; a default being down fails the whole
+    // set (all-or-nothing), so swallow it — first login must still succeed.
+    await c.putAddons(DEFAULT_ADDON_URLS.map((transportUrl, position) => ({ transportUrl, position })))
+  } catch {
+    // Best-effort seed.
   }
-  if (entries.length > 0) await c.putAddons(entries)
 }

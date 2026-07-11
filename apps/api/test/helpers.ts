@@ -12,11 +12,27 @@ export const SECRET = 'test-secret'
 export type App = ReturnType<typeof createApp>
 
 /** Fresh in-memory DB with the admin user provisioned and a wired-up app. */
-export function makeApp(): { app: App; db: Db } {
+export function makeApp(opts: { safeFetch?: (url: string) => Promise<Response> } = {}): { app: App; db: Db } {
   const db = createDb(':memory:')
   ensureAdminUser(db, ADMIN_PASSWORD)
-  const app = createApp({ db, jwtSecret: SECRET, corsOrigins: ['http://localhost:5173'] })
+  const app = createApp({ db, jwtSecret: SECRET, corsOrigins: ['http://localhost:5173'], safeFetch: opts.safeFetch })
   return { app, db }
+}
+
+/**
+ * A stand-in for the SSRF-guarded manifest fetch: serves `manifests` keyed by
+ * transport base, 404s anything else. No network, no DNS.
+ */
+export function mockSafeFetch(manifests: Record<string, unknown>): (url: string) => Promise<Response> {
+  return async (url: string) => {
+    const base = url.replace(/\/manifest\.json$/, '')
+    const manifest = manifests[base]
+    if (!manifest) return new Response('not found', { status: 404 })
+    return new Response(JSON.stringify(manifest), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
 }
 
 /** Inserts a user directly (fast path for tests that don't exercise POST /users). */

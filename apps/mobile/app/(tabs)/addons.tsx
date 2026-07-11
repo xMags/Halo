@@ -11,7 +11,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { fetchManifest, LANGUAGE_OPTIONS, languageLabel } from '@halo/core'
+import { LANGUAGE_OPTIONS, languageLabel } from '@halo/core'
 import { DEFAULT_SERVER_URL } from '@/api'
 import { useAddons, useSetAddons } from '@/queries'
 import { useSession } from '@/session'
@@ -34,21 +34,27 @@ export default function SettingsScreen() {
   const [adding, setAdding] = useState(false)
   const [languagePick, setLanguagePick] = useState<'audio' | 'subtitles' | null>(null)
 
+  const globalAddons = addons?.global ?? []
+  const userAddons = addons?.user ?? []
+
   const preferredFor = (pick: 'audio' | 'subtitles') =>
     pick === 'audio' ? settings.preferredAudioLang : settings.preferredSubtitleLang
+
+  // Only the user's own list is sent; the server refetches every manifest, so we
+  // pass transportUrl + position and let it validate.
+  const saveUserAddons = (urls: string[]) =>
+    setAddons.mutateAsync(urls.map((transportUrl, position) => ({ transportUrl, position })))
 
   const add = async () => {
     const transportUrl = url.trim()
     if (!transportUrl) return
-    if ((addons ?? []).some((a) => a.transportUrl === transportUrl)) {
+    if ([...globalAddons, ...userAddons].some((a) => a.transportUrl === transportUrl)) {
       Alert.alert('Already installed')
       return
     }
     setAdding(true)
     try {
-      const manifest = await fetchManifest(transportUrl)
-      const next = [...(addons ?? []), { transportUrl, manifest, position: addons?.length ?? 0 }]
-      await setAddons.mutateAsync(next)
+      await saveUserAddons([...userAddons.map((a) => a.transportUrl), transportUrl])
       setUrl('')
     } catch (err) {
       Alert.alert('Could not install addon', err instanceof Error ? err.message : 'Invalid manifest URL')
@@ -64,10 +70,7 @@ export default function SettingsScreen() {
         text: 'Remove',
         style: 'destructive',
         onPress: () => {
-          const next = (addons ?? [])
-            .filter((a) => a.transportUrl !== transportUrl)
-            .map((a, position) => ({ ...a, position }))
-          void setAddons.mutateAsync(next)
+          void saveUserAddons(userAddons.filter((a) => a.transportUrl !== transportUrl).map((a) => a.transportUrl))
         },
       },
     ])
@@ -104,11 +107,8 @@ export default function SettingsScreen() {
             )}
           </Pressable>
         </View>
-        {(addons ?? []).map((item, i) => (
-          <View
-            key={item.transportUrl}
-            style={[styles.addonRow, i === (addons ?? []).length - 1 && styles.lastRow]}
-          >
+        {userAddons.map((item, i) => (
+          <View key={item.transportUrl} style={[styles.addonRow, i === userAddons.length - 1 && styles.lastRow]}>
             <View style={styles.addonIcon}>
               <Ionicons name="extension-puzzle" size={19} color={colors.accent} />
             </View>
@@ -128,6 +128,32 @@ export default function SettingsScreen() {
           </View>
         ))}
       </View>
+
+      {globalAddons.length > 0 ? (
+        <>
+          <Text style={styles.groupLabel}>Global</Text>
+          <View style={styles.card}>
+            {globalAddons.map((item, i) => (
+              <View key={item.transportUrl} style={[styles.addonRow, i === globalAddons.length - 1 && styles.lastRow]}>
+                <View style={styles.addonIcon}>
+                  <Ionicons name="globe-outline" size={19} color={colors.accent} />
+                </View>
+                <View style={styles.addonBody}>
+                  <Text style={styles.addonName}>
+                    {item.manifest.name} <Text style={styles.addonVersion}>v{item.manifest.version}</Text>
+                  </Text>
+                  {item.manifest.description ? (
+                    <Text style={styles.addonDescription} numberOfLines={1}>
+                      {item.manifest.description}
+                    </Text>
+                  ) : null}
+                </View>
+                <Ionicons name="lock-closed" size={15} color={colors.textDim} />
+              </View>
+            ))}
+          </View>
+        </>
+      ) : null}
 
       <Text style={styles.groupLabel}>Playback</Text>
       <View style={styles.card}>

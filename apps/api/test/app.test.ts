@@ -4,7 +4,7 @@ import type { WatchState } from '@halo/core'
 import { LoginRateLimiter } from '../src/auth'
 import { libraryItems, users } from '../src/schema'
 import type { Db } from '../src/db'
-import { ADMIN_PASSWORD, authed, login, loginToken, makeApp, seedUser, type App } from './helpers'
+import { ADMIN_PASSWORD, authed, login, loginToken, makeApp, mockSafeFetch, seedUser, type App } from './helpers'
 
 const state = (over: Partial<WatchState>): WatchState => ({
   videoId: 'tt0944947:1:2',
@@ -183,27 +183,88 @@ describe('settings LWW', () => {
   })
 })
 
-describe('addons round-trip (per user)', () => {
-  it('round-trips a collection replace', async () => {
-    const app = makeApp().app
+const CINEMETA = {
+  id: 'com.linvo.cinemeta',
+  version: '3.0.0',
+  name: 'Cinemeta',
+  resources: ['catalog', 'meta'],
+  types: ['movie', 'series'],
+  catalogs: [{ type: 'movie', id: 'top' }],
+}
+
+describe('addons: server-fetched manifests', () => {
+  const CINEMETA_URL = 'https://cinemeta.test/manifest.json'
+
+  it('fetches and stores the manifest server-side, returned under user', async () => {
+    const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
     const token = await loginToken(app, 'admin', ADMIN_PASSWORD)
-    const entry = {
-      transportUrl: 'https://v3-cinemeta.strem.io/manifest.json',
-      manifest: {
-        id: 'com.linvo.cinemeta',
-        version: '3.0.0',
-        name: 'Cinemeta',
-        resources: ['catalog', 'meta'],
-        types: ['movie', 'series'],
-        catalogs: [{ type: 'movie', id: 'top' }],
-      },
-      position: 0,
-    }
-    await app.request('/addons', authed(token, [entry]))
+    const put = await app.request('/addons', authed(token, [{ transportUrl: CINEMETA_URL, position: 0 }]))
+    expect(put.status).toBe(200)
     const res = await app.request('/addons', authed(token))
-    const rows = (await res.json()) as Array<{ transportUrl: string; manifest: { name: string } }>
-    expect(rows).toHaveLength(1)
-    expect(rows[0]!.manifest.name).toBe('Cinemeta')
+    const body = (await res.json()) as { global: unknown[]; user: Array<{ manifest: { name: string } }> }
+    expect(body.user).toHaveLength(1)
+    expect(body.user[0]!.manifest.name).toBe('Cinemeta')
+    expect(body.global).toEqual([])
+  })
+
+  it('ignores a client-supplied manifest field, trusting only the fetched one', async () => {
+    const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
+    const token = await loginToken(app, 'admin', ADMIN_PASSWORD)
+    // Attempt to inject a forged manifest alongside the ref.
+    await app.request(
+      '/addons',
+      authed(token, [{ transportUrl: CINEMETA_URL, position: 0, manifest: { id: 'evil', name: 'Evil', version: '9', resources: [], types: [], catalogs: [] } }]),
+    )
+    const body = (await (await app.request('/addons', authed(token))).json()) as { user: Array<{ manifest: { name: string } }> }
+    expect(body.user[0]!.manifest.name).toBe('Cinemeta')
+  })
+
+  it('fails the whole request and keeps the old list when a manifest is unreachable', async () => {
+    const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
+    const token = await loginToken(app, 'admin', ADMIN_PASSWORD)
+    await app.request('/addons', authed(token, [{ transportUrl: CINEMETA_URL, position: 0 }]))
+    const res = await app.request(
+      '/addons',
+      authed(token, [
+        { transportUrl: CINEMETA_URL, position: 0 },
+        { transportUrl: 'https://down.test/manifest.json', position: 1 },
+      ]),
+    )
+    expect(res.status).toBe(400)
+    expect((await res.json()) as { error: string }).toMatchObject({ error: expect.stringContaining('down.test') })
+    // Old single-addon list is intact.
+    const body = (await (await app.request('/addons', authed(token))).json()) as { user: unknown[] }
+    expect(body.user).toHaveLength(1)
+  })
+
+  it('rejects a duplicate transportUrl', async () => {
+    const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
+    const token = await loginToken(app, 'admin', ADMIN_PASSWORD)
+    const res = await app.request(
+      '/addons',
+      authed(token, [
+        { transportUrl: CINEMETA_URL, position: 0 },
+        { transportUrl: CINEMETA_URL, position: 1 },
+      ]),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('gates PUT /addons/global to admins and shows globals to every user', async () => {
+    const { app, db } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
+    const adminToken = await loginToken(app, 'admin', ADMIN_PASSWORD)
+    seedUser(db, 'bob', 'bob-password')
+    const bobToken = await loginToken(app, 'bob', 'bob-password')
+
+    const forbidden = await app.request('/addons/global', authed(bobToken, [{ transportUrl: CINEMETA_URL, position: 0 }], 'PUT'))
+    expect(forbidden.status).toBe(403)
+
+    const ok = await app.request('/addons/global', authed(adminToken, [{ transportUrl: CINEMETA_URL, position: 0 }], 'PUT'))
+    expect(ok.status).toBe(200)
+
+    const body = (await (await app.request('/addons', authed(bobToken))).json()) as { global: Array<{ manifest: { name: string } }> }
+    expect(body.global).toHaveLength(1)
+    expect(body.global[0]!.manifest.name).toBe('Cinemeta')
   })
 })
 

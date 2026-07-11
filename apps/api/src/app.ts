@@ -3,7 +3,7 @@ import { eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { z } from 'zod'
-import type { LibraryItem, Manifest, WatchState } from '@halo/core'
+import { transportBase, type AddonEntry, type LibraryItem, type Manifest, type WatchState } from '@halo/core'
 import {
   adminOnly,
   authMiddleware,
@@ -14,13 +14,19 @@ import {
   type AuthVariables,
 } from './auth'
 import type { Db } from './db'
-import { libraryItems, userAddons, users, userSettings, watchStates } from './schema'
+import { globalAddons, libraryItems, userAddons, users, userSettings, watchStates } from './schema'
 import { assertSafeProxyTarget, ProxyTargetError } from './proxyGuard'
 
 export interface AppConfig {
   db: Db
   jwtSecret: string
   corsOrigins: string[]
+  /**
+   * SSRF-guarded fetch used to resolve addon manifests. Follows redirects with
+   * per-hop revalidation. Injectable so tests can supply fake manifests without
+   * real network or DNS. Defaults to the module `safeFetch`.
+   */
+  safeFetch?: (url: string) => Promise<Response>
 }
 
 // Constant scrypt work on unknown usernames too, so a missing user can't be
@@ -53,13 +59,25 @@ const manifestSchema = z
   })
   .passthrough()
 
-const addonsSchema = z.array(
-  z.object({
-    transportUrl: z.string().url(),
-    manifest: manifestSchema,
-    position: z.number().int().min(0),
-  }),
-)
+// Client sends only references; the server fetches and stores the manifest
+// itself, so a client can never inject a forged manifest.
+const addonRefsSchema = z
+  .array(
+    z.object({
+      transportUrl: z.string().url(),
+      position: z.number().int().min(0),
+    }),
+  )
+  .max(50)
+  .superRefine((refs, ctx) => {
+    const seen = new Set<string>()
+    for (const ref of refs) {
+      if (seen.has(ref.transportUrl)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate transportUrl: ${ref.transportUrl}` })
+      }
+      seen.add(ref.transportUrl)
+    }
+  })
 
 const librarySchema = z.array(
   z.object({
@@ -98,6 +116,7 @@ const watchStatesSchema = z.array(
 
 export function createApp(config: AppConfig) {
   const { db } = config
+  const doSafeFetch = config.safeFetch ?? safeFetch
   const loginLimiter = new LoginRateLimiter()
   const app = new Hono()
 
@@ -179,34 +198,54 @@ export function createApp(config: AppConfig) {
 
   authed.get('/addons', (c) => {
     const user = c.get('user')
-    const rows = db.select().from(userAddons).where(eq(userAddons.userId, user.id)).orderBy(userAddons.position).all()
-    return c.json(rows.map((r) => ({ transportUrl: r.transportUrl, manifest: r.manifest, position: r.position })))
+    const global = db.select().from(globalAddons).orderBy(globalAddons.position).all().map(toAddonEntry)
+    const userList = db
+      .select()
+      .from(userAddons)
+      .where(eq(userAddons.userId, user.id))
+      .orderBy(userAddons.position)
+      .all()
+      .map(toAddonEntry)
+    return c.json({ global, user: userList })
   })
 
-  // Full-collection replace: the addon list is small, ordered, and edited as a
-  // whole (add/remove/reorder), so replace semantics beat per-row merging.
+  // Full-collection replace of the caller's own addons. The server fetches each
+  // manifest itself (SSRF-guarded) so the stored manifest is trusted; a bad or
+  // unreachable manifest fails the whole request, leaving the old list intact.
   authed.put('/addons', async (c) => {
-    const body = addonsSchema.safeParse(await c.req.json().catch(() => null))
+    const body = addonRefsSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+    const resolved = await resolveManifests(body.data, doSafeFetch)
+    if ('error' in resolved) return c.json({ error: resolved.error }, 400)
     const user = c.get('user')
     const now = Date.now()
     db.transaction((tx) => {
       tx.delete(userAddons).where(eq(userAddons.userId, user.id)).run()
-      for (const entry of body.data) {
+      for (const r of resolved.entries) {
         tx.insert(userAddons)
-          .values({
-            userId: user.id,
-            transportUrl: entry.transportUrl,
-            // zod validates only Halo's load-bearing fields; the full manifest
-            // shape is the addon's business.
-            manifest: entry.manifest as Manifest,
-            position: entry.position,
-            addedAt: now,
-          })
+          .values({ userId: user.id, transportUrl: r.transportUrl, manifest: r.manifest, position: r.position, addedAt: now })
           .run()
       }
     })
-    return c.json(body.data)
+    return c.json(resolved.entries)
+  })
+
+  // Same contract, admin-only, replaces the addons every user sees.
+  authed.put('/addons/global', adminOnly, async (c) => {
+    const body = addonRefsSchema.safeParse(await c.req.json().catch(() => null))
+    if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+    const resolved = await resolveManifests(body.data, doSafeFetch)
+    if ('error' in resolved) return c.json({ error: resolved.error }, 400)
+    const now = Date.now()
+    db.transaction((tx) => {
+      tx.delete(globalAddons).run()
+      for (const r of resolved.entries) {
+        tx.insert(globalAddons)
+          .values({ transportUrl: r.transportUrl, manifest: r.manifest, position: r.position, addedAt: now })
+          .run()
+      }
+    })
+    return c.json(resolved.entries)
   })
 
   authed.get('/library', (c) => {
@@ -308,7 +347,7 @@ export function createApp(config: AppConfig) {
     const target = c.req.query('url')
     if (!target) return c.json({ error: 'url query param required' }, 400)
     try {
-      return await proxyFetch(target)
+      return await safeFetch(target)
     } catch (err) {
       if (err instanceof ProxyTargetError) return c.json({ error: err.message }, 400)
       return c.json({ error: 'upstream fetch failed' }, 502)
@@ -342,11 +381,48 @@ function rowToWatchState(r: typeof watchStates.$inferSelect): WatchState {
   }
 }
 
+function toAddonEntry(r: { transportUrl: string; manifest: Manifest; position: number }): AddonEntry {
+  return { transportUrl: r.transportUrl, manifest: r.manifest, position: r.position }
+}
+
+interface ResolvedAddon {
+  transportUrl: string
+  position: number
+  manifest: Manifest
+}
+
+/**
+ * Fetches and validates the manifest for every ref, all-or-nothing. Returns the
+ * resolved entries or the first failing transportUrl. Fetches run concurrently.
+ */
+async function resolveManifests(
+  refs: Array<{ transportUrl: string; position: number }>,
+  doSafeFetch: (url: string) => Promise<Response>,
+): Promise<{ entries: ResolvedAddon[] } | { error: string }> {
+  const results = await Promise.all(
+    refs.map(async (ref) => {
+      try {
+        const res = await doSafeFetch(`${transportBase(ref.transportUrl)}/manifest.json`)
+        if (!res.ok) return { ref, manifest: null }
+        const parsed = manifestSchema.safeParse(await res.json())
+        return { ref, manifest: parsed.success ? (parsed.data as Manifest) : null }
+      } catch {
+        return { ref, manifest: null }
+      }
+    }),
+  )
+  const failed = results.find((r) => r.manifest === null)
+  if (failed) return { error: `could not fetch a valid manifest for ${failed.ref.transportUrl}` }
+  return {
+    entries: results.map((r) => ({ transportUrl: r.ref.transportUrl, position: r.ref.position, manifest: r.manifest! })),
+  }
+}
+
 const MAX_REDIRECTS = 5
 
 // Redirects are followed manually so every hop passes the SSRF guard —
 // otherwise a public host could 302 into the internal network.
-async function proxyFetch(target: string): Promise<Response> {
+async function safeFetch(target: string): Promise<Response> {
   let url = await assertSafeProxyTarget(target)
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const upstream = await fetch(url, { redirect: 'manual' })

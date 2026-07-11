@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { MetaPreview } from '@halo/core'
-import { useAddons, useCatalog, useLibrary, useMeta, useWatchStates } from '@/queries'
+import { useCatalog, useEffectiveAddons, useLibrary, useMeta, useWatchStates } from '@/queries'
 import { colors, radius, spacing, TAB_BAR_SPACE, type } from '@/theme'
 import { CatalogRow } from '@/components/CatalogRow'
 import { PosterCard } from '@/components/PosterCard'
@@ -26,7 +26,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets()
   const router = useRouter()
   const [filter, setFilter] = useState<Filter>('All')
-  const { data: addons, isLoading, isError } = useAddons()
+  const { data: addons, isLoading, isError } = useEffectiveAddons()
   const { data: watchStates } = useWatchStates()
   const { data: library } = useLibrary()
 
