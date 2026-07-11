@@ -1,4 +1,5 @@
 import { useImperativeHandle, useRef } from 'react'
+import { StyleSheet } from 'react-native'
 import { VLCPlayer } from 'react-native-vlc-media-player'
 import type { PlayerTrack, PlayerVideoProps } from './PlayerVideo.types'
 
@@ -24,6 +25,9 @@ export default function PlayerVideo({
   return (
     <VLCPlayer
       ref={playerRef}
+      // Each platform implementation owns its surface style; without an
+      // explicit fill the native view lays out 0×0 (audio over black screen).
+      style={styles.video}
       source={{ uri, initOptions: ['--sub-text-scale=100'] }}
       paused={paused}
       autoplay
@@ -60,3 +64,9 @@ export default function PlayerVideo({
 function normalizeSeconds(value: number): number {
   return value > 50_000 ? value / 1000 : value
 }
+
+const styles = StyleSheet.create({
+  video: {
+    flex: 1,
+  },
+})
