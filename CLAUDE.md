@@ -27,14 +27,23 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
   settings). Clients send their timestamp; server upserts only strictly-newer
   (`setWhere: excluded.updated_at > …`). Library removals are tombstones
   (`removedAt`), never hard deletes — they must survive stale re-adds.
-- **Auth is single-user**: `ADMIN_PASSWORD` → JWT (`hono/jwt`, HS256). No users
-  table; multi-user would be a schema migration.
-- **`/addon-proxy` is SSRF-guarded, not origin-allowlisted**: subtitle files
-  live on arbitrary CDNs, so the guard is auth + DNS-resolved private/reserved
-  IP rejection + per-hop redirect re-validation (`proxyGuard.ts`). Don't
-  "simplify" it to an allowlist; don't remove the redirect loop.
-- **SQLite schema is applied idempotently at boot** (`db.ts` DDL). First
-  breaking schema change should introduce drizzle-kit migrations.
+- **Auth is multi-user**: a `users` table, passwords hashed with `node:crypto`
+  scrypt (params encoded per hash), JWT (`hono/jwt`, HS256) carrying the user id
+  as `sub`. On an empty DB the first boot seeds an `admin` user from
+  `ADMIN_PASSWORD`; after that it is never consulted for login. Every sync table
+  is keyed by user id (FK, `ON DELETE CASCADE`). Addons split into
+  admin-managed `global_addons` and per-user `user_addons`.
+- **Server-side addon fetches are SSRF-guarded, not origin-allowlisted**: the
+  `/addon-proxy`, manifest resolution, and the catalog/meta/stream/subtitle
+  endpoints all fetch arbitrary public CDNs, so the guard is auth + URL/protocol
+  pre-check + private/reserved-IP rejection + per-hop redirect re-validation,
+  with a connect-time DNS lookup hook (`safeFetch.ts`) that re-checks the
+  resolved address to close the rebinding TOCTOU (`proxyGuard.ts` holds the
+  blocklist). Don't "simplify" it to an allowlist; don't remove the redirect
+  loop or the lookup hook.
+- **SQLite schema is evolved via drizzle-kit migrations run at boot**
+  (`db.ts` `migrate()` over `apps/api/drizzle`, foreign keys enabled). Add a new
+  migration for schema changes; the `:memory:` test DBs run them too.
 - **Subtitle quality = hash matching.** The OpenSubtitles hash (size + first/
   last 64 KiB) is computed via HTTP range requests for streams and from disk
   for downloads, then passed as `videoHash`/`videoSize` extras. This is the
