@@ -5,7 +5,7 @@ index e1e196c7b5a260537dc9af88da0142a06ce2c5ef..1e826e95a0e68eccbec6ac40ff3f1881
 @@ -90,6 +90,10 @@ class LibVlcPlayerModule : Module() {
                      view.contentFit = contentFit
                  }
-
+ 
 +                Prop("subtitleDelayMs", 0) { view: LibVlcPlayerView, subtitleDelayMs: Int ->
 +                    view.subtitleDelayMs = subtitleDelayMs
 +                }
@@ -14,11 +14,11 @@ index e1e196c7b5a260537dc9af88da0142a06ce2c5ef..1e826e95a0e68eccbec6ac40ff3f1881
                      view.rate = rate
                  }
 diff --git a/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt b/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt
-index 89b541de6e4dc0597cce00bbe363f8847f95da00..6f1eeadc79b5d1a8e3efcdc5b3a9d8b9997e4c8e 100644
+index 89b541de6e4dc0597cce00bbe363f8847f95da00..176200c6a850cf836d4cb955f84d4f41bee72f24 100644
 --- a/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt
 +++ b/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt
 @@ -2,14 +2,16 @@ package expo.modules.libvlcplayer
-
+ 
  import android.content.Context
  import android.graphics.Bitmap
 -import android.graphics.Matrix
@@ -35,25 +35,25 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..6f1eeadc79b5d1a8e3efcdc5b3a9d8b9
  import android.view.ViewGroup
  import expo.modules.kotlin.AppContext
  import expo.modules.kotlin.viewevent.EventDispatcher
-@@ -47,7 +48,7 @@ import org.videolan.libvlc.Dialog as VLCDialog
-
+@@ -47,7 +49,7 @@ import org.videolan.libvlc.Dialog as VLCDialog
+ 
  private val DISPLAY_MANAGER: DisplayManager? = null
  private val ENABLE_SUBTITLES: Boolean = true
 -private val USE_TEXTURE_VIEW: Boolean = true
 +private val USE_TEXTURE_VIEW: Boolean = false
-
+ 
  class LibVlcPlayerView(
      context: Context,
 @@ -105,17 +107,73 @@ class LibVlcPlayerView(
      ) {
          super.onSizeChanged(w, h, oldw, oldh)
-
+ 
 +        layoutPlayerLayout(playerLayout)
 +        layoutPlayerLayout(pictureLayout)
          setContentFit(layout = playerLayout)
          setContentFit(layout = pictureLayout)
      }
-
+ 
 +    override fun onLayout(
 +        changed: Boolean,
 +        left: Int,
@@ -67,7 +67,7 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..6f1eeadc79b5d1a8e3efcdc5b3a9d8b9
 +    }
 +
      fun getTextureView(layout: VLCVideoLayout): TextureView? = layout.findViewById(org.videolan.R.id.texture_video)
-
+ 
 +    fun getVideoView(layout: VLCVideoLayout): View? =
 +        if (USE_TEXTURE_VIEW) {
 +            getTextureView(layout)
@@ -105,7 +105,7 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..6f1eeadc79b5d1a8e3efcdc5b3a9d8b9
      fun addPlayerLayout(layout: VLCVideoLayout) {
 -        val parent = playerLayout.parent as? ViewGroup
 +        val parent = layout.parent as? ViewGroup
-
+ 
          if (parent == null) {
 -            addView(layout)
 +            addView(
@@ -119,40 +119,35 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..6f1eeadc79b5d1a8e3efcdc5b3a9d8b9
 +            post { layoutPlayerLayout(layout) }
          }
      }
-
-@@ -132,9 +171,9 @@ class LibVlcPlayerView(
-         attachPlayer()
+ 
+@@ -133,8 +191,8 @@ class LibVlcPlayerView(
      }
-
+ 
      fun attachPlayer() {
 -        attachPlayerLayout(playerLayout)
          addPlayerLayout(playerLayout)
 +        attachPlayerLayout(playerLayout)
      }
-
+ 
      fun detachPlayer() {
-@@ -145,9 +203,10 @@ class LibVlcPlayerView(
-     fun attachPlayerLayout(layout: VLCVideoLayout) {
-         mediaPlayer?.let { player ->
+@@ -147,6 +205,7 @@ class LibVlcPlayerView(
              val attached = player.getVLCVout().areViewsAttached()
-
+ 
              if (!attached) {
 +                prepareSurfaceViews(layout)
                  player.attachViews(layout, DISPLAY_MANAGER, ENABLE_SUBTITLES, USE_TEXTURE_VIEW)
              }
          }
-     }
-@@ -180,7 +219,8 @@ class LibVlcPlayerView(
+@@ -181,6 +240,7 @@ class LibVlcPlayerView(
          setDialogCallbacks(libVLC!!)
-
+ 
          mediaPlayer = MediaPlayer(libVLC!!)
 +        addPlayerLayout(playerLayout)
          attachPlayerLayout(playerLayout)
          setPlayerListener(mediaPlayer!!)
          setupPlayer()
-
-@@ -272,8 +311,9 @@ class LibVlcPlayerView(
-
+@@ -272,8 +332,9 @@ class LibVlcPlayerView(
+ 
      fun setContentFit(layout: VLCVideoLayout) {
          post {
 -            val view = getTextureView(layout) ?: return@post
@@ -160,13 +155,13 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..6f1eeadc79b5d1a8e3efcdc5b3a9d8b9
 +            val view = getVideoView(layout) ?: return@post
 +            var scaleX = 1f
 +            var scaleY = 1f
-
+ 
              val video = getVideoSize()
-
-@@ -287,41 +327,41 @@ class LibVlcPlayerView(
+ 
+@@ -287,41 +348,41 @@ class LibVlcPlayerView(
                  val viewAspect = viewWidth / viewHeight
                  val videoAspect = videoWidth / videoHeight
-
+ 
 -                val pivotX = viewWidth / 2f
 -                val pivotY = viewHeight / 2f
 -
@@ -225,7 +220,7 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..6f1eeadc79b5d1a8e3efcdc5b3a9d8b9
                      }
                  }
              }
-
+ 
 -            view.setTransform(matrix)
 +            view.pivotX = view.width / 2f
 +            view.pivotY = view.height / 2f
@@ -233,11 +228,11 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..6f1eeadc79b5d1a8e3efcdc5b3a9d8b9
 +            view.scaleY = scaleY
          }
      }
-
-@@ -330,6 +370,10 @@ class LibVlcPlayerView(
+ 
+@@ -330,6 +391,10 @@ class LibVlcPlayerView(
              mediaPlayer?.let { player ->
                  addPlayerSlaves(slaves)
-
+ 
 +                if (subtitleDelayMs != 0) {
 +                    player.setSpuDelay(subtitleDelayMs.toLong() * 1000L)
 +                }
@@ -245,10 +240,10 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..6f1eeadc79b5d1a8e3efcdc5b3a9d8b9
                  if (scale != MediaPlayerConstants.DEFAULT_PLAYER_SCALE) {
                      player.setScale(scale.toFloat())
                  }
-@@ -456,6 +500,12 @@ class LibVlcPlayerView(
+@@ -456,6 +521,12 @@ class LibVlcPlayerView(
              setContentFit(layout = pictureLayout)
          }
-
+ 
 +    var subtitleDelayMs: Int = 0
 +        set(value) {
 +            field = value
@@ -258,14 +253,14 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..6f1eeadc79b5d1a8e3efcdc5b3a9d8b9
      var rate: Double = MediaPlayerConstants.DEFAULT_PLAYER_RATE
          set(value) {
              field = value
-@@ -590,11 +640,14 @@ class LibVlcPlayerView(
-
+@@ -590,11 +661,14 @@ class LibVlcPlayerView(
+ 
      fun snapshot(path: String) {
          try {
 -            val view = getTextureView(playerLayout) ?: throw Exception()
 -
              if (!hasVideoSize) throw Exception()
-
+ 
 -            val surface = Surface(view.surfaceTexture)
 +            val textureView = getTextureView(playerLayout)
 +            val surfaceView = playerLayout.findViewById<SurfaceView>(org.videolan.R.id.surface_video)
@@ -275,7 +270,7 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..6f1eeadc79b5d1a8e3efcdc5b3a9d8b9
 +                    ?: throw Exception()
              val video = getVideoSize()
              val bitmap = Bitmap.createBitmap(video.width, video.height, Bitmap.Config.ARGB_8888)
-
+ 
 diff --git a/build/LibVlcPlayer.types.d.ts b/build/LibVlcPlayer.types.d.ts
 index 1c74fec288ed6219cf46b64d8c082c58911b44d1..27e506b3375bad9c4930d80e4b725d9a9145577f 100644
 --- a/build/LibVlcPlayer.types.d.ts
@@ -304,7 +299,7 @@ index b6d2c9e434a0e5ac41d767eb7501f22725b35cd5..9c7385dbefe0f72f31918a3a5e5a3ceb
 @@ -71,6 +71,10 @@ public class LibVlcPlayerModule: Module {
                  view.contentFit = contentFit
              }
-
+ 
 +            Prop("subtitleDelayMs", 0) { (view: LibVlcPlayerView, subtitleDelayMs: Int) in
 +                view.subtitleDelayMs = subtitleDelayMs
 +            }
@@ -313,13 +308,18 @@ index b6d2c9e434a0e5ac41d767eb7501f22725b35cd5..9c7385dbefe0f72f31918a3a5e5a3ceb
                  view.rate = rate
              }
 diff --git a/ios/LibVlcPlayerView.swift b/ios/LibVlcPlayerView.swift
-index 59598e9bc514a17bc9f595c56d1fc230e0f438ce..c75802e907e20e6da47e01e656969db72b53bab7 100644
+index 59598e9bc514a17bc9f595c56d1fc230e0f438ce..b6ea19c9d8cfa73ca9fff67d8c9180b2f4a35030 100644
 --- a/ios/LibVlcPlayerView.swift
 +++ b/ios/LibVlcPlayerView.swift
-@@ -18,6 +18,12 @@ class LibVlcPlayerView: ExpoView {
+@@ -1,3 +1,4 @@
++import AVFoundation
+ import ExpoModulesCore
+ import UIKit
+ import VLCKit
+@@ -18,6 +19,12 @@ class LibVlcPlayerView: ExpoView {
      var firstPlay: Bool = true
      private var shouldInit: Bool = true
-
+ 
 +    var subtitleDelayMs: Int = 0 {
 +        didSet {
 +            mediaPlayer?.currentVideoSubTitleDelay = subtitleDelayMs * 1000
@@ -329,10 +329,158 @@ index 59598e9bc514a17bc9f595c56d1fc230e0f438ce..c75802e907e20e6da47e01e656969db7
      let onBuffering = EventDispatcher()
      let onPlaying = EventDispatcher()
      let onPaused = EventDispatcher()
-@@ -204,6 +210,10 @@ class LibVlcPlayerView: ExpoView {
+@@ -49,6 +56,21 @@ class LibVlcPlayerView: ExpoView {
+         destroyPlayer()
+     }
+ 
++    // React unmounts (screen pop, keyed remount) must stop playback the
++    // moment the view leaves the hierarchy: waiting for deinit is fragile —
++    // any lingering reference leaks a still-playing player. Re-attachment
++    // re-creates the player from current props.
++    override func willMove(toWindow newWindow: UIWindow?) {
++        super.willMove(toWindow: newWindow)
++
++        if newWindow == nil {
++            destroyPlayer()
++            shouldInit = true
++        } else if mediaPlayer == nil {
++            initPlayer()
++        }
++    }
++
+     override var bounds: CGRect {
+         didSet {
+             playerDrawable.transform = .identity
+@@ -107,11 +129,28 @@ class LibVlcPlayerView: ExpoView {
+     }
+ 
+     func destroyPlayer() {
+-        library = nil
+-        mediaPlayer?.stop()
++        let player = mediaPlayer
++        let lib = library
+         mediaPlayer = nil
++        library = nil
+         vlcDialog?.customRenderer = nil
+         vlcDialog = nil
++
++        guard let player else { return }
++
++        player.delegate = nil
++        player.stop()
++
++        // libvlc's stop is asynchronous: the input thread keeps delivering
++        // state/capabilities events for a beat, and VLCKit's handlers retain
++        // the ObjC wrapper from that thread. Releasing the last reference
++        // right after stop() is a use-after-free (SIGSEGV in objc_retain on
++        // the input thread) — park the final references until teardown
++        // quiesces, then release on the main queue.
++        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
++            withExtendedLifetime(player) {}
++            withExtendedLifetime(lib) {}
++        }
+     }
+ 
+     func selectTrack(_ index: Int, _ type: VLCMedia.TrackType) {
+@@ -157,43 +196,64 @@ class LibVlcPlayerView: ExpoView {
+         }
+     }
+ 
++    // VLC's apple vout builds two sibling subviews inside the drawable: the
++    // video (a view whose layer is an AVSampleBufferDisplayLayer) and a
++    // separate subpicture view for subtitles. Scaling only the video view
++    // fills the screen without dragging subtitles along.
++    /// VLC's apple vout inserts its layers only once frames start rendering:
++    /// a container sublayer holding the video (an AVSampleBufferDisplayLayer,
++    /// framed by VLC to the aspect-fit place rect) and a separate full-size
++    /// sibling layer for subtitles. That separation is what lets cover/fill
++    /// crop the video without ever touching captions.
++    private func findVideoLayer(_ layer: CALayer) -> AVSampleBufferDisplayLayer? {
++        if let display = layer as? AVSampleBufferDisplayLayer { return display }
++        for child in layer.sublayers ?? [] {
++            if let found = findVideoLayer(child) { return found }
++        }
++        return nil
++    }
++
++    private var fitGeneration = 0
++
+     func setContentFit(drawable: MediaPlayerDrawable) {
+         DispatchQueue.main.async { [weak self] in
+             guard let self else { return }
++            fitGeneration += 1
++            applyContentFit(drawable: drawable, generation: fitGeneration, attempt: 0)
++        }
++    }
+ 
+-            var transform: CGAffineTransform = .identity
+-
+-            let video = getVideoSize()
+-
+-            if hasVideoSize == true {
+-                let viewAspect = drawable.frame.size.width / drawable.frame.size.height
+-                let videoAspect = video.width / video.height
+-
+-                switch contentFit {
+-                case .contain:
+-                    // No transformation required
+-                    break
+-                case .cover:
+-                    let scale = videoAspect > viewAspect ?
+-                        videoAspect / viewAspect :
+-                        viewAspect / videoAspect
+-
+-                    transform = CGAffineTransform(scaleX: scale, y: scale)
+-                case .fill:
+-                    var scaleX = 1.0
+-                    var scaleY = 1.0
++    /// Fit modes map onto AVSampleBufferDisplayLayer.videoGravity — no view or
++    /// layer transforms (VLC rewrites frames on placement changes; writes
++    /// under a transform corrupt geometry) and no subview surgery. The layer
++    /// is sized to the drawable and gravity does the letterboxing/cropping;
++    /// for contain this renders the exact rect VLC would have placed itself.
++    /// Polls until the vout has created its layers (they appear a beat after
++    /// first play; slow streams can take seconds).
++    private func applyContentFit(drawable: MediaPlayerDrawable, generation: Int, attempt: Int) {
++        guard generation == fitGeneration else { return }
++
++        if let videoLayer = findVideoLayer(drawable.layer) {
++            let gravity: AVLayerVideoGravity
++            switch contentFit {
++            case .contain: gravity = .resizeAspect
++            case .cover: gravity = .resizeAspectFill
++            case .fill: gravity = .resize
++            }
+ 
+-                    if videoAspect > viewAspect {
+-                        scaleY = videoAspect / viewAspect
+-                    } else {
+-                        scaleX = viewAspect / videoAspect
+-                    }
++            CATransaction.begin()
++            CATransaction.setDisableActions(true)
++            videoLayer.masksToBounds = true
++            videoLayer.frame = drawable.bounds
++            videoLayer.videoGravity = gravity
++            CATransaction.commit()
++            return
++        }
+ 
+-                    transform = CGAffineTransform(scaleX: scaleX, y: scaleY)
+-                }
+-            }
++        guard attempt < 100 else { return }
+ 
+-            drawable.transform = transform
++        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
++            self?.applyContentFit(drawable: drawable, generation: generation, attempt: attempt + 1)
+         }
+     }
+ 
+@@ -204,6 +264,10 @@ class LibVlcPlayerView: ExpoView {
              if let player = mediaPlayer {
                  addPlayerSlaves(slaves)
-
+ 
 +                if subtitleDelayMs != 0 {
 +                    player.currentVideoSubTitleDelay = subtitleDelayMs * 1000
 +                }
@@ -340,6 +488,43 @@ index 59598e9bc514a17bc9f595c56d1fc230e0f438ce..c75802e907e20e6da47e01e656969db7
                  if scale != MediaPlayerConstants.defaultPlayerScale {
                      player.scaleFactor = Float(scale)
                  }
+@@ -612,7 +676,10 @@ extension LibVlcPlayerView: VLCMediaPlayerDelegate {
+     }
+ 
+     func mediaPlayerBufferingChanged(_ progress: Float) {
+-        onBuffering(["progress": progress])
++        // VLCKit reports [0.0, 1.0]; Android's libvlc reports 0–100. Normalize
++        // so JS sees one scale (a raw 1.0 reads as "0–100 scale, 1% buffered"
++        // and pins consumers in a buffering state forever).
++        onBuffering(["progress": progress * 100])
+     }
+ 
+     func mediaPlayerLengthChanged(_: Int64) {
+diff --git a/ios/Utils/PictureInPictureDrawable.swift b/ios/Utils/PictureInPictureDrawable.swift
+index db8910f843687ea70d5f24190eac9ed9afe8aa4b..b079cdfd445e3cdfbae497b35859e4331391cee4 100644
+--- a/ios/Utils/PictureInPictureDrawable.swift
++++ b/ios/Utils/PictureInPictureDrawable.swift
+@@ -3,14 +3,17 @@ import ExpoModulesCore
+ import VLCKit
+ 
+ class PictureInPictureDrawable: MediaPlayerDrawable {
+-    private var expoView: LibVlcPlayerView!
++    // Weak: the view strongly owns this drawable; a strong back-reference is
++    // a retain cycle that keeps the view (and its playing VLCMediaPlayer)
++    // alive forever after React unmounts it.
++    private weak var expoView: LibVlcPlayerView?
+ 
+     private var mediaPlayer: VLCMediaPlayer? {
+-        expoView.mediaPlayer
++        expoView?.mediaPlayer
+     }
+ 
+     private var pictureInPicture: Bool {
+-        expoView.pictureInPicture
++        expoView?.pictureInPicture ?? false
+     }
+ 
+     private weak var pipController: VLCPictureInPictureWindowControlling?
 diff --git a/src/LibVlcPlayer.types.ts b/src/LibVlcPlayer.types.ts
 index 8c1e33b0c22610ca8c85947240710ad0c500f5c9..38b5588f331b93113cd6b75ed986685c690f21dc 100644
 --- a/src/LibVlcPlayer.types.ts
