@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -73,6 +73,12 @@ export default function PlayerScreen() {
   const insets = useSafeAreaInsets()
   const playerRef = useRef<PlayerVideoHandle>(null)
   const isLocal = params.uri.startsWith('file://')
+  // This screen is landscape-locked (see the root Stack options). Opening it
+  // with the phone held portrait mounts mid-forced-rotation, and a VLC player
+  // created with portrait bounds keeps its portrait placement — the video
+  // renders as a corner strip until a manual rotation. Wait out the flip.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions()
+  const isLandscape = windowWidth > windowHeight
 
   const [paused, setPaused] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -390,7 +396,7 @@ export default function PlayerScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.videoArea}>
-        {settingsLoaded ? (
+        {settingsLoaded && isLandscape ? (
           <PlayerVideo
             ref={playerRef}
             // Remote stream URLs can carry raw spaces; both native players reject
