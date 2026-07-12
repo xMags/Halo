@@ -60,18 +60,27 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
 
 ## Mobile gotchas (each cost a debugging session)
 
-- **Expo Go doesn't work** — react-native-vlc-media-player is a native module;
+- **Expo Go doesn't work** — expo-libvlc-player is a native module;
   dev-client builds only (`expo prebuild` + `expo run:ios`).
-- **VLC time units**: the bridge's typings say seconds, implementations emit
-  ms. `normalizeSeconds()` in `player.tsx` (>50 000 → ms) — verified against a
-  real 47-min episode. Don't remove it.
+- **VLC time units**: expo-libvlc-player events emit milliseconds;
+  `PlayerVideo.tsx` divides by 1000 exactly once, at the event boundary.
+  History: the old react-native-vlc-media-player bridge emitted ms while its
+  typings said seconds — verify units on a real episode before trusting a new
+  bridge's typings.
+- **expo-libvlc-player runs patched** (`patches/`, applied by pnpm) — subtitle
+  delay prop + Android SurfaceView rendering. Read `patches/README.md` before
+  bumping the package version; the patch will not re-apply cleanly on its own.
+- **Subtitle scale/font are creation-time VLC options** — changing them
+  rebuilds the native player (`key` remount in `PlayerVideo.tsx`) with
+  seek-back + slave-id re-learn. libvlc's Java/ObjC wrappers expose no runtime
+  SPU text-scale, so a live prop is not an option without JNI work.
 - **RN `Modal` defaults to portrait-only** — every sheet must keep the
   `supportedOrientations` prop or it yanks the landscape player to portrait.
 - **VLCKit on the arm64 simulator lies**: playback timing/rendering there is
   not evidence. Subtitle sync was "broken" on sim and perfect on device. Test
   playback claims on a real iPhone.
-- **pnpm blocks native postinstalls** unless listed in root `package.json`
-  `pnpm.onlyBuiltDependencies` (better-sqlite3, esbuild).
+- **pnpm blocks native postinstalls** unless listed in `pnpm-workspace.yaml`
+  `onlyBuiltDependencies` (better-sqlite3, esbuild).
 - New native modules (config plugins) need `expo prebuild` + a rebuild — Metro
   hot reload alone shows "Unimplemented component".
 
