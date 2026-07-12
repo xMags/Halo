@@ -563,7 +563,9 @@ export default function PlayerScreen() {
 
       <SelectSheet
         visible={audioSheetOpen}
-        title="Audio track"
+        title="Audio"
+        description="Language and audio track"
+        presentation="side"
         options={audioTracks.map((t) => ({
           key: String(t.id),
           label: t.name,
@@ -619,9 +621,12 @@ export default function PlayerScreen() {
       <SelectSheet
         visible={speedSheetOpen}
         title="Playback speed"
+        description="Adjust playback tempo"
+        presentation="side"
         options={PLAYBACK_RATES.map((rate) => ({
           key: String(rate),
           label: `${rate}×`,
+          detail: playbackRateDetail(rate),
           selected: playbackRate === rate,
         }))}
         onSelect={(key) => {
@@ -640,6 +645,12 @@ function ToolButton({ icon, onPress }: { icon: 'add' | 'remove'; onPress: () => 
       <Ionicons name={icon} size={18} color={colors.text} />
     </Pressable>
   )
+}
+
+function playbackRateDetail(rate: number): string {
+  if (rate === 1) return 'Normal speed'
+  if (rate < 1) return `${Math.round((1 - rate) * 100)}% slower`
+  return `${Math.round((rate - 1) * 100)}% faster`
 }
 
 /** VLC track names look like "Track 1 - [English]" or just "English". */
