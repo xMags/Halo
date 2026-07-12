@@ -51,7 +51,7 @@ export default function PlayerVideoVlc({
   const options = useMemo(
     () => [
       `:sub-text-scale=${subtitleScalePercent}`,
-      ':freetype-font=Roboto',
+      ':freetype-font=sans-serif-condensed',
       ':freetype-bold=0',
       ':freetype-color=16777215',
       ':freetype-opacity=255',
