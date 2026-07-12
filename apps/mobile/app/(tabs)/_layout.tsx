@@ -24,10 +24,12 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.text,
+        // Bright inactive tabs stay legible over poster art bleeding through
+        // the translucent bar; the accent marks the active tab. Label color is
+        // left to the tint so active/inactive track the icon.
+        tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.text,
         tabBarLabelStyle: {
-          color: colors.text,
           fontWeight: '600',
         },
         tabBarStyle: {
