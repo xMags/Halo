@@ -57,10 +57,8 @@ export function PlayerGestureLayer({
     void VolumeManager.getVolume().then(({ volume: value }) => {
       volume.current = value
     })
-    void VolumeManager.showNativeVolumeUI({ enabled: false })
     return () => {
       if (singleTapTimer.current !== null) clearTimeout(singleTapTimer.current)
-      void VolumeManager.showNativeVolumeUI({ enabled: true })
     }
   }, [])
 
