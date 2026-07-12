@@ -48,7 +48,23 @@ export default function PlayerVideoVlc({
   const slaves = sentSlaves.current
   const spuTrack = subtitleUri !== undefined ? slaveTrackIds.current.get(subtitleUri) : textTrack
   const tracks = useMemo(() => ({ audio: audioTrack, subtitle: spuTrack }), [audioTrack, spuTrack])
-  const options = useMemo(() => [`:sub-text-scale=${subtitleScalePercent}`], [subtitleScalePercent])
+  const options = useMemo(
+    () => [
+      `:sub-text-scale=${subtitleScalePercent}`,
+      ':freetype-font=Roboto',
+      ':freetype-bold=0',
+      ':freetype-color=16777215',
+      ':freetype-opacity=255',
+      ':freetype-outline-color=0',
+      ':freetype-outline-opacity=220',
+      ':freetype-outline-thickness=1',
+      ':freetype-shadow-color=0',
+      ':freetype-shadow-opacity=110',
+      ':freetype-shadow-distance=2',
+      ':freetype-background-opacity=0',
+    ],
+    [subtitleScalePercent],
+  )
 
   const latestTracks = useRef<{ audio: PlayerTrack[]; text: PlayerTrack[] }>({ audio: [], text: [] })
   const progress = useRef({ position: 0, durationSec: 0, currentTimeSec: 0 })
