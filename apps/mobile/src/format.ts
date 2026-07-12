@@ -7,3 +7,8 @@ export function formatBytes(bytes: number): string {
   if (mb >= 1) return `${mb.toFixed(0)} MB`
   return `${Math.ceil(bytes / 1024)} KB`
 }
+
+/** Clamp to the unit interval — gesture values, seek fractions. */
+export function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value))
+}
