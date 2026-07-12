@@ -176,7 +176,12 @@ describe('settings LWW', () => {
   })
 
   it('round-trips validated player preferences', async () => {
-    const value = { videoFitMode: 'cover', subtitleScalePercent: 125 }
+    const value = {
+      videoFitMode: 'cover',
+      subtitleScalePercent: 125,
+      subtitleFontFamily: 'Avenir Next',
+      playbackRate: 1.5,
+    }
     const write = await app.request('/settings', authed(token, { value, updatedAt: 3000 }))
     expect(write.status).toBe(200)
 
@@ -193,8 +198,18 @@ describe('settings LWW', () => {
       '/settings',
       authed(token, { value: { subtitleScalePercent: 250 }, updatedAt: 1001 }),
     )
+    const invalidFont = await app.request(
+      '/settings',
+      authed(token, { value: { subtitleFontFamily: '' }, updatedAt: 1002 }),
+    )
+    const invalidRate = await app.request(
+      '/settings',
+      authed(token, { value: { playbackRate: 8 }, updatedAt: 1003 }),
+    )
     expect(invalidFit.status).toBe(400)
     expect(invalidScale.status).toBe(400)
+    expect(invalidFont.status).toBe(400)
+    expect(invalidRate.status).toBe(400)
   })
 
   it('preserves unknown fields from newer clients', async () => {

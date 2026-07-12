@@ -43,6 +43,10 @@ export interface UserSettings {
   videoFitMode?: 'cover' | 'contain'
   /** VLC subtitle text scale percentage. */
   subtitleScalePercent?: number
+  /** VLC freetype font family for subtitles; unset = platform default. */
+  subtitleFontFamily?: string
+  /** Playback speed multiplier. */
+  playbackRate?: number
 }
 
 export interface SettingsPayload {

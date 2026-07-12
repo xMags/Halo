@@ -113,6 +113,8 @@ const settingsSchema = z.object({
       preferredSubtitleLang: z.string().max(8).optional(),
       videoFitMode: z.enum(['cover', 'contain']).optional(),
       subtitleScalePercent: z.number().int().min(50).max(200).optional(),
+      subtitleFontFamily: z.string().min(1).max(64).optional(),
+      playbackRate: z.number().min(0.25).max(4).optional(),
     })
     .passthrough(),
   updatedAt: z.number().int().positive(),
