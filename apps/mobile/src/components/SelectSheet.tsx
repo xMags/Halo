@@ -18,6 +18,8 @@ interface Props {
   onSelect: (key: string) => void
   onClose: () => void
   footer?: ReactNode
+  description?: string
+  presentation?: 'bottom' | 'side'
 }
 
 /**
@@ -29,11 +31,20 @@ interface Props {
  * absolute overlay always gets the screen's real dimensions. Render it as the
  * LAST sibling of a screen's root view (never inside a ScrollView).
  */
-export function SelectSheet({ visible, title, options, onSelect, onClose, footer }: Props) {
+export function SelectSheet({
+  visible,
+  title,
+  options,
+  onSelect,
+  onClose,
+  footer,
+  description,
+  presentation = 'bottom',
+}: Props) {
   const slide = useRef(new Animated.Value(0)).current
   // A concrete number: percentage maxHeight resolves against the wrapper,
   // whose height is undefined, so Yoga would ignore it entirely.
-  const { height: windowHeight } = useWindowDimensions()
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions()
 
   useEffect(() => {
     if (visible) {
@@ -44,15 +55,36 @@ export function SelectSheet({ visible, title, options, onSelect, onClose, footer
 
   if (!visible) return null
 
-  const translateY = slide.interpolate({ inputRange: [0, 1], outputRange: [80, 0] })
+  const translation = slide.interpolate({ inputRange: [0, 1], outputRange: [80, 0] })
+  const side = presentation === 'side'
 
   return (
     <View style={styles.overlay} pointerEvents="box-none">
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <Animated.View style={[styles.sheetWrap, { transform: [{ translateY }], opacity: slide }]}>
-        <BlurView intensity={40} tint="dark" style={[styles.sheet, { maxHeight: windowHeight * 0.7 }]}>
-          <View style={styles.grabber} />
-          <Text style={styles.title}>{title}</Text>
+      <Animated.View
+        style={[
+          side ? styles.sideWrap : styles.sheetWrap,
+          side
+            ? { width: Math.min(windowWidth * 0.48, 440), transform: [{ translateX: translation }] }
+            : { transform: [{ translateY: translation }] },
+          { opacity: slide },
+        ]}
+      >
+        <BlurView
+          intensity={44}
+          tint="dark"
+          style={[styles.sheet, side ? styles.sideSheet : { maxHeight: windowHeight * 0.7 }]}
+        >
+          {side ? null : <View style={styles.grabber} />}
+          <View style={styles.header}>
+            <View style={styles.headerText}>
+              <Text style={styles.title}>{title}</Text>
+              {description ? <Text style={styles.description}>{description}</Text> : null}
+            </View>
+            <Pressable style={styles.closeButton} onPress={onClose} hitSlop={8}>
+              <Ionicons name="close" size={20} color={colors.text} />
+            </Pressable>
+          </View>
           <FlatList
             data={options}
             keyExtractor={(o) => o.key}
@@ -75,7 +107,7 @@ export function SelectSheet({ visible, title, options, onSelect, onClose, footer
               </Pressable>
             )}
           />
-          {footer ? <View style={styles.footer}>{footer}</View> : null}
+          {footer ? <View style={[styles.footer, side && styles.sideFooter]}>{footer}</View> : null}
         </BlurView>
       </Animated.View>
     </View>
@@ -106,6 +138,12 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
+  sideWrap: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+  },
   sheet: {
     backgroundColor: colors.sheetTint,
     borderTopLeftRadius: radius.xl + 4,
@@ -116,6 +154,13 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl + spacing.sm,
     overflow: 'hidden',
   },
+  sideSheet: {
+    height: '100%',
+    borderTopRightRadius: 0,
+    borderBottomLeftRadius: radius.xl + 4,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    paddingBottom: spacing.md,
+  },
   grabber: {
     alignSelf: 'center',
     width: 38,
@@ -124,12 +169,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.25)',
     marginBottom: spacing.sm,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  headerText: { flex: 1 },
   title: {
     color: colors.text,
     fontSize: 18,
     fontWeight: '700',
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.xs,
+  },
+  description: { color: colors.textDim, fontSize: 11.5, marginTop: 2 },
+  closeButton: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   list: { flexGrow: 0, flexShrink: 1 },
   option: {
@@ -153,4 +212,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
   },
+  sideFooter: { paddingBottom: spacing.sm },
 })

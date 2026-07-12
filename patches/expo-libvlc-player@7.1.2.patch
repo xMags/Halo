@@ -14,10 +14,10 @@ index e1e196c7b5a260537dc9af88da0142a06ce2c5ef..1e826e95a0e68eccbec6ac40ff3f1881
                      view.rate = rate
                  }
 diff --git a/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt b/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt
-index 89b541de6e4dc0597cce00bbe363f8847f95da00..5a9074500c365678a9115267b91af995842a114d 100644
+index 89b541de6e4dc0597cce00bbe363f8847f95da00..6f1eeadc79b5d1a8e3efcdc5b3a9d8b9997e4c8e 100644
 --- a/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt
 +++ b/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt
-@@ -2,14 +2,15 @@ package expo.modules.libvlcplayer
+@@ -2,14 +2,16 @@ package expo.modules.libvlcplayer
 
  import android.content.Context
  import android.graphics.Bitmap
@@ -31,6 +31,7 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..5a9074500c365678a9115267b91af995
 +import android.view.SurfaceView
  import android.view.TextureView
 +import android.view.View
++import android.view.ViewStub
  import android.view.ViewGroup
  import expo.modules.kotlin.AppContext
  import expo.modules.kotlin.viewevent.EventDispatcher
@@ -43,8 +44,28 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..5a9074500c365678a9115267b91af995
 
  class LibVlcPlayerView(
      context: Context,
-@@ -111,6 +112,13 @@ class LibVlcPlayerView(
+@@ -105,17 +107,73 @@ class LibVlcPlayerView(
+     ) {
+         super.onSizeChanged(w, h, oldw, oldh)
 
++        layoutPlayerLayout(playerLayout)
++        layoutPlayerLayout(pictureLayout)
+         setContentFit(layout = playerLayout)
+         setContentFit(layout = pictureLayout)
+     }
+
++    override fun onLayout(
++        changed: Boolean,
++        left: Int,
++        top: Int,
++        right: Int,
++        bottom: Int,
++    ) {
++        super.onLayout(changed, left, top, right, bottom)
++        layoutPlayerLayout(playerLayout)
++        layoutPlayerLayout(pictureLayout)
++    }
++
      fun getTextureView(layout: VLCVideoLayout): TextureView? = layout.findViewById(org.videolan.R.id.texture_video)
 
 +    fun getVideoView(layout: VLCVideoLayout): View? =
@@ -54,10 +75,83 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..5a9074500c365678a9115267b91af995
 +            layout.findViewById(org.videolan.R.id.surface_video)
 +        }
 +
++    fun prepareSurfaceViews(layout: VLCVideoLayout) {
++        val videoView =
++            layout.findViewById<ViewStub>(org.videolan.R.id.surface_stub)?.inflate()
++                ?: layout.findViewById(org.videolan.R.id.surface_video)
++        val subtitleView =
++            layout.findViewById<ViewStub>(org.videolan.R.id.subtitles_surface_stub)?.inflate()
++                ?: layout.findViewById(org.videolan.R.id.surface_subtitles)
++
++        listOfNotNull(videoView, subtitleView).forEach { view ->
++            view.layoutParams =
++                view.layoutParams.apply {
++                    width = ViewGroup.LayoutParams.MATCH_PARENT
++                    height = ViewGroup.LayoutParams.MATCH_PARENT
++                }
++        }
++        layoutPlayerLayout(layout)
++    }
++
++    fun layoutPlayerLayout(layout: VLCVideoLayout) {
++        if (layout.parent !== this || width <= 0 || height <= 0) return
++
++        val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
++        val heightSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
++        layout.measure(widthSpec, heightSpec)
++        layout.layout(0, 0, width, height)
++    }
++
      fun addPlayerLayout(layout: VLCVideoLayout) {
-         val parent = playerLayout.parent as? ViewGroup
+-        val parent = playerLayout.parent as? ViewGroup
++        val parent = layout.parent as? ViewGroup
 
-@@ -272,8 +280,9 @@ class LibVlcPlayerView(
+         if (parent == null) {
+-            addView(layout)
++            addView(
++                layout,
++                ViewGroup.LayoutParams(
++                    ViewGroup.LayoutParams.MATCH_PARENT,
++                    ViewGroup.LayoutParams.MATCH_PARENT,
++                ),
++            )
++            layoutPlayerLayout(layout)
++            post { layoutPlayerLayout(layout) }
+         }
+     }
+
+@@ -132,9 +171,9 @@ class LibVlcPlayerView(
+         attachPlayer()
+     }
+
+     fun attachPlayer() {
+-        attachPlayerLayout(playerLayout)
+         addPlayerLayout(playerLayout)
++        attachPlayerLayout(playerLayout)
+     }
+
+     fun detachPlayer() {
+@@ -145,9 +203,10 @@ class LibVlcPlayerView(
+     fun attachPlayerLayout(layout: VLCVideoLayout) {
+         mediaPlayer?.let { player ->
+             val attached = player.getVLCVout().areViewsAttached()
+
+             if (!attached) {
++                prepareSurfaceViews(layout)
+                 player.attachViews(layout, DISPLAY_MANAGER, ENABLE_SUBTITLES, USE_TEXTURE_VIEW)
+             }
+         }
+     }
+@@ -180,7 +219,8 @@ class LibVlcPlayerView(
+         setDialogCallbacks(libVLC!!)
+
+         mediaPlayer = MediaPlayer(libVLC!!)
++        addPlayerLayout(playerLayout)
+         attachPlayerLayout(playerLayout)
+         setPlayerListener(mediaPlayer!!)
+         setupPlayer()
+
+@@ -272,8 +311,9 @@ class LibVlcPlayerView(
 
      fun setContentFit(layout: VLCVideoLayout) {
          post {
@@ -69,7 +163,7 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..5a9074500c365678a9115267b91af995
 
              val video = getVideoSize()
 
-@@ -287,41 +296,41 @@ class LibVlcPlayerView(
+@@ -287,41 +327,41 @@ class LibVlcPlayerView(
                  val viewAspect = viewWidth / viewHeight
                  val videoAspect = videoWidth / videoHeight
 
@@ -140,7 +234,7 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..5a9074500c365678a9115267b91af995
          }
      }
 
-@@ -330,6 +339,10 @@ class LibVlcPlayerView(
+@@ -330,6 +370,10 @@ class LibVlcPlayerView(
              mediaPlayer?.let { player ->
                  addPlayerSlaves(slaves)
 
@@ -151,7 +245,7 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..5a9074500c365678a9115267b91af995
                  if (scale != MediaPlayerConstants.DEFAULT_PLAYER_SCALE) {
                      player.setScale(scale.toFloat())
                  }
-@@ -456,6 +469,12 @@ class LibVlcPlayerView(
+@@ -456,6 +500,12 @@ class LibVlcPlayerView(
              setContentFit(layout = pictureLayout)
          }
 
@@ -164,7 +258,7 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..5a9074500c365678a9115267b91af995
      var rate: Double = MediaPlayerConstants.DEFAULT_PLAYER_RATE
          set(value) {
              field = value
-@@ -590,11 +609,14 @@ class LibVlcPlayerView(
+@@ -590,11 +640,14 @@ class LibVlcPlayerView(
 
      fun snapshot(path: String) {
          try {

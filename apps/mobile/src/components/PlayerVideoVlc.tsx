@@ -4,8 +4,6 @@ import { LibVlcPlayerView } from 'expo-libvlc-player'
 import type { LibVlcPlayerViewRef, MediaInfo, MediaTracks, Slave } from 'expo-libvlc-player'
 import type { PlayerTrack, PlayerVideoProps } from './PlayerVideo.types'
 
-const COVER_SUBTITLE_SAFE_MARGIN = 160
-
 export default function PlayerVideoVlc({
   ref,
   uri,
@@ -50,16 +48,12 @@ export default function PlayerVideoVlc({
   const slaves = sentSlaves.current
   const spuTrack = subtitleUri !== undefined ? slaveTrackIds.current.get(subtitleUri) : textTrack
   const tracks = useMemo(() => ({ audio: audioTrack, subtitle: spuTrack }), [audioTrack, spuTrack])
-  const subtitleMargin = fitMode === 'cover' ? COVER_SUBTITLE_SAFE_MARGIN : 0
-  const options = useMemo(
-    () => [`:sub-text-scale=${subtitleScalePercent}`, `:sub-margin=${subtitleMargin}`],
-    [subtitleMargin, subtitleScalePercent],
-  )
+  const options = useMemo(() => [`:sub-text-scale=${subtitleScalePercent}`], [subtitleScalePercent])
 
   const latestTracks = useRef<{ audio: PlayerTrack[]; text: PlayerTrack[] }>({ audio: [], text: [] })
   const progress = useRef({ position: 0, durationSec: 0, currentTimeSec: 0 })
   const errored = useRef(false)
-  const playbackConfigKey = `${fitMode}-${subtitleScalePercent}`
+  const playbackConfigKey = String(subtitleScalePercent)
   const previousPlaybackConfig = useRef(playbackConfigKey)
   const restartPosition = useRef<number | null>(null)
   const restarting = useRef(false)

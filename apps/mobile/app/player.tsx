@@ -575,20 +575,23 @@ export default function PlayerScreen() {
       <SelectSheet
         visible={subsSheetOpen}
         title="Subtitles"
+        description="Track, timing and appearance"
+        presentation="side"
         options={subtitleOptions}
         onSelect={onSubtitleSelect}
         onClose={() => setSubsSheetOpen(false)}
         footer={
           <View style={styles.subtitleTools}>
+            <Text style={styles.toolsHeading}>TIMING & APPEARANCE</Text>
             <View style={styles.toolRow}>
               <View>
                 <Text style={styles.toolLabel}>Subtitle sync</Text>
-                <Text style={styles.toolDetail}>{subtitleDelayMs > 0 ? '+' : ''}{subtitleDelayMs} ms</Text>
+                <Text style={styles.toolDetail}>Audio timing</Text>
               </View>
               <View style={styles.stepper}>
                 <ToolButton icon="remove" onPress={() => setSubtitleDelayMs((value) => Math.max(-5_000, value - 50))} />
                 <Pressable style={styles.resetButton} onPress={() => setSubtitleDelayMs(0)}>
-                  <Text style={styles.resetText}>Reset</Text>
+                  <Text style={styles.resetText}>{subtitleDelayMs > 0 ? '+' : ''}{subtitleDelayMs} ms</Text>
                 </Pressable>
                 <ToolButton icon="add" onPress={() => setSubtitleDelayMs((value) => Math.min(5_000, value + 50))} />
               </View>
@@ -596,7 +599,7 @@ export default function PlayerScreen() {
             <View style={styles.toolRow}>
               <View>
                 <Text style={styles.toolLabel}>Text size</Text>
-                <Text style={styles.toolDetail}>{subtitleScalePercent}%</Text>
+                <Text style={styles.toolDetail}>Caption scale</Text>
               </View>
               <View style={styles.scaleOptions}>
                 {SUBTITLE_SCALES.map((scale) => (
@@ -802,8 +805,19 @@ const styles = StyleSheet.create({
     minWidth: 44,
   },
   timeTotal: { color: 'rgba(255,255,255,0.7)', textAlign: 'right' },
-  subtitleTools: { gap: spacing.md, paddingBottom: spacing.xs },
-  toolRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.lg },
+  subtitleTools: { gap: spacing.sm, paddingBottom: spacing.xs },
+  toolsHeading: { color: colors.textDim, fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
+  toolRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.055)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
   toolLabel: { color: colors.text, fontSize: 14, fontWeight: '700' },
   toolDetail: { color: colors.textDim, fontSize: 12, marginTop: 2 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
@@ -815,8 +829,15 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: 'rgba(255,255,255,0.1)',
   },
-  resetButton: { paddingHorizontal: spacing.sm, paddingVertical: 8 },
-  resetText: { color: colors.textDim, fontSize: 12, fontWeight: '700' },
+  resetButton: {
+    minWidth: 66,
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  resetText: { color: colors.text, fontSize: 11.5, fontWeight: '700', fontVariant: ['tabular-nums'] },
   scaleOptions: { flexDirection: 'row', gap: spacing.xs },
   scaleButton: {
     minWidth: 42,
