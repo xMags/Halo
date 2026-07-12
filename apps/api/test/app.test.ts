@@ -175,6 +175,28 @@ describe('settings LWW', () => {
     expect(body.updatedAt).toBe(2000)
   })
 
+  it('round-trips validated player preferences', async () => {
+    const value = { videoFitMode: 'cover', subtitleScalePercent: 125 }
+    const write = await app.request('/settings', authed(token, { value, updatedAt: 3000 }))
+    expect(write.status).toBe(200)
+
+    const res = await app.request('/settings', authed(token))
+    expect(await res.json()).toEqual({ value, updatedAt: 3000 })
+  })
+
+  it('rejects invalid player preferences', async () => {
+    const invalidFit = await app.request(
+      '/settings',
+      authed(token, { value: { videoFitMode: 'stretch' }, updatedAt: 1000 }),
+    )
+    const invalidScale = await app.request(
+      '/settings',
+      authed(token, { value: { subtitleScalePercent: 250 }, updatedAt: 1001 }),
+    )
+    expect(invalidFit.status).toBe(400)
+    expect(invalidScale.status).toBe(400)
+  })
+
   it('preserves unknown fields from newer clients', async () => {
     await app.request('/settings', authed(token, { value: { futureSetting: 42 }, updatedAt: 1000 }))
     const res = await app.request('/settings', authed(token))

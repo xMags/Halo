@@ -1,27 +1,36 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BlurView } from 'expo-blur'
 import { LinearGradient } from 'expo-linear-gradient'
+import { NavigationBar } from 'expo-navigation-bar'
+import { setStatusBarHidden } from 'expo-status-bar'
 import * as FileSystem from 'expo-file-system/legacy'
+import LibVlcPlayerModule from 'expo-libvlc-player'
 import { languageLabel, languageMatches, type Subtitle, type WatchState } from '@halo/core'
 import { sortSubtitlesByPreference, useAddonSubtitles, useReportWatchState, useWatchStates } from '@/queries'
-import { useSettings } from '@/settings'
+import { useSettings, useUpdateSettings } from '@/settings'
 import { colors, radius, spacing } from '@/theme'
 import { SelectSheet, type SelectOption } from '@/components/SelectSheet'
+import { PlayerGestureLayer } from '@/components/PlayerGestureLayer'
 import PlayerVideo from '@/components/PlayerVideo'
 import type {
   PlayerLoadInfo,
   PlayerProgress,
   PlayerTrack,
   PlayerVideoHandle,
+  VideoFitMode,
 } from '@/components/PlayerVideo.types'
 
 const REPORT_INTERVAL_MS = 15_000
 const WATCHED_THRESHOLD = 0.9
+const CONTROLS_HIDE_DELAY_MS = 3_000
+const BUFFERING_MESSAGE_DELAY_MS = 5_000
+const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const
+const SUBTITLE_SCALES = [75, 100, 125, 150] as const
 
 export default function PlayerScreen() {
   const params = useLocalSearchParams<{
@@ -55,8 +64,126 @@ export default function PlayerScreen() {
   )
   const [audioSheetOpen, setAudioSheetOpen] = useState(false)
   const [subsSheetOpen, setSubsSheetOpen] = useState(false)
+  const [speedSheetOpen, setSpeedSheetOpen] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState(1)
+  const [fitMode, setFitMode] = useState<VideoFitMode>('cover')
+  const [subtitleDelayMs, setSubtitleDelayMs] = useState(0)
+  const [subtitleScalePercent, setSubtitleScalePercent] = useState(100)
+  const [buffering, setBuffering] = useState(false)
+  const [bufferingStalled, setBufferingStalled] = useState(false)
+  const [locked, setLocked] = useState(false)
+  const [unlockVisible, setUnlockVisible] = useState(false)
+  const [sliderActive, setSliderActive] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const controlsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const unlockHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const settings = useSettings()
+  const updateSettings = useUpdateSettings()
+
+  useEffect(() => {
+    if (settings.videoFitMode) setFitMode(settings.videoFitMode)
+    if (settings.subtitleScalePercent) setSubtitleScalePercent(settings.subtitleScalePercent)
+  }, [settings.subtitleScalePercent, settings.videoFitMode])
+
+  useEffect(() => {
+    setStatusBarHidden(true, 'fade')
+    if (Platform.OS === 'android') {
+      NavigationBar.setStyle('auto')
+      NavigationBar.setHidden(true)
+    }
+    return () => {
+      setStatusBarHidden(false, 'fade')
+      if (Platform.OS === 'android') NavigationBar.setHidden(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!buffering) {
+      setBufferingStalled(false)
+      return
+    }
+    const timer = setTimeout(() => setBufferingStalled(true), BUFFERING_MESSAGE_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [buffering])
+
+  const showNotice = useCallback((message: string) => {
+    if (noticeTimerRef.current !== null) clearTimeout(noticeTimerRef.current)
+    setNotice(message)
+    noticeTimerRef.current = setTimeout(() => {
+      noticeTimerRef.current = null
+      setNotice(null)
+    }, 1_200)
+  }, [])
+
+  useEffect(() => () => {
+    if (noticeTimerRef.current !== null) clearTimeout(noticeTimerRef.current)
+  }, [])
+
+  const cancelUnlockHide = useCallback(() => {
+    if (unlockHideTimerRef.current === null) return
+    clearTimeout(unlockHideTimerRef.current)
+    unlockHideTimerRef.current = null
+  }, [])
+
+  const revealUnlock = useCallback(() => {
+    cancelUnlockHide()
+    setUnlockVisible(true)
+    unlockHideTimerRef.current = setTimeout(() => {
+      unlockHideTimerRef.current = null
+      setUnlockVisible(false)
+    }, CONTROLS_HIDE_DELAY_MS)
+  }, [cancelUnlockHide])
+
+  useEffect(() => {
+    if (locked) revealUnlock()
+    else {
+      cancelUnlockHide()
+      setUnlockVisible(false)
+    }
+    return cancelUnlockHide
+  }, [cancelUnlockHide, locked, revealUnlock])
+
+  const cancelControlsHide = useCallback(() => {
+    if (controlsHideTimerRef.current === null) return
+    clearTimeout(controlsHideTimerRef.current)
+    controlsHideTimerRef.current = null
+  }, [])
+
+  const armControlsHide = useCallback(() => {
+    cancelControlsHide()
+    if (!loaded || paused || error || locked || sliderActive || audioSheetOpen || subsSheetOpen || speedSheetOpen) return
+    controlsHideTimerRef.current = setTimeout(() => {
+      controlsHideTimerRef.current = null
+      setControlsVisible(false)
+    }, CONTROLS_HIDE_DELAY_MS)
+  }, [audioSheetOpen, cancelControlsHide, error, loaded, locked, paused, sliderActive, speedSheetOpen, subsSheetOpen])
+
+  useEffect(() => {
+    if (controlsVisible) armControlsHide()
+    else cancelControlsHide()
+    return cancelControlsHide
+  }, [armControlsHide, cancelControlsHide, controlsVisible])
+
+  const toggleControls = useCallback(() => {
+    if (locked) return
+    if (controlsVisible) {
+      cancelControlsHide()
+      setControlsVisible(false)
+      return
+    }
+    setControlsVisible(true)
+    armControlsHide()
+  }, [armControlsHide, cancelControlsHide, controlsVisible, locked])
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active' || !loaded || paused || error) return
+      void playerRef.current?.startPictureInPicture().catch(() => undefined)
+    })
+    return () => subscription.remove()
+  }, [error, loaded, paused])
 
   // Local files hash from disk, remote streams via range requests — either way
   // the addon gets videoHash/videoSize for exact-match results.
@@ -218,13 +345,49 @@ export default function PlayerScreen() {
     if (durationSec === 0) return
     const fraction = Math.max(0, Math.min(1, position + deltaSec / durationSec))
     playerRef.current?.seek(fraction)
+    armControlsHide()
+  }
+
+  const applyFitMode = (mode: VideoFitMode, announce = true) => {
+    if (mode !== fitMode) {
+      setFitMode(mode)
+      updateSettings.mutate({ videoFitMode: mode })
+    }
+    if (announce) showNotice(mode === 'cover' ? 'Fill screen' : 'Fit to screen')
+    armControlsHide()
+  }
+
+  const toggleFitMode = () => applyFitMode(fitMode === 'cover' ? 'contain' : 'cover')
+
+  const selectSubtitleScale = (scale: number) => {
+    setSubtitleScalePercent(scale)
+    updateSettings.mutate({ subtitleScalePercent: scale })
+    showNotice(`Subtitle size ${scale}%`)
+  }
+
+  const enterPictureInPicture = () => {
+    void playerRef.current?.startPictureInPicture().catch(() => {
+      showNotice('Picture-in-Picture is unavailable')
+    })
+  }
+
+  const lockPlayer = () => {
+    cancelControlsHide()
+    setControlsVisible(false)
+    setLocked(true)
+  }
+
+  const unlockPlayer = () => {
+    setLocked(false)
+    setControlsVisible(true)
   }
 
   const hPad = Math.max(insets.left, insets.right, spacing.lg)
+  const pipSupported = LibVlcPlayerModule.isPictureInPictureSupported()
 
   return (
     <View style={styles.container}>
-      <Pressable style={styles.videoArea} onPress={() => setControlsVisible((v) => !v)}>
+      <View style={styles.videoArea}>
         <PlayerVideo
           ref={playerRef}
           // Remote stream URLs can carry raw spaces; both native players reject
@@ -234,21 +397,40 @@ export default function PlayerScreen() {
           // encoding could corrupt the path.
           uri={isLocal ? params.uri : encodeURI(params.uri)}
           paused={paused}
+          fitMode={fitMode}
+          playbackRate={playbackRate}
+          subtitleDelayMs={subtitleDelayMs}
+          subtitleScalePercent={subtitleScalePercent}
           audioTrack={audioTrack}
           textTrack={textTrack}
           subtitleUri={subtitleUri}
           onLoad={onLoad}
           onTracks={onTracks}
           onProgress={onProgress}
+          onBuffering={setBuffering}
           onError={() => setError(true)}
           onEnd={() => {
             reportNow()
             router.back()
           }}
         />
+        <PlayerGestureLayer
+          disabled={locked || audioSheetOpen || subsSheetOpen || speedSheetOpen || sliderActive}
+          onToggleControls={toggleControls}
+          onSeek={seekBy}
+          onFitModeChange={(mode) => applyFitMode(mode, false)}
+          onInteractionStart={cancelControlsHide}
+          onInteractionEnd={armControlsHide}
+        />
         {!loaded && !error ? (
           <View style={styles.overlayCenter}>
             <ActivityIndicator size="large" color={colors.accent} />
+          </View>
+        ) : null}
+        {loaded && buffering && !error ? (
+          <View style={styles.bufferingOverlay} pointerEvents="none">
+            <ActivityIndicator size="large" color={colors.accent} />
+            {bufferingStalled ? <Text style={styles.bufferingText}>Still loading this stream…</Text> : null}
           </View>
         ) : null}
         {error ? (
@@ -259,9 +441,30 @@ export default function PlayerScreen() {
             </Pressable>
           </View>
         ) : null}
-      </Pressable>
+      </View>
 
-      {controlsVisible && !error ? (
+      {notice ? (
+        <View style={styles.notice} pointerEvents="none">
+          <Text style={styles.noticeText}>{notice}</Text>
+        </View>
+      ) : null}
+
+      {locked ? (
+        <Pressable
+          accessibilityLabel="Show unlock control"
+          style={styles.lockedTouchSurface}
+          onPress={revealUnlock}
+        />
+      ) : null}
+
+      {locked && unlockVisible ? (
+        <Pressable style={[styles.unlockButton, { left: hPad }]} onPress={unlockPlayer} hitSlop={12}>
+          <Ionicons name="lock-closed" size={20} color={colors.text} />
+          <Text style={styles.unlockText}>Unlock controls</Text>
+        </Pressable>
+      ) : null}
+
+      {controlsVisible && !error && !locked ? (
         <View style={styles.controls} pointerEvents="box-none">
           <LinearGradient
             colors={['rgba(0,0,0,0.65)', 'rgba(0,0,0,0)']}
@@ -282,6 +485,20 @@ export default function PlayerScreen() {
               {params.title}
             </Text>
             <BlurView intensity={30} tint="dark" style={styles.trackPill}>
+              {pipSupported ? (
+                <Pressable onPress={enterPictureInPicture} hitSlop={8} style={styles.pillButton}>
+                  <Ionicons name="albums-outline" size={20} color={colors.text} />
+                </Pressable>
+              ) : null}
+              <View style={styles.pillDivider} />
+              <Pressable onPress={toggleFitMode} hitSlop={8} style={styles.pillButton}>
+                <Ionicons name={fitMode === 'cover' ? 'scan-outline' : 'contract-outline'} size={20} color={colors.text} />
+              </Pressable>
+              <View style={styles.pillDivider} />
+              <Pressable onPress={() => setSpeedSheetOpen(true)} hitSlop={8} style={styles.pillButton}>
+                <Text style={styles.rateLabel}>{playbackRate}×</Text>
+              </Pressable>
+              <View style={styles.pillDivider} />
               <Pressable
                 onPress={() => setAudioSheetOpen(true)}
                 hitSlop={8}
@@ -297,6 +514,10 @@ export default function PlayerScreen() {
               <View style={styles.pillDivider} />
               <Pressable onPress={() => setSubsSheetOpen(true)} hitSlop={8} style={styles.pillButton}>
                 <Ionicons name="chatbox-ellipses" size={20} color={colors.text} />
+              </Pressable>
+              <View style={styles.pillDivider} />
+              <Pressable onPress={lockPlayer} hitSlop={8} style={styles.pillButton}>
+                <Ionicons name="lock-open-outline" size={20} color={colors.text} />
               </Pressable>
             </BlurView>
           </View>
@@ -325,7 +546,15 @@ export default function PlayerScreen() {
               minimumTrackTintColor="#ffffff"
               maximumTrackTintColor="rgba(255,255,255,0.3)"
               thumbTintColor="#ffffff"
-              onSlidingComplete={(fraction) => playerRef.current?.seek(fraction)}
+              onSlidingStart={() => {
+                setSliderActive(true)
+                cancelControlsHide()
+              }}
+              onSlidingComplete={(fraction) => {
+                playerRef.current?.seek(fraction)
+                setSliderActive(false)
+                armControlsHide()
+              }}
             />
             <Text style={[styles.time, styles.timeTotal]}>{formatTime(durationSec)}</Text>
           </View>
@@ -349,8 +578,64 @@ export default function PlayerScreen() {
         options={subtitleOptions}
         onSelect={onSubtitleSelect}
         onClose={() => setSubsSheetOpen(false)}
+        footer={
+          <View style={styles.subtitleTools}>
+            <View style={styles.toolRow}>
+              <View>
+                <Text style={styles.toolLabel}>Subtitle sync</Text>
+                <Text style={styles.toolDetail}>{subtitleDelayMs > 0 ? '+' : ''}{subtitleDelayMs} ms</Text>
+              </View>
+              <View style={styles.stepper}>
+                <ToolButton icon="remove" onPress={() => setSubtitleDelayMs((value) => Math.max(-5_000, value - 50))} />
+                <Pressable style={styles.resetButton} onPress={() => setSubtitleDelayMs(0)}>
+                  <Text style={styles.resetText}>Reset</Text>
+                </Pressable>
+                <ToolButton icon="add" onPress={() => setSubtitleDelayMs((value) => Math.min(5_000, value + 50))} />
+              </View>
+            </View>
+            <View style={styles.toolRow}>
+              <View>
+                <Text style={styles.toolLabel}>Text size</Text>
+                <Text style={styles.toolDetail}>{subtitleScalePercent}%</Text>
+              </View>
+              <View style={styles.scaleOptions}>
+                {SUBTITLE_SCALES.map((scale) => (
+                  <Pressable
+                    key={scale}
+                    style={[styles.scaleButton, scale === subtitleScalePercent && styles.scaleButtonSelected]}
+                    onPress={() => selectSubtitleScale(scale)}
+                  >
+                    <Text style={[styles.scaleText, scale === subtitleScalePercent && styles.scaleTextSelected]}>{scale}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          </View>
+        }
+      />
+      <SelectSheet
+        visible={speedSheetOpen}
+        title="Playback speed"
+        options={PLAYBACK_RATES.map((rate) => ({
+          key: String(rate),
+          label: `${rate}×`,
+          selected: playbackRate === rate,
+        }))}
+        onSelect={(key) => {
+          setPlaybackRate(Number(key))
+          showNotice(`${key}× speed`)
+        }}
+        onClose={() => setSpeedSheetOpen(false)}
       />
     </View>
+  )
+}
+
+function ToolButton({ icon, onPress }: { icon: 'add' | 'remove'; onPress: () => void }) {
+  return (
+    <Pressable style={styles.toolButton} onPress={onPress} hitSlop={6}>
+      <Ionicons name={icon} size={18} color={colors.text} />
+    </Pressable>
   )
 }
 
@@ -387,6 +672,58 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.md,
   },
+  bufferingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  bufferingText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  notice: {
+    position: 'absolute',
+    top: '18%',
+    alignSelf: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(5,7,12,0.82)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  noticeText: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  unlockButton: {
+    position: 'absolute',
+    top: '46%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(5,7,12,0.78)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  lockedTouchSurface: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  unlockText: { color: colors.text, fontSize: 13, fontWeight: '700' },
   errorText: {
     color: colors.text,
     fontSize: 15,
@@ -432,6 +769,7 @@ const styles = StyleSheet.create({
   },
   pillButton: { paddingVertical: 8, paddingHorizontal: 14 },
   pillDivider: { width: StyleSheet.hairlineWidth, height: 18, backgroundColor: 'rgba(255,255,255,0.18)' },
+  rateLabel: { color: colors.text, fontSize: 12, fontWeight: '800', minWidth: 25, textAlign: 'center' },
   centerControls: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -464,4 +802,31 @@ const styles = StyleSheet.create({
     minWidth: 44,
   },
   timeTotal: { color: 'rgba(255,255,255,0.7)', textAlign: 'right' },
+  subtitleTools: { gap: spacing.md, paddingBottom: spacing.xs },
+  toolRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.lg },
+  toolLabel: { color: colors.text, fontSize: 14, fontWeight: '700' },
+  toolDetail: { color: colors.textDim, fontSize: 12, marginTop: 2 },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  toolButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  resetButton: { paddingHorizontal: spacing.sm, paddingVertical: 8 },
+  resetText: { color: colors.textDim, fontSize: 12, fontWeight: '700' },
+  scaleOptions: { flexDirection: 'row', gap: spacing.xs },
+  scaleButton: {
+    minWidth: 42,
+    alignItems: 'center',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  scaleButtonSelected: { backgroundColor: colors.accent },
+  scaleText: { color: colors.textDim, fontSize: 12, fontWeight: '700' },
+  scaleTextSelected: { color: colors.onPrimary },
 })

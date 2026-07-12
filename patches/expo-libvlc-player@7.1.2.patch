@@ -1,0 +1,269 @@
+diff --git a/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt b/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt
+index e1e196c7b5a260537dc9af88da0142a06ce2c5ef..1e826e95a0e68eccbec6ac40ff3f18816a918288 100644
+--- a/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt
++++ b/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt
+@@ -90,6 +90,10 @@ class LibVlcPlayerModule : Module() {
+                     view.contentFit = contentFit
+                 }
+
++                Prop("subtitleDelayMs", 0) { view: LibVlcPlayerView, subtitleDelayMs: Int ->
++                    view.subtitleDelayMs = subtitleDelayMs
++                }
++
+                 Prop("rate", MediaPlayerConstants.DEFAULT_PLAYER_RATE) { view: LibVlcPlayerView, rate: Double ->
+                     view.rate = rate
+                 }
+diff --git a/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt b/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt
+index 89b541de6e4dc0597cce00bbe363f8847f95da00..5a9074500c365678a9115267b91af995842a114d 100644
+--- a/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt
++++ b/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt
+@@ -2,14 +2,15 @@ package expo.modules.libvlcplayer
+
+ import android.content.Context
+ import android.graphics.Bitmap
+-import android.graphics.Matrix
+ import android.net.Uri
+ import android.os.Handler
+ import android.os.Looper
+ import android.util.Size
+ import android.view.PixelCopy
+ import android.view.Surface
++import android.view.SurfaceView
+ import android.view.TextureView
++import android.view.View
+ import android.view.ViewGroup
+ import expo.modules.kotlin.AppContext
+ import expo.modules.kotlin.viewevent.EventDispatcher
+@@ -47,7 +48,7 @@ import org.videolan.libvlc.Dialog as VLCDialog
+
+ private val DISPLAY_MANAGER: DisplayManager? = null
+ private val ENABLE_SUBTITLES: Boolean = true
+-private val USE_TEXTURE_VIEW: Boolean = true
++private val USE_TEXTURE_VIEW: Boolean = false
+
+ class LibVlcPlayerView(
+     context: Context,
+@@ -111,6 +112,13 @@ class LibVlcPlayerView(
+
+     fun getTextureView(layout: VLCVideoLayout): TextureView? = layout.findViewById(org.videolan.R.id.texture_video)
+
++    fun getVideoView(layout: VLCVideoLayout): View? =
++        if (USE_TEXTURE_VIEW) {
++            getTextureView(layout)
++        } else {
++            layout.findViewById(org.videolan.R.id.surface_video)
++        }
++
+     fun addPlayerLayout(layout: VLCVideoLayout) {
+         val parent = playerLayout.parent as? ViewGroup
+
+@@ -272,8 +280,9 @@ class LibVlcPlayerView(
+
+     fun setContentFit(layout: VLCVideoLayout) {
+         post {
+-            val view = getTextureView(layout) ?: return@post
+-            val matrix = Matrix()
++            val view = getVideoView(layout) ?: return@post
++            var scaleX = 1f
++            var scaleY = 1f
+
+             val video = getVideoSize()
+
+@@ -287,41 +296,41 @@ class LibVlcPlayerView(
+                 val viewAspect = viewWidth / viewHeight
+                 val videoAspect = videoWidth / videoHeight
+
+-                val pivotX = viewWidth / 2f
+-                val pivotY = viewHeight / 2f
+-
+-                when (contentFit) {
+-                    VideoContentFit.CONTAIN -> {
+-                        // No scaling required
+-                    }
+-
+-                    VideoContentFit.COVER -> {
+-                        val scale =
+-                            if (videoAspect > viewAspect) {
+-                                videoAspect / viewAspect
+-                            } else {
+-                                viewAspect / videoAspect
+-                            }
+-
+-                        matrix.setScale(scale, scale, pivotX, pivotY)
++                if (USE_TEXTURE_VIEW) {
++                    when (contentFit) {
++                        VideoContentFit.CONTAIN -> Unit
++                        VideoContentFit.COVER -> {
++                            val scale =
++                                if (videoAspect > viewAspect) videoAspect / viewAspect else viewAspect / videoAspect
++                            scaleX = scale
++                            scaleY = scale
++                        }
++                        VideoContentFit.FILL -> {
++                            if (videoAspect > viewAspect) scaleY = videoAspect / viewAspect
++                            else scaleX = viewAspect / videoAspect
++                        }
+                     }
+-
+-                    VideoContentFit.FILL -> {
+-                        var scaleX = 1f
+-                        var scaleY = 1f
+-
+-                        if (videoAspect > viewAspect) {
+-                            scaleY = videoAspect / viewAspect
+-                        } else {
+-                            scaleX = viewAspect / videoAspect
++                } else {
++                    // SurfaceView fills its bounds before transforms are applied. Compensate
++                    // one axis so contain and cover preserve the source aspect ratio.
++                    when (contentFit) {
++                        VideoContentFit.CONTAIN -> {
++                            if (videoAspect > viewAspect) scaleY = viewAspect / videoAspect
++                            else scaleX = videoAspect / viewAspect
+                         }
+-
+-                        matrix.setScale(scaleX, scaleY, pivotX, pivotY)
++                        VideoContentFit.COVER -> {
++                            if (videoAspect > viewAspect) scaleX = videoAspect / viewAspect
++                            else scaleY = viewAspect / videoAspect
++                        }
++                        VideoContentFit.FILL -> Unit
+                     }
+                 }
+             }
+
+-            view.setTransform(matrix)
++            view.pivotX = view.width / 2f
++            view.pivotY = view.height / 2f
++            view.scaleX = scaleX
++            view.scaleY = scaleY
+         }
+     }
+
+@@ -330,6 +339,10 @@ class LibVlcPlayerView(
+             mediaPlayer?.let { player ->
+                 addPlayerSlaves(slaves)
+
++                if (subtitleDelayMs != 0) {
++                    player.setSpuDelay(subtitleDelayMs.toLong() * 1000L)
++                }
++
+                 if (scale != MediaPlayerConstants.DEFAULT_PLAYER_SCALE) {
+                     player.setScale(scale.toFloat())
+                 }
+@@ -456,6 +469,12 @@ class LibVlcPlayerView(
+             setContentFit(layout = pictureLayout)
+         }
+
++    var subtitleDelayMs: Int = 0
++        set(value) {
++            field = value
++            mediaPlayer?.setSpuDelay(value.toLong() * 1000L)
++        }
++
+     var rate: Double = MediaPlayerConstants.DEFAULT_PLAYER_RATE
+         set(value) {
+             field = value
+@@ -590,11 +609,14 @@ class LibVlcPlayerView(
+
+     fun snapshot(path: String) {
+         try {
+-            val view = getTextureView(playerLayout) ?: throw Exception()
+-
+             if (!hasVideoSize) throw Exception()
+
+-            val surface = Surface(view.surfaceTexture)
++            val textureView = getTextureView(playerLayout)
++            val surfaceView = playerLayout.findViewById<SurfaceView>(org.videolan.R.id.surface_video)
++            val surface =
++                textureView?.surfaceTexture?.let(::Surface)
++                    ?: surfaceView?.holder?.surface
++                    ?: throw Exception()
+             val video = getVideoSize()
+             val bitmap = Bitmap.createBitmap(video.width, video.height, Bitmap.Config.ARGB_8888)
+
+diff --git a/build/LibVlcPlayer.types.d.ts b/build/LibVlcPlayer.types.d.ts
+index 1c74fec288ed6219cf46b64d8c082c58911b44d1..27e506b3375bad9c4930d80e4b725d9a9145577f 100644
+--- a/build/LibVlcPlayer.types.d.ts
++++ b/build/LibVlcPlayer.types.d.ts
+@@ -225,6 +225,7 @@ export interface LibVlcPlayerViewNativeProps extends ViewProps {
+     scale?: number;
+     aspectRatio?: VideoAspectRatio;
+     contentFit?: VideoContentFit;
++    subtitleDelayMs?: number;
+     rate?: number;
+     time?: number;
+     volume?: number;
+@@ -357,6 +358,8 @@ export interface LibVlcPlayerViewProps extends ViewProps {
+      * @default "contain"
+      */
+     contentFit?: VideoContentFit;
++    /** Positive values display subtitles later; negative values display them earlier. */
++    subtitleDelayMs?: number;
+     /**
+      * Sets the player rate. Must be a number equal or greater than `1`
+      *
+diff --git a/ios/LibVlcPlayerModule.swift b/ios/LibVlcPlayerModule.swift
+index b6d2c9e434a0e5ac41d767eb7501f22725b35cd5..9c7385dbefe0f72f31918a3a5e5a3cebb3132da4 100644
+--- a/ios/LibVlcPlayerModule.swift
++++ b/ios/LibVlcPlayerModule.swift
+@@ -71,6 +71,10 @@ public class LibVlcPlayerModule: Module {
+                 view.contentFit = contentFit
+             }
+
++            Prop("subtitleDelayMs", 0) { (view: LibVlcPlayerView, subtitleDelayMs: Int) in
++                view.subtitleDelayMs = subtitleDelayMs
++            }
++
+             Prop("rate", MediaPlayerConstants.defaultPlayerRate) { (view: LibVlcPlayerView, rate: Double) in
+                 view.rate = rate
+             }
+diff --git a/ios/LibVlcPlayerView.swift b/ios/LibVlcPlayerView.swift
+index 59598e9bc514a17bc9f595c56d1fc230e0f438ce..c75802e907e20e6da47e01e656969db72b53bab7 100644
+--- a/ios/LibVlcPlayerView.swift
++++ b/ios/LibVlcPlayerView.swift
+@@ -18,6 +18,12 @@ class LibVlcPlayerView: ExpoView {
+     var firstPlay: Bool = true
+     private var shouldInit: Bool = true
+
++    var subtitleDelayMs: Int = 0 {
++        didSet {
++            mediaPlayer?.currentVideoSubTitleDelay = subtitleDelayMs * 1000
++        }
++    }
++
+     let onBuffering = EventDispatcher()
+     let onPlaying = EventDispatcher()
+     let onPaused = EventDispatcher()
+@@ -204,6 +210,10 @@ class LibVlcPlayerView: ExpoView {
+             if let player = mediaPlayer {
+                 addPlayerSlaves(slaves)
+
++                if subtitleDelayMs != 0 {
++                    player.currentVideoSubTitleDelay = subtitleDelayMs * 1000
++                }
++
+                 if scale != MediaPlayerConstants.defaultPlayerScale {
+                     player.scaleFactor = Float(scale)
+                 }
+diff --git a/src/LibVlcPlayer.types.ts b/src/LibVlcPlayer.types.ts
+index 8c1e33b0c22610ca8c85947240710ad0c500f5c9..38b5588f331b93113cd6b75ed986685c690f21dc 100644
+--- a/src/LibVlcPlayer.types.ts
++++ b/src/LibVlcPlayer.types.ts
+@@ -265,6 +265,7 @@ export interface LibVlcPlayerViewNativeProps extends ViewProps {
+   scale?: number;
+   aspectRatio?: VideoAspectRatio;
+   contentFit?: VideoContentFit;
++  subtitleDelayMs?: number;
+   rate?: number;
+   time?: number;
+   volume?: number;
+@@ -398,6 +399,8 @@ export interface LibVlcPlayerViewProps extends ViewProps {
+    * @default "contain"
+    */
+   contentFit?: VideoContentFit;
++  /** Delays subtitles by the given milliseconds; negative values show them earlier. */
++  subtitleDelayMs?: number;
+   /**
+    * Sets the player rate. Must be a number equal or greater than `1`
+    *

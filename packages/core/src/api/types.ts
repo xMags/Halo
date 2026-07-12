@@ -39,6 +39,10 @@ export interface UserSettings {
   preferredAudioLang?: string
   /** ISO 639-2 code auto-applied for subtitles; unset = off by default. */
   preferredSubtitleLang?: string
+  /** Player framing preference; cover crops proportionally, contain preserves the full frame. */
+  videoFitMode?: 'cover' | 'contain'
+  /** VLC subtitle text scale percentage. */
+  subtitleScalePercent?: number
 }
 
 export interface SettingsPayload {

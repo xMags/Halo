@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useRef } from 'react'
 import { Animated, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { BlurView } from 'expo-blur'
@@ -17,6 +17,7 @@ interface Props {
   options: SelectOption[]
   onSelect: (key: string) => void
   onClose: () => void
+  footer?: ReactNode
 }
 
 /**
@@ -28,7 +29,7 @@ interface Props {
  * absolute overlay always gets the screen's real dimensions. Render it as the
  * LAST sibling of a screen's root view (never inside a ScrollView).
  */
-export function SelectSheet({ visible, title, options, onSelect, onClose }: Props) {
+export function SelectSheet({ visible, title, options, onSelect, onClose, footer }: Props) {
   const slide = useRef(new Animated.Value(0)).current
   // A concrete number: percentage maxHeight resolves against the wrapper,
   // whose height is undefined, so Yoga would ignore it entirely.
@@ -74,6 +75,7 @@ export function SelectSheet({ visible, title, options, onSelect, onClose }: Prop
               </Pressable>
             )}
           />
+          {footer ? <View style={styles.footer}>{footer}</View> : null}
         </BlurView>
       </Animated.View>
     </View>
@@ -145,4 +147,10 @@ const styles = StyleSheet.create({
   label: { color: 'rgba(255,255,255,0.9)', fontSize: 15.5, fontWeight: '500' },
   labelSelected: { color: '#fff', fontWeight: '700' },
   detail: { color: 'rgba(255,255,255,0.45)', fontSize: 12, marginTop: 1 },
+  footer: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+  },
 })

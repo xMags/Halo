@@ -21,21 +21,26 @@ export interface PlayerProgress {
 export interface PlayerVideoHandle {
   /** Seek to a fraction of the media duration (0..1). */
   seek(fraction: number): void
+  startPictureInPicture(): Promise<void>
 }
+
+export type VideoFitMode = 'cover' | 'contain'
 
 /**
  * Platform-neutral contract for the VLC-backed video surface.
- * iOS renders via react-native-vlc-media-player (VLCKit), Android via
- * expo-libvlc-player (libvlc-all) — see PlayerVideo.ios.tsx /
- * PlayerVideo.android.tsx. All times are seconds and track lists contain
- * real tracks only; each implementation owns its library's unit and
- * sentinel-track quirks.
+ * Both platforms render through expo-libvlc-player, backed by VLCKit on iOS
+ * and libvlc-all on Android. All times are seconds and track lists contain
+ * real tracks only.
  */
 export interface PlayerVideoProps {
   ref?: Ref<PlayerVideoHandle>
   /** Percent-encoded stream URL or local file:// URI. */
   uri: string
   paused: boolean
+  fitMode: VideoFitMode
+  playbackRate: number
+  subtitleDelayMs: number
+  subtitleScalePercent: number
   /** Embedded audio track id; `undefined` keeps the player default. */
   audioTrack?: number
   /** Embedded subtitle track id; `-1` disables, `undefined` keeps default. */
@@ -47,6 +52,7 @@ export interface PlayerVideoProps {
   /** Fires whenever the track lists change — network streams add tracks late. */
   onTracks(audioTracks: PlayerTrack[], textTracks: PlayerTrack[]): void
   onProgress(progress: PlayerProgress): void
+  onBuffering(buffering: boolean): void
   onError(): void
   onEnd(): void
 }
