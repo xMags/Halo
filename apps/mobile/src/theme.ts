@@ -33,6 +33,8 @@ export const colors = {
   fieldFill: 'rgba(255,255,255,0.09)',
   tabBarTint: 'rgba(15,17,23,0.72)',
   sheetTint: 'rgba(20,22,30,0.72)',
+  /** Near-black fill for floating pills/HUDs over video (notices, unlock, gesture HUD). */
+  overlayPill: 'rgba(5,7,12,0.82)',
 
   // Muted brights for metadata (ratings, etc.).
   gold: '#ffd479',

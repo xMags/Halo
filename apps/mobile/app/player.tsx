@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -12,7 +12,8 @@ import * as FileSystem from 'expo-file-system/legacy'
 import LibVlcPlayerModule from 'expo-libvlc-player'
 import { languageLabel, languageMatches, type Subtitle, type WatchState } from '@halo/core'
 import { sortSubtitlesByPreference, useAddonSubtitles, useReportWatchState, useWatchStates } from '@/queries'
-import { useSettings, useUpdateSettings } from '@/settings'
+import { useSettings, useSettingsLoaded, useUpdateSettings } from '@/settings'
+import { clamp01 } from '@/format'
 import { colors, radius, spacing } from '@/theme'
 import { SelectSheet, type SelectOption } from '@/components/SelectSheet'
 import { PlayerGestureLayer } from '@/components/PlayerGestureLayer'
@@ -28,9 +29,34 @@ import type {
 const REPORT_INTERVAL_MS = 15_000
 const WATCHED_THRESHOLD = 0.9
 const CONTROLS_HIDE_DELAY_MS = 3_000
+const NOTICE_HIDE_DELAY_MS = 1_200
 const BUFFERING_MESSAGE_DELAY_MS = 5_000
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const
 const SUBTITLE_SCALES = [75, 100, 125, 150] as const
+
+// Device PiP support never changes at runtime; ask the native module once.
+const PIP_SUPPORTED = LibVlcPlayerModule.isPictureInPictureSupported()
+
+/**
+ * VLC's `:freetype-font` resolves against the platform font provider, so the
+ * choices are platform family names. `family: undefined` = platform default
+ * (sans-serif-condensed on Android, VLC's own default on iOS).
+ */
+const SUBTITLE_FONTS: ReadonlyArray<{ label: string; family?: string }> =
+  Platform.OS === 'ios'
+    ? [
+        { label: 'Default' },
+        { label: 'Helvetica', family: 'Helvetica Neue' },
+        { label: 'Avenir', family: 'Avenir Next' },
+        { label: 'Georgia', family: 'Georgia' },
+        { label: 'Menlo', family: 'Menlo' },
+      ]
+    : [
+        { label: 'Default' },
+        { label: 'Sans', family: 'sans-serif' },
+        { label: 'Serif', family: 'serif' },
+        { label: 'Mono', family: 'monospace' },
+      ]
 
 export default function PlayerScreen() {
   const params = useLocalSearchParams<{
@@ -65,27 +91,26 @@ export default function PlayerScreen() {
   const [audioSheetOpen, setAudioSheetOpen] = useState(false)
   const [subsSheetOpen, setSubsSheetOpen] = useState(false)
   const [speedSheetOpen, setSpeedSheetOpen] = useState(false)
-  const [playbackRate, setPlaybackRate] = useState(1)
-  const [fitMode, setFitMode] = useState<VideoFitMode>('cover')
   const [subtitleDelayMs, setSubtitleDelayMs] = useState(0)
-  const [subtitleScalePercent, setSubtitleScalePercent] = useState(100)
   const [buffering, setBuffering] = useState(false)
   const [bufferingStalled, setBufferingStalled] = useState(false)
   const [locked, setLocked] = useState(false)
   const [unlockVisible, setUnlockVisible] = useState(false)
   const [sliderActive, setSliderActive] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
-  const controlsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const unlockHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Persisted player preferences read straight from settings — the optimistic
+  // cache write in useUpdateSettings makes changes apply instantly, and there
+  // is no local mirror for a background refetch to fight with. The player
+  // mounts only after settings settle (subtitle scale/font are creation-time
+  // VLC options; hydrating late would rebuild the native player mid-stream).
   const settings = useSettings()
+  const settingsLoaded = useSettingsLoaded()
   const updateSettings = useUpdateSettings()
-
-  useEffect(() => {
-    if (settings.videoFitMode) setFitMode(settings.videoFitMode)
-    if (settings.subtitleScalePercent) setSubtitleScalePercent(settings.subtitleScalePercent)
-  }, [settings.subtitleScalePercent, settings.videoFitMode])
+  const fitMode: VideoFitMode = settings.videoFitMode ?? 'contain'
+  const subtitleScalePercent = settings.subtitleScalePercent ?? 100
+  const subtitleFontFamily = settings.subtitleFontFamily
+  const playbackRate = settings.playbackRate ?? 1
 
   useEffect(() => {
     setStatusBarHidden(true, 'fade')
@@ -108,82 +133,58 @@ export default function PlayerScreen() {
     return () => clearTimeout(timer)
   }, [buffering])
 
-  const showNotice = useCallback((message: string) => {
-    if (noticeTimerRef.current !== null) clearTimeout(noticeTimerRef.current)
-    setNotice(message)
-    noticeTimerRef.current = setTimeout(() => {
-      noticeTimerRef.current = null
-      setNotice(null)
-    }, 1_200)
-  }, [])
+  const hideNotice = useCallback(() => setNotice(null), [])
+  const noticeTimer = useHideTimer(NOTICE_HIDE_DELAY_MS, hideNotice)
+  const showNotice = useCallback(
+    (message: string) => {
+      setNotice(message)
+      noticeTimer.arm()
+    },
+    [noticeTimer],
+  )
 
-  useEffect(() => () => {
-    if (noticeTimerRef.current !== null) clearTimeout(noticeTimerRef.current)
-  }, [])
-
-  const cancelUnlockHide = useCallback(() => {
-    if (unlockHideTimerRef.current === null) return
-    clearTimeout(unlockHideTimerRef.current)
-    unlockHideTimerRef.current = null
-  }, [])
-
+  const hideUnlock = useCallback(() => setUnlockVisible(false), [])
+  const unlockTimer = useHideTimer(CONTROLS_HIDE_DELAY_MS, hideUnlock)
   const revealUnlock = useCallback(() => {
-    cancelUnlockHide()
     setUnlockVisible(true)
-    unlockHideTimerRef.current = setTimeout(() => {
-      unlockHideTimerRef.current = null
-      setUnlockVisible(false)
-    }, CONTROLS_HIDE_DELAY_MS)
-  }, [cancelUnlockHide])
+    unlockTimer.arm()
+  }, [unlockTimer])
 
   useEffect(() => {
     if (locked) revealUnlock()
     else {
-      cancelUnlockHide()
+      unlockTimer.cancel()
       setUnlockVisible(false)
     }
-    return cancelUnlockHide
-  }, [cancelUnlockHide, locked, revealUnlock])
+    return unlockTimer.cancel
+  }, [locked, revealUnlock, unlockTimer])
 
-  const cancelControlsHide = useCallback(() => {
-    if (controlsHideTimerRef.current === null) return
-    clearTimeout(controlsHideTimerRef.current)
-    controlsHideTimerRef.current = null
-  }, [])
+  const hideControls = useCallback(() => setControlsVisible(false), [])
+  const controlsTimer = useHideTimer(CONTROLS_HIDE_DELAY_MS, hideControls)
+  const cancelControlsHide = controlsTimer.cancel
 
   const armControlsHide = useCallback(() => {
-    cancelControlsHide()
+    controlsTimer.cancel()
     if (!loaded || paused || error || locked || sliderActive || audioSheetOpen || subsSheetOpen || speedSheetOpen) return
-    controlsHideTimerRef.current = setTimeout(() => {
-      controlsHideTimerRef.current = null
-      setControlsVisible(false)
-    }, CONTROLS_HIDE_DELAY_MS)
-  }, [audioSheetOpen, cancelControlsHide, error, loaded, locked, paused, sliderActive, speedSheetOpen, subsSheetOpen])
+    controlsTimer.arm()
+  }, [audioSheetOpen, controlsTimer, error, loaded, locked, paused, sliderActive, speedSheetOpen, subsSheetOpen])
 
   useEffect(() => {
     if (controlsVisible) armControlsHide()
-    else cancelControlsHide()
-    return cancelControlsHide
-  }, [armControlsHide, cancelControlsHide, controlsVisible])
+    else controlsTimer.cancel()
+    return controlsTimer.cancel
+  }, [armControlsHide, controlsTimer, controlsVisible])
 
   const toggleControls = useCallback(() => {
     if (locked) return
     if (controlsVisible) {
-      cancelControlsHide()
+      controlsTimer.cancel()
       setControlsVisible(false)
       return
     }
     setControlsVisible(true)
     armControlsHide()
-  }, [armControlsHide, cancelControlsHide, controlsVisible, locked])
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active' || !loaded || paused || error) return
-      void playerRef.current?.startPictureInPicture().catch(() => undefined)
-    })
-    return () => subscription.remove()
-  }, [error, loaded, paused])
+  }, [armControlsHide, controlsTimer, controlsVisible, locked])
 
   // Local files hash from disk, remote streams via range requests — either way
   // the addon gets videoHash/videoSize for exact-match results.
@@ -343,16 +344,13 @@ export default function PlayerScreen() {
 
   const seekBy = (deltaSec: number) => {
     if (durationSec === 0) return
-    const fraction = Math.max(0, Math.min(1, position + deltaSec / durationSec))
+    const fraction = clamp01(position + deltaSec / durationSec)
     playerRef.current?.seek(fraction)
     armControlsHide()
   }
 
   const applyFitMode = (mode: VideoFitMode, announce = true) => {
-    if (mode !== fitMode) {
-      setFitMode(mode)
-      updateSettings.mutate({ videoFitMode: mode })
-    }
+    if (mode !== fitMode) updateSettings.mutate({ videoFitMode: mode })
     if (announce) showNotice(mode === 'cover' ? 'Fill screen' : 'Fit to screen')
     armControlsHide()
   }
@@ -360,9 +358,14 @@ export default function PlayerScreen() {
   const toggleFitMode = () => applyFitMode(fitMode === 'cover' ? 'contain' : 'cover')
 
   const selectSubtitleScale = (scale: number) => {
-    setSubtitleScalePercent(scale)
     updateSettings.mutate({ subtitleScalePercent: scale })
     showNotice(`Subtitle size ${scale}%`)
+  }
+
+  const selectSubtitleFont = (font: { label: string; family?: string }) => {
+    // undefined clears the preference (back to the platform default).
+    updateSettings.mutate({ subtitleFontFamily: font.family })
+    showNotice(`Subtitle font: ${font.label}`)
   }
 
   const enterPictureInPicture = () => {
@@ -383,37 +386,46 @@ export default function PlayerScreen() {
   }
 
   const hPad = Math.max(insets.left, insets.right, spacing.lg)
-  const pipSupported = LibVlcPlayerModule.isPictureInPictureSupported()
 
   return (
     <View style={styles.container}>
       <View style={styles.videoArea}>
-        <PlayerVideo
-          ref={playerRef}
-          // Remote stream URLs can carry raw spaces; both native players reject
-          // those (Android validates with java.net.URI, iOS VLCKit is lenient
-          // but Android libVLC is not), so encodeURI them. Local file:// paths
-          // are passed untouched — they are already valid/sanitized, and
-          // encoding could corrupt the path.
-          uri={isLocal ? params.uri : encodeURI(params.uri)}
-          paused={paused}
-          fitMode={fitMode}
-          playbackRate={playbackRate}
-          subtitleDelayMs={subtitleDelayMs}
-          subtitleScalePercent={subtitleScalePercent}
-          audioTrack={audioTrack}
-          textTrack={textTrack}
-          subtitleUri={subtitleUri}
-          onLoad={onLoad}
-          onTracks={onTracks}
-          onProgress={onProgress}
-          onBuffering={setBuffering}
-          onError={() => setError(true)}
-          onEnd={() => {
-            reportNow()
-            router.back()
-          }}
-        />
+        {settingsLoaded ? (
+          <PlayerVideo
+            ref={playerRef}
+            // Remote stream URLs can carry raw spaces; both native players reject
+            // those (Android validates with java.net.URI, iOS VLCKit is lenient
+            // but Android libVLC is not), so encodeURI them. Local file:// paths
+            // are passed untouched — they are already valid/sanitized, and
+            // encoding could corrupt the path.
+            uri={isLocal ? params.uri : encodeURI(params.uri)}
+            paused={paused}
+            fitMode={fitMode}
+            playbackRate={playbackRate}
+            subtitleDelayMs={subtitleDelayMs}
+            subtitleScalePercent={subtitleScalePercent}
+            subtitleFontFamily={subtitleFontFamily}
+            audioTrack={audioTrack}
+            textTrack={textTrack}
+            subtitleUri={subtitleUri}
+            onLoad={onLoad}
+            onTracks={onTracks}
+            onProgress={onProgress}
+            onBuffering={setBuffering}
+            // The package fires this from the native app-lifecycle hook only on
+            // a real background transition (never for Control Center or call
+            // banners, which RN's AppState reports as 'inactive').
+            onBackground={() => {
+              if (paused || error || !PIP_SUPPORTED) return
+              void playerRef.current?.startPictureInPicture().catch(() => undefined)
+            }}
+            onError={() => setError(true)}
+            onEnd={() => {
+              reportNow()
+              router.back()
+            }}
+          />
+        ) : null}
         <PlayerGestureLayer
           disabled={locked || audioSheetOpen || subsSheetOpen || speedSheetOpen || sliderActive}
           onToggleControls={toggleControls}
@@ -428,7 +440,7 @@ export default function PlayerScreen() {
           </View>
         ) : null}
         {loaded && buffering && !error ? (
-          <View style={styles.bufferingOverlay} pointerEvents="none">
+          <View style={[styles.overlayCenter, styles.bufferingOverlay]} pointerEvents="none">
             <ActivityIndicator size="large" color={colors.accent} />
             {bufferingStalled ? <Text style={styles.bufferingText}>Still loading this stream…</Text> : null}
           </View>
@@ -485,7 +497,7 @@ export default function PlayerScreen() {
               {params.title}
             </Text>
             <BlurView intensity={30} tint="dark" style={styles.trackPill}>
-              {pipSupported ? (
+              {PIP_SUPPORTED ? (
                 <Pressable onPress={enterPictureInPicture} hitSlop={8} style={styles.pillButton}>
                   <Ionicons name="albums-outline" size={20} color={colors.text} />
                 </Pressable>
@@ -603,16 +615,36 @@ export default function PlayerScreen() {
                 <Text style={styles.toolLabel}>Text size</Text>
                 <Text style={styles.toolDetail}>Caption scale</Text>
               </View>
-              <View style={styles.scaleOptions}>
+              <View style={styles.chipOptions}>
                 {SUBTITLE_SCALES.map((scale) => (
                   <Pressable
                     key={scale}
-                    style={[styles.scaleButton, scale === subtitleScalePercent && styles.scaleButtonSelected]}
+                    style={[styles.chip, scale === subtitleScalePercent && styles.chipSelected]}
                     onPress={() => selectSubtitleScale(scale)}
                   >
-                    <Text style={[styles.scaleText, scale === subtitleScalePercent && styles.scaleTextSelected]}>{scale}</Text>
+                    <Text style={[styles.chipText, scale === subtitleScalePercent && styles.chipTextSelected]}>{scale}</Text>
                   </Pressable>
                 ))}
+              </View>
+            </View>
+            <View style={styles.toolColumn}>
+              <View>
+                <Text style={styles.toolLabel}>Font</Text>
+                <Text style={styles.toolDetail}>Caption typeface</Text>
+              </View>
+              <View style={[styles.chipOptions, styles.chipOptionsWrap]}>
+                {SUBTITLE_FONTS.map((font) => {
+                  const selected = subtitleFontFamily === font.family
+                  return (
+                    <Pressable
+                      key={font.label}
+                      style={[styles.chip, selected && styles.chipSelected]}
+                      onPress={() => selectSubtitleFont(font)}
+                    >
+                      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{font.label}</Text>
+                    </Pressable>
+                  )
+                })}
               </View>
             </View>
           </View>
@@ -630,13 +662,39 @@ export default function PlayerScreen() {
           selected: playbackRate === rate,
         }))}
         onSelect={(key) => {
-          setPlaybackRate(Number(key))
+          updateSettings.mutate({ playbackRate: Number(key) })
           showNotice(`${key}× speed`)
         }}
         onClose={() => setSpeedSheetOpen(false)}
       />
     </View>
   )
+}
+
+/**
+ * One re-armable auto-hide timeout: arming replaces any pending run, and the
+ * pending run is cleared on unmount. `hide` must be referentially stable.
+ */
+function useHideTimer(delayMs: number, hide: () => void) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const cancel = useCallback(() => {
+    if (timer.current === null) return
+    clearTimeout(timer.current)
+    timer.current = null
+  }, [])
+
+  const arm = useCallback(() => {
+    cancel()
+    timer.current = setTimeout(() => {
+      timer.current = null
+      hide()
+    }, delayMs)
+  }, [cancel, delayMs, hide])
+
+  useEffect(() => cancel, [cancel])
+
+  return useMemo(() => ({ arm, cancel }), [arm, cancel])
 }
 
 function ToolButton({ icon, onPress }: { icon: 'add' | 'remove'; onPress: () => void }) {
@@ -677,23 +735,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   overlayCenter: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.md,
   },
   bufferingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
     gap: spacing.sm,
   },
   bufferingText: {
@@ -703,7 +750,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    backgroundColor: colors.overlayPill,
   },
   notice: {
     position: 'absolute',
@@ -712,7 +759,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(5,7,12,0.82)',
+    backgroundColor: colors.overlayPill,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.18)',
   },
@@ -726,16 +773,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(5,7,12,0.78)',
+    backgroundColor: colors.overlayPill,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.2)',
   },
   lockedTouchSurface: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFill,
   },
   unlockText: { color: colors.text, fontSize: 13, fontWeight: '700' },
   errorText: {
@@ -753,11 +796,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   controls: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'space-between',
   },
   scrimTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 120 },
@@ -829,6 +868,14 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.08)',
   },
+  toolColumn: {
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.055)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
   toolLabel: { color: colors.text, fontSize: 14, fontWeight: '700' },
   toolDetail: { color: colors.textDim, fontSize: 12, marginTop: 2 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
@@ -849,16 +896,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.07)',
   },
   resetText: { color: colors.text, fontSize: 11.5, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  scaleOptions: { flexDirection: 'row', gap: spacing.xs },
-  scaleButton: {
+  chipOptions: { flexDirection: 'row', gap: spacing.xs },
+  chipOptionsWrap: { flexWrap: 'wrap' },
+  chip: {
     minWidth: 42,
     alignItems: 'center',
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 8,
     borderRadius: radius.pill,
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  scaleButtonSelected: { backgroundColor: colors.accent },
-  scaleText: { color: colors.textDim, fontSize: 12, fontWeight: '700' },
-  scaleTextSelected: { color: colors.onPrimary },
+  chipSelected: { backgroundColor: colors.accent },
+  chipText: { color: colors.textDim, fontSize: 12, fontWeight: '700' },
+  chipTextSelected: { color: colors.onAccent },
 })

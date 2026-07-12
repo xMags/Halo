@@ -41,6 +41,8 @@ export interface PlayerVideoProps {
   playbackRate: number
   subtitleDelayMs: number
   subtitleScalePercent: number
+  /** VLC freetype family; `undefined` uses the platform default. */
+  subtitleFontFamily?: string
   /** Embedded audio track id; `undefined` keeps the player default. */
   audioTrack?: number
   /** Embedded subtitle track id; `-1` disables, `undefined` keeps default. */
@@ -53,6 +55,8 @@ export interface PlayerVideoProps {
   onTracks(audioTracks: PlayerTrack[], textTracks: PlayerTrack[]): void
   onProgress(progress: PlayerProgress): void
   onBuffering(buffering: boolean): void
+  /** Fires from the native app-lifecycle hook when the app truly backgrounds. */
+  onBackground(): void
   onError(): void
   onEnd(): void
 }
