@@ -39,7 +39,11 @@ export default function LoginScreen() {
     }
   }
 
+  const credentialsMissing = phase === 'credentials' && (!username.trim() || !password)
+
   const submit = async () => {
+    // Keyboard "done" fires this regardless of the button's disabled state.
+    if (busy || credentialsMissing) return
     setBusy(true)
     setError(null)
     try {
@@ -58,8 +62,6 @@ export default function LoginScreen() {
       setBusy(false)
     }
   }
-
-  const credentialsMissing = phase === 'credentials' && (!username.trim() || !password)
 
   return (
     <KeyboardAvoidingView
