@@ -104,6 +104,19 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
   limit when Gradle compiles react-native-screens/worklets (ninja loops with
   "manifest still dirty"). Don't remove it unless Android-on-Windows builds are
   re-verified.
+- **Android-on-Windows Gradle needs two env fixes** (release variant verified
+  2026-07-17): build with **JDK 17** (`JAVA_HOME` default is JDK 25, whose
+  native-access warning fails AGP's `configureCMake` tasks with the useless
+  error "A restricted method in java.lang.System has been called"), and pin
+  **SDK CMake 3.31** via `cmake.dir` in `android/local.properties` — 3.22's
+  bundled ninja predates long-path support and release (`RelWithDebInfo`)
+  object paths for gesture-handler's codegen exceed 260 chars even hoisted.
+  `expo prebuild` deletes `local.properties`; re-create it after.
+- **Android release builds block plain-HTTP by default** — `usesCleartextTraffic`
+  (expo-build-properties, mirrors iOS `NSAllowsArbitraryLoads`) is required or
+  self-hosted local-mode servers and HTTP stream URLs fail with "CLEARTEXT
+  communication not permitted" (debug builds allow it, so the bug only shows
+  in release).
 - **OAuth on Android has two landmines** (`src/oidc.ts` works around both):
   promptAsync's browser-dismiss (AppState active) races the Linking event
   carrying the authorization code, so a successful login can report `dismiss` —
