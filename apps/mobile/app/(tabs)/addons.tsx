@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LANGUAGE_OPTIONS, languageLabel } from '@halo/core'
-import { DEFAULT_SERVER_URL } from '@/api'
+import { api } from '@/api'
 import { useAddons, useSetAddons } from '@/queries'
 import { useSession } from '@/session'
 import { useSettings, useUpdateSettings } from '@/settings'
@@ -182,7 +182,7 @@ export default function SettingsScreen() {
         <View style={styles.settingRow}>
           <Text style={styles.settingKey}>Server</Text>
           <Text style={styles.settingValue} numberOfLines={1}>
-            {DEFAULT_SERVER_URL.replace(/^https?:\/\//, '')}
+            {api().baseUrl.replace(/^https?:\/\//, '')}
           </Text>
         </View>
         <View style={[styles.settingRow, styles.lastRow]}>

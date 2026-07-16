@@ -15,7 +15,9 @@
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
         },
-        "UIBackgroundModes": ["audio"],
+        "UIBackgroundModes": [
+          "audio"
+        ],
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true
       }
@@ -46,7 +48,8 @@
             "minSdkVersion": 26
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }

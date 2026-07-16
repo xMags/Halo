@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ADMIN_PASSWORD, authed, installUserAddon, loginToken, makeApp, mockResolveFetch } from './helpers'
+import { adminToken, authed, installUserAddon, makeApp, mockResolveFetch } from './helpers'
 
 const manifest = (name: string, resources: string[], catalogs: Array<{ type: string; id: string }> = []) => ({
   id: name.toLowerCase(),
@@ -19,7 +19,7 @@ describe('GET /streams', () => {
       'https://b.test': { 'stream/movie/tt1': { streams: [{ infoHash: 'cafecafecafecafe' }] } },
       'https://c.test': 'fail',
     })
-    const token = await loginToken(app, 'admin', ADMIN_PASSWORD)
+    const token = await adminToken()
     installUserAddon(db, 'admin', 'https://a.test/manifest.json', manifest('A', ['stream']), 0)
     installUserAddon(db, 'admin', 'https://b.test/manifest.json', manifest('B', ['stream']), 1)
     installUserAddon(db, 'admin', 'https://c.test/manifest.json', manifest('C', ['stream']), 2)
@@ -43,7 +43,7 @@ describe('GET /meta', () => {
       'https://a.test': {}, // supports meta but has no route -> 404 -> error
       'https://b.test': { 'meta/movie/tt1': { meta: { id: 'tt1', type: 'movie', name: 'Movie B' } } },
     })
-    const token = await loginToken(app, 'admin', ADMIN_PASSWORD)
+    const token = await adminToken()
     installUserAddon(db, 'admin', 'https://a.test/manifest.json', manifest('A', ['meta']), 0)
     installUserAddon(db, 'admin', 'https://b.test/manifest.json', manifest('B', ['meta']), 1)
 
@@ -54,7 +54,7 @@ describe('GET /meta', () => {
 
   it('404s when no effective addon can describe the id', async () => {
     const { app, db } = mount({ 'https://a.test': {} })
-    const token = await loginToken(app, 'admin', ADMIN_PASSWORD)
+    const token = await adminToken()
     installUserAddon(db, 'admin', 'https://a.test/manifest.json', manifest('A', ['stream']), 0)
     const res = await app.request('/meta?type=movie&id=tt1', authed(token))
     expect(res.status).toBe(404)
@@ -71,7 +71,7 @@ describe('GET /subtitles', () => {
         [`subtitles/movie/tt1/videoHash=${HASH}`]: { subtitles: [{ id: '2', url: 'https://s.test/2.srt', lang: 'eng' }] },
       },
     })
-    const token = await loginToken(app, 'admin', ADMIN_PASSWORD)
+    const token = await adminToken()
     installUserAddon(db, 'admin', 'https://s.test/manifest.json', manifest('S', ['subtitles']), 0)
 
     const plain = (await (await app.request('/subtitles?type=movie&videoId=tt1', authed(token))).json()) as {
@@ -91,7 +91,7 @@ describe('GET /subtitles', () => {
 
   it('rejects a malformed videoHash and a non-positive videoSize', async () => {
     const { app } = mount({})
-    const token = await loginToken(app, 'admin', ADMIN_PASSWORD)
+    const token = await adminToken()
     expect((await app.request('/subtitles?type=movie&videoId=tt1&videoHash=xyz', authed(token))).status).toBe(400)
     expect((await app.request('/subtitles?type=movie&videoId=tt1&videoSize=0', authed(token))).status).toBe(400)
   })
@@ -101,7 +101,7 @@ describe('GET /catalog', () => {
   const CATALOG_URL = 'https://cat.test/manifest.json'
   const setup = async () => {
     const { app, db } = mount({ 'https://cat.test': { 'catalog/movie/top': { metas: [{ id: 'tt1', type: 'movie', name: 'Top Movie' }] } } })
-    const token = await loginToken(app, 'admin', ADMIN_PASSWORD)
+    const token = await adminToken()
     installUserAddon(db, 'admin', CATALOG_URL, manifest('Cat', ['catalog'], [{ type: 'movie', id: 'top' }]), 0)
     return { app, token }
   }

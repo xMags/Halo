@@ -27,12 +27,30 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
   settings). Clients send their timestamp; server upserts only strictly-newer
   (`setWhere: excluded.updated_at > …`). Library removals are tombstones
   (`removedAt`), never hard deletes — they must survive stale re-adds.
-- **Auth is multi-user**: a `users` table, passwords hashed with `node:crypto`
-  scrypt (params encoded per hash), JWT (`hono/jwt`, HS256) carrying the user id
-  as `sub`. On an empty DB the first boot seeds an `admin` user from
-  `ADMIN_PASSWORD`; after that it is never consulted for login. Every sync table
-  is keyed by user id (FK, `ON DELETE CASCADE`). Addons split into
+- **Auth is one of two deployment-exclusive modes (`AUTH_MODE=oidc|local`),
+  never both at once.** Clients discover the mode via public `GET /auth/config`
+  and branch there; only a definitive rejection (OIDC `invalid_grant` / local
+  refresh 401) signs the device out — network failures must not. Every sync
+  table is keyed by user id (FK, `ON DELETE CASCADE`). Addons split into
   admin-managed `global_addons` and per-user `user_addons`.
+  - **oidc** (the ditto deployment): the API is a pure resource server. It
+    verifies RS256 access tokens against `OIDC_ISSUER`'s JWKS (`jose`, `iss` +
+    `aud` pinned so tokens minted for other ditto apps are rejected) and never
+    mints tokens of its own. Users are JIT-provisioned on first verified
+    request with `users.id` = IdP `sub`; admin = the `OIDC_ADMIN_GROUP` UUID
+    appearing in the token's `groups` claim (a custom Authentik scope mapping
+    emits group UUIDs — names would break on rename), computed per request,
+    never stored. The mobile app signs in with PKCE in the system browser
+    (`expo-auth-session`) and keeps rotating refresh tokens in SecureStore
+    behind a single-flight refresh.
+  - **local** (self-host without an IdP): the API mints its own 30-day HS256
+    session JWTs (scrypt password hashes, timing-decoy + rate-limited login,
+    `ADMIN_PASSWORD` seeds the first admin, admin-managed user CRUD). Stored
+    `is_admin`; `password_hash` is NULL on OIDC rows and usernames are unique
+    only among local rows (partial index) — an IdP rename must never collide.
+    `POST /auth/refresh` slides the session (a valid token buys a fresh one, up
+    to a 90-day `auth_time` cap); revocation = deleting the user, which kills
+    tokens on the next request's row lookup.
 - **Server-side addon fetches are SSRF-guarded, not origin-allowlisted**: the
   `/addon-proxy`, manifest resolution, and the catalog/meta/stream/subtitle
   endpoints all fetch arbitrary public CDNs, so the guard is auth + URL/protocol
@@ -81,6 +99,20 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
   playback claims on a real iPhone.
 - **pnpm blocks native postinstalls** unless listed in `pnpm-workspace.yaml`
   `onlyBuiltDependencies` (better-sqlite3, esbuild).
+- **pnpm runs `node-linker=hoisted`** (`.npmrc`) — the default `.pnpm` virtual
+  store doubles path depth, which overflows Windows' 250-char CMake object-path
+  limit when Gradle compiles react-native-screens/worklets (ninja loops with
+  "manifest still dirty"). Don't remove it unless Android-on-Windows builds are
+  re-verified.
+- **OAuth on Android has two landmines** (`src/oidc.ts` works around both):
+  promptAsync's browser-dismiss (AppState active) races the Linking event
+  carrying the authorization code, so a successful login can report `dismiss` —
+  we pre-register our own redirect listener + grace window. And
+  expo-auth-session's fetch layer strips trailing slashes from URLs, which
+  turns Django-based IdPs' `/token/` endpoint into an APPEND_SLASH 301 that
+  downgrades the POST to a body-less GET — token/refresh/revoke are hand-rolled
+  form POSTs on purpose. `app/oauth/callback.tsx` must exist or expo-router
+  routes the redirect to "Unmatched Route".
 - New native modules (config plugins) need `expo prebuild` + a rebuild — Metro
   hot reload alone shows "Unimplemented component".
 

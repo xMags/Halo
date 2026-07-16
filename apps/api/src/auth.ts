@@ -2,10 +2,44 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import type { Context, MiddlewareHandler } from 'hono'
 import { sign, verify } from 'hono/jwt'
 import { eq } from 'drizzle-orm'
+import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from 'jose'
 import type { Db } from './db'
 import { users } from './schema'
 
-const SESSION_DAYS = 30
+/**
+ * OIDC resource-server config. Tokens are issued by the identity provider
+ * (Authentik); this API only verifies them and never mints its own.
+ */
+export interface OidcConfig {
+  /** Issuer URL, trailing slash included, e.g. https://authentik.example.com/application/o/halo/ */
+  issuer: string
+  /** OAuth client id — must match the token's `aud` so tokens minted for other ditto apps are rejected. */
+  clientId: string
+  /** IdP group UUID whose members are admins. UUIDs survive group renames; names don't. */
+  adminGroupId: string
+  /** Key source override for tests. Defaults to the issuer's remote JWKS. */
+  getKey?: JWTVerifyGetKey
+}
+
+/** Local-accounts config. The API mints and verifies its own HS256 session JWTs. */
+export interface LocalConfig {
+  jwtSecret: string
+}
+
+/**
+ * Which auth strategy a deployment runs. Exactly one — mixing issuers in a
+ * single deployment would double the attack surface and split admin semantics
+ * (stored is_admin vs computed-from-groups).
+ */
+export type AuthModeConfig = ({ mode: 'oidc' } & OidcConfig) | ({ mode: 'local' } & LocalConfig)
+
+/** Scopes clients must request in OIDC mode; served to the app via GET /auth/config. */
+export const OIDC_SCOPES = ['openid', 'profile', 'email', 'offline_access', 'groups']
+
+/** Sliding session: each token lives this long, refreshable while still valid. */
+export const SESSION_DAYS = 30
+/** Hard ceiling from the original login; a stolen token can't be renewed forever. */
+export const SESSION_ABSOLUTE_DAYS = 90
 
 // scrypt parameters. Cost is fixed here but encoded into every hash so a future
 // bump stays verifiable against old hashes.
@@ -42,9 +76,28 @@ export function verifyPassword(password: string, stored: string): boolean {
   return derived.length === expected.length && timingSafeEqual(derived, expected)
 }
 
-export function issueToken(jwtSecret: string, userId: string): Promise<string> {
+export interface IssuedToken {
+  token: string
+  /** Epoch ms when the token expires — clients schedule their refresh off this. */
+  expiresAt: number
+}
+
+/**
+ * Mints a local session JWT. `authTime` (epoch seconds) is the original login
+ * moment; refreshes carry it forward unchanged so the absolute session cap
+ * holds across any number of renewals.
+ */
+export async function issueLocalToken(jwtSecret: string, userId: string, authTime: number): Promise<IssuedToken> {
   const nowSec = Math.floor(Date.now() / 1000)
-  return sign({ sub: userId, iat: nowSec, exp: nowSec + SESSION_DAYS * 86400 }, jwtSecret)
+  const expSec = nowSec + SESSION_DAYS * 86400
+  const token = await sign({ sub: userId, auth_time: authTime, iat: nowSec, exp: expSec }, jwtSecret)
+  return { token, expiresAt: expSec * 1000 }
+}
+
+/** Claims of a verified local session token, for the refresh endpoint. */
+export interface LocalTokenClaims {
+  sub: string
+  authTime: number
 }
 
 /** User attached to the request context after authentication. Never includes the hash. */
@@ -57,30 +110,98 @@ export interface AuthUser {
 
 export interface AuthVariables {
   user: AuthUser
+  /** Set in local mode only; the refresh endpoint needs auth_time. */
+  localToken?: LocalTokenClaims
+}
+
+/** Picks the verifier for the deployment's auth mode. */
+export function authMiddleware(auth: AuthModeConfig, db: Db): MiddlewareHandler<{ Variables: AuthVariables }> {
+  return auth.mode === 'oidc' ? oidcAuthMiddleware(auth, db) : localAuthMiddleware(auth, db)
 }
 
 /**
- * Verifies the bearer JWT, then loads the user row named by `sub`. A token whose
- * user no longer exists is rejected, so deleting a user immediately kills their
- * sessions.
+ * Verifies the bearer token against the IdP's JWKS (pinning issuer, audience
+ * and RS256), then provisions/loads the user row keyed by the token's `sub`.
+ * Admin status is computed from the `groups` claim on every request rather
+ * than stored, so group changes in the IdP apply within the access-token TTL.
  */
-export function authMiddleware(jwtSecret: string, db: Db): MiddlewareHandler<{ Variables: AuthVariables }> {
+function oidcAuthMiddleware(oidc: OidcConfig, db: Db): MiddlewareHandler<{ Variables: AuthVariables }> {
+  // jose caches the JWKS and re-fetches on unknown kid, so an IdP signing-key
+  // rotation needs no API restart.
+  const getKey = oidc.getKey ?? createRemoteJWKSet(new URL('jwks/', oidc.issuer))
   return async (c, next) => {
-    const header = c.req.header('Authorization')
-    if (!header?.startsWith('Bearer ')) return c.json({ error: 'unauthorized' }, 401)
-    const token = header.slice('Bearer '.length)
-    let payload: { sub?: unknown }
+    const token = bearerToken(c)
+    if (!token) return c.json({ error: 'unauthorized' }, 401)
+    let claims: JWTPayload
     try {
-      payload = (await verify(token, jwtSecret, 'HS256')) as { sub?: unknown }
+      const { payload } = await jwtVerify(token, getKey, {
+        issuer: oidc.issuer,
+        audience: oidc.clientId,
+        algorithms: ['RS256'],
+        clockTolerance: 5,
+      })
+      claims = payload
     } catch {
       return c.json({ error: 'unauthorized' }, 401)
     }
-    if (typeof payload.sub !== 'string') return c.json({ error: 'unauthorized' }, 401)
-    const row = db.select().from(users).where(eq(users.id, payload.sub)).get()
-    if (!row) return c.json({ error: 'unauthorized' }, 401)
-    c.set('user', { id: row.id, username: row.username, isAdmin: row.isAdmin, createdAt: row.createdAt })
+    if (typeof claims.sub !== 'string' || claims.sub.length === 0) return c.json({ error: 'unauthorized' }, 401)
+
+    const username =
+      typeof claims.preferred_username === 'string' && claims.preferred_username.length > 0
+        ? claims.preferred_username.toLowerCase()
+        : claims.sub
+    const groups = Array.isArray(claims.groups) ? claims.groups.filter((g): g is string => typeof g === 'string') : []
+
+    const row = upsertUser(db, claims.sub, username)
+    c.set('user', { ...row, isAdmin: groups.includes(oidc.adminGroupId) })
     await next()
   }
+}
+
+/**
+ * Verifies the bearer JWT this API minted, then loads the user row named by
+ * `sub`. A token whose user no longer exists is rejected, so deleting a user
+ * immediately kills their sessions — that lookup IS the revocation mechanism.
+ */
+function localAuthMiddleware(local: LocalConfig, db: Db): MiddlewareHandler<{ Variables: AuthVariables }> {
+  return async (c, next) => {
+    const token = bearerToken(c)
+    if (!token) return c.json({ error: 'unauthorized' }, 401)
+    let payload: { sub?: unknown; auth_time?: unknown }
+    try {
+      payload = (await verify(token, local.jwtSecret, 'HS256')) as { sub?: unknown; auth_time?: unknown }
+    } catch {
+      return c.json({ error: 'unauthorized' }, 401)
+    }
+    if (typeof payload.sub !== 'string' || typeof payload.auth_time !== 'number') {
+      return c.json({ error: 'unauthorized' }, 401)
+    }
+    const row = db.select().from(users).where(eq(users.id, payload.sub)).get()
+    if (!row) return c.json({ error: 'unauthorized' }, 401)
+    c.set('user', { id: row.id, username: row.username, isAdmin: row.isAdmin ?? false, createdAt: row.createdAt })
+    c.set('localToken', { sub: payload.sub, authTime: payload.auth_time })
+    await next()
+  }
+}
+
+function bearerToken(c: Context): string | null {
+  const header = c.req.header('Authorization')
+  return header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : null
+}
+
+/**
+ * JIT provisioning for OIDC: the verified token IS the registration. Rows are
+ * keyed by the IdP subject; username is display-only and refreshed on rename.
+ */
+function upsertUser(db: Db, id: string, username: string): Omit<AuthUser, 'isAdmin'> {
+  const row = db.select().from(users).where(eq(users.id, id)).get()
+  if (row) {
+    if (row.username !== username) db.update(users).set({ username }).where(eq(users.id, id)).run()
+    return { id: row.id, username, createdAt: row.createdAt }
+  }
+  const createdAt = Date.now()
+  db.insert(users).values({ id, username, createdAt }).run()
+  return { id, username, createdAt }
 }
 
 /** Gate for admin-only routes. Runs after authMiddleware. */

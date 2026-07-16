@@ -1,11 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { login, logout, restoreSession, setSessionExpiredHandler } from './api'
+import { login, loginLocal, logout, restoreSession, setSessionExpiredHandler } from './api'
 
 type SessionStatus = 'loading' | 'loggedOut' | 'ready'
 
 interface SessionContextValue {
   status: SessionStatus
-  signIn: (serverUrl: string, username: string, password: string) => Promise<void>
+  /**
+   * Starts sign-in. Resolves 'credentials-required' when the server runs local
+   * accounts — the login screen then collects them and calls signInLocal.
+   */
+  signIn: (serverUrl: string) => Promise<'ready' | 'credentials-required'>
+  signInLocal: (serverUrl: string, username: string, password: string) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -21,8 +26,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       .catch(() => setStatus('loggedOut'))
   }, [])
 
-  const signIn = useCallback(async (serverUrl: string, username: string, password: string) => {
-    await login(serverUrl, username, password)
+  const signIn = useCallback(async (serverUrl: string) => {
+    const result = await login(serverUrl)
+    if (result === 'ready') setStatus('ready')
+    return result
+  }, [])
+
+  const signInLocal = useCallback(async (serverUrl: string, username: string, password: string) => {
+    await loginLocal(serverUrl, username, password)
     setStatus('ready')
   }, [])
 
@@ -31,7 +42,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setStatus('loggedOut')
   }, [])
 
-  const value = useMemo(() => ({ status, signIn, signOut }), [status, signIn, signOut])
+  const value = useMemo(() => ({ status, signIn, signInLocal, signOut }), [status, signIn, signInLocal, signOut])
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
 }
 

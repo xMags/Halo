@@ -12,13 +12,18 @@ try {
 
 const env = loadEnv()
 const db = createDb(env.dbPath)
-ensureAdminUser(db, env.adminPassword)
+
 const app = createApp({
   db,
-  jwtSecret: env.jwtSecret,
+  auth:
+    env.auth.mode === 'oidc'
+      ? { mode: 'oidc', issuer: env.auth.issuer, clientId: env.auth.clientId, adminGroupId: env.auth.adminGroup }
+      : { mode: 'local', jwtSecret: env.auth.jwtSecret },
   corsOrigins: env.corsOrigins,
 })
 
+if (env.auth.mode === 'local') ensureAdminUser(db, env.auth.adminPassword)
+
 serve({ fetch: app.fetch, port: env.port }, (info) => {
-  console.log(`halo api listening on :${info.port}`)
+  console.log(`halo api listening on :${info.port} (auth: ${env.auth.mode})`)
 })

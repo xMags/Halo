@@ -1,15 +1,36 @@
-import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { sql } from 'drizzle-orm'
+import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type { Manifest } from '@halo/core'
 
-export const users = sqliteTable('users', {
-  id: text('id').primaryKey(),
-  // Stored lowercased; the UNIQUE COLLATE NOCASE in the migration guards against
-  // case-variant duplicates even if a future writer forgets to lowercase.
-  username: text('username').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
-  isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
-  createdAt: integer('created_at').notNull(),
-})
+/**
+ * One table serves both auth modes. OIDC rows: id = IdP subject (JIT-provisioned
+ * on the first verified request), credential columns NULL. Local rows: id =
+ * random UUID, password_hash/is_admin set by the admin user routes.
+ */
+export const users = sqliteTable(
+  'users',
+  {
+    id: text('id').primaryKey(),
+    // OIDC: display-only (from preferred_username), refreshed on rename, and
+    // deliberately NOT globally unique — an IdP-side rename must never collide
+    // with another row and break auth. Local: the login identifier, stored
+    // lowercased; uniqueness is enforced by the partial index below.
+    username: text('username').notNull(),
+    // NULL for OIDC users — passwords live in the IdP there.
+    passwordHash: text('password_hash'),
+    // NULL for OIDC users — their admin status is computed per request from the
+    // token's groups claim and never stored.
+    isAdmin: integer('is_admin', { mode: 'boolean' }),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    // Unique only among local accounts, so local login can't be ambiguous while
+    // OIDC renames stay collision-free.
+    uniqueIndex('users_local_username_unique')
+      .on(t.username)
+      .where(sql`password_hash IS NOT NULL`),
+  ],
+)
 
 /** Addons every user sees, ordered before their personal ones. Admin-managed. */
 export const globalAddons = sqliteTable('global_addons', {

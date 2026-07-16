@@ -1,6 +1,4 @@
-import { randomUUID } from 'node:crypto'
-import { eq } from 'drizzle-orm'
-import { expect } from 'vitest'
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose'
 import type { Manifest } from '@halo/core'
 import { createApp } from '../src/app'
 import { hashPassword } from '../src/auth'
@@ -8,17 +6,108 @@ import { ensureAdminUser } from '../src/bootstrap'
 import { createDb, type Db } from '../src/db'
 import { userAddons, users } from '../src/schema'
 
-export const ADMIN_PASSWORD = 'admin-password'
-export const SECRET = 'test-secret'
+// Stand-in IdP: a local RSA keypair whose public half is served to the app as
+// a JWKS, exactly like Authentik's — token verification runs the real code path.
+export const ISSUER = 'https://auth.test/application/o/halo/'
+export const CLIENT_ID = 'halo-test-client'
+export const ADMIN_GROUP = '00000000-0000-4000-8000-00000000dead'
+
+const { publicKey, privateKey } = await generateKeyPair('RS256')
+const localJwks = createLocalJWKSet({ keys: [{ ...(await exportJWK(publicKey)), alg: 'RS256', use: 'sig' }] })
 
 export type App = ReturnType<typeof createApp>
 
-/** Fresh in-memory DB with the admin user provisioned and a wired-up app. */
+/** Fresh in-memory DB and a wired-up OIDC-mode app verifying against the test JWKS. */
 export function makeApp(opts: { safeFetch?: typeof fetch } = {}): { app: App; db: Db } {
   const db = createDb(':memory:')
-  ensureAdminUser(db, ADMIN_PASSWORD)
-  const app = createApp({ db, jwtSecret: SECRET, corsOrigins: ['http://localhost:5173'], safeFetch: opts.safeFetch })
+  const app = createApp({
+    db,
+    auth: { mode: 'oidc', issuer: ISSUER, clientId: CLIENT_ID, adminGroupId: ADMIN_GROUP, getKey: localJwks },
+    corsOrigins: ['http://localhost:5173'],
+    safeFetch: opts.safeFetch,
+  })
   return { app, db }
+}
+
+export const LOCAL_JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long'
+export const ADMIN_PASSWORD = 'admin-test-password'
+
+/** Fresh in-memory DB and a local-mode app, admin user already seeded. */
+export function makeLocalApp(opts: { safeFetch?: typeof fetch } = {}): { app: App; db: Db } {
+  const db = createDb(':memory:')
+  const app = createApp({
+    db,
+    auth: { mode: 'local', jwtSecret: LOCAL_JWT_SECRET },
+    corsOrigins: ['http://localhost:5173'],
+    safeFetch: opts.safeFetch,
+  })
+  ensureAdminUser(db, ADMIN_PASSWORD)
+  return { app, db }
+}
+
+/** Raw POST /auth/login, for asserting on failures. */
+export async function login(app: App, username: string, password: string): Promise<Response> {
+  return app.request('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+}
+
+/** Logs in and returns the session token; throws on failure. */
+export async function loginToken(app: App, username: string, password: string): Promise<string> {
+  const res = await login(app, username, password)
+  if (res.status !== 200) throw new Error(`login failed: ${res.status}`)
+  const body = (await res.json()) as { token: string }
+  return body.token
+}
+
+/** Inserts a local user directly, skipping the admin route. */
+export function seedUser(db: Db, username: string, password: string, isAdmin = false): void {
+  db.insert(users)
+    .values({
+      id: `${username}-local-id`,
+      username: username.toLowerCase(),
+      passwordHash: hashPassword(password),
+      isAdmin,
+      createdAt: Date.now(),
+    })
+    .run()
+}
+
+export interface TokenOptions {
+  sub?: string
+  username?: string
+  groups?: string[]
+  issuer?: string
+  audience?: string
+  /** e.g. '1h' or an absolute epoch-seconds value; defaults to 1h from now. */
+  expiresAt?: string | number
+}
+
+/** Mints a signed access token the way the IdP would. */
+export async function mintToken(opts: TokenOptions = {}): Promise<string> {
+  return new SignJWT({
+    preferred_username: opts.username ?? 'admin',
+    groups: opts.groups ?? [ADMIN_GROUP],
+  })
+    .setProtectedHeader({ alg: 'RS256' })
+    .setSubject(opts.sub ?? 'admin-sub')
+    .setIssuer(opts.issuer ?? ISSUER)
+    .setAudience(opts.audience ?? CLIENT_ID)
+    .setIssuedAt()
+    .setExpirationTime(opts.expiresAt ?? '1h')
+    .sign(privateKey)
+}
+
+/** Token for the standing test admin (member of ADMIN_GROUP). */
+export function adminToken(): Promise<string> {
+  return mintToken()
+}
+
+/** Token for a regular (non-admin) user derived from the name. */
+export function userToken(name: string): Promise<string> {
+  return mintToken({ sub: `${name}-sub`, username: name, groups: [] })
 }
 
 function urlOf(input: Parameters<typeof fetch>[0]): string {
@@ -62,40 +151,20 @@ export function mockResolveFetch(routes: Record<string, Record<string, unknown> 
   }) as typeof fetch
 }
 
-/** Inserts a user directly (fast path for tests that don't exercise POST /users). */
-export function seedUser(db: Db, username: string, password: string, isAdmin = false): void {
-  db.insert(users)
-    .values({
-      id: randomUUID(),
-      username: username.toLowerCase(),
-      passwordHash: hashPassword(password),
-      isAdmin,
-      createdAt: Date.now(),
-    })
-    .run()
-}
-
-/** Installs an addon for a user directly, skipping the server manifest fetch. */
+/**
+ * Installs an addon for a user directly, skipping the server manifest fetch.
+ * Seeds the user row itself (same `${name}-sub` id that `userToken`/`adminToken`
+ * mint) since JIT provisioning only runs on the first authenticated request.
+ */
 export function installUserAddon(db: Db, username: string, transportUrl: string, manifest: unknown, position = 0): void {
-  const row = db.select({ id: users.id }).from(users).where(eq(users.username, username.toLowerCase())).get()!
-  db.insert(userAddons)
-    .values({ userId: row.id, transportUrl, manifest: manifest as Manifest, position, addedAt: Date.now() })
+  const id = `${username}-sub`
+  db.insert(users)
+    .values({ id, username: username.toLowerCase(), createdAt: Date.now() })
+    .onConflictDoNothing()
     .run()
-}
-
-export async function login(app: App, username: string, password: string): Promise<Response> {
-  return app.request('/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  })
-}
-
-export async function loginToken(app: App, username: string, password: string): Promise<string> {
-  const res = await login(app, username, password)
-  expect(res.status).toBe(200)
-  const { token } = (await res.json()) as { token: string }
-  return token
+  db.insert(userAddons)
+    .values({ userId: id, transportUrl, manifest: manifest as Manifest, position, addedAt: Date.now() })
+    .run()
 }
 
 export function authed(token: string, body?: unknown, method: 'GET' | 'PUT' | 'POST' | 'DELETE' = body === undefined ? 'GET' : 'PUT'): RequestInit {

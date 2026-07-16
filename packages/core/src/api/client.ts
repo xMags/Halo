@@ -21,44 +21,70 @@ export class HaloApiError extends Error {
   }
 }
 
+/** OIDC deployment: the app authenticates against this IdP in the system browser. */
+export interface OidcAuthConfig {
+  mode: 'oidc'
+  issuer: string
+  clientId: string
+  scopes: string[]
+}
+
+/** Local-accounts deployment: the app shows a username/password form and posts to /auth/login. */
+export interface LocalAuthConfig {
+  mode: 'local'
+}
+
+/** How the server at /auth/config says it authenticates. */
+export type AuthConfig = OidcAuthConfig | LocalAuthConfig
+
+/** Session token minted by a local-mode server (login and refresh both return this). */
+export interface LocalSessionToken {
+  token: string
+  /** Epoch ms when the token expires — schedule the sliding refresh off this. */
+  expiresAt: number
+}
+
 export interface HaloClientOptions {
   baseUrl: string
-  /** Called on 401 so the app can drop the stored token and show login. */
+  /**
+   * Current access token, or null when signed out (requests then go out
+   * unauthenticated). The provider owns expiry/refresh policy; the client
+   * only asks.
+   */
+  getAccessToken?: () => Promise<string | null>
+  /**
+   * Called once after a 401 to obtain a fresh token for a single retry.
+   * Return null when the session is truly dead (refresh token rejected).
+   */
+  refreshAccessToken?: () => Promise<string | null>
+  /** Called when a request stays unauthorized after the refresh retry; the app should sign out. */
   onUnauthorized?: () => void
   fetch?: typeof fetch
 }
 
 /**
- * Typed client for the Halo API. Token is held by the instance; persistence
- * (localStorage / SecureStore) is the app's concern via get/setToken.
+ * Typed client for the Halo API. Tokens are supplied per-request by the app's
+ * token provider; the client holds no auth state of its own.
  */
 export class HaloClient {
-  private token: string | null = null
-  private readonly baseUrl: string
+  readonly baseUrl: string
+  private readonly getAccessToken?: () => Promise<string | null>
+  private readonly refreshAccessToken?: () => Promise<string | null>
   private readonly onUnauthorized?: () => void
   private readonly doFetch: typeof fetch
 
   constructor(opts: HaloClientOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, '')
+    this.getAccessToken = opts.getAccessToken
+    this.refreshAccessToken = opts.refreshAccessToken
     this.onUnauthorized = opts.onUnauthorized
     this.doFetch = opts.fetch ?? fetch
   }
 
-  setToken(token: string | null): void {
-    this.token = token
-  }
-
-  getToken(): string | null {
-    return this.token
-  }
-
-  get isAuthenticated(): boolean {
-    return this.token !== null
-  }
-
-  private async request<T>(method: 'GET' | 'PUT' | 'POST', path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: 'GET' | 'PUT' | 'POST', path: string, body?: unknown, retried = false): Promise<T> {
+    const token = (await this.getAccessToken?.()) ?? null
     const headers: Record<string, string> = {}
-    if (this.token) headers.Authorization = `Bearer ${this.token}`
+    if (token) headers.Authorization = `Bearer ${token}`
     if (body !== undefined) headers['Content-Type'] = 'application/json'
 
     const res = await this.doFetch(`${this.baseUrl}${path}`, {
@@ -68,6 +94,12 @@ export class HaloClient {
     })
 
     if (res.status === 401) {
+      // One refresh-and-retry: a 401 with a live refresh token usually just
+      // means the access token aged out between the provider's expiry check
+      // and the server's.
+      if (!retried && this.refreshAccessToken && (await this.refreshAccessToken())) {
+        return this.request(method, path, body, true)
+      }
       this.onUnauthorized?.()
       throw new HaloApiError(401, 'Unauthorized')
     }
@@ -78,15 +110,9 @@ export class HaloClient {
     return (await res.json()) as T
   }
 
-  async login(username: string, password: string): Promise<string> {
-    const { token } = await this.request<{ token: string }>('POST', '/auth/login', { username, password })
-    this.token = token
-    return token
-  }
-
-  /** Self-service password change for the authenticated user. */
-  changePassword(current: string, next: string): Promise<{ ok: true }> {
-    return this.request<{ ok: true }>('POST', '/auth/password', { current, next })
+  /** Public endpoint: which IdP to authenticate against and as which client. */
+  getAuthConfig(): Promise<AuthConfig> {
+    return this.request<AuthConfig>('GET', '/auth/config')
   }
 
   /** Global (admin-managed) addons plus the caller's own, each ordered by position. */

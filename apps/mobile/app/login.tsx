@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -9,28 +9,57 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { DEFAULT_SERVER_URL } from '@/api'
+import { DEFAULT_SERVER_URL, getStoredServerUrl } from '@/api'
 import { useSession } from '@/session'
 import { colors, radius, spacing } from '@/theme'
 
 export default function LoginScreen() {
-  const { signIn } = useSession()
+  const { signIn, signInLocal } = useSession()
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL)
+  // 'server': just the URL; the server's /auth/config decides what comes next.
+  // 'credentials': the server runs local accounts — collect username/password.
+  const [phase, setPhase] = useState<'server' | 'credentials'>('server')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const usernameRef = useRef<TextInput>(null)
+
+  useEffect(() => {
+    void getStoredServerUrl().then(setServerUrl)
+  }, [])
+
+  const changeServerUrl = (url: string) => {
+    setServerUrl(url)
+    // A different server may authenticate differently — restart the flow.
+    if (phase !== 'server') {
+      setPhase('server')
+      setUsername('')
+      setPassword('')
+    }
+  }
 
   const submit = async () => {
     setBusy(true)
     setError(null)
     try {
-      await signIn(serverUrl.trim(), username.trim(), password)
+      if (phase === 'server') {
+        const result = await signIn(serverUrl.trim())
+        if (result === 'credentials-required') {
+          setPhase('credentials')
+          usernameRef.current?.focus()
+        }
+        return
+      }
+      await signInLocal(serverUrl.trim(), username.trim(), password)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not connect')
+    } finally {
       setBusy(false)
     }
   }
+
+  const credentialsMissing = phase === 'credentials' && (!username.trim() || !password)
 
   return (
     <KeyboardAvoidingView
@@ -40,40 +69,61 @@ export default function LoginScreen() {
       <View style={styles.form}>
         <Text style={styles.logo}>halo</Text>
         <Text style={styles.hint}>
-          Your Halo server syncs your addons, library and watch progress.
+          {phase === 'server'
+            ? 'Your Halo server syncs your addons, library and watch progress.'
+            : 'This server uses local accounts. Sign in with your Halo username and password.'}
         </Text>
         <TextInput
           style={styles.input}
           value={serverUrl}
-          onChangeText={setServerUrl}
+          onChangeText={changeServerUrl}
           placeholder="Server URL"
           placeholderTextColor={colors.textDim}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
-        />
-        <TextInput
-          style={styles.input}
-          value={username}
-          onChangeText={setUsername}
-          placeholder="Username"
-          placeholderTextColor={colors.textDim}
-          autoCapitalize="none"
-          autoCorrect={false}
-          textContentType="username"
-        />
-        <TextInput
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Password"
-          placeholderTextColor={colors.textDim}
-          secureTextEntry
           onSubmitEditing={submit}
         />
+        {phase === 'credentials' ? (
+          <>
+            <TextInput
+              ref={usernameRef}
+              style={styles.input}
+              value={username}
+              onChangeText={setUsername}
+              placeholder="Username"
+              placeholderTextColor={colors.textDim}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="username"
+              textContentType="username"
+              returnKeyType="next"
+            />
+            <TextInput
+              style={styles.input}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Password"
+              placeholderTextColor={colors.textDim}
+              secureTextEntry
+              autoCapitalize="none"
+              autoComplete="password"
+              textContentType="password"
+              onSubmitEditing={submit}
+            />
+          </>
+        ) : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable style={[styles.button, busy && styles.buttonDisabled]} onPress={submit} disabled={busy}>
-          {busy ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.buttonText}>Connect</Text>}
+        <Pressable
+          style={[styles.button, (busy || credentialsMissing) && styles.buttonDisabled]}
+          onPress={submit}
+          disabled={busy || credentialsMissing}
+        >
+          {busy ? (
+            <ActivityIndicator color={colors.onAccent} />
+          ) : (
+            <Text style={styles.buttonText}>{phase === 'server' ? 'Continue' : 'Sign In'}</Text>
+          )}
         </Pressable>
       </View>
     </KeyboardAvoidingView>

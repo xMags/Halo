@@ -1,5 +1,4 @@
-import { randomUUID } from 'node:crypto'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { z } from 'zod'
@@ -16,13 +15,17 @@ import {
   type Manifest,
   type WatchState,
 } from '@halo/core'
+import { randomUUID } from 'node:crypto'
 import {
   adminOnly,
   authMiddleware,
   hashPassword,
-  issueToken,
+  issueLocalToken,
   LoginRateLimiter,
+  OIDC_SCOPES,
+  SESSION_ABSOLUTE_DAYS,
   verifyPassword,
+  type AuthModeConfig,
   type AuthVariables,
 } from './auth'
 import type { Db } from './db'
@@ -32,7 +35,7 @@ import { safeFetch } from './safeFetch'
 
 export interface AppConfig {
   db: Db
-  jwtSecret: string
+  auth: AuthModeConfig
   corsOrigins: string[]
   /**
    * SSRF-guarded fetch used for all server-side addon traffic (manifest
@@ -134,7 +137,6 @@ const watchStatesSchema = z.array(
 export function createApp(config: AppConfig) {
   const { db } = config
   const doSafeFetch = config.safeFetch ?? safeFetch
-  const loginLimiter = new LoginRateLimiter()
   const app = new Hono()
 
   app.use(
@@ -148,70 +150,106 @@ export function createApp(config: AppConfig) {
 
   app.get('/health', (c) => c.json({ ok: true }))
 
-  app.post('/auth/login', async (c) => {
-    const body = loginSchema.safeParse(await c.req.json().catch(() => null))
-    if (!body.success) return c.json({ error: 'username and password required' }, 400)
-    const { username, password } = body.data
-    if (loginLimiter.isBlocked(username)) {
-      return c.json({ error: 'too many attempts, try again later' }, 429)
-    }
-    const row = db.select().from(users).where(eq(users.username, username.toLowerCase())).get()
-    // Same generic failure whether the user exists or the password is wrong.
-    const ok = verifyPassword(password, row?.passwordHash ?? TIMING_DECOY) && !!row
-    if (!ok) {
-      loginLimiter.recordFailure(username)
-      return c.json({ error: 'invalid credentials' }, 401)
-    }
-    loginLimiter.reset(username)
-    return c.json({ token: await issueToken(config.jwtSecret, row!.id) })
-  })
+  // Public discovery for clients: how this deployment authenticates. In OIDC
+  // mode the server is the single source of OAuth config, so the app binary
+  // ships none of it — pointing the app at a server is all the setup there is.
+  // In local mode the app knows to show a username/password form instead.
+  app.get('/auth/config', (c) =>
+    config.auth.mode === 'oidc'
+      ? c.json({ mode: 'oidc', issuer: config.auth.issuer, clientId: config.auth.clientId, scopes: OIDC_SCOPES })
+      : c.json({ mode: 'local' }),
+  )
 
   const authed = new Hono<{ Variables: AuthVariables }>()
-  authed.use('*', authMiddleware(config.jwtSecret, db))
+  authed.use('*', authMiddleware(config.auth, db))
 
-  authed.post('/auth/password', async (c) => {
-    const body = passwordChangeSchema.safeParse(await c.req.json().catch(() => null))
-    if (!body.success) return c.json({ error: body.error.flatten() }, 400)
-    const user = c.get('user')
-    const row = db.select().from(users).where(eq(users.id, user.id)).get()!
-    if (!verifyPassword(body.data.current, row.passwordHash)) {
-      return c.json({ error: 'current password incorrect' }, 401)
-    }
-    db.update(users).set({ passwordHash: hashPassword(body.data.next) }).where(eq(users.id, user.id)).run()
-    return c.json({ ok: true })
-  })
+  // Local-accounts routes. Mounted only in local mode so an OIDC deployment
+  // exposes no password surface at all.
+  if (config.auth.mode === 'local') {
+    const { jwtSecret } = config.auth
+    const loginLimiter = new LoginRateLimiter()
 
-  authed.get('/users', adminOnly, (c) => {
-    const rows = db.select().from(users).all()
-    return c.json(rows.map((r) => ({ username: r.username, isAdmin: r.isAdmin, createdAt: r.createdAt })))
-  })
+    app.post('/auth/login', async (c) => {
+      const body = loginSchema.safeParse(await c.req.json().catch(() => null))
+      if (!body.success) return c.json({ error: 'username and password required' }, 400)
+      const { username, password } = body.data
+      if (loginLimiter.isBlocked(username)) {
+        return c.json({ error: 'too many attempts, try again later' }, 429)
+      }
+      // Local rows only: after an OIDC→local mode switch, a leftover IdP row
+      // could share the username, and usernames are only unique among local
+      // accounts — matching a credential-less row would break login.
+      const row = db
+        .select()
+        .from(users)
+        .where(and(eq(users.username, username.toLowerCase()), isNotNull(users.passwordHash)))
+        .get()
+      // Same generic failure whether the user exists or the password is wrong —
+      // and constant hashing work in every case.
+      const ok = verifyPassword(password, row?.passwordHash ?? TIMING_DECOY) && !!row
+      if (!ok) {
+        loginLimiter.recordFailure(username)
+        return c.json({ error: 'invalid credentials' }, 401)
+      }
+      loginLimiter.reset(username)
+      return c.json(await issueLocalToken(jwtSecret, row!.id, Math.floor(Date.now() / 1000)))
+    })
 
-  authed.post('/users', adminOnly, async (c) => {
-    const body = createUserSchema.safeParse(await c.req.json().catch(() => null))
-    if (!body.success) return c.json({ error: body.error.flatten() }, 400)
-    const { username, password, isAdmin } = body.data
-    const createdAt = Date.now()
-    try {
-      db.insert(users)
-        .values({ id: randomUUID(), username, passwordHash: hashPassword(password), isAdmin: isAdmin ?? false, createdAt })
-        .run()
-    } catch {
-      // UNIQUE violation — also the race where two creates land at once.
-      return c.json({ error: 'username taken' }, 409)
-    }
-    return c.json({ username, isAdmin: isAdmin ?? false, createdAt }, 201)
-  })
+    // Sliding refresh: a still-valid token buys a fresh 30-day one, so active
+    // devices never re-login. auth_time carries through unchanged, enforcing
+    // the absolute cap — past it the session is definitively dead and the 401
+    // tells the client to sign out (same semantics as OIDC invalid_grant).
+    authed.post('/auth/refresh', async (c) => {
+      const claims = c.get('localToken')!
+      const ageSec = Math.floor(Date.now() / 1000) - claims.authTime
+      if (ageSec > SESSION_ABSOLUTE_DAYS * 86400) return c.json({ error: 'session expired' }, 401)
+      return c.json(await issueLocalToken(jwtSecret, claims.sub, claims.authTime))
+    })
 
-  authed.delete('/users/:username', adminOnly, (c) => {
-    const target = (c.req.param('username') ?? '').toLowerCase()
-    if (target === c.get('user').username) {
-      return c.json({ error: 'cannot delete your own account' }, 400)
-    }
-    const row = db.select().from(users).where(eq(users.username, target)).get()
-    if (!row) return c.json({ error: 'not found' }, 404)
-    db.delete(users).where(eq(users.id, row.id)).run() // FK cascade removes their data
-    return c.json({ ok: true })
-  })
+    authed.post('/auth/password', async (c) => {
+      const body = passwordChangeSchema.safeParse(await c.req.json().catch(() => null))
+      if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+      const user = c.get('user')
+      const row = db.select().from(users).where(eq(users.id, user.id)).get()!
+      if (!verifyPassword(body.data.current, row.passwordHash!)) {
+        return c.json({ error: 'current password incorrect' }, 401)
+      }
+      db.update(users).set({ passwordHash: hashPassword(body.data.next) }).where(eq(users.id, user.id)).run()
+      return c.json({ ok: true })
+    })
+
+    // User management covers local accounts only; leftover OIDC rows from a
+    // mode switch are inert (no credentials) and invisible here.
+    authed.get('/users', adminOnly, (c) => {
+      const rows = db.select().from(users).where(isNotNull(users.passwordHash)).all()
+      return c.json(rows.map((r) => ({ username: r.username, isAdmin: r.isAdmin ?? false, createdAt: r.createdAt })))
+    })
+
+    authed.post('/users', adminOnly, async (c) => {
+      const body = createUserSchema.safeParse(await c.req.json().catch(() => null))
+      if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+      const { username, password, isAdmin } = body.data
+      const createdAt = Date.now()
+      try {
+        db.insert(users)
+          .values({ id: randomUUID(), username, passwordHash: hashPassword(password), isAdmin: isAdmin ?? false, createdAt })
+          .run()
+      } catch {
+        return c.json({ error: 'username already exists' }, 409)
+      }
+      return c.json({ username, isAdmin: isAdmin ?? false, createdAt }, 201)
+    })
+
+    authed.delete('/users/:username', adminOnly, (c) => {
+      const target = (c.req.param('username') ?? '').toLowerCase()
+      if (target === c.get('user').username) {
+        return c.json({ error: 'cannot delete your own account' }, 400)
+      }
+      const result = db.delete(users).where(and(eq(users.username, target), isNotNull(users.passwordHash))).run()
+      if (result.changes === 0) return c.json({ error: 'user not found' }, 404)
+      return c.json({ ok: true })
+    })
+  }
 
   authed.get('/addons', (c) => {
     const user = c.get('user')
