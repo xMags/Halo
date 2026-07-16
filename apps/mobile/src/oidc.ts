@@ -22,6 +22,13 @@ interface OidcSession {
   endSessionEndpoint?: string
   accessToken: string
   refreshToken?: string
+  /**
+   * Kept solely as the end-session `id_token_hint` — Authentik refuses
+   * `post_logout_redirect_uri` without it (and verifies it ignoring expiry,
+   * so a stale one is fine). Absent on sessions persisted before this field
+   * existed; logout then falls back to the redirect-less flow.
+   */
+  idToken?: string
   /** Epoch ms when accessToken expires. */
   expiresAt: number
 }
@@ -59,6 +66,7 @@ class TokenEndpointError extends Error {
 interface TokenEndpointResponse {
   access_token: string
   refresh_token?: string
+  id_token?: string
   expires_in?: number
 }
 
@@ -99,6 +107,7 @@ function applyTokens(current: Omit<OidcSession, 'accessToken' | 'refreshToken' |
     // Authentik rotates refresh tokens; fall back to the old one if the
     // response omits it.
     refreshToken: tokens.refresh_token ?? current.refreshToken,
+    idToken: tokens.id_token ?? current.idToken,
     // A missing expires_in counts as already stale, so the next request
     // refreshes instead of trusting an unknown TTL.
     expiresAt: tokens.expires_in ? Date.now() + tokens.expires_in * 1000 : 0,
@@ -248,8 +257,22 @@ export async function signOutOidc(): Promise<void> {
   // cookie, which would silently re-login the same account on the next
   // sign-in. RP-initiated logout ends that session (the provider's
   // invalidation flow must include the logout stage for this to stick).
+  // post_logout_redirect_uri makes the IdP bounce back to our scheme so the
+  // auth session dismisses itself instead of dangling on the IdP's login page
+  // — the URI must be registered on the provider as a logout-type redirect,
+  // and Authentik rejects the redirect unless id_token_hint proves the request
+  // comes from the client the token was minted for.
   // Fire-and-forget: the device is already signed out either way.
   if (current.endSessionEndpoint) {
-    void WebBrowser.openBrowserAsync(current.endSessionEndpoint).catch(() => {})
+    if (current.idToken) {
+      const redirectUri = AuthSession.makeRedirectUri({ scheme: 'halo', path: 'oauth/logout' })
+      const url = `${current.endSessionEndpoint}?post_logout_redirect_uri=${encodeURIComponent(redirectUri)}&id_token_hint=${encodeURIComponent(current.idToken)}`
+      void WebBrowser.openAuthSessionAsync(url, redirectUri).catch(() => {})
+    } else {
+      // Session predates idToken persistence: no hint means no redirect, so a
+      // plain tab (which the user closes manually) beats an auth session that
+      // would wait forever for a redirect that never comes.
+      void WebBrowser.openBrowserAsync(current.endSessionEndpoint).catch(() => {})
+    }
   }
 }
