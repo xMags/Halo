@@ -38,8 +38,8 @@ export default function HomeScreen() {
       .filter((catalog) => !(catalog.extra ?? []).some((e) => e.isRequired))
       .filter((catalog) => !(catalog.extraRequired ?? []).length)
       .map((catalog) => ({
-        key: `${addon.transportUrl}/${catalog.type}/${catalog.id}`,
-        transportUrl: addon.transportUrl,
+        key: `${addon.id}/${catalog.type}/${catalog.id}`,
+        addonId: addon.id,
         addonName: addon.manifest.name,
         type: catalog.type,
         catalogId: catalog.id,
@@ -52,7 +52,7 @@ export default function HomeScreen() {
   // Featured = first title of the first visible catalog; fetch its meta for
   // wide background art + rating.
   const lead = rows[0]
-  const { data: leadCatalog } = useCatalog(lead?.transportUrl ?? '', lead?.type ?? '', lead?.catalogId ?? '', {
+  const { data: leadCatalog } = useCatalog(lead?.addonId ?? '', lead?.type ?? '', lead?.catalogId ?? '', {
     enabled: !!lead,
   })
   const featuredPreview = leadCatalog?.[0]
@@ -154,7 +154,7 @@ export default function HomeScreen() {
       {rows.map((r) => (
         <CatalogRow
           key={r.key}
-          transportUrl={r.transportUrl}
+          addonId={r.addonId}
           addonName={r.addonName}
           type={r.type}
           catalogId={r.catalogId}

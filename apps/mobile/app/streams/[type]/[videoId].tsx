@@ -10,15 +10,9 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import {
-  computeVideoHash,
-  getSubtitles,
-  addonSupportsResource,
-  languageLabel,
-  type Stream,
-  type Subtitle,
-} from '@halo/core'
-import { sortSubtitlesByPreference, useEffectiveAddons, useStreams } from '@/queries'
+import { computeVideoHash, languageLabel, type Stream, type Subtitle } from '@halo/core'
+import { api } from '@/api'
+import { sortSubtitlesByPreference, useStreams } from '@/queries'
 import { getDownload, startDownload, useDownloads } from '@/downloads'
 import { useSettings } from '@/settings'
 import { formatBytes } from '@/format'
@@ -49,7 +43,6 @@ export default function StreamsScreen() {
   const router = useRouter()
   const { contentMaxWidth } = useResponsive()
   const { data: addonStreams, isLoading } = useStreams(params.type, params.videoId)
-  const { data: addons } = useEffectiveAddons()
   const downloads = useDownloads()
   const settings = useSettings()
   const existingDownload = downloads.find((d) => d.id === params.videoId && d.status === 'done')
@@ -78,9 +71,6 @@ export default function StreamsScreen() {
   const prepareDownload = async (stream: Stream, key: string) => {
     setPreparingKey(key)
     try {
-      const subtitleAddons = (addons ?? []).filter((a) =>
-        addonSupportsResource(a.manifest, 'subtitles', params.type, params.videoId),
-      )
       let videoHash: string | undefined
       let videoSize = stream.behaviorHints?.videoSize
       try {
@@ -90,23 +80,20 @@ export default function StreamsScreen() {
       } catch {
         // Range-less or slow host: id/name search still returns candidates.
       }
-      const results = await Promise.allSettled(
-        subtitleAddons.map((a) =>
-          getSubtitles(
-            a.transportUrl,
-            params.type,
-            params.videoId,
-            { videoHash, videoSize, filename: stream.behaviorHints?.filename },
-            { signal: timeoutSignal(HASH_TIMEOUT_MS) },
-          ),
-        ),
-      )
-      const subtitles = sortSubtitlesByPreference(
-        results
-          .filter((r): r is PromiseFulfilledResult<{ subtitles: Subtitle[] }> => r.status === 'fulfilled')
-          .flatMap((r) => r.value.subtitles ?? []),
-        settings.preferredSubtitleLang,
-      )
+      let candidates: Subtitle[] = []
+      try {
+        const { results } = await api().getSubtitles(
+          params.type,
+          params.videoId,
+          { videoHash, videoSize, filename: stream.behaviorHints?.filename },
+          { signal: timeoutSignal(HASH_TIMEOUT_MS) },
+        )
+        candidates = results.flatMap((r) => r.subtitles ?? [])
+      } catch {
+        // Unreachable server: same as every addon failing before — the sheet
+        // still opens so the download itself is never blocked on subtitles.
+      }
+      const subtitles = sortSubtitlesByPreference(candidates, settings.preferredSubtitleLang)
       setSubtitlePick({ stream, subtitles })
     } finally {
       setPreparingKey(null)
@@ -185,11 +172,11 @@ export default function StreamsScreen() {
           </Pressable>
         ) : null}
         {addonStreams.map((group) => (
-          <View key={group.transportUrl} style={styles.group}>
+          <View key={group.addonId} style={styles.group}>
             <Text style={styles.groupHeading}>{group.addonName}</Text>
             <View style={styles.card}>
               {group.streams.map((stream, index) => {
-                const key = `${group.transportUrl}:${index}`
+                const key = `${group.addonId}:${index}`
                 return (
                   <View
                     key={key}

@@ -61,7 +61,9 @@ export default function SettingsScreen() {
     }
     setAdding(true)
     try {
-      await saveUserAddons([...userAddons.map((a) => a.transportUrl), transportUrl])
+      // Own entries always carry their URL (the caller sent it) — only global
+      // entries are redacted for non-admins.
+      await saveUserAddons([...userAddons.map((a) => a.transportUrl!), transportUrl])
       setUrl('')
     } catch (err) {
       Alert.alert('Could not install addon', err instanceof Error ? err.message : 'Invalid manifest URL')
@@ -77,7 +79,7 @@ export default function SettingsScreen() {
         text: 'Remove',
         style: 'destructive',
         onPress: () => {
-          void saveUserAddons(userAddons.filter((a) => a.transportUrl !== transportUrl).map((a) => a.transportUrl))
+          void saveUserAddons(userAddons.filter((a) => a.transportUrl !== transportUrl).map((a) => a.transportUrl!))
         },
       },
     ])
@@ -98,7 +100,8 @@ export default function SettingsScreen() {
     }
     setAddingGlobal(true)
     try {
-      await saveGlobalAddons([...globalAddons.map((a) => a.transportUrl), transportUrl])
+      // Admin-gated section: the server keeps global URLs visible to admins.
+      await saveGlobalAddons([...globalAddons.map((a) => a.transportUrl!), transportUrl])
       setGlobalUrl('')
     } catch (err) {
       Alert.alert('Could not install addon', err instanceof Error ? err.message : 'Invalid manifest URL')
@@ -114,7 +117,7 @@ export default function SettingsScreen() {
         text: 'Remove',
         style: 'destructive',
         onPress: () => {
-          void saveGlobalAddons(globalAddons.filter((a) => a.transportUrl !== transportUrl).map((a) => a.transportUrl))
+          void saveGlobalAddons(globalAddons.filter((a) => a.transportUrl !== transportUrl).map((a) => a.transportUrl!))
         },
       },
     ])
@@ -155,7 +158,7 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
         {userAddons.map((item, i) => (
-          <View key={item.transportUrl} style={[styles.addonRow, i === userAddons.length - 1 && styles.lastRow]}>
+          <View key={item.id} style={[styles.addonRow, i === userAddons.length - 1 && styles.lastRow]}>
             <View style={styles.addonIcon}>
               <Ionicons name="extension-puzzle" size={19} color={colors.accent} />
             </View>
@@ -169,7 +172,7 @@ export default function SettingsScreen() {
                 </Text>
               ) : null}
             </View>
-            <Pressable onPress={() => remove(item.transportUrl, item.manifest.name)} hitSlop={8}>
+            <Pressable onPress={() => remove(item.transportUrl!, item.manifest.name)} hitSlop={8}>
               <Ionicons name="close" size={19} color={colors.textDim} />
             </Pressable>
           </View>
@@ -206,7 +209,7 @@ export default function SettingsScreen() {
               </View>
             ) : (
               globalAddons.map((item, i) => (
-                <View key={item.transportUrl} style={[styles.addonRow, i === globalAddons.length - 1 && styles.lastRow]}>
+                <View key={item.id} style={[styles.addonRow, i === globalAddons.length - 1 && styles.lastRow]}>
                   <View style={styles.addonIcon}>
                     <Ionicons name="globe-outline" size={19} color={colors.accent} />
                   </View>
@@ -220,7 +223,7 @@ export default function SettingsScreen() {
                       </Text>
                     ) : null}
                   </View>
-                  <Pressable onPress={() => removeGlobal(item.transportUrl, item.manifest.name)} hitSlop={8}>
+                  <Pressable onPress={() => removeGlobal(item.transportUrl!, item.manifest.name)} hitSlop={8}>
                     <Ionicons name="close" size={19} color={colors.textDim} />
                   </Pressable>
                 </View>
@@ -233,7 +236,7 @@ export default function SettingsScreen() {
           <Text style={styles.groupLabel}>Global</Text>
           <View style={styles.card}>
             {globalAddons.map((item, i) => (
-              <View key={item.transportUrl} style={[styles.addonRow, i === globalAddons.length - 1 && styles.lastRow]}>
+              <View key={item.id} style={[styles.addonRow, i === globalAddons.length - 1 && styles.lastRow]}>
                 <View style={styles.addonIcon}>
                   <Ionicons name="globe-outline" size={19} color={colors.accent} />
                 </View>

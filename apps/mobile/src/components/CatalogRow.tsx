@@ -5,15 +5,16 @@ import { colors, spacing, POSTER_WIDTH, POSTER_HEIGHT } from '../theme'
 import { PosterCard } from './PosterCard'
 
 interface Props {
-  transportUrl: string
+  /** Opaque `AddonEntry.id` — catalogs are addressed by it, never by transport URL. */
+  addonId: string
   addonName: string
   type: string
   catalogId: string
   catalogName?: string
 }
 
-export function CatalogRow({ transportUrl, addonName, type, catalogId, catalogName }: Props) {
-  const { data: metas, isLoading, isError } = useCatalog(transportUrl, type, catalogId)
+export function CatalogRow({ addonId, addonName, type, catalogId, catalogName }: Props) {
+  const { data: metas, isLoading, isError } = useCatalog(addonId, type, catalogId)
   const { pick } = useResponsive()
   const posterWidth = pick(POSTER_WIDTH, 140, 156)
   // Failed or empty catalogs disappear instead of leaving dead headers around.

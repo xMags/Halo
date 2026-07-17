@@ -1,12 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  addonSupportsResource,
   computeVideoHash,
-  getCatalog,
-  getMeta,
-  getStreams,
-  getSubtitles,
-  isPlayableStream,
   languageMatches,
   type AddonRef,
   type CatalogResponse,
@@ -79,62 +73,39 @@ export function useMe() {
   })
 }
 
-export function useCatalog(transportUrl: string, type: string, id: string, opts?: { enabled?: boolean }) {
+/** One catalog, resolved server-side. `addonId` is the opaque `AddonEntry.id`. */
+export function useCatalog(addonId: string, type: string, id: string, opts?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: ['catalog', transportUrl, type, id],
-    queryFn: async () => (await getCatalog(transportUrl, type, id)).metas,
+    queryKey: ['catalog', addonId, type, id],
+    queryFn: async () => (await api().getCatalog(addonId, type, id)).metas,
     staleTime: 10 * 60_000,
     enabled: opts?.enabled ?? true,
   })
 }
 
-/** Meta from the first installed addon that can describe this type/id. */
+/** Meta resolved server-side: first effective addon that can describe this type/id wins (404 → error state). */
 export function useMeta(type: string, id: string, opts?: { enabled?: boolean }) {
-  const { data: addons } = useEffectiveAddons()
   return useQuery({
     queryKey: ['meta', type, id],
-    enabled: !!addons && (opts?.enabled ?? true),
+    enabled: opts?.enabled ?? true,
     staleTime: 10 * 60_000,
-    queryFn: async (): Promise<MetaDetail> => {
-      const capable = (addons ?? []).filter((a) => addonSupportsResource(a.manifest, 'meta', type, id))
-      let lastError: unknown = new Error(`no installed addon provides metadata for ${type}/${id}`)
-      for (const addon of capable) {
-        try {
-          return (await getMeta(addon.transportUrl, type, id)).meta
-        } catch (err) {
-          lastError = err
-        }
-      }
-      throw lastError
-    },
+    queryFn: async (): Promise<MetaDetail> => (await api().getMeta(type, id)).meta,
   })
 }
 
 export interface AddonStreams {
+  addonId: string
   addonName: string
-  transportUrl: string
   streams: Stream[]
 }
 
-/** Streams from every capable addon, queried concurrently; failures drop out. */
+/** Playable streams per addon, fanned out server-side; failed addons drop out (parity with the old silent drop). */
 export function useStreams(type: string, videoId: string) {
-  const { data: addons } = useEffectiveAddons()
   return useQuery({
     queryKey: ['streams', type, videoId],
-    enabled: !!addons,
     queryFn: async (): Promise<AddonStreams[]> => {
-      const capable = (addons ?? []).filter((a) => addonSupportsResource(a.manifest, 'stream', type, videoId))
-      const results = await Promise.allSettled(
-        capable.map(async (a): Promise<AddonStreams> => ({
-          addonName: a.manifest.name,
-          transportUrl: a.transportUrl,
-          streams: (await getStreams(a.transportUrl, type, videoId)).streams.filter(isPlayableStream),
-        })),
-      )
-      return results
-        .filter((r): r is PromiseFulfilledResult<AddonStreams> => r.status === 'fulfilled')
-        .map((r) => r.value)
-        .filter((r) => r.streams.length > 0)
+      const { results } = await api().getStreams(type, videoId)
+      return results.map((r) => ({ addonId: r.addon.id, addonName: r.addon.name, streams: r.streams }))
     },
   })
 }
@@ -156,17 +127,12 @@ export interface SubtitleOptions {
  * exact matches, otherwise addons fall back to id-based search.
  */
 export function useAddonSubtitles(opts: SubtitleOptions) {
-  const { data: addons } = useEffectiveAddons()
   return useQuery({
     queryKey: ['subtitles', opts.type, opts.videoId, opts.streamUrl ?? opts.localFileUri ?? null],
-    enabled: !!addons,
     staleTime: Infinity,
     queryFn: async (): Promise<Subtitle[]> => {
-      const capable = (addons ?? []).filter((a) =>
-        addonSupportsResource(a.manifest, 'subtitles', opts.type, opts.videoId),
-      )
-      if (capable.length === 0) return []
-
+      // Hashing stays client-side by design: the server never touches stream
+      // bytes, and only the device can read a downloaded file.
       let videoHash: string | undefined
       let videoSize = opts.videoSize
       try {
@@ -183,14 +149,12 @@ export function useAddonSubtitles(opts: SubtitleOptions) {
         // Host rejected ranges / file unreadable — name/id search still works.
       }
 
-      const results = await Promise.allSettled(
-        capable.map((a) =>
-          getSubtitles(a.transportUrl, opts.type, opts.videoId, { videoHash, videoSize, filename: opts.filename }),
-        ),
-      )
-      return results
-        .filter((r): r is PromiseFulfilledResult<{ subtitles: Subtitle[] }> => r.status === 'fulfilled')
-        .flatMap((r) => r.value.subtitles ?? [])
+      const { results } = await api().getSubtitles(opts.type, opts.videoId, {
+        videoHash,
+        videoSize,
+        filename: opts.filename,
+      })
+      return results.flatMap((r) => r.subtitles ?? [])
     },
   })
 }
@@ -214,10 +178,10 @@ export function useSearch(term: string) {
               (c.extra ?? []).some((e) => e.name === 'search') ||
               (c.extraSupported ?? []).includes('search'),
           )
-          .map((c) => ({ transportUrl: addon.transportUrl, type: c.type, id: c.id })),
+          .map((c) => ({ addonId: addon.id, type: c.type, id: c.id })),
       )
       const results = await Promise.allSettled(
-        targets.map((t) => getCatalog(t.transportUrl, t.type, t.id, { search: trimmed })),
+        targets.map((t) => api().getCatalog(t.addonId, t.type, t.id, { search: trimmed })),
       )
       const metas = results
         .filter((r): r is PromiseFulfilledResult<CatalogResponse> => r.status === 'fulfilled')
