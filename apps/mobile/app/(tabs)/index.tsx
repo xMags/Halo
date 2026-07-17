@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { MetaPreview } from '@halo/core'
 import { useCatalog, useEffectiveAddons, useLibrary, useMeta, useWatchStates } from '@/queries'
 import { colors, radius, spacing, TAB_BAR_SPACE, type } from '@/theme'
+import { useResponsive } from '@/responsive'
 import { CatalogRow } from '@/components/CatalogRow'
 import { PosterCard } from '@/components/PosterCard'
 import { HeroScrim, Segmented, SearchField, MetaLine, CenterMessage } from '@/components/ui'
@@ -25,6 +26,7 @@ const FILTER_TYPE: Record<Filter, string | null> = { All: null, Movies: 'movie',
 export default function HomeScreen() {
   const insets = useSafeAreaInsets()
   const router = useRouter()
+  const { pick } = useResponsive()
   const [filter, setFilter] = useState<Filter>('All')
   const { data: addons, isLoading, isError } = useEffectiveAddons()
   const { data: watchStates } = useWatchStates()
@@ -112,7 +114,7 @@ export default function HomeScreen() {
       </View>
 
       {featured ? (
-        <Pressable style={styles.featured} onPress={openFeatured}>
+        <Pressable style={[styles.featured, { height: pick(210, 300, 340) }]} onPress={openFeatured}>
           <Image
             source={{ uri: featured.background ?? featured.poster }}
             style={styles.featuredImg}
@@ -142,7 +144,7 @@ export default function HomeScreen() {
             horizontal
             data={continueItems}
             keyExtractor={(item) => item.meta.id}
-            renderItem={({ item }) => <PosterCard meta={item.meta} width={132} progress={item.progress} />}
+            renderItem={({ item }) => <PosterCard meta={item.meta} width={pick(132, 150, 168)} progress={item.progress} />}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.rowList}
           />

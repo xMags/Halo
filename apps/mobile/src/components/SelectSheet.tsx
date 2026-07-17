@@ -57,6 +57,10 @@ export function SelectSheet({
 
   const translation = slide.interpolate({ inputRange: [0, 1], outputRange: [80, 0] })
   const side = presentation === 'side'
+  // On tablets a full-width bottom sheet floats unanchored — cap and centre the
+  // card within its full-width wrap (matches the iOS form-sheet width).
+  const tablet = windowWidth >= 600
+  const bottomCap = !side && tablet ? { alignSelf: 'center' as const, width: Math.min(windowWidth * 0.72, 640) } : null
 
   return (
     <View style={styles.overlay} pointerEvents="box-none">
@@ -73,7 +77,7 @@ export function SelectSheet({
         <BlurView
           intensity={44}
           tint="dark"
-          style={[styles.sheet, side ? styles.sideSheet : { maxHeight: windowHeight * 0.7 }]}
+          style={[styles.sheet, side ? styles.sideSheet : { maxHeight: windowHeight * 0.7 }, bottomCap]}
         >
           {side ? null : <View style={styles.grabber} />}
           <View style={styles.header}>

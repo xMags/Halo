@@ -1,5 +1,6 @@
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native'
 import { useCatalog } from '../queries'
+import { useResponsive } from '../responsive'
 import { colors, spacing, POSTER_WIDTH, POSTER_HEIGHT } from '../theme'
 import { PosterCard } from './PosterCard'
 
@@ -13,6 +14,8 @@ interface Props {
 
 export function CatalogRow({ transportUrl, addonName, type, catalogId, catalogName }: Props) {
   const { data: metas, isLoading, isError } = useCatalog(transportUrl, type, catalogId)
+  const { pick } = useResponsive()
+  const posterWidth = pick(POSTER_WIDTH, 140, 156)
   // Failed or empty catalogs disappear instead of leaving dead headers around.
   if (isError || metas?.length === 0) return null
 
@@ -27,7 +30,7 @@ export function CatalogRow({ transportUrl, addonName, type, catalogId, catalogNa
           horizontal
           data={metas}
           keyExtractor={(meta) => meta.id}
-          renderItem={({ item }) => <PosterCard meta={item} width={POSTER_WIDTH} />}
+          renderItem={({ item }) => <PosterCard meta={item} width={posterWidth} />}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.list}
         />
