@@ -23,6 +23,7 @@ import { getDownload, startDownload, useDownloads } from '@/downloads'
 import { useSettings } from '@/settings'
 import { formatBytes } from '@/format'
 import { colors, radius, spacing, type } from '@/theme'
+import { useResponsive } from '@/responsive'
 import { SelectSheet } from '@/components/SelectSheet'
 import { CenterMessage } from '@/components/ui'
 
@@ -46,6 +47,7 @@ export default function StreamsScreen() {
     poster?: string
   }>()
   const router = useRouter()
+  const { contentMaxWidth } = useResponsive()
   const { data: addonStreams, isLoading } = useStreams(params.type, params.videoId)
   const { data: addons } = useEffectiveAddons()
   const downloads = useDownloads()
@@ -150,7 +152,13 @@ export default function StreamsScreen() {
 
   return (
     <>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          contentMaxWidth ? { maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center' } : null,
+        ]}
+      >
         {existingDownload ? (
           <Pressable
             style={({ pressed }) => [styles.offlineCard, pressed && styles.pressed]}

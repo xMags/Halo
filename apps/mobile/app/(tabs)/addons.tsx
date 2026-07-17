@@ -17,6 +17,7 @@ import { useAddons, useMe, useSetAddons, useSetGlobalAddons } from '@/queries'
 import { useSession } from '@/session'
 import { useSettings, useUpdateSettings } from '@/settings'
 import { colors, radius, spacing, TAB_BAR_SPACE, type } from '@/theme'
+import { useResponsive } from '@/responsive'
 import { SelectSheet } from '@/components/SelectSheet'
 
 /**
@@ -25,6 +26,7 @@ import { SelectSheet } from '@/components/SelectSheet'
  */
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets()
+  const { contentMaxWidth } = useResponsive()
   const { data: addons } = useAddons()
   const { data: me } = useMe()
   const setAddons = useSetAddons()
@@ -121,7 +123,10 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
     <ScrollView
-      contentContainerStyle={{ paddingTop: insets.top + spacing.xs, paddingBottom: TAB_BAR_SPACE, paddingHorizontal: spacing.md }}
+      contentContainerStyle={[
+        { paddingTop: insets.top + spacing.xs, paddingBottom: TAB_BAR_SPACE, paddingHorizontal: spacing.md },
+        contentMaxWidth ? { maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center' } : null,
+      ]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >

@@ -11,6 +11,7 @@ import {
 } from '@/downloads'
 import { formatBytes } from '@/format'
 import { colors, radius, spacing, TAB_BAR_SPACE, type } from '@/theme'
+import { useResponsive } from '@/responsive'
 import { CenterMessage } from '@/components/ui'
 
 interface Section {
@@ -50,6 +51,7 @@ export default function DownloadsScreen() {
   const downloads = useDownloads()
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const { contentMaxWidth } = useResponsive()
 
   const play = (entry: DownloadEntry) => {
     router.push({
@@ -102,7 +104,10 @@ export default function DownloadsScreen() {
   return (
     <SectionList
       style={styles.container}
-      contentContainerStyle={{ paddingBottom: TAB_BAR_SPACE }}
+      contentContainerStyle={[
+        { paddingBottom: TAB_BAR_SPACE },
+        contentMaxWidth ? { maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center' } : null,
+      ]}
       sections={groupByItem(downloads)}
       keyExtractor={(e) => e.id}
       ListHeaderComponent={header}
