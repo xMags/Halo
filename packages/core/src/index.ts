@@ -46,6 +46,7 @@ export type {
   AddonsResponse,
   AddonSource,
   LibraryItem,
+  Me,
   SettingsPayload,
   StreamsResult,
   SubtitlesResult,

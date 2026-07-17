@@ -74,6 +74,20 @@ describe('auth', () => {
     const row = db.select().from(users).where(eq(users.id, 'admin-sub')).get()
     expect(row?.username).toBe('newuser')
   })
+
+  it('GET /auth/me needs a token', async () => {
+    expect((await app.request('/auth/me')).status).toBe(401)
+  })
+
+  it('GET /auth/me reports admin status from the group claim (OIDC)', async () => {
+    const asAdmin = await app.request('/auth/me', authed(await adminToken()))
+    expect(asAdmin.status).toBe(200)
+    expect(await asAdmin.json()).toMatchObject({ id: 'admin-sub', username: 'admin', isAdmin: true })
+
+    const asUser = await app.request('/auth/me', authed(await userToken('bob')))
+    expect(asUser.status).toBe(200)
+    expect(await asUser.json()).toMatchObject({ id: 'bob-sub', username: 'bob', isAdmin: false })
+  })
 })
 
 describe('watch-state LWW (per user)', () => {

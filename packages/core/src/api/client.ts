@@ -4,6 +4,7 @@ import type {
   AddonRef,
   AddonsResponse,
   LibraryItem,
+  Me,
   SettingsPayload,
   StreamsResult,
   SubtitlesResult,
@@ -113,6 +114,11 @@ export class HaloClient {
   /** Public endpoint: which IdP to authenticate against and as which client. */
   getAuthConfig(): Promise<AuthConfig> {
     return this.request<AuthConfig>('GET', '/auth/config')
+  }
+
+  /** The authenticated user incl. admin status; drives admin-only UI. */
+  getMe(): Promise<Me> {
+    return this.request<Me>('GET', '/auth/me')
   }
 
   /** Global (admin-managed) addons plus the caller's own, each ordered by position. */

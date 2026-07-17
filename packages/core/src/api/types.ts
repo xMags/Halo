@@ -20,6 +20,18 @@ export interface AddonsResponse {
   user: AddonEntry[]
 }
 
+/**
+ * The authenticated user as returned by GET /auth/me. `isAdmin` is computed
+ * server-side per request (OIDC groups claim / local is_admin column); the
+ * client never derives it from the token itself.
+ */
+export interface Me {
+  id: string
+  username: string
+  isAdmin: boolean
+  createdAt: number
+}
+
 export interface LibraryItem {
   /** `${type}:${metaId}`, e.g. "movie:tt0111161". */
   id: string

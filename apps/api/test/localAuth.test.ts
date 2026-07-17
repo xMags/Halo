@@ -54,6 +54,13 @@ describe('local login', () => {
     expect(await protectedRes.json()).toEqual([])
   })
 
+  it('GET /auth/me reports the local admin flag', async () => {
+    const token = await loginToken(app, 'admin', ADMIN_PASSWORD)
+    const res = await app.request('/auth/me', authed(token))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ username: 'admin', isAdmin: true })
+  })
+
   it('rejects a wrong password with a generic error', async () => {
     const res = await login(app, 'admin', 'nope')
     expect(res.status).toBe(401)

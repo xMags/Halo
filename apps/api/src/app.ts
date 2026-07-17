@@ -163,6 +163,12 @@ export function createApp(config: AppConfig) {
   const authed = new Hono<{ Variables: AuthVariables }>()
   authed.use('*', authMiddleware(config.auth, db))
 
+  // The authenticated user, incl. admin status (computed per request in both
+  // modes — OIDC groups claim / local is_admin column). Clients read this to
+  // decide whether to show admin-only UI; the server still enforces adminOnly
+  // on every mutation, so this is a display hint, never a trust boundary.
+  authed.get('/auth/me', (c) => c.json(c.get('user')))
+
   // Local-accounts routes. Mounted only in local mode so an OIDC deployment
   // exposes no password surface at all.
   if (config.auth.mode === 'local') {
