@@ -45,6 +45,11 @@ export interface LocalSessionToken {
   expiresAt: number
 }
 
+/** Per-call options for the resolution methods; callers own timeout policy via the signal. */
+export interface RequestOptions {
+  signal?: AbortSignal
+}
+
 export interface HaloClientOptions {
   baseUrl: string
   /**
@@ -82,7 +87,13 @@ export class HaloClient {
     this.doFetch = opts.fetch ?? fetch
   }
 
-  private async request<T>(method: 'GET' | 'PUT' | 'POST', path: string, body?: unknown, retried = false): Promise<T> {
+  private async request<T>(
+    method: 'GET' | 'PUT' | 'POST',
+    path: string,
+    body?: unknown,
+    opts?: RequestOptions,
+    retried = false,
+  ): Promise<T> {
     const token = (await this.getAccessToken?.()) ?? null
     const headers: Record<string, string> = {}
     if (token) headers.Authorization = `Bearer ${token}`
@@ -92,6 +103,7 @@ export class HaloClient {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: opts?.signal,
     })
 
     if (res.status === 401) {
@@ -99,7 +111,7 @@ export class HaloClient {
       // means the access token aged out between the provider's expiry check
       // and the server's.
       if (!retried && this.refreshAccessToken && (await this.refreshAccessToken())) {
-        return this.request(method, path, body, true)
+        return this.request(method, path, body, opts, true)
       }
       this.onUnauthorized?.()
       throw new HaloApiError(401, 'Unauthorized')
@@ -145,33 +157,34 @@ export class HaloClient {
    * directly, so the app doesn't need per-addon URLs or CORS handling.
    */
   /** `addonId` is the opaque `AddonEntry.id` — clients never address addons by transport URL. */
-  getCatalog(addonId: string, type: string, id: string, extra?: Record<string, string>): Promise<CatalogResponse> {
+  getCatalog(addonId: string, type: string, id: string, extra?: Record<string, string>, opts?: RequestOptions): Promise<CatalogResponse> {
     const qs = new URLSearchParams({ addon: addonId, type, id, ...(extra ?? {}) })
-    return this.request<CatalogResponse>('GET', `/catalog?${qs.toString()}`)
+    return this.request<CatalogResponse>('GET', `/catalog?${qs.toString()}`, undefined, opts)
   }
 
   /** First effective addon that can describe this type/id wins; 404 if none. */
-  getMeta(type: string, id: string): Promise<MetaResponse> {
+  getMeta(type: string, id: string, opts?: RequestOptions): Promise<MetaResponse> {
     const qs = new URLSearchParams({ type, id })
-    return this.request<MetaResponse>('GET', `/meta?${qs.toString()}`)
+    return this.request<MetaResponse>('GET', `/meta?${qs.toString()}`, undefined, opts)
   }
 
   /** Fans out to every effective addon; playable streams grouped by addon. */
-  getStreams(type: string, videoId: string): Promise<StreamsResult> {
+  getStreams(type: string, videoId: string, opts?: RequestOptions): Promise<StreamsResult> {
     const qs = new URLSearchParams({ type, videoId })
-    return this.request<StreamsResult>('GET', `/streams?${qs.toString()}`)
+    return this.request<StreamsResult>('GET', `/streams?${qs.toString()}`, undefined, opts)
   }
 
   getSubtitles(
     type: string,
     videoId: string,
     extra?: { videoHash?: string; videoSize?: number; filename?: string },
+    opts?: RequestOptions,
   ): Promise<SubtitlesResult> {
     const qs = new URLSearchParams({ type, videoId })
     if (extra?.videoHash) qs.set('videoHash', extra.videoHash)
     if (extra?.videoSize !== undefined) qs.set('videoSize', String(extra.videoSize))
     if (extra?.filename) qs.set('filename', extra.filename)
-    return this.request<SubtitlesResult>('GET', `/subtitles?${qs.toString()}`)
+    return this.request<SubtitlesResult>('GET', `/subtitles?${qs.toString()}`, undefined, opts)
   }
 
   getLibrary(): Promise<LibraryItem[]> {
