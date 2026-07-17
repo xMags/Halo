@@ -261,7 +261,15 @@ export function createApp(config: AppConfig) {
 
   authed.get('/addons', (c) => {
     const user = c.get('user')
-    const global = db.select().from(globalAddons).orderBy(globalAddons.position).all().map(toAddonEntry)
+    // Global transport URLs can embed the admin's secrets (debrid API keys),
+    // so non-admins get them redacted; the opaque id addresses resolution.
+    const global = db
+      .select()
+      .from(globalAddons)
+      .orderBy(globalAddons.position)
+      .all()
+      .map(toAddonEntry)
+      .map((a): AddonEntry => (user.isAdmin ? a : { id: a.id, manifest: a.manifest, position: a.position }))
     const userList = db
       .select()
       .from(userAddons)
@@ -286,7 +294,7 @@ export function createApp(config: AppConfig) {
       tx.delete(userAddons).where(eq(userAddons.userId, user.id)).run()
       for (const r of resolved.entries) {
         tx.insert(userAddons)
-          .values({ userId: user.id, transportUrl: r.transportUrl, manifest: r.manifest, position: r.position, addedAt: now })
+          .values({ userId: user.id, id: r.id, transportUrl: r.transportUrl, manifest: r.manifest, position: r.position, addedAt: now })
           .run()
       }
     })
@@ -304,7 +312,7 @@ export function createApp(config: AppConfig) {
       tx.delete(globalAddons).run()
       for (const r of resolved.entries) {
         tx.insert(globalAddons)
-          .values({ transportUrl: r.transportUrl, manifest: r.manifest, position: r.position, addedAt: now })
+          .values({ id: r.id, transportUrl: r.transportUrl, manifest: r.manifest, position: r.position, addedAt: now })
           .run()
       }
     })
@@ -419,7 +427,7 @@ export function createApp(config: AppConfig) {
 
   // Effective addon set for a user: globals (by position) then their own (by
   // position). This ordering is the resolution priority for meta/streams/subs.
-  const effectiveAddons = (userId: string): AddonEntry[] => {
+  const effectiveAddons = (userId: string): EffectiveAddon[] => {
     const global = db.select().from(globalAddons).orderBy(globalAddons.position).all()
     const own = db.select().from(userAddons).where(eq(userAddons.userId, userId)).orderBy(userAddons.position).all()
     return [...global, ...own].map(toAddonEntry)
@@ -440,11 +448,12 @@ export function createApp(config: AppConfig) {
     if (extraKeys.some((k) => k.length > 64) || Object.values(extra).some((v) => v.length > 256)) {
       return c.json({ error: 'extra param too long' }, 400)
     }
-    if (!effectiveAddons(c.get('user').id).some((a) => a.transportUrl === addon)) {
-      return c.json({ error: 'addon not installed' }, 403)
-    }
+    // `addon` is the opaque entry id — the transport URL never round-trips
+    // through clients (global URLs can embed secrets).
+    const entry = effectiveAddons(c.get('user').id).find((a) => a.id === addon)
+    if (!entry) return c.json({ error: 'addon not installed' }, 403)
     try {
-      const res = await getCatalog(addon, type, id, extra, { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) })
+      const res = await getCatalog(entry.transportUrl, type, id, extra, { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) })
       return c.json(res)
     } catch {
       return c.json({ error: 'catalog fetch failed' }, 502)
@@ -478,14 +487,14 @@ export function createApp(config: AppConfig) {
         return res.streams.filter(isPlayableStream)
       }),
     )
-    const results: Array<{ addon: { name: string; transportUrl: string }; streams: unknown[] }> = []
-    const errors: Array<{ transportUrl: string; message: string }> = []
+    const results: Array<{ addon: { id: string; name: string }; streams: unknown[] }> = []
+    const errors: Array<{ id: string; message: string }> = []
     settled.forEach((r, i) => {
       const a = capable[i]!
       if (r.status === 'fulfilled') {
-        if (r.value.length > 0) results.push({ addon: { name: a.manifest.name, transportUrl: a.transportUrl }, streams: r.value })
+        if (r.value.length > 0) results.push({ addon: { id: a.id, name: a.manifest.name }, streams: r.value })
       } else {
-        errors.push({ transportUrl: a.transportUrl, message: errorMessage(r.reason) })
+        errors.push({ id: a.id, message: errorMessage(r.reason) })
       }
     })
     return c.json({ results, errors })
@@ -520,14 +529,14 @@ export function createApp(config: AppConfig) {
         return res.subtitles
       }),
     )
-    const results: Array<{ addon: { name: string; transportUrl: string }; subtitles: unknown[] }> = []
-    const errors: Array<{ transportUrl: string; message: string }> = []
+    const results: Array<{ addon: { id: string; name: string }; subtitles: unknown[] }> = []
+    const errors: Array<{ id: string; message: string }> = []
     settled.forEach((r, i) => {
       const a = capable[i]!
       if (r.status === 'fulfilled') {
-        results.push({ addon: { name: a.manifest.name, transportUrl: a.transportUrl }, subtitles: r.value })
+        results.push({ addon: { id: a.id, name: a.manifest.name }, subtitles: r.value })
       } else {
-        errors.push({ transportUrl: a.transportUrl, message: errorMessage(r.reason) })
+        errors.push({ id: a.id, message: errorMessage(r.reason) })
       }
     })
     return c.json({ results, errors, hashMatched: videoHash !== undefined })
@@ -566,11 +575,19 @@ function rowToWatchState(r: typeof watchStates.$inferSelect): WatchState {
   }
 }
 
-function toAddonEntry(r: { transportUrl: string; manifest: Manifest; position: number }): AddonEntry {
-  return { transportUrl: r.transportUrl, manifest: r.manifest, position: r.position }
+/**
+ * Server-side view of an addon entry: unlike the wire `AddonEntry` (where the
+ * transport URL is redacted on global entries for non-admins), resolution
+ * always needs the URL.
+ */
+type EffectiveAddon = AddonEntry & { transportUrl: string }
+
+function toAddonEntry(r: { id: string; transportUrl: string; manifest: Manifest; position: number }): EffectiveAddon {
+  return { id: r.id, transportUrl: r.transportUrl, manifest: r.manifest, position: r.position }
 }
 
 interface ResolvedAddon {
+  id: string
   transportUrl: string
   position: number
   manifest: Manifest
@@ -599,7 +616,12 @@ async function resolveManifests(
   const failed = results.find((r) => r.manifest === null)
   if (failed) return { error: `could not fetch a valid manifest for ${failed.ref.transportUrl}` }
   return {
-    entries: results.map((r) => ({ transportUrl: r.ref.transportUrl, position: r.ref.position, manifest: r.manifest! })),
+    entries: results.map((r) => ({
+      id: randomUUID(),
+      transportUrl: r.ref.transportUrl,
+      position: r.ref.position,
+      manifest: r.manifest!,
+    })),
   }
 }
 

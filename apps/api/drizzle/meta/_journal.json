@@ -15,6 +15,13 @@
       "when": 1784215305330,
       "tag": "0001_auth_modes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784319126290,
+      "tag": "0002_round_maria_hill",
+      "breakpoints": true
     }
   ]
 }

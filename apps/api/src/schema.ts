@@ -33,12 +33,20 @@ export const users = sqliteTable(
 )
 
 /** Addons every user sees, ordered before their personal ones. Admin-managed. */
-export const globalAddons = sqliteTable('global_addons', {
-  transportUrl: text('transport_url').primaryKey(),
-  manifest: text('manifest', { mode: 'json' }).$type<Manifest>().notNull(),
-  position: integer('position').notNull(),
-  addedAt: integer('added_at').notNull(),
-})
+export const globalAddons = sqliteTable(
+  'global_addons',
+  {
+    transportUrl: text('transport_url').primaryKey(),
+    // Opaque client-facing id: resolution endpoints are addressed by it so
+    // transport URLs (which can embed secrets like debrid API keys) never have
+    // to reach non-admin clients. Regenerated on every list replace.
+    id: text('id').notNull(),
+    manifest: text('manifest', { mode: 'json' }).$type<Manifest>().notNull(),
+    position: integer('position').notNull(),
+    addedAt: integer('added_at').notNull(),
+  },
+  (t) => [uniqueIndex('global_addons_id_unique').on(t.id)],
+)
 
 export const userAddons = sqliteTable(
   'user_addons',
@@ -47,11 +55,13 @@ export const userAddons = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     transportUrl: text('transport_url').notNull(),
+    /** Opaque client-facing id, same role as global_addons.id. */
+    id: text('id').notNull(),
     manifest: text('manifest', { mode: 'json' }).$type<Manifest>().notNull(),
     position: integer('position').notNull(),
     addedAt: integer('added_at').notNull(),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.transportUrl] })],
+  (t) => [primaryKey({ columns: [t.userId, t.transportUrl] }), uniqueIndex('user_addons_id_unique').on(t.id)],
 )
 
 export const libraryItems = sqliteTable(

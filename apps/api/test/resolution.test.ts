@@ -20,20 +20,20 @@ describe('GET /streams', () => {
       'https://c.test': 'fail',
     })
     const token = await adminToken()
-    installUserAddon(db, 'admin', 'https://a.test/manifest.json', manifest('A', ['stream']), 0)
+    const aId = installUserAddon(db, 'admin', 'https://a.test/manifest.json', manifest('A', ['stream']), 0)
     installUserAddon(db, 'admin', 'https://b.test/manifest.json', manifest('B', ['stream']), 1)
-    installUserAddon(db, 'admin', 'https://c.test/manifest.json', manifest('C', ['stream']), 2)
+    const cId = installUserAddon(db, 'admin', 'https://c.test/manifest.json', manifest('C', ['stream']), 2)
 
     const res = await app.request('/streams?type=movie&videoId=tt1', authed(token))
     const body = (await res.json()) as {
-      results: Array<{ addon: { name: string }; streams: unknown[] }>
-      errors: Array<{ transportUrl: string }>
+      results: Array<{ addon: { id: string; name: string; transportUrl?: string }; streams: unknown[] }>
+      errors: Array<{ id: string }>
     }
     // A has one playable stream; B is omitted (only a torrent); C failed.
     expect(body.results).toHaveLength(1)
-    expect(body.results[0]!.addon.name).toBe('A')
+    expect(body.results[0]!.addon).toEqual({ id: aId, name: 'A' })
     expect(body.results[0]!.streams).toHaveLength(1)
-    expect(body.errors.map((e) => e.transportUrl)).toEqual(['https://c.test/manifest.json'])
+    expect(body.errors.map((e) => e.id)).toEqual([cId])
   })
 })
 
@@ -102,30 +102,31 @@ describe('GET /catalog', () => {
   const setup = async () => {
     const { app, db } = mount({ 'https://cat.test': { 'catalog/movie/top': { metas: [{ id: 'tt1', type: 'movie', name: 'Top Movie' }] } } })
     const token = await adminToken()
-    installUserAddon(db, 'admin', CATALOG_URL, manifest('Cat', ['catalog'], [{ type: 'movie', id: 'top' }]), 0)
-    return { app, token }
+    const addonId = installUserAddon(db, 'admin', CATALOG_URL, manifest('Cat', ['catalog'], [{ type: 'movie', id: 'top' }]), 0)
+    return { app, token, addonId }
   }
 
-  it('passes the catalog through for an installed addon', async () => {
-    const { app, token } = await setup()
-    const res = await app.request(`/catalog?addon=${encodeURIComponent(CATALOG_URL)}&type=movie&id=top`, authed(token))
+  it('passes the catalog through for an installed addon, addressed by opaque id', async () => {
+    const { app, token, addonId } = await setup()
+    const res = await app.request(`/catalog?addon=${addonId}&type=movie&id=top`, authed(token))
     expect(res.status).toBe(200)
     expect(((await res.json()) as { metas: Array<{ name: string }> }).metas[0]!.name).toBe('Top Movie')
   })
 
-  it('403s an addon outside the effective set', async () => {
+  it('403s an unknown addon id and rejects addressing by transport URL', async () => {
     const { app, token } = await setup()
-    const res = await app.request(`/catalog?addon=${encodeURIComponent('https://other.test/manifest.json')}&type=movie&id=top`, authed(token))
-    expect(res.status).toBe(403)
+    expect((await app.request('/catalog?addon=not-an-installed-id&type=movie&id=top', authed(token))).status).toBe(403)
+    // The URL is no longer a valid address — only the opaque id is.
+    expect((await app.request(`/catalog?addon=${encodeURIComponent(CATALOG_URL)}&type=movie&id=top`, authed(token))).status).toBe(403)
   })
 
   it('enforces the extra-param count and length caps', async () => {
-    const { app, token } = await setup()
+    const { app, token, addonId } = await setup()
     const many = Array.from({ length: 9 }, (_, i) => `k${i}=v`).join('&')
-    expect((await app.request(`/catalog?addon=${encodeURIComponent(CATALOG_URL)}&type=movie&id=top&${many}`, authed(token))).status).toBe(400)
+    expect((await app.request(`/catalog?addon=${addonId}&type=movie&id=top&${many}`, authed(token))).status).toBe(400)
     const longValue = 'x'.repeat(257)
     expect(
-      (await app.request(`/catalog?addon=${encodeURIComponent(CATALOG_URL)}&type=movie&id=top&genre=${longValue}`, authed(token))).status,
+      (await app.request(`/catalog?addon=${addonId}&type=movie&id=top&genre=${longValue}`, authed(token))).status,
     ).toBe(400)
   })
 })

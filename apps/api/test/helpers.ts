@@ -1,10 +1,11 @@
+import { randomUUID } from 'node:crypto'
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose'
 import type { Manifest } from '@halo/core'
 import { createApp } from '../src/app'
 import { hashPassword } from '../src/auth'
 import { ensureAdminUser } from '../src/bootstrap'
 import { createDb, type Db } from '../src/db'
-import { userAddons, users } from '../src/schema'
+import { globalAddons, userAddons, users } from '../src/schema'
 
 // Stand-in IdP: a local RSA keypair whose public half is served to the app as
 // a JWKS, exactly like Authentik's — token verification runs the real code path.
@@ -155,16 +156,28 @@ export function mockResolveFetch(routes: Record<string, Record<string, unknown> 
  * Installs an addon for a user directly, skipping the server manifest fetch.
  * Seeds the user row itself (same `${name}-sub` id that `userToken`/`adminToken`
  * mint) since JIT provisioning only runs on the first authenticated request.
+ * Returns the entry's opaque id — resolution endpoints are addressed by it.
  */
-export function installUserAddon(db: Db, username: string, transportUrl: string, manifest: unknown, position = 0): void {
-  const id = `${username}-sub`
+export function installUserAddon(db: Db, username: string, transportUrl: string, manifest: unknown, position = 0): string {
+  const userId = `${username}-sub`
+  const id = randomUUID()
   db.insert(users)
-    .values({ id, username: username.toLowerCase(), createdAt: Date.now() })
+    .values({ id: userId, username: username.toLowerCase(), createdAt: Date.now() })
     .onConflictDoNothing()
     .run()
   db.insert(userAddons)
-    .values({ userId: id, transportUrl, manifest: manifest as Manifest, position, addedAt: Date.now() })
+    .values({ userId, id, transportUrl, manifest: manifest as Manifest, position, addedAt: Date.now() })
     .run()
+  return id
+}
+
+/** Installs a global addon directly, skipping the admin route + manifest fetch. Returns the opaque id. */
+export function installGlobalAddon(db: Db, transportUrl: string, manifest: unknown, position = 0): string {
+  const id = randomUUID()
+  db.insert(globalAddons)
+    .values({ id, transportUrl, manifest: manifest as Manifest, position, addedAt: Date.now() })
+    .run()
+  return id
 }
 
 export function authed(token: string, body?: unknown, method: 'GET' | 'PUT' | 'POST' | 'DELETE' = body === undefined ? 'GET' : 'PUT'): RequestInit {

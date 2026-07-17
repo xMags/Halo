@@ -144,8 +144,9 @@ export class HaloClient {
    * (which walk the caller's effective addon set) rather than talking to addons
    * directly, so the app doesn't need per-addon URLs or CORS handling.
    */
-  getCatalog(addon: string, type: string, id: string, extra?: Record<string, string>): Promise<CatalogResponse> {
-    const qs = new URLSearchParams({ addon, type, id, ...(extra ?? {}) })
+  /** `addonId` is the opaque `AddonEntry.id` — clients never address addons by transport URL. */
+  getCatalog(addonId: string, type: string, id: string, extra?: Record<string, string>): Promise<CatalogResponse> {
+    const qs = new URLSearchParams({ addon: addonId, type, id, ...(extra ?? {}) })
     return this.request<CatalogResponse>('GET', `/catalog?${qs.toString()}`)
   }
 

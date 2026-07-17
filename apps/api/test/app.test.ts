@@ -303,6 +303,26 @@ describe('addons: server-fetched manifests', () => {
     expect(body.global[0]!.manifest.name).toBe('Cinemeta')
   })
 
+  it('redacts global transport URLs for non-admins; admins and own entries keep them', async () => {
+    const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
+    const admin = await adminToken()
+    const bobToken = await userToken('bob')
+    await app.request('/addons/global', authed(admin, [{ transportUrl: CINEMETA_URL, position: 0 }], 'PUT'))
+    await app.request('/addons', authed(bobToken, [{ transportUrl: CINEMETA_URL, position: 0 }]))
+
+    type Entry = { id?: string; transportUrl?: string }
+    const bobView = (await (await app.request('/addons', authed(bobToken))).json()) as { global: Entry[]; user: Entry[] }
+    // The global URL can embed the admin's secrets — bob gets only the opaque id.
+    expect(bobView.global[0]!.transportUrl).toBeUndefined()
+    expect(bobView.global[0]!.id).toBeTruthy()
+    // Bob's own entry keeps its URL (he sent it; the manage flow re-sends it).
+    expect(bobView.user[0]!.transportUrl).toBe(CINEMETA_URL)
+
+    const adminView = (await (await app.request('/addons', authed(admin))).json()) as { global: Entry[] }
+    // The admin manages globals by URL, so redaction would break that flow.
+    expect(adminView.global[0]!.transportUrl).toBe(CINEMETA_URL)
+  })
+
   it('admin status follows the groups claim, not a stored flag', async () => {
     const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
     // Same subject: admin while the group is present, demoted once it is gone.

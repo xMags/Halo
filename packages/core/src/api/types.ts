@@ -3,7 +3,14 @@ import type { Manifest, Stream, Subtitle } from '../addon/types'
 /** DTOs shared between the Halo API and both clients. Timestamps are Unix ms. */
 
 export interface AddonEntry {
-  transportUrl: string
+  /** Opaque server-assigned id; resolution endpoints are addressed by it. Regenerated on every list replace. */
+  id: string
+  /**
+   * Absent on global entries for non-admin callers: transport URLs can embed
+   * secrets (e.g. debrid API keys), so only their opaque id leaves the server.
+   * Always present on the caller's own entries — the manage flow re-sends them.
+   */
+  transportUrl?: string
   manifest: Manifest
   position: number
 }
@@ -76,13 +83,13 @@ export interface SettingsPayload {
 
 /** Identifies which effective addon a resolution result came from. */
 export interface AddonSource {
+  id: string
   name: string
-  transportUrl: string
 }
 
 /** Per-addon failure surfaced by the fan-out resolution endpoints (no stack). */
 export interface AddonError {
-  transportUrl: string
+  id: string
   message: string
 }
 
