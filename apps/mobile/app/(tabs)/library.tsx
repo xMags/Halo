@@ -4,16 +4,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { LibraryItem, MetaPreview } from '@halo/core'
 import { useLibrary } from '@/queries'
 import { colors, spacing, TAB_BAR_SPACE, type } from '@/theme'
+import { gridItemWidth, useResponsive } from '@/responsive'
 import { PosterCard } from '@/components/PosterCard'
 import { Segmented, CenterMessage } from '@/components/ui'
+
+const GRID_GAP = spacing.sm + 2
 
 type Filter = 'All' | 'Movies' | 'Series'
 const FILTER_TYPE: Record<Filter, string | null> = { All: null, Movies: 'movie', Series: 'series' }
 
 export default function LibraryScreen() {
   const insets = useSafeAreaInsets()
+  const { width, posterColumns } = useResponsive()
   const { data: items } = useLibrary()
   const [filter, setFilter] = useState<Filter>('All')
+
+  const itemWidth = gridItemWidth(width, posterColumns, { horizontalPadding: spacing.md, gap: GRID_GAP })
 
   const active = (items ?? []).filter((item) => !item.removedAt)
   const typeFilter = FILTER_TYPE[filter]
@@ -41,15 +47,17 @@ export default function LibraryScreen() {
 
   return (
     <FlatList
+      // numColumns can't change in place — key remount is required by FlatList.
+      key={posterColumns}
       style={styles.container}
       contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: TAB_BAR_SPACE }}
       data={shown}
-      numColumns={3}
+      numColumns={posterColumns}
       keyExtractor={(item) => item.id}
       columnWrapperStyle={styles.rowWrap}
       ListHeaderComponent={header}
       showsVerticalScrollIndicator={false}
-      renderItem={({ item }) => <PosterCard meta={toMetaPreview(item)} fill />}
+      renderItem={({ item }) => <PosterCard meta={toMetaPreview(item)} width={itemWidth} />}
     />
   )
 }

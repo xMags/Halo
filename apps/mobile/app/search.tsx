@@ -4,16 +4,21 @@ import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useSearch } from '@/queries'
 import { colors, spacing } from '@/theme'
+import { gridItemWidth, useResponsive } from '@/responsive'
 import { PosterCard } from '@/components/PosterCard'
 import { CenterMessage, SearchField } from '@/components/ui'
 
 const DEBOUNCE_MS = 350
+const GRID_GAP = spacing.sm
 
 export default function SearchScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const { width, posterColumns } = useResponsive()
   const [term, setTerm] = useState('')
   const [debounced, setDebounced] = useState('')
+
+  const itemWidth = gridItemWidth(width, posterColumns, { horizontalPadding: spacing.md, gap: GRID_GAP })
 
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(term), DEBOUNCE_MS)
@@ -50,14 +55,16 @@ export default function SearchScreen() {
         <CenterMessage>No results for “{debounced.trim()}”.</CenterMessage>
       ) : (
         <FlatList
+          // numColumns can't change in place — key remount is required by FlatList.
+          key={posterColumns}
           data={results}
           keyExtractor={(meta) => `${meta.type}:${meta.id}`}
-          numColumns={3}
+          numColumns={posterColumns}
           columnWrapperStyle={styles.rowWrap}
           contentContainerStyle={styles.grid}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          renderItem={({ item }) => <PosterCard meta={item} fill showLabel />}
+          renderItem={({ item }) => <PosterCard meta={item} width={itemWidth} showLabel />}
         />
       )}
     </View>
