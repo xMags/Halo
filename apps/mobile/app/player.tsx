@@ -957,8 +957,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.07)',
   },
   resetText: { color: colors.text, fontSize: 11.5, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  chipOptions: { flexDirection: 'row', gap: spacing.xs },
-  chipOptionsWrap: { flexWrap: 'wrap' },
+  chipOptions: { flexDirection: 'row', flexWrap: 'wrap', flexShrink: 1, justifyContent: 'flex-end', gap: spacing.xs },
+  chipOptionsWrap: { justifyContent: 'flex-start' },
   chip: {
     minWidth: 42,
     alignItems: 'center',
