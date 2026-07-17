@@ -49,6 +49,7 @@ export type {
   Me,
   SettingsPayload,
   StreamsResult,
+  SubtitleOutline,
   SubtitlesResult,
   UserSettings,
   WatchState,

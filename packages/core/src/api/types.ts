@@ -45,6 +45,9 @@ export interface LibraryItem {
   updatedAt: number
 }
 
+/** Subtitle outline weight; maps to VLC freetype-outline-thickness (0/2/4/6). */
+export type SubtitleOutline = 'none' | 'thin' | 'normal' | 'thick'
+
 /** Synced user preferences. All fields optional; unknown fields round-trip. */
 export interface UserSettings {
   /** ISO 639-2 code (e.g. "eng") the player auto-selects for audio tracks. */
@@ -57,6 +60,10 @@ export interface UserSettings {
   subtitleScalePercent?: number
   /** VLC freetype font family for subtitles; unset = platform default. */
   subtitleFontFamily?: string
+  /** Subtitle outline weight; unset = 'normal'. */
+  subtitleOutline?: SubtitleOutline
+  /** Subtitle drop shadow on/off; unset = on. */
+  subtitleShadow?: boolean
   /** Playback speed multiplier. */
   playbackRate?: number
 }
