@@ -10,12 +10,13 @@ import { NavigationBar } from 'expo-navigation-bar'
 import { setStatusBarHidden } from 'expo-status-bar'
 import * as FileSystem from 'expo-file-system/legacy'
 import LibVlcPlayerModule from 'expo-libvlc-player'
-import { languageLabel, languageMatches, type Subtitle, type WatchState } from '@halo/core'
+import { languageLabel, languageMatches, type Subtitle, type SubtitleOutline, type WatchState } from '@halo/core'
 import { sortSubtitlesByPreference, useAddonSubtitles, useReportWatchState, useWatchStates } from '@/queries'
 import { useSettings, useSettingsLoaded, useUpdateSettings } from '@/settings'
 import { clamp01 } from '@/format'
 import { colors, radius, spacing } from '@/theme'
 import { SelectSheet, type SelectOption } from '@/components/SelectSheet'
+import { SubtitlesSheet } from '@/components/SubtitlesSheet'
 import { PlayerGestureLayer } from '@/components/PlayerGestureLayer'
 import PlayerVideo from '@/components/PlayerVideo'
 import type {
@@ -33,6 +34,13 @@ const NOTICE_HIDE_DELAY_MS = 1_200
 const BUFFERING_MESSAGE_DELAY_MS = 5_000
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const
 const SUBTITLE_SCALES = [75, 100, 125, 150] as const
+
+const SUBTITLE_OUTLINES: ReadonlyArray<{ key: SubtitleOutline; label: string }> = [
+  { key: 'none', label: 'None' },
+  { key: 'thin', label: 'Thin' },
+  { key: 'normal', label: 'Normal' },
+  { key: 'thick', label: 'Thick' },
+]
 
 // Device PiP support never changes at runtime; ask the native module once.
 const PIP_SUPPORTED = LibVlcPlayerModule.isPictureInPictureSupported()
@@ -116,6 +124,8 @@ export default function PlayerScreen() {
   const fitMode: VideoFitMode = settings.videoFitMode ?? 'contain'
   const subtitleScalePercent = settings.subtitleScalePercent ?? 100
   const subtitleFontFamily = settings.subtitleFontFamily
+  const subtitleOutline = settings.subtitleOutline ?? 'normal'
+  const subtitleShadow = settings.subtitleShadow ?? true
   const playbackRate = settings.playbackRate ?? 1
 
   useEffect(() => {
@@ -374,6 +384,16 @@ export default function PlayerScreen() {
     showNotice(`Subtitle font: ${font.label}`)
   }
 
+  const selectSubtitleOutline = (outline: SubtitleOutline, label: string) => {
+    updateSettings.mutate({ subtitleOutline: outline })
+    showNotice(`Subtitle outline: ${label}`)
+  }
+
+  const selectSubtitleShadow = (on: boolean) => {
+    updateSettings.mutate({ subtitleShadow: on })
+    showNotice(`Subtitle shadow ${on ? 'on' : 'off'}`)
+  }
+
   const enterPictureInPicture = () => {
     void playerRef.current?.startPictureInPicture().catch(() => {
       showNotice('Picture-in-Picture is unavailable')
@@ -411,6 +431,8 @@ export default function PlayerScreen() {
             subtitleDelayMs={subtitleDelayMs}
             subtitleScalePercent={subtitleScalePercent}
             subtitleFontFamily={subtitleFontFamily}
+            subtitleOutline={subtitleOutline}
+            subtitleShadow={subtitleShadow}
             audioTrack={audioTrack}
             textTrack={textTrack}
             subtitleUri={subtitleUri}
@@ -592,17 +614,15 @@ export default function PlayerScreen() {
         onSelect={(key) => setAudioTrack(Number(key))}
         onClose={() => setAudioSheetOpen(false)}
       />
-      <SelectSheet
+      <SubtitlesSheet
         visible={subsSheetOpen}
         title="Subtitles"
         description="Track, timing and appearance"
-        presentation="side"
-        options={subtitleOptions}
-        onSelect={onSubtitleSelect}
+        tracks={subtitleOptions}
+        onSelectTrack={onSubtitleSelect}
         onClose={() => setSubsSheetOpen(false)}
-        footer={
-          <View style={styles.subtitleTools}>
-            <Text style={styles.toolsHeading}>TIMING & APPEARANCE</Text>
+        appearance={
+          <>
             <View style={styles.toolRow}>
               <View>
                 <Text style={styles.toolLabel}>Subtitle sync</Text>
@@ -633,6 +653,43 @@ export default function PlayerScreen() {
                 ))}
               </View>
             </View>
+            <View style={styles.toolRow}>
+              <View>
+                <Text style={styles.toolLabel}>Outline</Text>
+                <Text style={styles.toolDetail}>Edge thickness</Text>
+              </View>
+              <View style={styles.chipOptions}>
+                {SUBTITLE_OUTLINES.map((o) => (
+                  <Pressable
+                    key={o.key}
+                    style={[styles.chip, subtitleOutline === o.key && styles.chipSelected]}
+                    onPress={() => selectSubtitleOutline(o.key, o.label)}
+                  >
+                    <Text style={[styles.chipText, subtitleOutline === o.key && styles.chipTextSelected]}>{o.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+            <View style={styles.toolRow}>
+              <View>
+                <Text style={styles.toolLabel}>Shadow</Text>
+                <Text style={styles.toolDetail}>Drop shadow</Text>
+              </View>
+              <View style={styles.chipOptions}>
+                {[
+                  { on: false, label: 'Off' },
+                  { on: true, label: 'On' },
+                ].map((s) => (
+                  <Pressable
+                    key={s.label}
+                    style={[styles.chip, subtitleShadow === s.on && styles.chipSelected]}
+                    onPress={() => selectSubtitleShadow(s.on)}
+                  >
+                    <Text style={[styles.chipText, subtitleShadow === s.on && styles.chipTextSelected]}>{s.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
             <View style={styles.toolColumn}>
               <View>
                 <Text style={styles.toolLabel}>Font</Text>
@@ -653,7 +710,7 @@ export default function PlayerScreen() {
                 })}
               </View>
             </View>
-          </View>
+          </>
         }
       />
       <SelectSheet
@@ -861,8 +918,6 @@ const styles = StyleSheet.create({
     minWidth: 44,
   },
   timeTotal: { color: 'rgba(255,255,255,0.7)', textAlign: 'right' },
-  subtitleTools: { gap: spacing.sm, paddingBottom: spacing.xs },
-  toolsHeading: { color: colors.textDim, fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
   toolRow: {
     flexDirection: 'row',
     alignItems: 'center',

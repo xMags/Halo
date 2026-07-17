@@ -2,6 +2,7 @@ import { useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { Platform, StyleSheet } from 'react-native'
 import { LibVlcPlayerView } from 'expo-libvlc-player'
 import type { LibVlcPlayerViewRef, MediaInfo, MediaTracks, Slave } from 'expo-libvlc-player'
+import type { SubtitleOutline } from '@halo/core'
 import type { PlayerTrack, PlayerVideoProps } from './PlayerVideo.types'
 
 /**
@@ -10,6 +11,14 @@ import type { PlayerTrack, PlayerVideoProps } from './PlayerVideo.types'
  * "condensed sans" family VLC can resolve, so it keeps VLC's own default.
  */
 const DEFAULT_FONT = Platform.OS === 'android' ? 'sans-serif-condensed' : undefined
+
+/** VLC freetype-outline-thickness presets (0=None, 2=Thin, 4=Normal, 6=Thick). */
+const OUTLINE_THICKNESS: Record<SubtitleOutline, number> = {
+  none: 0,
+  thin: 2,
+  normal: 4,
+  thick: 6,
+}
 
 export default function PlayerVideo({
   ref,
@@ -20,6 +29,8 @@ export default function PlayerVideo({
   subtitleDelayMs,
   subtitleScalePercent,
   subtitleFontFamily,
+  subtitleOutline,
+  subtitleShadow,
   audioTrack,
   textTrack,
   subtitleUri,
@@ -66,7 +77,7 @@ export default function PlayerVideo({
   // rebuild — there is no declarative paused prop and the [paused] effect
   // won't re-fire.
   const fontFamily = subtitleFontFamily ?? DEFAULT_FONT
-  const playbackConfigKey = `${subtitleScalePercent}|${fontFamily ?? ''}`
+  const playbackConfigKey = `${subtitleScalePercent}|${fontFamily ?? ''}|${subtitleOutline}|${subtitleShadow}`
   const previousPlaybackConfig = useRef(playbackConfigKey)
   const restartPosition = useRef<number | null>(null)
   const restarting = useRef(false)
@@ -96,23 +107,35 @@ export default function PlayerVideo({
   const spuTrack = subtitleUri !== undefined ? slaveTrackIds.current.get(subtitleUri) : textTrack
   const tracks = useMemo(() => ({ audio: audioTrack, subtitle: spuTrack }), [audioTrack, spuTrack])
 
-  const options = useMemo(() => {
+  // These are libvlc instance options (`--…` CLI form), not per-media options:
+  // the freetype text renderer and sub-text-scale are read from the LibVLC /
+  // VLCLibrary instance config, so passing them per-media (addOption) is
+  // silently ignored. The `instanceOptions` prop routes them to the instance
+  // constructor. Booleans use the `--no-…` form — `--freetype-bold=0` is
+  // rejected by libvlc's CLI parser and aborts instance creation.
+  const instanceOptions = useMemo(() => {
     const opts = [
-      `:sub-text-scale=${subtitleScalePercent}`,
-      ':freetype-bold=0',
-      ':freetype-color=16777215',
-      ':freetype-opacity=255',
-      ':freetype-outline-color=0',
-      ':freetype-outline-opacity=220',
-      ':freetype-outline-thickness=1',
-      ':freetype-shadow-color=0',
-      ':freetype-shadow-opacity=110',
-      ':freetype-shadow-distance=2',
-      ':freetype-background-opacity=0',
+      `--sub-text-scale=${subtitleScalePercent}`,
+      '--no-freetype-bold',
+      // Styling mirrors VLC's stock freetype defaults, which is the cross-player
+      // consensus readable look (mpv/VLC/Stremio all lean on a black outline; none
+      // use a background box). Legibility is carried by the outline; the shadow is
+      // the subtle extra VLC ships (and Stremio users request).
+      '--freetype-color=16777215', // white
+      '--freetype-opacity=255',
+      '--freetype-outline-color=0', // black
+      '--freetype-outline-opacity=255',
+      `--freetype-outline-thickness=${OUTLINE_THICKNESS[subtitleOutline]}`,
+      '--freetype-shadow-color=0', // black
+      // shadow-distance is a FRACTION of glyph height (0.0–1.0), not pixels — the
+      // =2 bug threw it a full line away and read as a duplicate. 0.06 = VLC default.
+      `--freetype-shadow-opacity=${subtitleShadow ? 128 : 0}`,
+      '--freetype-shadow-distance=0.06',
+      '--freetype-background-opacity=0', // no box
     ]
-    if (fontFamily) opts.unshift(`:freetype-font=${fontFamily}`)
+    if (fontFamily) opts.unshift(`--freetype-font=${fontFamily}`)
     return opts
-  }, [fontFamily, subtitleScalePercent])
+  }, [fontFamily, subtitleScalePercent, subtitleOutline, subtitleShadow])
 
   const handleTracksChanged = (media: MediaTracks) => {
     const spuIds = media.subtitle.filter((track) => track.id >= 0).map((track) => track.id)
@@ -157,7 +180,7 @@ export default function PlayerVideo({
       ref={playerRef}
       style={styles.video}
       source={uri}
-      options={options}
+      instanceOptions={instanceOptions}
       tracks={tracks}
       slaves={slaves}
       contentFit={fitMode}

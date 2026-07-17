@@ -1,4 +1,5 @@
 import type { Ref } from 'react'
+import type { SubtitleOutline } from '@halo/core'
 
 export interface PlayerTrack {
   id: number
@@ -43,6 +44,10 @@ export interface PlayerVideoProps {
   subtitleScalePercent: number
   /** VLC freetype family; `undefined` uses the platform default. */
   subtitleFontFamily?: string
+  /** Subtitle outline weight → freetype-outline-thickness. */
+  subtitleOutline: SubtitleOutline
+  /** Subtitle drop shadow on/off. */
+  subtitleShadow: boolean
   /** Embedded audio track id; `undefined` keeps the player default. */
   audioTrack?: number
   /** Embedded subtitle track id; `-1` disables, `undefined` keeps default. */

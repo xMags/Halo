@@ -1,8 +1,19 @@
 diff --git a/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt b/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt
-index e1e196c7b5a260537dc9af88da0142a06ce2c5ef..1e826e95a0e68eccbec6ac40ff3f18816a918288 100644
+index e1e196c7b5a260537dc9af88da0142a06ce2c5ef..7b535e362786cd6bff2c9e631dc75bb5871d11cb 100644
 --- a/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt
 +++ b/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerModule.kt
-@@ -90,6 +90,10 @@ class LibVlcPlayerModule : Module() {
+@@ -74,6 +74,10 @@ class LibVlcPlayerModule : Module() {
+                     view.options = options
+                 }
+ 
++                Prop("instanceOptions", mutableListOf()) { view: LibVlcPlayerView, instanceOptions: MutableList<String> ->
++                    view.instanceOptions = instanceOptions
++                }
++
+                 Prop("tracks") { view: LibVlcPlayerView, tracks: Tracks? ->
+                     view.tracks = tracks
+                 }
+@@ -90,6 +94,10 @@ class LibVlcPlayerModule : Module() {
                      view.contentFit = contentFit
                  }
  
@@ -14,7 +25,7 @@ index e1e196c7b5a260537dc9af88da0142a06ce2c5ef..1e826e95a0e68eccbec6ac40ff3f1881
                      view.rate = rate
                  }
 diff --git a/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt b/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt
-index 89b541de6e4dc0597cce00bbe363f8847f95da00..176200c6a850cf836d4cb955f84d4f41bee72f24 100644
+index 89b541de6e4dc0597cce00bbe363f8847f95da00..7b2407262298b6b9d429019b5f3cdb5cc17de2d2 100644
 --- a/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt
 +++ b/android/src/main/java/expo/modules/libvlcplayer/LibVlcPlayerView.kt
 @@ -2,14 +2,16 @@ package expo.modules.libvlcplayer
@@ -138,7 +149,12 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..176200c6a850cf836d4cb955f84d4f41
                  player.attachViews(layout, DISPLAY_MANAGER, ENABLE_SUBTITLES, USE_TEXTURE_VIEW)
              }
          }
-@@ -181,6 +240,7 @@ class LibVlcPlayerView(
+@@ -177,10 +236,11 @@ class LibVlcPlayerView(
+             MediaPlayerManager.pictureInPictureManager.setupPipView(this)
+         }
+ 
+-        libVLC = LibVLC(context)
++        libVLC = LibVLC(context, instanceOptions)
          setDialogCallbacks(libVLC!!)
  
          mediaPlayer = MediaPlayer(libVLC!!)
@@ -240,7 +256,24 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..176200c6a850cf836d4cb955f84d4f41
                  if (scale != MediaPlayerConstants.DEFAULT_PLAYER_SCALE) {
                      player.setScale(scale.toFloat())
                  }
-@@ -456,6 +521,12 @@ class LibVlcPlayerView(
+@@ -426,6 +491,16 @@ class LibVlcPlayerView(
+             shouldInit = true
+         }
+ 
++    // libvlc options that must be set on the instance rather than per-media: the
++    // SPU/text-renderer (freetype, sub-text-scale) reads them from the LibVLC
++    // instance config, so per-media addOption silently no-ops. Passed as `--…`
++    // CLI args to the LibVLC constructor.
++    var instanceOptions: MutableList<String> = mutableListOf()
++        set(value) {
++            field = value
++            shouldInit = true
++        }
++
+     var tracks: Tracks? = null
+         set(value) {
+             field = value
+@@ -456,6 +531,12 @@ class LibVlcPlayerView(
              setContentFit(layout = pictureLayout)
          }
  
@@ -253,7 +286,7 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..176200c6a850cf836d4cb955f84d4f41
      var rate: Double = MediaPlayerConstants.DEFAULT_PLAYER_RATE
          set(value) {
              field = value
-@@ -590,11 +661,14 @@ class LibVlcPlayerView(
+@@ -590,11 +671,14 @@ class LibVlcPlayerView(
  
      fun snapshot(path: String) {
          try {
@@ -272,10 +305,16 @@ index 89b541de6e4dc0597cce00bbe363f8847f95da00..176200c6a850cf836d4cb955f84d4f41
              val bitmap = Bitmap.createBitmap(video.width, video.height, Bitmap.Config.ARGB_8888)
  
 diff --git a/build/LibVlcPlayer.types.d.ts b/build/LibVlcPlayer.types.d.ts
-index 1c74fec288ed6219cf46b64d8c082c58911b44d1..27e506b3375bad9c4930d80e4b725d9a9145577f 100644
+index 1c74fec288ed6219cf46b64d8c082c58911b44d1..79142e42ea5672222302fddb7b7f527ed2bb2ceb 100644
 --- a/build/LibVlcPlayer.types.d.ts
 +++ b/build/LibVlcPlayer.types.d.ts
-@@ -225,6 +225,7 @@ export interface LibVlcPlayerViewNativeProps extends ViewProps {
+@@ -220,11 +220,13 @@ export interface LibVlcPlayerViewNativeProps extends ViewProps {
+     ref?: React.Ref<LibVlcPlayerViewRef>;
+     source?: LibVlcSource;
+     options?: string[];
++    instanceOptions?: string[];
+     tracks?: Tracks;
+     slaves?: Slave[];
      scale?: number;
      aspectRatio?: VideoAspectRatio;
      contentFit?: VideoContentFit;
@@ -283,7 +322,24 @@ index 1c74fec288ed6219cf46b64d8c082c58911b44d1..27e506b3375bad9c4930d80e4b725d9a
      rate?: number;
      time?: number;
      volume?: number;
-@@ -357,6 +358,8 @@ export interface LibVlcPlayerViewProps extends ViewProps {
+@@ -291,6 +293,16 @@ export interface LibVlcPlayerViewProps extends ViewProps {
+      * @default []
+      */
+     options?: string[];
++    /**
++     * Sets libvlc options on the instance (VLCLibrary / LibVLC) rather than
++     * per-media. Required for SPU/text-renderer options such as
++     * `--freetype-font` and `--sub-text-scale`, which libvlc reads from the
++     * instance config and silently ignores when passed as per-media options.
++     * Values are `--…` CLI args; booleans use the `--no-…` form.
++     *
++     * @default []
++     */
++    instanceOptions?: string[];
+     /**
+      * Sets the player audio, video and subtitle tracks
+      *
+@@ -357,6 +369,8 @@ export interface LibVlcPlayerViewProps extends ViewProps {
       * @default "contain"
       */
      contentFit?: VideoContentFit;
@@ -293,10 +349,21 @@ index 1c74fec288ed6219cf46b64d8c082c58911b44d1..27e506b3375bad9c4930d80e4b725d9a
       * Sets the player rate. Must be a number equal or greater than `1`
       *
 diff --git a/ios/LibVlcPlayerModule.swift b/ios/LibVlcPlayerModule.swift
-index b6d2c9e434a0e5ac41d767eb7501f22725b35cd5..9c7385dbefe0f72f31918a3a5e5a3cebb3132da4 100644
+index b6d2c9e434a0e5ac41d767eb7501f22725b35cd5..efd8f1ff180d303fc84e99081f7355e9ddce00f0 100644
 --- a/ios/LibVlcPlayerModule.swift
 +++ b/ios/LibVlcPlayerModule.swift
-@@ -71,6 +71,10 @@ public class LibVlcPlayerModule: Module {
+@@ -55,6 +55,10 @@ public class LibVlcPlayerModule: Module {
+                 view.options = options
+             }
+ 
++            Prop("instanceOptions", .init()) { (view: LibVlcPlayerView, instanceOptions: [String]) in
++                view.instanceOptions = instanceOptions
++            }
++
+             Prop("tracks") { (view: LibVlcPlayerView, tracks: Tracks?) in
+                 view.tracks = tracks
+             }
+@@ -71,6 +75,10 @@ public class LibVlcPlayerModule: Module {
                  view.contentFit = contentFit
              }
  
@@ -308,7 +375,7 @@ index b6d2c9e434a0e5ac41d767eb7501f22725b35cd5..9c7385dbefe0f72f31918a3a5e5a3ceb
                  view.rate = rate
              }
 diff --git a/ios/LibVlcPlayerView.swift b/ios/LibVlcPlayerView.swift
-index 59598e9bc514a17bc9f595c56d1fc230e0f438ce..b6ea19c9d8cfa73ca9fff67d8c9180b2f4a35030 100644
+index 59598e9bc514a17bc9f595c56d1fc230e0f438ce..78d51755b4b756dc75d0b554187ce209cf6eee0b 100644
 --- a/ios/LibVlcPlayerView.swift
 +++ b/ios/LibVlcPlayerView.swift
 @@ -1,3 +1,4 @@
@@ -351,6 +418,15 @@ index 59598e9bc514a17bc9f595c56d1fc230e0f438ce..b6ea19c9d8cfa73ca9fff67d8c9180b2
      override var bounds: CGRect {
          didSet {
              playerDrawable.transform = .identity
+@@ -76,7 +98,7 @@ class LibVlcPlayerView: ExpoView {
+             ? pictureDrawable!
+             : playerDrawable
+ 
+-        library = VLCLibrary()
++        library = VLCLibrary(options: instanceOptions)
+         mediaPlayer = VLCMediaPlayer(library: library!)
+         mediaPlayer!.drawable = drawable
+         mediaPlayer!.delegate = self
 @@ -107,11 +129,28 @@ class LibVlcPlayerView: ExpoView {
      }
  
@@ -488,7 +564,24 @@ index 59598e9bc514a17bc9f595c56d1fc230e0f438ce..b6ea19c9d8cfa73ca9fff67d8c9180b2
                  if scale != MediaPlayerConstants.defaultPlayerScale {
                      player.scaleFactor = Float(scale)
                  }
-@@ -612,7 +676,10 @@ extension LibVlcPlayerView: VLCMediaPlayerDelegate {
+@@ -315,6 +379,16 @@ class LibVlcPlayerView: ExpoView {
+         }
+     }
+ 
++    // libvlc options that must be set on the VLCLibrary instance rather than
++    // per-media: the SPU/text-renderer (freetype, sub-text-scale) reads them
++    // from the instance config, so VLCMedia.addOption silently no-ops. Passed
++    // as `--…` CLI args to VLCLibrary(options:).
++    var instanceOptions: [String] = .init() {
++        didSet {
++            shouldInit = true
++        }
++    }
++
+     var tracks: Tracks? {
+         didSet {
+             setPlayerTracks()
+@@ -612,7 +686,10 @@ extension LibVlcPlayerView: VLCMediaPlayerDelegate {
      }
  
      func mediaPlayerBufferingChanged(_ progress: Float) {
@@ -526,10 +619,16 @@ index db8910f843687ea70d5f24190eac9ed9afe8aa4b..b079cdfd445e3cdfbae497b35859e433
  
      private weak var pipController: VLCPictureInPictureWindowControlling?
 diff --git a/src/LibVlcPlayer.types.ts b/src/LibVlcPlayer.types.ts
-index 8c1e33b0c22610ca8c85947240710ad0c500f5c9..38b5588f331b93113cd6b75ed986685c690f21dc 100644
+index 8c1e33b0c22610ca8c85947240710ad0c500f5c9..b45b5d9b5ef14134b14e9f3638ccbc61b4dff193 100644
 --- a/src/LibVlcPlayer.types.ts
 +++ b/src/LibVlcPlayer.types.ts
-@@ -265,6 +265,7 @@ export interface LibVlcPlayerViewNativeProps extends ViewProps {
+@@ -260,11 +260,13 @@ export interface LibVlcPlayerViewNativeProps extends ViewProps {
+   ref?: React.Ref<LibVlcPlayerViewRef>;
+   source?: LibVlcSource;
+   options?: string[];
++  instanceOptions?: string[];
+   tracks?: Tracks;
+   slaves?: Slave[];
    scale?: number;
    aspectRatio?: VideoAspectRatio;
    contentFit?: VideoContentFit;
@@ -537,7 +636,24 @@ index 8c1e33b0c22610ca8c85947240710ad0c500f5c9..38b5588f331b93113cd6b75ed986685c
    rate?: number;
    time?: number;
    volume?: number;
-@@ -398,6 +399,8 @@ export interface LibVlcPlayerViewProps extends ViewProps {
+@@ -332,6 +334,16 @@ export interface LibVlcPlayerViewProps extends ViewProps {
+    * @default []
+    */
+   options?: string[];
++  /**
++   * Sets libvlc options on the instance (VLCLibrary / LibVLC) rather than
++   * per-media. Required for SPU/text-renderer options such as `--freetype-font`
++   * and `--sub-text-scale`, which libvlc reads from the instance config and
++   * silently ignores when passed as per-media options. Values are `--…` CLI
++   * args; booleans use the `--no-…` form (e.g. `--no-freetype-bold`).
++   *
++   * @default []
++   */
++  instanceOptions?: string[];
+   /**
+    * Sets the player audio, video and subtitle tracks
+    *
+@@ -398,6 +410,8 @@ export interface LibVlcPlayerViewProps extends ViewProps {
     * @default "contain"
     */
    contentFit?: VideoContentFit;
