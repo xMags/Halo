@@ -57,6 +57,28 @@ export function useSetAddons() {
   })
 }
 
+/**
+ * Replaces the global (admin-managed) addon list shown to every user. The
+ * server rejects this with 403 for non-admins, so only surface it behind
+ * `useMe().isAdmin`. Shares the `['addons']` cache key with the user list.
+ */
+export function useSetGlobalAddons() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (entries: AddonRef[]) => api().putGlobalAddons(entries),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['addons'] }),
+  })
+}
+
+/** The current user incl. admin status (server-computed); gates admin-only UI. */
+export function useMe() {
+  return useQuery({
+    queryKey: ['me'],
+    queryFn: () => api().getMe(),
+    staleTime: Infinity,
+  })
+}
+
 export function useCatalog(transportUrl: string, type: string, id: string, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['catalog', transportUrl, type, id],

@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LANGUAGE_OPTIONS, languageLabel } from '@halo/core'
 import { api } from '@/api'
-import { useAddons, useSetAddons } from '@/queries'
+import { useAddons, useMe, useSetAddons, useSetGlobalAddons } from '@/queries'
 import { useSession } from '@/session'
 import { useSettings, useUpdateSettings } from '@/settings'
 import { colors, radius, spacing, TAB_BAR_SPACE, type } from '@/theme'
@@ -26,14 +26,19 @@ import { SelectSheet } from '@/components/SelectSheet'
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets()
   const { data: addons } = useAddons()
+  const { data: me } = useMe()
   const setAddons = useSetAddons()
+  const setGlobalAddons = useSetGlobalAddons()
   const { signOut } = useSession()
   const settings = useSettings()
   const updateSettings = useUpdateSettings()
   const [url, setUrl] = useState('')
   const [adding, setAdding] = useState(false)
+  const [globalUrl, setGlobalUrl] = useState('')
+  const [addingGlobal, setAddingGlobal] = useState(false)
   const [languagePick, setLanguagePick] = useState<'audio' | 'subtitles' | null>(null)
 
+  const isAdmin = me?.isAdmin ?? false
   const globalAddons = addons?.global ?? []
   const userAddons = addons?.user ?? []
 
@@ -71,6 +76,43 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: () => {
           void saveUserAddons(userAddons.filter((a) => a.transportUrl !== transportUrl).map((a) => a.transportUrl))
+        },
+      },
+    ])
+  }
+
+  // Global addons: admin-only, replace the list every user sees. Same
+  // full-collection-replace contract as the user list, but writes via
+  // putGlobalAddons (403 for non-admins — the section is gated on isAdmin).
+  const saveGlobalAddons = (urls: string[]) =>
+    setGlobalAddons.mutateAsync(urls.map((transportUrl, position) => ({ transportUrl, position })))
+
+  const addGlobal = async () => {
+    const transportUrl = globalUrl.trim()
+    if (!transportUrl) return
+    if ([...globalAddons, ...userAddons].some((a) => a.transportUrl === transportUrl)) {
+      Alert.alert('Already installed')
+      return
+    }
+    setAddingGlobal(true)
+    try {
+      await saveGlobalAddons([...globalAddons.map((a) => a.transportUrl), transportUrl])
+      setGlobalUrl('')
+    } catch (err) {
+      Alert.alert('Could not install addon', err instanceof Error ? err.message : 'Invalid manifest URL')
+    } finally {
+      setAddingGlobal(false)
+    }
+  }
+
+  const removeGlobal = (transportUrl: string, name: string) => {
+    Alert.alert('Remove global addon?', `${name}\n\nThis removes it for every user.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => {
+          void saveGlobalAddons(globalAddons.filter((a) => a.transportUrl !== transportUrl).map((a) => a.transportUrl))
         },
       },
     ])
@@ -129,7 +171,59 @@ export default function SettingsScreen() {
         ))}
       </View>
 
-      {globalAddons.length > 0 ? (
+      {isAdmin ? (
+        <>
+          <Text style={styles.groupLabel}>Global · admin</Text>
+          <View style={styles.card}>
+            <View style={styles.addRow}>
+              <TextInput
+                style={styles.input}
+                value={globalUrl}
+                onChangeText={setGlobalUrl}
+                placeholder="https://…/manifest.json"
+                placeholderTextColor={colors.textDim}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                onSubmitEditing={addGlobal}
+              />
+              <Pressable style={styles.addButton} onPress={addGlobal} disabled={addingGlobal}>
+                {addingGlobal ? (
+                  <ActivityIndicator color={colors.onAccent} size="small" />
+                ) : (
+                  <Text style={styles.addButtonText}>Add</Text>
+                )}
+              </Pressable>
+            </View>
+            {globalAddons.length === 0 ? (
+              <View style={[styles.addonRow, styles.lastRow]}>
+                <Text style={styles.addonDescription}>No global addons yet — anything added here appears for every user.</Text>
+              </View>
+            ) : (
+              globalAddons.map((item, i) => (
+                <View key={item.transportUrl} style={[styles.addonRow, i === globalAddons.length - 1 && styles.lastRow]}>
+                  <View style={styles.addonIcon}>
+                    <Ionicons name="globe-outline" size={19} color={colors.accent} />
+                  </View>
+                  <View style={styles.addonBody}>
+                    <Text style={styles.addonName}>
+                      {item.manifest.name} <Text style={styles.addonVersion}>v{item.manifest.version}</Text>
+                    </Text>
+                    {item.manifest.description ? (
+                      <Text style={styles.addonDescription} numberOfLines={1}>
+                        {item.manifest.description}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Pressable onPress={() => removeGlobal(item.transportUrl, item.manifest.name)} hitSlop={8}>
+                    <Ionicons name="close" size={19} color={colors.textDim} />
+                  </Pressable>
+                </View>
+              ))
+            )}
+          </View>
+        </>
+      ) : globalAddons.length > 0 ? (
         <>
           <Text style={styles.groupLabel}>Global</Text>
           <View style={styles.card}>
