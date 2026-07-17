@@ -4,6 +4,7 @@ import {
   FlatList,
   Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -15,6 +16,7 @@ import type { MetaVideo } from '@halo/core'
 import { libraryItemFromMeta, useLibrary, useMeta, useUpsertLibrary, useWatchStates } from '@/queries'
 import { useDownloads } from '@/downloads'
 import { colors, radius, spacing } from '@/theme'
+import { useResponsive } from '@/responsive'
 import { SelectSheet } from '@/components/SelectSheet'
 import { HeroScrim, MetaLine } from '@/components/ui'
 
@@ -22,6 +24,7 @@ export default function DetailScreen() {
   const { type, id } = useLocalSearchParams<{ type: string; id: string }>()
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const { isTablet, isLandscape, contentMaxWidth } = useResponsive()
   const { data: meta, isLoading, isError } = useMeta(type, id)
   const { data: library } = useLibrary()
   const { data: watchStates } = useWatchStates()
@@ -93,7 +96,23 @@ export default function DetailScreen() {
     return state
   }
 
+  // Master-detail only pays off for a series in landscape: hero + synopsis on
+  // the left, episode list on the right. Movies have no list to fill a pane.
+  const twoPane = isTablet && isLandscape && type === 'series'
+  // Cap synopsis line length on wide screens; the hero still bleeds full-width.
+  // No-op in two-pane (the left pane is already narrow) and on phones.
+  const bodyWidthCap =
+    contentMaxWidth && !twoPane ? { maxWidth: contentMaxWidth, width: '100%' as const, alignSelf: 'center' as const } : null
+
   const inLibrary = !!libraryEntry
+  const renderEpisode = ({ item }: { item: MetaVideo }) => (
+    <EpisodeRow
+      video={item}
+      progress={progressFor(item.id)}
+      downloaded={downloadsById.get(item.id)?.status === 'done'}
+      onPress={() => openStreams(item.id, episodeTag(item))}
+    />
+  )
   const header = (
     <View>
       <View style={styles.hero}>
@@ -105,7 +124,7 @@ export default function DetailScreen() {
         </View>
       </View>
 
-      <View style={styles.body}>
+      <View style={[styles.body, bodyWidthCap]}>
         <View style={styles.actions}>
           {type === 'movie' ? (
             <Pressable style={styles.playButton} onPress={() => openStreams(id)}>
@@ -142,21 +161,35 @@ export default function DetailScreen() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.container}>
-        <FlatList
-          data={type === 'series' ? episodes : []}
-          keyExtractor={(video) => video.id}
-          ListHeaderComponent={header}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}
-          renderItem={({ item }) => (
-            <EpisodeRow
-              video={item}
-              progress={progressFor(item.id)}
-              downloaded={downloadsById.get(item.id)?.status === 'done'}
-              onPress={() => openStreams(item.id, episodeTag(item))}
-            />
-          )}
-        />
+        {twoPane ? (
+          <View style={styles.twoPane}>
+            <ScrollView
+              style={styles.leftPane}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}
+            >
+              {header}
+            </ScrollView>
+            <View style={styles.rightPane}>
+              <FlatList
+                data={episodes}
+                keyExtractor={(video) => video.id}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.lg }}
+                renderItem={renderEpisode}
+              />
+            </View>
+          </View>
+        ) : (
+          <FlatList
+            data={type === 'series' ? episodes : []}
+            keyExtractor={(video) => video.id}
+            ListHeaderComponent={header}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}
+            renderItem={renderEpisode}
+          />
+        )}
         <Pressable
           style={[styles.backButton, { top: insets.top + spacing.xs }]}
           onPress={() => router.back()}
@@ -230,6 +263,13 @@ function EpisodeRow({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  twoPane: { flex: 1, flexDirection: 'row' },
+  leftPane: { flex: 1 },
+  rightPane: {
+    flex: 1,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.hairline,
+  },
   center: {
     flex: 1,
     backgroundColor: colors.background,
