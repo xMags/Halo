@@ -1,7 +1,14 @@
-import type { MetaVideo } from '@halo/core'
+import type { MetaVideo, WatchState } from '@halo/core'
 import { useMemo, useState } from 'react'
+import { Icon } from '../components/Icon'
 import { useNav } from '../nav'
-import { useMeta } from '../queries'
+import {
+  libraryItemFromMeta,
+  useLibrary,
+  useMeta,
+  useUpsertLibrary,
+  useWatchStates,
+} from '../queries'
 
 /**
  * Title page: hero art + description, then the playback entry point — a
@@ -11,15 +18,31 @@ import { useMeta } from '../queries'
 export function Detail({ type, id }: { type: string; id: string }) {
   const { pop, push } = useNav()
   const { data: meta, isLoading, error } = useMeta(type, id)
+  const { data: library } = useLibrary()
+  const { data: watchStates } = useWatchStates()
+  const upsertLibrary = useUpsertLibrary()
 
   const itemId = `${type}:${id}`
+  const libraryEntry = (library ?? []).find((item) => item.id === itemId && !item.removedAt)
+
   const seasons = useMemo(() => {
     const nums = [...new Set((meta?.videos ?? []).map((v) => v.season ?? 0))]
     // Specials (season 0) list last, like every player UI.
     return nums.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b))
   }, [meta])
+
+  // Open on the season of the most recently watched episode, not season 1 —
+  // mid-binge, "the season I'm in" is almost always where the next click goes.
+  const lastWatchedSeason = useMemo(() => {
+    const videosById = new Map((meta?.videos ?? []).map((video) => [video.id, video]))
+    const latest = (watchStates ?? [])
+      .filter((s) => s.itemId === itemId && videosById.has(s.videoId))
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0]
+    return latest ? (videosById.get(latest.videoId)!.season ?? null) : null
+  }, [watchStates, itemId, meta])
+
   const [season, setSeason] = useState<number | null>(null)
-  const activeSeason = season ?? seasons[0] ?? null
+  const activeSeason = season ?? lastWatchedSeason ?? seasons[0] ?? null
   const episodes = useMemo(
     () =>
       (meta?.videos ?? [])
@@ -29,7 +52,25 @@ export function Detail({ type, id }: { type: string; id: string }) {
   )
 
   if (isLoading) return <Shell onBack={pop}>Loading…</Shell>
-  if (error || !meta) return <Shell onBack={pop}>Could not load this title: {String(error ?? 'not found')}</Shell>
+  if (error || !meta)
+    return <Shell onBack={pop}>Could not load this title: {String(error ?? 'not found')}</Shell>
+
+  const toggleLibrary = () => {
+    const now = Date.now()
+    if (libraryEntry) {
+      // Tombstone, not delete — removals must sync across devices and survive
+      // stale re-adds (LWW by updatedAt).
+      void upsertLibrary.mutateAsync([{ ...libraryEntry, removedAt: now, updatedAt: now }])
+    } else {
+      void upsertLibrary.mutateAsync([libraryItemFromMeta(meta)])
+    }
+  }
+
+  const progressFor = (videoId: string): WatchState | null => {
+    const state = (watchStates ?? []).find((s) => s.videoId === videoId)
+    if (!state || state.durationSec === 0) return null
+    return state
+  }
 
   const openStreams = (video?: MetaVideo) =>
     push({
@@ -46,12 +87,14 @@ export function Detail({ type, id }: { type: string; id: string }) {
       ...(meta.poster ? { poster: meta.poster } : {}),
     })
 
+  const inLibrary = !!libraryEntry
+
   return (
-    <div style={{ height: '100%', overflowY: 'auto' }}>
+    <div className="screen-scroll">
       <div
         style={{
           position: 'relative',
-          minHeight: 280,
+          minHeight: 300,
           padding: '24px 32px',
           display: 'flex',
           flexDirection: 'column',
@@ -65,7 +108,8 @@ export function Detail({ type, id }: { type: string; id: string }) {
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'linear-gradient(rgba(10,12,17,0.55), rgba(10,12,17,0.85) 75%, var(--background))',
+            background:
+              'linear-gradient(rgba(10,12,17,0.55), rgba(10,12,17,0.85) 75%, var(--background))',
           }}
         />
         <div style={{ position: 'relative' }}>
@@ -78,19 +122,34 @@ export function Detail({ type, id }: { type: string; id: string }) {
               .filter(Boolean)
               .join(' · ')}
           </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+            {(type !== 'series' || !meta.videos?.length) && (
+              <button className="btn btn-primary btn-row" type="button" onClick={() => openStreams()}>
+                <Icon name="play" size={15} />
+                Sources
+              </button>
+            )}
+            <button
+              className="btn btn-glass btn-row"
+              type="button"
+              onClick={toggleLibrary}
+              style={inLibrary ? { color: 'var(--accent)' } : undefined}
+            >
+              <Icon name="bookmark" size={16} />
+              {inLibrary ? 'In Library' : 'Add to Library'}
+            </button>
+          </div>
         </div>
       </div>
 
       <div style={{ padding: '20px 32px 48px', maxWidth: 760 }}>
         {meta.description && (
-          <p style={{ color: 'var(--text-dim)', lineHeight: 1.55, marginTop: 0 }}>{meta.description}</p>
+          <p style={{ color: 'var(--text-dim)', lineHeight: 1.55, marginTop: 0 }}>
+            {meta.description}
+          </p>
         )}
 
-        {type !== 'series' || !meta.videos?.length ? (
-          <button className="btn btn-primary" type="button" onClick={() => openStreams()}>
-            Sources
-          </button>
-        ) : (
+        {type === 'series' && !!meta.videos?.length && (
           <>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '8px 0 16px' }}>
               {seasons.map((s) => (
@@ -110,19 +169,29 @@ export function Detail({ type, id }: { type: string; id: string }) {
               ))}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {episodes.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => openStreams(v)}
-                  className="episode-row"
-                >
-                  <span className="t-callout" style={{ marginRight: 10 }}>
-                    E{v.episode ?? '?'}
-                  </span>
-                  <span>{v.title ?? v.name ?? v.id}</span>
-                </button>
-              ))}
+              {episodes.map((v) => {
+                const state = progressFor(v.id)
+                const fraction = state
+                  ? state.watched
+                    ? 1
+                    : state.positionSec / state.durationSec
+                  : null
+                return (
+                  <button key={v.id} type="button" onClick={() => openStreams(v)} className="episode-row">
+                    <div>
+                      <span className="t-callout" style={{ marginRight: 10 }}>
+                        E{v.episode ?? '?'}
+                      </span>
+                      <span>{v.title ?? v.name ?? v.id}</span>
+                    </div>
+                    {fraction !== null && (
+                      <div className="episode-progress">
+                        <div style={{ width: `${Math.round(fraction * 100)}%` }} />
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </>
         )}

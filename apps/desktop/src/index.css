@@ -206,3 +206,471 @@ body.player-active #root {
 .sub-row:hover {
   background: var(--glass);
 }
+
+/* ── App shell ─────────────────────────────────────────────────────────── */
+.app-shell {
+  display: flex;
+  height: 100%;
+}
+.app-content {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  position: relative;
+}
+.screen-scroll {
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Thin overlay-style scrollbars everywhere (WebView2 is Chromium). */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.28);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────────── */
+.sidebar {
+  width: 212px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 12px 16px;
+  border-right: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+.sidebar-brand {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  padding: 0 12px 18px;
+}
+.sidebar-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+.sidebar-item:hover {
+  background: var(--glass);
+  color: var(--text);
+}
+.sidebar-item-active {
+  background: var(--glass);
+  color: var(--text);
+}
+.sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 0;
+  min-width: 0;
+}
+.sidebar-host {
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--success);
+  flex: 0 0 auto;
+}
+
+/* ── Poster cards ──────────────────────────────────────────────────────── */
+.poster-card {
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  min-width: 0;
+}
+.poster-frame {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--surface-high);
+  border: 1px solid var(--glass-border);
+  transition:
+    border-color 0.15s,
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+.poster-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.poster-card:hover .poster-frame {
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.poster-fallback {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+}
+.poster-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.25);
+}
+.poster-progress > div {
+  height: 100%;
+  background: var(--accent);
+}
+.poster-name {
+  margin-top: 7px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.poster-card:hover .poster-name {
+  color: var(--text);
+}
+
+/* ── Poster shelves ────────────────────────────────────────────────────── */
+.poster-row {
+  margin-top: 28px;
+}
+.poster-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 32px 12px;
+}
+.poster-row-body {
+  position: relative;
+}
+.row-scroll {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 4px 32px 6px;
+  scrollbar-width: none;
+}
+.row-scroll::-webkit-scrollbar {
+  display: none;
+}
+.row-chevron {
+  position: absolute;
+  top: 0;
+  bottom: 6px;
+  width: 44px;
+  display: grid;
+  place-items: center;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 1;
+}
+.poster-row-body:hover .row-chevron {
+  opacity: 1;
+}
+.row-chevron-left {
+  left: 0;
+  background: linear-gradient(to right, rgba(10, 12, 17, 0.9), transparent);
+}
+.row-chevron-right {
+  right: 0;
+  background: linear-gradient(to left, rgba(10, 12, 17, 0.9), transparent);
+}
+.row-link {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.row-link:hover {
+  color: var(--accent);
+}
+
+/* ── Segmented filter ──────────────────────────────────────────────────── */
+.segmented {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+}
+.segmented-option {
+  padding: 6px 16px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.segmented-option:hover {
+  color: var(--text);
+}
+.segmented-active {
+  background: var(--surface-high);
+  color: var(--text);
+}
+
+/* ── Home hero ─────────────────────────────────────────────────────────── */
+.hero {
+  position: relative;
+  margin: 16px 32px 0;
+  height: 360px;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--glass-border);
+}
+.hero-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center 20%;
+}
+.hero-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, rgba(10, 12, 17, 0.92) 0%, rgba(10, 12, 17, 0.35) 45%, rgba(10, 12, 17, 0.1) 100%),
+    linear-gradient(to right, rgba(10, 12, 17, 0.72), transparent 55%);
+}
+.hero-body {
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  bottom: 24px;
+}
+.hero-title {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+.hero-meta {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.hero-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.btn-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Library grid ──────────────────────────────────────────────────────── */
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 20px 14px;
+  padding: 8px 32px 48px;
+}
+
+/* ── Settings ──────────────────────────────────────────────────────────── */
+.settings-card {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--hairline);
+  min-width: 0;
+}
+.settings-row:last-child {
+  border-bottom: none;
+}
+.settings-key {
+  flex: 1;
+  font-size: 14.5px;
+  min-width: 0;
+}
+.settings-value {
+  color: var(--text-dim);
+  font-size: 13.5px;
+}
+.addon-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: rgba(10, 132, 255, 0.14);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.icon-btn:hover {
+  background: var(--glass);
+  color: var(--text);
+}
+.field-select {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--field-fill);
+  color: var(--text);
+  border: 1px solid var(--glass-border);
+  font-size: 13.5px;
+  max-width: 220px;
+}
+.field-select option {
+  background: var(--surface);
+  color: var(--text);
+}
+.toggle {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  appearance: none;
+  background: var(--surface-high);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex: 0 0 auto;
+}
+.toggle:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #fff;
+  transition: transform 0.15s;
+}
+.toggle:checked::after {
+  transform: translateX(16px);
+}
+
+/* ── Search ────────────────────────────────────────────────────────────── */
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px;
+  border-bottom: 1px solid var(--hairline);
+}
+.history-term {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 14.5px;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+.history-term:hover {
+  color: var(--accent);
+}
+
+/* ── Detail episode progress ───────────────────────────────────────────── */
+.episode-progress {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+  margin-top: 8px;
+  overflow: hidden;
+}
+.episode-progress > div {
+  height: 100%;
+  background: var(--accent);
+}
+
+/* ── Player up-next overlay ────────────────────────────────────────────── */
+.upnext-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(5, 7, 12, 0.82);
+  z-index: 3;
+}
+

@@ -18,6 +18,15 @@ let client: HaloClient | null = null
 let sessionKind: SessionKind | null = null
 let unauthorizedHandler: (() => void) | null = null
 
+// Dev-only hook so scripts/cdp.mjs can exercise the API without OS input
+// (same precedent as nav.tsx's __haloNav).
+if (import.meta.env.DEV) {
+  Object.defineProperty(window, '__haloClient', {
+    get: () => client,
+    configurable: true,
+  })
+}
+
 export function getServerUrl(): string | null {
   return localStorage.getItem(SERVER_KEY)
 }

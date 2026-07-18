@@ -1,131 +1,201 @@
-import type { MetaPreview } from '@halo/core'
+import { useState } from 'react'
+import { Icon } from '../components/Icon'
+import { PosterCard } from '../components/PosterCard'
+import { PosterRow } from '../components/PosterRow'
+import { Segmented } from '../components/Segmented'
+import { buildContinueWatching, buildLibraryRow, buildRecentlyWatched } from '../homeRows'
 import { useNav } from '../nav'
-import { browsableCatalogs, useCatalog, useEffectiveAddons, type BrowsableCatalog } from '../queries'
-import { useSession } from '../session'
+import {
+  browsableCatalogs,
+  useCatalog,
+  useEffectiveAddons,
+  useLibrary,
+  useMeta,
+  useWatchStates,
+  type BrowsableCatalog,
+} from '../queries'
 
 /** How many catalog rows Home renders (each is one server round-trip). */
 const MAX_ROWS = 8
+const POSTER_WIDTH = 148
+
+const FILTERS = ['All', 'Movies', 'Series'] as const
+type Filter = (typeof FILTERS)[number]
+const FILTER_TYPE: Record<Filter, string | null> = { All: null, Movies: 'movie', Series: 'series' }
 
 export function Home() {
-  const { signOut } = useSession()
+  const [filter, setFilter] = useState<Filter>('All')
   const { data: addons, isLoading, error } = useEffectiveAddons()
-  const rows = addons ? browsableCatalogs(addons).slice(0, MAX_ROWS) : []
+  const { data: watchStates } = useWatchStates()
+  const { data: library } = useLibrary()
+
+  const allRows = addons ? browsableCatalogs(addons) : []
+  const typeFilter = FILTER_TYPE[filter]
+  const rows = (typeFilter ? allRows.filter((r) => r.catalog.type === typeFilter) : allRows).slice(
+    0,
+    MAX_ROWS,
+  )
+
+  // Continue Watching stays unfiltered (an in-progress episode matters
+  // regardless of the browse filter); history and library follow the filter.
+  const continueItems = buildContinueWatching(watchStates, library)
+  const recentItems = buildRecentlyWatched(watchStates, library, continueItems, typeFilter)
+  const libraryItems = buildLibraryRow(library, typeFilter)
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: '24px 0 48px' }}>
+    <div className="screen-scroll" style={{ paddingBottom: 48 }}>
       <header
         style={{
           display: 'flex',
-          alignItems: 'baseline',
+          alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 32px 8px',
+          padding: '20px 32px 0',
         }}
       >
-        <div className="t-large-title">Halo</div>
-        <button className="btn btn-glass" type="button" onClick={signOut}>
-          Sign out
-        </button>
+        <Segmented options={FILTERS} value={filter} onChange={setFilter} />
       </header>
 
-      {error && <div className="error-text" style={{ padding: '0 32px' }}>{String(error)}</div>}
-      {isLoading && <div className="t-caption" style={{ padding: '0 32px' }}>Loading addons…</div>}
-      {addons && rows.length === 0 && (
-        <div className="t-caption" style={{ padding: '0 32px' }}>
-          No browsable catalogs — add addons with catalogs (e.g. Cinemeta) in a Stremio-compatible
-          manifest.
+      {error && (
+        <div className="error-text" style={{ padding: '16px 32px' }}>
+          Could not reach your Halo server: {String(error)}
+        </div>
+      )}
+      {isLoading && (
+        <div className="t-caption" style={{ padding: '16px 32px' }}>
+          Loading addons…
+        </div>
+      )}
+      {addons && allRows.length === 0 && (
+        <div className="t-caption" style={{ padding: '16px 32px' }}>
+          No browsable catalogs — add an addon with catalogs (e.g. Cinemeta) in Settings.
         </div>
       )}
 
+      {rows.length > 0 && <FeaturedHero lead={rows[0]!} />}
+
+      {continueItems.length > 0 && (
+        <PosterRow title="Continue Watching">
+          {continueItems.map((item) => (
+            <PosterCard
+              key={item.meta.id}
+              meta={item.meta}
+              width={POSTER_WIDTH}
+              progress={item.progress}
+            />
+          ))}
+        </PosterRow>
+      )}
+
+      {recentItems.length > 0 && (
+        <PosterRow title="Recently Watched">
+          {recentItems.map((meta) => (
+            <PosterCard key={meta.id} meta={meta} width={POSTER_WIDTH} />
+          ))}
+        </PosterRow>
+      )}
+
+      {libraryItems.length > 0 && (
+        <PosterRow title="My Library" action={<SeeAllLibrary />}>
+          {libraryItems.map((meta) => (
+            <PosterCard key={meta.id} meta={meta} width={POSTER_WIDTH} />
+          ))}
+        </PosterRow>
+      )}
+
       {rows.map((row) => (
-        <CatalogRow key={`${row.addonId}/${row.catalog.type}/${row.catalog.id}`} row={row} />
+        <CatalogShelf key={`${row.addonId}/${row.catalog.type}/${row.catalog.id}`} row={row} />
       ))}
     </div>
   )
 }
 
-function CatalogRow({ row }: { row: BrowsableCatalog }) {
+function SeeAllLibrary() {
+  const { setRoot } = useNav()
+  return (
+    <button type="button" className="row-link" onClick={() => setRoot('library')}>
+      See all →
+    </button>
+  )
+}
+
+/**
+ * Featured = first title of the first visible catalog; its full meta brings
+ * wide background art and the rating (mobile parity).
+ */
+function FeaturedHero({ lead }: { lead: BrowsableCatalog }) {
+  const { push } = useNav()
+  const { data: metas } = useCatalog(lead.addonId, lead.catalog.type, lead.catalog.id)
+  const preview = metas?.[0]
+  const { data: fullMeta } = useMeta(preview?.type ?? '', preview?.id ?? '', {
+    enabled: !!preview,
+  })
+  const featured = fullMeta ?? preview
+  if (!featured) return null
+
+  const openDetail = () => push({ name: 'detail', type: featured.type, id: featured.id })
+  const play = () => {
+    if (featured.type !== 'movie') {
+      // Series need an episode choice first — Detail is the picker.
+      openDetail()
+      return
+    }
+    push({
+      name: 'streams',
+      type: featured.type,
+      videoId: featured.id,
+      itemId: `${featured.type}:${featured.id}`,
+      metaId: featured.id,
+      title: featured.name,
+      ...(featured.poster ? { poster: featured.poster } : {}),
+    })
+  }
+
+  const metaLine = [
+    featured.releaseInfo,
+    (featured.genres ?? [])[0],
+    featured.imdbRating ? `★ ${featured.imdbRating}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  return (
+    <div className="hero">
+      <div
+        className="hero-bg"
+        style={{
+          backgroundImage: `url(${featured.background ?? featured.poster})`,
+        }}
+      />
+      <div className="hero-scrim" />
+      <div className="hero-body">
+        <div className="hero-title">{featured.name}</div>
+        {metaLine && <div className="hero-meta">{metaLine}</div>}
+        <div className="hero-actions">
+          <button className="btn btn-primary btn-row" type="button" onClick={play}>
+            <Icon name="play" size={15} />
+            Play
+          </button>
+          <button className="btn btn-glass" type="button" onClick={openDetail}>
+            Details
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CatalogShelf({ row }: { row: BrowsableCatalog }) {
   const { data: metas, isLoading } = useCatalog(row.addonId, row.catalog.type, row.catalog.id)
 
   // A catalog that errored or came back empty doesn't earn a row.
   if (!isLoading && (!metas || metas.length === 0)) return null
 
   return (
-    <section style={{ marginTop: 24 }}>
-      <div className="t-heading" style={{ padding: '0 32px 12px' }}>
-        {row.title}
-      </div>
-      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '0 32px 8px' }}>
-        {(metas ?? []).slice(0, 30).map((meta) => (
-          <PosterCard key={`${meta.type}:${meta.id}`} meta={meta} />
-        ))}
-        {isLoading && <div className="t-caption">Loading…</div>}
-      </div>
-    </section>
-  )
-}
-
-function PosterCard({ meta }: { meta: MetaPreview }) {
-  const { push } = useNav()
-  return (
-    <button
-      type="button"
-      onClick={() => push({ name: 'detail', type: meta.type, id: meta.id })}
-      title={meta.name}
-      style={{
-        flex: '0 0 auto',
-        width: 112,
-        padding: 0,
-        border: 'none',
-        background: 'transparent',
-        cursor: 'pointer',
-        textAlign: 'left',
-        color: 'var(--text)',
-      }}
-    >
-      {meta.poster ? (
-        <img
-          src={meta.poster}
-          alt=""
-          loading="lazy"
-          style={{
-            width: 112,
-            height: 168,
-            objectFit: 'cover',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--glass-border)',
-            display: 'block',
-          }}
-        />
-      ) : (
-        <div
-          style={{
-            width: 112,
-            height: 168,
-            borderRadius: 'var(--radius-md)',
-            background: 'var(--surface-high)',
-            display: 'grid',
-            placeItems: 'center',
-            fontSize: 11,
-            color: 'var(--text-dim)',
-            padding: 8,
-            textAlign: 'center',
-          }}
-        >
-          {meta.name}
-        </div>
-      )}
-      <div
-        className="t-caption"
-        style={{
-          marginTop: 6,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          width: 112,
-        }}
-      >
-        {meta.name}
-      </div>
-    </button>
+    <PosterRow title={row.title}>
+      {(metas ?? []).slice(0, 30).map((meta) => (
+        <PosterCard key={`${meta.type}:${meta.id}`} meta={meta} width={POSTER_WIDTH} />
+      ))}
+      {isLoading && <div className="t-caption">Loading…</div>}
+    </PosterRow>
   )
 }

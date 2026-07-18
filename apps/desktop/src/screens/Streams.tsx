@@ -21,6 +21,7 @@ export function Streams(params: StreamsParams) {
       type: params.type,
       title: params.title,
       addonId,
+      ...(params.metaId ? { metaId: params.metaId } : {}),
       ...(params.showName ? { showName: params.showName } : {}),
       ...(params.episodeLabel ? { episodeLabel: params.episodeLabel } : {}),
       ...(params.poster ? { poster: params.poster } : {}),
