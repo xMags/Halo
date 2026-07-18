@@ -88,7 +88,7 @@ export class HaloClient {
   }
 
   private async request<T>(
-    method: 'GET' | 'PUT' | 'POST',
+    method: 'GET' | 'PUT' | 'POST' | 'PATCH',
     path: string,
     body?: unknown,
     opts?: RequestOptions,
@@ -150,6 +150,16 @@ export class HaloClient {
   /** Admin-only: declares the global addon list shown to every user. Same diff contract as putAddons. */
   putGlobalAddons(transportUrls: string[]): Promise<AddonEntry[]> {
     return this.request<AddonEntry[]>('PUT', '/addons/global', transportUrls)
+  }
+
+  /** Per-addon knobs on the caller's own entries (currently catalog visibility). */
+  patchAddon(addonId: string, patch: { hideCatalogs: boolean }): Promise<void> {
+    return this.request<void>('PATCH', `/addons/${encodeURIComponent(addonId)}`, patch)
+  }
+
+  /** Admin-only: per-addon knobs on a global entry — applies to every user. */
+  patchGlobalAddon(addonId: string, patch: { hideCatalogs: boolean }): Promise<void> {
+    return this.request<void>('PATCH', `/addons/global/${encodeURIComponent(addonId)}`, patch)
   }
 
   /**

@@ -132,9 +132,13 @@ const watchStatesSchema = z.array(
     positionSec: z.number().min(0),
     durationSec: z.number().min(0),
     watched: z.boolean(),
+    name: z.string().min(1).max(512).optional(),
+    poster: z.string().url().optional(),
     updatedAt: z.number().int().positive(),
   }),
 )
+
+const addonPatchSchema = z.object({ hideCatalogs: z.boolean() })
 
 export function createApp(config: AppConfig) {
   const { db } = config
@@ -269,7 +273,10 @@ export function createApp(config: AppConfig) {
       .orderBy(globalAddons.position)
       .all()
       .map(toAddonEntry)
-      .map((a): AddonEntry => (user.isAdmin ? a : { id: a.id, manifest: a.manifest, position: a.position }))
+      .map(
+        (a): AddonEntry =>
+          user.isAdmin ? a : { id: a.id, manifest: a.manifest, position: a.position, ...(a.hideCatalogs ? { hideCatalogs: true } : {}) },
+      )
     const userList = db
       .select()
       .from(userAddons)
@@ -322,6 +329,29 @@ export function createApp(config: AppConfig) {
       return tx.select().from(userAddons).where(eq(userAddons.userId, user.id)).orderBy(userAddons.position).all()
     })
     return c.json(rows.map(toAddonEntry))
+  })
+
+  // Per-addon knobs live outside the declarative URL-list PUT so the list
+  // contract stays a plain string[]. Currently just catalog visibility.
+  authed.patch('/addons/global/:id', adminOnly, async (c) => {
+    const body = addonPatchSchema.safeParse(await c.req.json().catch(() => null))
+    if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+    const result = db.update(globalAddons).set({ hideCatalogs: body.data.hideCatalogs }).where(eq(globalAddons.id, c.req.param('id'))).run()
+    if (result.changes === 0) return c.json({ error: 'addon not found' }, 404)
+    return c.json({ ok: true })
+  })
+
+  authed.patch('/addons/:id', async (c) => {
+    const body = addonPatchSchema.safeParse(await c.req.json().catch(() => null))
+    if (!body.success) return c.json({ error: body.error.flatten() }, 400)
+    const user = c.get('user')
+    const result = db
+      .update(userAddons)
+      .set({ hideCatalogs: body.data.hideCatalogs })
+      .where(and(eq(userAddons.userId, user.id), eq(userAddons.id, c.req.param('id'))))
+      .run()
+    if (result.changes === 0) return c.json({ error: 'addon not found' }, 404)
+    return c.json({ ok: true })
   })
 
   // Same diff contract, admin-only, declares the addons every user sees.
@@ -416,6 +446,8 @@ export function createApp(config: AppConfig) {
               positionSec: sql`excluded.position_sec`,
               durationSec: sql`excluded.duration_sec`,
               watched: sql`excluded.watched`,
+              name: sql`excluded.name`,
+              poster: sql`excluded.poster`,
               updatedAt: sql`excluded.updated_at`,
             },
             setWhere: sql`excluded.updated_at > ${watchStates.updatedAt}`,
@@ -646,6 +678,8 @@ function rowToWatchState(r: typeof watchStates.$inferSelect): WatchState {
     positionSec: r.positionSec,
     durationSec: r.durationSec,
     watched: r.watched,
+    name: r.name ?? undefined,
+    poster: r.poster ?? undefined,
     updatedAt: r.updatedAt,
   }
 }
@@ -657,8 +691,20 @@ function rowToWatchState(r: typeof watchStates.$inferSelect): WatchState {
  */
 type EffectiveAddon = AddonEntry & { transportUrl: string }
 
-function toAddonEntry(r: { id: string; transportUrl: string; manifest: Manifest; position: number }): EffectiveAddon {
-  return { id: r.id, transportUrl: r.transportUrl, manifest: r.manifest, position: r.position }
+function toAddonEntry(r: {
+  id: string
+  transportUrl: string
+  manifest: Manifest
+  position: number
+  hideCatalogs: boolean
+}): EffectiveAddon {
+  return {
+    id: r.id,
+    transportUrl: r.transportUrl,
+    manifest: r.manifest,
+    position: r.position,
+    ...(r.hideCatalogs ? { hideCatalogs: true } : {}),
+  }
 }
 
 interface ResolvedAddon {

@@ -44,6 +44,9 @@ export const globalAddons = sqliteTable(
     id: text('id').notNull(),
     manifest: text('manifest', { mode: 'json' }).$type<Manifest>().notNull(),
     position: integer('position').notNull(),
+    // Admin-set: keep the addon's streams/meta but leave its catalogs out of
+    // discovery (Home) on every client — e.g. debrid cloud listings.
+    hideCatalogs: integer('hide_catalogs', { mode: 'boolean' }).notNull().default(false),
     addedAt: integer('added_at').notNull(),
   },
   (t) => [uniqueIndex('global_addons_id_unique').on(t.id)],
@@ -60,6 +63,8 @@ export const userAddons = sqliteTable(
     id: text('id').notNull(),
     manifest: text('manifest', { mode: 'json' }).$type<Manifest>().notNull(),
     position: integer('position').notNull(),
+    /** Owner-set: same role as global_addons.hide_catalogs. */
+    hideCatalogs: integer('hide_catalogs', { mode: 'boolean' }).notNull().default(false),
     addedAt: integer('added_at').notNull(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.transportUrl] }), uniqueIndex('user_addons_id_unique').on(t.id)],
@@ -93,6 +98,11 @@ export const watchStates = sqliteTable(
     positionSec: real('position_sec').notNull(),
     durationSec: real('duration_sec').notNull(),
     watched: integer('watched', { mode: 'boolean' }).notNull(),
+    // Denormalized display fields so history/continue-watching rows render
+    // without a library join or per-item meta fetch. Nullable: states written
+    // by older clients backfill on their next report.
+    name: text('name'),
+    poster: text('poster'),
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => [

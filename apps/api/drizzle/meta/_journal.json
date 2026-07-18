@@ -22,6 +22,20 @@
       "when": 1784319126290,
       "tag": "0002_round_maria_hill",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1784367932089,
+      "tag": "0003_watch_state_display",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784367948274,
+      "tag": "0004_addon_hide_catalogs",
+      "breakpoints": true
     }
   ]
 }

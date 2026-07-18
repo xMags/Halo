@@ -114,6 +114,18 @@ describe('watch-state LWW (per user)', () => {
     expect(rows[0]!.updatedAt).toBe(2000)
   })
 
+  it('round-trips the denormalized name and poster', async () => {
+    await app.request(
+      '/watch-state',
+      authed(token, [state({ name: 'Rick and Morty', poster: 'https://img.test/ram.jpg', updatedAt: 1000 })]),
+    )
+    const rows = (await (await app.request('/watch-state', authed(token))).json()) as WatchState[]
+    expect(rows[0]).toMatchObject({ name: 'Rick and Morty', poster: 'https://img.test/ram.jpg' })
+    // Older clients omit them — the fields stay optional on the wire.
+    const bare = await app.request('/watch-state', authed(token, [state({ positionSec: 200, updatedAt: 2000 })]))
+    expect(bare.status).toBe(200)
+  })
+
   it('keeps the existing row on an updatedAt tie', async () => {
     await app.request('/watch-state', authed(token, [state({ positionSec: 100, updatedAt: 1000 })]))
     const res = await app.request('/watch-state', authed(token, [state({ positionSec: 999, updatedAt: 1000 })]))
@@ -403,6 +415,51 @@ describe('addons: diff-applied saves keep opaque ids stable', () => {
     const readded = await putList(app, token, [CINEMETA_URL])
     expect(readded[0]!.id).not.toBe(first[0]!.id)
     expect(calls).toHaveLength(2)
+  })
+
+  it('round-trips hideCatalogs via PATCH and keeps it across diff saves', async () => {
+    const { safeFetch } = countingSafeFetch({ 'https://cinemeta.test': CINEMETA, 'https://opensubs.test': OPENSUBS })
+    const { app } = makeApp({ safeFetch })
+    const token = await adminToken()
+
+    const [entry] = await putList(app, token, [CINEMETA_URL])
+    const patched = await app.request(`/addons/${entry!.id}`, authed(token, { hideCatalogs: true }, 'PATCH'))
+    expect(patched.status).toBe(200)
+
+    // Kept rows are untouched by list saves, so the flag survives a reorder/add.
+    const afterSave = await putList(app, token, [OPENSUBS_URL, CINEMETA_URL])
+    const cinemeta = afterSave.find((e) => e.transportUrl === CINEMETA_URL) as (Entry & { hideCatalogs?: boolean }) | undefined
+    expect(cinemeta?.hideCatalogs).toBe(true)
+
+    const off = await app.request(`/addons/${entry!.id}`, authed(token, { hideCatalogs: false }, 'PATCH'))
+    expect(off.status).toBe(200)
+    const view = (await (await app.request('/addons', authed(token))).json()) as { user: Array<{ hideCatalogs?: boolean }> }
+    expect(view.user.every((e) => e.hideCatalogs === undefined)).toBe(true)
+  })
+
+  it('gates global PATCH on admin and scopes user PATCH to the owner', async () => {
+    const { safeFetch } = countingSafeFetch({ 'https://cinemeta.test': CINEMETA })
+    const { app } = makeApp({ safeFetch })
+    const admin = await adminToken()
+    const bob = await userToken('bob')
+
+    await app.request('/addons/global', authed(admin, [CINEMETA_URL], 'PUT'))
+    const adminView = (await (await app.request('/addons', authed(admin))).json()) as { global: Entry[] }
+    const globalId = adminView.global[0]!.id
+
+    // Non-admin cannot touch a global entry; the same id is also invisible to
+    // the per-user route (different table).
+    expect((await app.request(`/addons/global/${globalId}`, authed(bob, { hideCatalogs: true }, 'PATCH'))).status).toBe(403)
+    expect((await app.request(`/addons/${globalId}`, authed(bob, { hideCatalogs: true }, 'PATCH'))).status).toBe(404)
+
+    const ok = await app.request(`/addons/global/${globalId}`, authed(admin, { hideCatalogs: true }, 'PATCH'))
+    expect(ok.status).toBe(200)
+    // Every user sees the flag on the redacted global entry.
+    const bobView = (await (await app.request('/addons', authed(bob))).json()) as { global: Array<{ hideCatalogs?: boolean; transportUrl?: string }> }
+    expect(bobView.global[0]!.hideCatalogs).toBe(true)
+    expect(bobView.global[0]!.transportUrl).toBeUndefined()
+
+    expect((await app.request('/addons/global/nope', authed(admin, { hideCatalogs: true }, 'PATCH'))).status).toBe(404)
   })
 
   it('applies the same diff contract to the global list', async () => {

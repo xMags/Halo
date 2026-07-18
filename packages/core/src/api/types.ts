@@ -17,6 +17,12 @@ export interface AddonEntry {
   transportUrl?: string
   manifest: Manifest
   position: number
+  /**
+   * When true, clients keep the addon's streams/meta/subtitles but leave its
+   * catalogs out of discovery surfaces (Home). Admin-set on global entries,
+   * owner-set on personal ones; present only when enabled.
+   */
+  hideCatalogs?: boolean
 }
 
 /** Global addons (admin-managed, shown to everyone) plus the caller's own. */
@@ -124,6 +130,9 @@ export interface WatchState {
   positionSec: number
   durationSec: number
   watched: boolean
+  /** Denormalized display fields (per-row LWW like the rest of the state). */
+  name?: string
+  poster?: string
   /** Client-set; the server keeps whichever write is newest (LWW). */
   updatedAt: number
 }

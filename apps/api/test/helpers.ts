@@ -180,7 +180,7 @@ export function installGlobalAddon(db: Db, transportUrl: string, manifest: unkno
   return id
 }
 
-export function authed(token: string, body?: unknown, method: 'GET' | 'PUT' | 'POST' | 'DELETE' = body === undefined ? 'GET' : 'PUT'): RequestInit {
+export function authed(token: string, body?: unknown, method: 'GET' | 'PUT' | 'POST' | 'PATCH' | 'DELETE' = body === undefined ? 'GET' : 'PUT'): RequestInit {
   return {
     method,
     headers: {
