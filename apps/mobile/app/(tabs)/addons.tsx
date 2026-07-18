@@ -5,6 +5,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -266,7 +267,7 @@ export default function SettingsScreen() {
             <Ionicons name="chevron-forward" size={15} color={colors.textDim} />
           </View>
         </Pressable>
-        <Pressable style={[styles.settingRow, styles.lastRow]} onPress={() => setLanguagePick('subtitles')}>
+        <Pressable style={styles.settingRow} onPress={() => setLanguagePick('subtitles')}>
           <Text style={styles.settingKey}>Default subtitles</Text>
           <View style={styles.settingChevron}>
             <Text style={styles.settingValue}>
@@ -275,6 +276,14 @@ export default function SettingsScreen() {
             <Ionicons name="chevron-forward" size={15} color={colors.textDim} />
           </View>
         </Pressable>
+        <View style={[styles.settingRow, styles.lastRow]}>
+          <Text style={styles.settingKey}>Autoplay next episode</Text>
+          <Switch
+            value={settings.autoplayNextEpisode ?? true}
+            onValueChange={(value) => updateSettings.mutate({ autoplayNextEpisode: value })}
+            trackColor={{ true: colors.accent }}
+          />
+        </View>
       </View>
 
       <Text style={styles.groupLabel}>Server</Text>

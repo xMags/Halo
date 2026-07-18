@@ -13,10 +13,13 @@ import {
   LANGUAGE_OPTIONS,
   languageLabel,
   languageMatches,
+  type MetaVideo,
+  type NextEpisodeResult,
   type Subtitle,
   type SubtitleOutline,
   type WatchState,
 } from '@halo/core'
+import { api } from '@/api'
 import { sortSubtitlesByPreference, useAddonSubtitles, useReportWatchState, useWatchStates } from '@/queries'
 import { getDownload } from '@/downloads'
 import { ensureLocalSubtitle, listLocalSubtitles, localSubtitleUri, subtitleFileName } from '@/subtitleFiles'
@@ -38,6 +41,8 @@ import type {
 
 const REPORT_INTERVAL_MS = 15_000
 const WATCHED_THRESHOLD = 0.9
+const NEXT_EPISODE_TIMEOUT_MS = 15_000
+const UP_NEXT_COUNTDOWN_SEC = 5
 const CONTROLS_HIDE_DELAY_MS = 3_000
 const NOTICE_HIDE_DELAY_MS = 1_200
 const BUFFERING_MESSAGE_DELAY_MS = 5_000
@@ -76,6 +81,15 @@ const SUBTITLE_FONTS: ReadonlyArray<{ label: string; family?: string }> =
       ]
 
 export default function PlayerScreen() {
+  // Autoplay replaces this route's params in place (player → next episode's
+  // player). expo-router keeps the screen mounted across that, but every
+  // piece of playback state — tracks, resume, subtitle memory, one-shot refs —
+  // is per-video, so key the whole session to force a clean remount.
+  const { videoId, uri } = useLocalSearchParams<{ videoId: string; uri: string }>()
+  return <PlayerSession key={`${videoId}|${uri}`} />
+}
+
+function PlayerSession() {
   const params = useLocalSearchParams<{
     uri: string
     videoId: string
@@ -85,6 +99,12 @@ export default function PlayerScreen() {
     subtitleUri?: string
     filename?: string
     videoSize?: string
+    /** Binge-continuation context; absent for movies and offline playback. */
+    metaId?: string
+    showName?: string
+    poster?: string
+    addonId?: string
+    bingeGroup?: string
   }>()
   const router = useRouter()
   const insets = useSafeAreaInsets()
@@ -277,6 +297,123 @@ export default function PlayerScreen() {
       reportNow()
     }
   }, [reportNow])
+
+  // ── Autoplay next episode ──────────────────────────────────────────────
+  const autoplayEnabled = settings.autoplayNextEpisode ?? true
+  const [nextEpisode, setNextEpisode] = useState<NextEpisodeResult | null>(null)
+  const [upNextVisible, setUpNextVisible] = useState(false)
+  const [upNextSeconds, setUpNextSeconds] = useState(UP_NEXT_COUNTDOWN_SEC)
+  // The countdown, "Play now", and "Cancel" can race — whichever navigation
+  // fires first wins, the rest become no-ops.
+  const advanceFiredRef = useRef(false)
+  const advanceOnce = (go: () => void) => {
+    if (advanceFiredRef.current) return
+    advanceFiredRef.current = true
+    go()
+  }
+
+  // Prefetched at playback start, Stremio-style: by the time the credits roll
+  // the next episode and its binge-matched stream are already known, so the
+  // handoff needs no addon round-trip. Waits for settings so a persisted
+  // autoplay-off is honored before any request goes out.
+  useEffect(() => {
+    if (!settingsLoaded || !autoplayEnabled || isLocal || params.type !== 'series' || !params.metaId) return
+    let cancelled = false
+    api()
+      .getNextEpisode(
+        {
+          type: params.type,
+          metaId: params.metaId,
+          videoId: params.videoId,
+          addonId: params.addonId,
+          bingeGroup: params.bingeGroup,
+        },
+        { signal: timeoutSignal(NEXT_EPISODE_TIMEOUT_MS) },
+      )
+      .then((result) => {
+        if (!cancelled) setNextEpisode(result)
+      })
+      .catch(() => undefined) // Best-effort — onEnd falls back to exiting.
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsLoaded, autoplayEnabled])
+
+  const nextEpisodeTitle = (video: MetaVideo) => {
+    const show = params.showName ?? params.title
+    const tag = episodeTag(video)
+    return tag ? `${show} — ${tag}` : (video.title ?? video.name ?? show)
+  }
+
+  const playNextEpisode = () => {
+    const video = nextEpisode?.video
+    const stream = nextEpisode?.stream
+    if (!video || !stream?.url) return
+    advanceOnce(() =>
+      router.replace({
+        pathname: '/player',
+        params: {
+          uri: stream.url!,
+          videoId: video.id,
+          itemId: params.itemId,
+          type: params.type,
+          title: nextEpisodeTitle(video),
+          metaId: params.metaId!,
+          ...(params.showName ? { showName: params.showName } : {}),
+          ...(params.poster ? { poster: params.poster } : {}),
+          ...(params.addonId ? { addonId: params.addonId } : {}),
+          ...(stream.behaviorHints?.bingeGroup ? { bingeGroup: stream.behaviorHints.bingeGroup } : {}),
+          ...(stream.behaviorHints?.filename ? { filename: stream.behaviorHints.filename } : {}),
+          ...(stream.behaviorHints?.videoSize ? { videoSize: String(stream.behaviorHints.videoSize) } : {}),
+        },
+      }),
+    )
+  }
+
+  /** No binge match: land on the next episode's stream picker instead. */
+  const openNextEpisodePicker = (video: MetaVideo) => {
+    const tag = episodeTag(video)
+    advanceOnce(() =>
+      router.replace({
+        pathname: '/streams/[type]/[videoId]',
+        params: {
+          type: params.type,
+          videoId: video.id,
+          itemId: params.itemId,
+          title: nextEpisodeTitle(video),
+          ...(params.metaId ? { metaId: params.metaId } : {}),
+          ...(params.showName ? { showName: params.showName } : {}),
+          ...(tag ? { episodeLabel: tag } : {}),
+          ...(params.poster ? { poster: params.poster } : {}),
+        },
+      }),
+    )
+  }
+
+  useEffect(() => {
+    if (!upNextVisible) return
+    const interval = setInterval(() => setUpNextSeconds((s) => s - 1), 1_000)
+    return () => clearInterval(interval)
+  }, [upNextVisible])
+
+  useEffect(() => {
+    if (upNextVisible && upNextSeconds <= 0) playNextEpisode()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upNextVisible, upNextSeconds])
+
+  const onPlaybackEnd = () => {
+    reportNow()
+    if (autoplayEnabled && nextEpisode?.video && nextEpisode.stream?.url) {
+      setUpNextVisible(true)
+      return
+    }
+    if (autoplayEnabled && nextEpisode?.video) {
+      openNextEpisodePicker(nextEpisode.video)
+      return
+    }
+    router.back()
+  }
 
   // Tracks can arrive before onLoad and keep growing after it (network
   // streams add elementary streams as they are discovered).
@@ -594,10 +731,7 @@ export default function PlayerScreen() {
               void playerRef.current?.startPictureInPicture().catch(() => undefined)
             }}
             onError={() => setError(true)}
-            onEnd={() => {
-              reportNow()
-              router.back()
-            }}
+            onEnd={onPlaybackEnd}
           />
         ) : null}
         <PlayerGestureLayer
@@ -648,6 +782,33 @@ export default function PlayerScreen() {
           <Ionicons name="lock-closed" size={20} color={colors.text} />
           <Text style={styles.unlockText}>Unlock controls</Text>
         </Pressable>
+      ) : null}
+
+      {upNextVisible && nextEpisode?.video ? (
+        <View style={styles.upNextOverlay}>
+          <Text style={styles.upNextKicker}>Up next</Text>
+          <Text style={styles.upNextTitle} numberOfLines={2}>
+            {nextEpisodeTitle(nextEpisode.video)}
+          </Text>
+          {nextEpisode.video.title ?? nextEpisode.video.name ? (
+            <Text style={styles.upNextEpisodeName} numberOfLines={1}>
+              {nextEpisode.video.title ?? nextEpisode.video.name}
+            </Text>
+          ) : null}
+          <Text style={styles.upNextCountdown}>Playing in {Math.max(upNextSeconds, 0)} s</Text>
+          <View style={styles.upNextActions}>
+            <Pressable
+              style={styles.upNextCancel}
+              onPress={() => advanceOnce(() => router.back())}
+            >
+              <Text style={styles.upNextCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable style={styles.upNextPlay} onPress={playNextEpisode}>
+              <Ionicons name="play" size={18} color={colors.onPrimary} />
+              <Text style={styles.upNextPlayText}>Play now</Text>
+            </Pressable>
+          </View>
+        </View>
       ) : null}
 
       {controlsVisible && !error && !locked ? (
@@ -947,6 +1108,19 @@ function formatTime(totalSec: number): string {
   return `${h > 0 ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`
 }
 
+/** "S01E02", or undefined when the video isn't season/episode-numbered. */
+function episodeTag(video: MetaVideo): string | undefined {
+  if (video.season === undefined || video.episode === undefined) return undefined
+  return `S${String(video.season).padStart(2, '0')}E${String(video.episode).padStart(2, '0')}`
+}
+
+/** AbortSignal.timeout isn't in Hermes — manual equivalent. */
+function timeoutSignal(ms: number): AbortSignal {
+  const controller = new AbortController()
+  setTimeout(() => controller.abort(), ms)
+  return controller.signal
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1002,6 +1176,49 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
   },
   unlockText: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  upNextOverlay: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    backgroundColor: 'rgba(5,7,12,0.9)',
+  },
+  upNextKicker: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+  },
+  upNextTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  upNextEpisodeName: { color: colors.textDim, fontSize: 14 },
+  upNextCountdown: { color: colors.textDim, fontSize: 13, marginTop: spacing.xs },
+  upNextActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
+  upNextCancel: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.glass,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+  },
+  upNextCancelText: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  upNextPlay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+  },
+  upNextPlayText: { color: colors.onPrimary, fontSize: 15, fontWeight: '700' },
   errorText: {
     color: colors.text,
     fontSize: 15,

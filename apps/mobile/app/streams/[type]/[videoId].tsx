@@ -34,6 +34,7 @@ export default function StreamsScreen() {
     videoId: string
     itemId: string
     title: string
+    metaId?: string
     showName?: string
     episodeLabel?: string
     poster?: string
@@ -45,7 +46,9 @@ export default function StreamsScreen() {
   const settings = useSettings()
   const existingDownload = downloads.find((d) => d.id === params.videoId && d.status === 'done')
 
-  const play = (stream: Stream) => {
+  // `addonId` + the stream's bingeGroup give the player what it needs to ask
+  // the server for a binge continuation from the same source.
+  const play = (stream: Stream, addonId?: string) => {
     router.replace({
       pathname: '/player',
       params: {
@@ -54,6 +57,11 @@ export default function StreamsScreen() {
         itemId: params.itemId,
         type: params.type,
         title: params.title,
+        ...(params.metaId ? { metaId: params.metaId } : {}),
+        ...(params.showName ? { showName: params.showName } : {}),
+        ...(params.poster ? { poster: params.poster } : {}),
+        ...(addonId ? { addonId } : {}),
+        ...(stream.behaviorHints?.bingeGroup ? { bingeGroup: stream.behaviorHints.bingeGroup } : {}),
         ...(stream.behaviorHints?.filename ? { filename: stream.behaviorHints.filename } : {}),
         ...(stream.behaviorHints?.videoSize ? { videoSize: String(stream.behaviorHints.videoSize) } : {}),
       },
@@ -178,7 +186,7 @@ export default function StreamsScreen() {
                   >
                     <Pressable
                       style={({ pressed }) => [styles.streamBody, pressed && styles.pressed]}
-                      onPress={() => play(stream)}
+                      onPress={() => play(stream, group.addonId)}
                     >
                       <View style={styles.streamHead}>
                         <Text style={[styles.streamName, styles.streamNameFlex]} numberOfLines={1}>

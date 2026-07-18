@@ -119,6 +119,7 @@ const settingsSchema = z.object({
       subtitleOutline: z.enum(['none', 'thin', 'normal', 'thick']).optional(),
       subtitleShadow: z.boolean().optional(),
       playbackRate: z.number().min(0.25).max(4).optional(),
+      autoplayNextEpisode: z.boolean().optional(),
     })
     .passthrough(),
   updatedAt: z.number().int().positive(),

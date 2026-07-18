@@ -71,6 +71,8 @@ export interface UserSettings {
   subtitleShadow?: boolean
   /** Playback speed multiplier. */
   playbackRate?: number
+  /** Auto-advance to the next episode when one ends; unset = on. */
+  autoplayNextEpisode?: boolean
 }
 
 export interface SettingsPayload {

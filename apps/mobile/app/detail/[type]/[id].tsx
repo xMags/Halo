@@ -82,6 +82,7 @@ export default function DetailScreen() {
         type,
         videoId,
         itemId,
+        metaId: id,
         title: episodeLabel ? `${meta.name} — ${episodeLabel}` : meta.name,
         showName: meta.name,
         ...(episodeLabel ? { episodeLabel } : {}),
