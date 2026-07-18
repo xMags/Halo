@@ -426,15 +426,23 @@ describe('addons: diff-applied saves keep opaque ids stable', () => {
     const patched = await app.request(`/addons/${entry!.id}`, authed(token, { hideCatalogs: true }, 'PATCH'))
     expect(patched.status).toBe(200)
 
-    // Kept rows are untouched by list saves, so the flag survives a reorder/add.
+    // Kept rows are untouched by list saves, so the flag survives a reorder/add
+    // — and the wire manifest comes back with its catalogs stripped.
     const afterSave = await putList(app, token, [OPENSUBS_URL, CINEMETA_URL])
-    const cinemeta = afterSave.find((e) => e.transportUrl === CINEMETA_URL) as (Entry & { hideCatalogs?: boolean }) | undefined
+    const cinemeta = afterSave.find((e) => e.transportUrl === CINEMETA_URL) as
+      | (Entry & { hideCatalogs?: boolean; manifest: { catalogs: unknown[] } })
+      | undefined
     expect(cinemeta?.hideCatalogs).toBe(true)
+    expect(cinemeta?.manifest.catalogs).toEqual([])
 
+    // Un-hiding restores the catalogs — the stored manifest was never touched.
     const off = await app.request(`/addons/${entry!.id}`, authed(token, { hideCatalogs: false }, 'PATCH'))
     expect(off.status).toBe(200)
-    const view = (await (await app.request('/addons', authed(token))).json()) as { user: Array<{ hideCatalogs?: boolean }> }
+    const view = (await (await app.request('/addons', authed(token))).json()) as {
+      user: Array<{ hideCatalogs?: boolean; transportUrl?: string; manifest: { catalogs: unknown[] } }>
+    }
     expect(view.user.every((e) => e.hideCatalogs === undefined)).toBe(true)
+    expect(view.user.find((e) => e.transportUrl === CINEMETA_URL)!.manifest.catalogs).toHaveLength(1)
   })
 
   it('gates global PATCH on admin and scopes user PATCH to the owner', async () => {
@@ -454,10 +462,13 @@ describe('addons: diff-applied saves keep opaque ids stable', () => {
 
     const ok = await app.request(`/addons/global/${globalId}`, authed(admin, { hideCatalogs: true }, 'PATCH'))
     expect(ok.status).toBe(200)
-    // Every user sees the flag on the redacted global entry.
-    const bobView = (await (await app.request('/addons', authed(bob))).json()) as { global: Array<{ hideCatalogs?: boolean; transportUrl?: string }> }
+    // Every user sees the flag and a catalog-stripped manifest on the redacted entry.
+    const bobView = (await (await app.request('/addons', authed(bob))).json()) as {
+      global: Array<{ hideCatalogs?: boolean; transportUrl?: string; manifest: { catalogs: unknown[] } }>
+    }
     expect(bobView.global[0]!.hideCatalogs).toBe(true)
     expect(bobView.global[0]!.transportUrl).toBeUndefined()
+    expect(bobView.global[0]!.manifest.catalogs).toEqual([])
 
     expect((await app.request('/addons/global/nope', authed(admin, { hideCatalogs: true }, 'PATCH'))).status).toBe(404)
   })

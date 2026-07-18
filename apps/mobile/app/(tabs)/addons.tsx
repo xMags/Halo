@@ -173,7 +173,9 @@ export default function SettingsScreen() {
                 </Text>
               ) : null}
             </View>
-            {item.manifest.catalogs.length > 0 ? (
+            {/* Hidden addons come back with a stripped manifest — the flag is
+                the only way to know the toggle should still render. */}
+            {item.manifest.catalogs.length > 0 || item.hideCatalogs ? (
               <Pressable
                 accessibilityLabel={item.hideCatalogs ? 'Show catalogs on Home' : 'Hide catalogs from Home'}
                 onPress={() => patchAddon.mutate({ addonId: item.id, hideCatalogs: !item.hideCatalogs })}
@@ -238,7 +240,9 @@ export default function SettingsScreen() {
                       </Text>
                     ) : null}
                   </View>
-                  {item.manifest.catalogs.length > 0 ? (
+                  {/* Hidden addons come back with a stripped manifest — the flag is
+                the only way to know the toggle should still render. */}
+            {item.manifest.catalogs.length > 0 || item.hideCatalogs ? (
                     <Pressable
                       accessibilityLabel={item.hideCatalogs ? 'Show catalogs on Home (all users)' : 'Hide catalogs from Home (all users)'}
                       onPress={() => patchGlobalAddon.mutate({ addonId: item.id, hideCatalogs: !item.hideCatalogs })}

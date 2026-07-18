@@ -273,6 +273,7 @@ export function createApp(config: AppConfig) {
       .orderBy(globalAddons.position)
       .all()
       .map(toAddonEntry)
+      .map(stripHiddenCatalogs)
       .map(
         (a): AddonEntry =>
           user.isAdmin ? a : { id: a.id, manifest: a.manifest, position: a.position, ...(a.hideCatalogs ? { hideCatalogs: true } : {}) },
@@ -284,6 +285,7 @@ export function createApp(config: AppConfig) {
       .orderBy(userAddons.position)
       .all()
       .map(toAddonEntry)
+      .map(stripHiddenCatalogs)
     return c.json({ global, user: userList })
   })
 
@@ -328,7 +330,7 @@ export function createApp(config: AppConfig) {
       })
       return tx.select().from(userAddons).where(eq(userAddons.userId, user.id)).orderBy(userAddons.position).all()
     })
-    return c.json(rows.map(toAddonEntry))
+    return c.json(rows.map(toAddonEntry).map(stripHiddenCatalogs))
   })
 
   // Per-addon knobs live outside the declarative URL-list PUT so the list
@@ -380,7 +382,7 @@ export function createApp(config: AppConfig) {
       })
       return tx.select().from(globalAddons).orderBy(globalAddons.position).all()
     })
-    return c.json(rows.map(toAddonEntry))
+    return c.json(rows.map(toAddonEntry).map(stripHiddenCatalogs))
   })
 
   authed.get('/library', (c) => {
@@ -690,6 +692,16 @@ function rowToWatchState(r: typeof watchStates.$inferSelect): WatchState {
  * always needs the URL.
  */
 type EffectiveAddon = AddonEntry & { transportUrl: string }
+
+/**
+ * Wire-only redaction for hidden catalogs: the stored manifest keeps them, but
+ * clients never see them — Home/search lose the rows with zero client logic.
+ * The flag still ships because Settings must distinguish "catalogs hidden"
+ * from "addon has no catalogs" to offer the un-hide toggle.
+ */
+function stripHiddenCatalogs<T extends AddonEntry>(a: T): T {
+  return a.hideCatalogs ? { ...a, manifest: { ...a.manifest, catalogs: [] } } : a
+}
 
 function toAddonEntry(r: {
   id: string

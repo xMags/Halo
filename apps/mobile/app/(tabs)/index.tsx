@@ -33,10 +33,9 @@ export default function HomeScreen() {
   const { data: library } = useLibrary()
 
   // Parameterless catalogs only — search/genre-gated ones can't render as
-  // rows. Addons flagged hideCatalogs (e.g. debrid cloud listings) keep their
-  // streams but stay out of discovery entirely.
+  // rows. hideCatalogs addons need no handling here: the server already
+  // strips their catalogs from the manifest it returns.
   const allRows = (addons ?? [])
-    .filter((addon) => !addon.hideCatalogs)
     .flatMap((addon) =>
       addon.manifest.catalogs
         .filter((catalog) => !(catalog.extra ?? []).some((e) => e.isRequired))

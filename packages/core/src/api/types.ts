@@ -18,9 +18,11 @@ export interface AddonEntry {
   manifest: Manifest
   position: number
   /**
-   * When true, clients keep the addon's streams/meta/subtitles but leave its
-   * catalogs out of discovery surfaces (Home). Admin-set on global entries,
-   * owner-set on personal ones; present only when enabled.
+   * When true, the server has stripped this entry's catalogs from `manifest`
+   * on the wire (streams/meta/subtitles are unaffected; the stored manifest
+   * keeps them). Clients need no filtering — the flag exists so Settings can
+   * tell "hidden" apart from "has no catalogs" and offer the un-hide toggle.
+   * Admin-set on global entries, owner-set on personal ones.
    */
   hideCatalogs?: boolean
 }
