@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   computeVideoHash,
   languageMatches,
-  type CatalogResponse,
   type LibraryItem,
   type MetaDetail,
   type MetaPreview,
@@ -185,9 +184,19 @@ export function useAddonSubtitles(opts: SubtitleOptions) {
   })
 }
 
+/** One search row per responding catalog, Stremio-style ("Popular – Movie"). */
+export interface SearchResultGroup {
+  key: string
+  title: string
+  metas: MetaPreview[]
+}
+
 /**
  * Fan-out search across every installed catalog that supports the `search`
- * extra (Cinemeta's do). Results merge in addon order, deduped by type:id.
+ * extra (Cinemeta's do). Each catalog keeps its own result group, in addon
+ * order; groups that error or come back empty are dropped. Duplicates are
+ * possible across groups (two addons can know the same title) — that mirrors
+ * Stremio, where every catalog owns its row.
  */
 export function useSearch(term: string) {
   const { data: addons } = useEffectiveAddons()
@@ -196,7 +205,7 @@ export function useSearch(term: string) {
     queryKey: ['search', trimmed],
     enabled: !!addons && trimmed.length >= 2,
     staleTime: 60_000,
-    queryFn: async (): Promise<MetaPreview[]> => {
+    queryFn: async (): Promise<SearchResultGroup[]> => {
       const targets = (addons ?? []).flatMap((addon) =>
         addon.manifest.catalogs
           .filter(
@@ -204,23 +213,34 @@ export function useSearch(term: string) {
               (c.extra ?? []).some((e) => e.name === 'search') ||
               (c.extraSupported ?? []).includes('search'),
           )
-          .map((c) => ({ addonId: addon.id, type: c.type, id: c.id })),
+          .map((c) => ({
+            addonId: addon.id,
+            type: c.type,
+            id: c.id,
+            title: `${c.name ?? addon.manifest.name} – ${typeLabel(c.type)}`,
+          })),
       )
       const results = await Promise.allSettled(
         targets.map((t) => api().getCatalog(t.addonId, t.type, t.id, { search: trimmed })),
       )
-      const metas = results
-        .filter((r): r is PromiseFulfilledResult<CatalogResponse> => r.status === 'fulfilled')
-        .flatMap((r) => r.value.metas ?? [])
-      const seen = new Set<string>()
-      return metas.filter((meta) => {
-        const key = `${meta.type}:${meta.id}`
-        if (seen.has(key)) return false
-        seen.add(key)
-        return true
+      return targets.flatMap((t, i) => {
+        const r = results[i]!
+        if (r.status !== 'fulfilled') return []
+        const seen = new Set<string>()
+        const metas = (r.value.metas ?? []).filter((meta) => {
+          const key = `${meta.type}:${meta.id}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+        return metas.length > 0 ? [{ key: `${t.addonId}/${t.type}/${t.id}`, title: t.title, metas }] : []
       })
     },
   })
+}
+
+function typeLabel(type: string): string {
+  return type.charAt(0).toUpperCase() + type.slice(1)
 }
 
 export function useLibrary() {

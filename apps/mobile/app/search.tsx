@@ -5,23 +5,22 @@ import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useSearch } from '@/queries'
 import { addSearchTerm, clearSearchHistory, getSearchHistory, removeSearchTerm } from '@/searchHistory'
-import { colors, radius, spacing } from '@/theme'
-import { gridItemWidth, useResponsive } from '@/responsive'
+import { colors, spacing } from '@/theme'
+import { useResponsive } from '@/responsive'
 import { PosterCard } from '@/components/PosterCard'
 import { CenterMessage, SearchField } from '@/components/ui'
 
 const DEBOUNCE_MS = 350
-const GRID_GAP = spacing.sm
 
 export default function SearchScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const { width, posterColumns } = useResponsive()
+  const { pick } = useResponsive()
   const [term, setTerm] = useState('')
   const [debounced, setDebounced] = useState('')
   const [history, setHistory] = useState<string[]>([])
 
-  const itemWidth = gridItemWidth(width, posterColumns, { horizontalPadding: spacing.md, gap: GRID_GAP })
+  const posterWidth = pick(132, 150, 168)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(term), DEBOUNCE_MS)
@@ -101,20 +100,29 @@ export default function SearchScreen() {
       ) : (results ?? []).length === 0 ? (
         <CenterMessage>No results for “{debounced.trim()}”.</CenterMessage>
       ) : (
-        <FlatList
-          // numColumns can't change in place — key remount is required by FlatList.
-          key={posterColumns}
-          data={results}
-          keyExtractor={(meta) => `${meta.type}:${meta.id}`}
-          numColumns={posterColumns}
-          columnWrapperStyle={styles.rowWrap}
-          contentContainerStyle={styles.grid}
+        <ScrollView
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          renderItem={({ item }) => (
-            <PosterCard meta={item} width={itemWidth} showLabel onBeforePress={() => recordTerm(debounced)} />
-          )}
-        />
+          contentContainerStyle={styles.groups}
+          showsVerticalScrollIndicator={false}
+        >
+          {(results ?? []).map((group) => (
+            <View key={group.key} style={styles.groupRow}>
+              <Text style={styles.groupHeading}>{group.title}</Text>
+              <FlatList
+                horizontal
+                data={group.metas}
+                keyExtractor={(meta) => `${meta.type}:${meta.id}`}
+                keyboardShouldPersistTaps="handled"
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.groupList}
+                renderItem={({ item }) => (
+                  <PosterCard meta={item} width={posterWidth} showLabel onBeforePress={() => recordTerm(debounced)} />
+                )}
+              />
+            </View>
+          ))}
+        </ScrollView>
       )}
     </View>
   )
@@ -132,8 +140,17 @@ const styles = StyleSheet.create({
   field: { flex: 1 },
   cancel: { color: colors.accent, fontSize: 15, fontWeight: '600' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  grid: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
-  rowWrap: { gap: spacing.sm, marginBottom: spacing.md },
+  groups: { paddingBottom: spacing.xl },
+  groupRow: { marginBottom: spacing.lg },
+  groupHeading: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    marginBottom: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+  },
+  groupList: { paddingHorizontal: spacing.md, gap: 11 },
   history: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
   historyHead: {
     flexDirection: 'row',
