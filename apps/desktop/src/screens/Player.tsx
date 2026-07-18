@@ -98,6 +98,8 @@ interface MpvTrack {
   lang?: string
   selected?: boolean
   external?: boolean
+  /** Source URL/path for external tracks — the identity `sub-add` dedupe keys on. */
+  'external-filename'?: string
 }
 
 export function Player(params: PlayerParams) {
@@ -238,6 +240,19 @@ export function Player(params: PlayerParams) {
       priorStateRef.current = states?.find((s) => s.videoId === params.videoId) ?? null
 
       if (disposed) return
+      // Leftover external sub tracks can survive on the shared mpv handle (a
+      // dev reload skips unmount cleanup, and loadfile isn't guaranteed to
+      // drop them) — sweep so every mount starts with a clean track list.
+      const staleRaw = await mpvGet('track-list').catch(() => null)
+      if (staleRaw) {
+        try {
+          for (const t of JSON.parse(staleRaw) as MpvTrack[]) {
+            if (t.type === 'sub' && t.external) await mpvCmd('sub-remove', t.id)
+          }
+        } catch {
+          // Unparseable list — loadfile resets most state anyway.
+        }
+      }
       await mpvSet('pause', 'no')
       await mpvCmd('loadfile', params.url).catch((e) => setPlayerError(String(e)))
     })()
@@ -423,11 +438,27 @@ export function Player(params: PlayerParams) {
   const selectEmbeddedSub = (id: number | 'no') => {
     void mpvSet('sid', String(id)).then(refreshTracks)
   }
+  /** Sub ids already handed to `sub-add` this mount — covers the window where
+   *  a re-click lands before the track list refresh reports the new track. */
+  const addedExternalIdsRef = useRef(new Set<string>())
   const addExternalSub = (sub: Subtitle) => {
+    setActiveExternalId(sub.id)
+    // `sub-add` creates a NEW track every call — re-selecting an already-added
+    // sub must switch `sid` to the existing track instead. Identity is the
+    // addon's sub id carried in the track title (external tracks aren't shown
+    // by title anywhere): OpenSubtitles mints fresh URLs on every fetch, so
+    // the URL is NOT a stable key.
+    const key = String(sub.id)
+    const existing = tracks.find((t) => t.type === 'sub' && t.external && t.title === key)
+    if (existing) {
+      void mpvSet('sid', String(existing.id)).then(refreshTracks)
+      return
+    }
+    if (addedExternalIdsRef.current.has(key)) return
+    addedExternalIdsRef.current.add(key)
     // sub-add with `select` loads and activates in one step; only valid after
     // file-loaded (rc=-12 before), which holds — the panel opens during playback.
-    setActiveExternalId(sub.id)
-    void mpvCmd('sub-add', sub.url, 'select', sub.lang, sub.lang).then(refreshTracks)
+    void mpvCmd('sub-add', sub.url, 'select', key, sub.lang).then(refreshTracks)
   }
 
   // Panel click handlers — these record the choice for restore next time;
@@ -685,25 +716,30 @@ export function Player(params: PlayerParams) {
           >
             Off
           </button>
-          {subTracks.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className="sub-row"
-              style={t.selected ? { color: 'var(--accent)' } : undefined}
-              onClick={() => chooseEmbedded(t)}
-            >
-              {t.title ?? t.lang ?? `Track ${t.id}`}
-              {t.lang && t.title ? ` (${t.lang})` : ''}
-              {t.external ? ' · external' : ''}
-            </button>
-          ))}
+          {/* Embedded tracks only — external subs live in the language list
+              below, which knows their variant identity. Rendering the mpv-side
+              external tracks here too showed anonymous duplicate rows. */}
+          {subTracks
+            .filter((t) => !t.external)
+            .map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className="sub-row"
+                style={t.selected ? { color: 'var(--accent)' } : undefined}
+                onClick={() => chooseEmbedded(t)}
+              >
+                {t.title ?? t.lang ?? `Track ${t.id}`}
+                {t.lang && t.title ? ` (${t.lang})` : ''}
+              </button>
+            ))}
           {subGroups.map((group) => (
             <div key={group.addonId} style={{ marginTop: 10 }}>
               <div className="t-overline">{group.addonName}</div>
               {group.languages.map(({ lang, label, variants }) => {
                 const rowKey = `${group.addonId}:${lang}`
-                const active = variants.some((v) => v.id === activeExternalId)
+                const activeIndex = variants.findIndex((v) => v.id === activeExternalId)
+                const active = activeIndex >= 0
                 return (
                   <div key={rowKey}>
                     <div className="sub-lang-row">
@@ -716,6 +752,7 @@ export function Player(params: PlayerParams) {
                         onClick={() => chooseExternal(variants[0]!)}
                       >
                         {label}
+                        {active && variants.length > 1 ? ` · Variant ${activeIndex + 1}` : ''}
                       </button>
                       {variants.length > 1 && (
                         <button
