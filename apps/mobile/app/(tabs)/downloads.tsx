@@ -62,6 +62,8 @@ export default function DownloadsScreen() {
         itemId: entry.itemId,
         type: entry.type,
         title: entry.title,
+        ...(entry.showName ? { showName: entry.showName } : {}),
+        ...(entry.poster ? { poster: entry.poster } : {}),
         ...(entry.filename ? { filename: entry.filename } : {}),
         ...(entry.subtitleUri ? { subtitleUri: entry.subtitleUri } : {}),
       },

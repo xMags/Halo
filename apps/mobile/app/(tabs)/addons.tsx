@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LANGUAGE_OPTIONS, languageLabel } from '@halo/core'
 import { api } from '@/api'
-import { useAddons, useMe, useSetAddons, useSetGlobalAddons } from '@/queries'
+import { useAddons, useMe, usePatchAddon, usePatchGlobalAddon, useSetAddons, useSetGlobalAddons } from '@/queries'
 import { useSession } from '@/session'
 import { useSettings, useUpdateSettings } from '@/settings'
 import { colors, radius, spacing, TAB_BAR_SPACE, type } from '@/theme'
@@ -32,6 +32,8 @@ export default function SettingsScreen() {
   const { data: me } = useMe()
   const setAddons = useSetAddons()
   const setGlobalAddons = useSetGlobalAddons()
+  const patchAddon = usePatchAddon()
+  const patchGlobalAddon = usePatchGlobalAddon()
   const { signOut } = useSession()
   const settings = useSettings()
   const updateSettings = useUpdateSettings()
@@ -171,6 +173,20 @@ export default function SettingsScreen() {
                 </Text>
               ) : null}
             </View>
+            {item.manifest.catalogs.length > 0 ? (
+              <Pressable
+                accessibilityLabel={item.hideCatalogs ? 'Show catalogs on Home' : 'Hide catalogs from Home'}
+                onPress={() => patchAddon.mutate({ addonId: item.id, hideCatalogs: !item.hideCatalogs })}
+                hitSlop={8}
+                style={styles.catalogToggle}
+              >
+                <Ionicons
+                  name={item.hideCatalogs ? 'eye-off-outline' : 'eye-outline'}
+                  size={19}
+                  color={item.hideCatalogs ? colors.textDim : colors.accent}
+                />
+              </Pressable>
+            ) : null}
             <Pressable onPress={() => remove(item.transportUrl!, item.manifest.name)} hitSlop={8}>
               <Ionicons name="close" size={19} color={colors.textDim} />
             </Pressable>
@@ -222,6 +238,20 @@ export default function SettingsScreen() {
                       </Text>
                     ) : null}
                   </View>
+                  {item.manifest.catalogs.length > 0 ? (
+                    <Pressable
+                      accessibilityLabel={item.hideCatalogs ? 'Show catalogs on Home (all users)' : 'Hide catalogs from Home (all users)'}
+                      onPress={() => patchGlobalAddon.mutate({ addonId: item.id, hideCatalogs: !item.hideCatalogs })}
+                      hitSlop={8}
+                      style={styles.catalogToggle}
+                    >
+                      <Ionicons
+                        name={item.hideCatalogs ? 'eye-off-outline' : 'eye-outline'}
+                        size={19}
+                        color={item.hideCatalogs ? colors.textDim : colors.accent}
+                      />
+                    </Pressable>
+                  ) : null}
                   <Pressable onPress={() => removeGlobal(item.transportUrl!, item.manifest.name)} hitSlop={8}>
                     <Ionicons name="close" size={19} color={colors.textDim} />
                   </Pressable>
@@ -337,6 +367,7 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  catalogToggle: { paddingRight: spacing.sm + 4 },
   container: { flex: 1, backgroundColor: colors.background },
   title: { marginBottom: spacing.md },
   groupLabel: { ...type.overline, marginTop: spacing.md, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },

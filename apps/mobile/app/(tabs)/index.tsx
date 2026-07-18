@@ -32,20 +32,24 @@ export default function HomeScreen() {
   const { data: watchStates } = useWatchStates()
   const { data: library } = useLibrary()
 
-  // Parameterless catalogs only — search/genre-gated ones can't render as rows.
-  const allRows = (addons ?? []).flatMap((addon) =>
-    addon.manifest.catalogs
-      .filter((catalog) => !(catalog.extra ?? []).some((e) => e.isRequired))
-      .filter((catalog) => !(catalog.extraRequired ?? []).length)
-      .map((catalog) => ({
-        key: `${addon.id}/${catalog.type}/${catalog.id}`,
-        addonId: addon.id,
-        addonName: addon.manifest.name,
-        type: catalog.type,
-        catalogId: catalog.id,
-        catalogName: catalog.name,
-      })),
-  )
+  // Parameterless catalogs only — search/genre-gated ones can't render as
+  // rows. Addons flagged hideCatalogs (e.g. debrid cloud listings) keep their
+  // streams but stay out of discovery entirely.
+  const allRows = (addons ?? [])
+    .filter((addon) => !addon.hideCatalogs)
+    .flatMap((addon) =>
+      addon.manifest.catalogs
+        .filter((catalog) => !(catalog.extra ?? []).some((e) => e.isRequired))
+        .filter((catalog) => !(catalog.extraRequired ?? []).length)
+        .map((catalog) => ({
+          key: `${addon.id}/${catalog.type}/${catalog.id}`,
+          addonId: addon.id,
+          addonName: addon.manifest.name,
+          type: catalog.type,
+          catalogId: catalog.id,
+          catalogName: catalog.name,
+        })),
+    )
   const typeFilter = FILTER_TYPE[filter]
   const rows = typeFilter ? allRows.filter((r) => r.type === typeFilter) : allRows
 
@@ -62,6 +66,19 @@ export default function HomeScreen() {
   const featured = featuredMeta ?? featuredPreview
 
   const continueItems = buildContinueWatching(watchStates, library)
+  const recentItems = buildRecentlyWatched(watchStates, library, continueItems, typeFilter)
+  const libraryItems = (library ?? [])
+    .filter((item) => !item.removedAt)
+    .filter((item) => !typeFilter || item.type === typeFilter)
+    .sort((a, b) => b.addedAt - a.addedAt)
+    .map(
+      (item): MetaPreview => ({
+        id: item.id.slice(item.type.length + 1),
+        type: item.type,
+        name: item.name,
+        poster: item.poster,
+      }),
+    )
 
   if (isLoading) {
     return (
@@ -151,6 +168,34 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
+      {recentItems.length > 0 ? (
+        <View style={styles.row}>
+          <Text style={styles.heading}>Recently Watched</Text>
+          <FlatList
+            horizontal
+            data={recentItems}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <PosterCard meta={item} width={pick(132, 150, 168)} />}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.rowList}
+          />
+        </View>
+      ) : null}
+
+      {libraryItems.length > 0 ? (
+        <View style={styles.row}>
+          <Text style={styles.heading}>My Library</Text>
+          <FlatList
+            horizontal
+            data={libraryItems}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <PosterCard meta={item} width={pick(132, 150, 168)} />}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.rowList}
+          />
+        </View>
+      ) : null}
+
       {rows.map((r) => (
         <CatalogRow
           key={r.key}
@@ -165,14 +210,41 @@ export default function HomeScreen() {
   )
 }
 
-/** In-progress watch states joined with library entries for poster + name. */
+type HomeWatchState = {
+  itemId: string
+  positionSec: number
+  durationSec: number
+  watched: boolean
+  name?: string
+  poster?: string
+  updatedAt: number
+}
+type HomeLibraryItem = { id: string; type: string; name: string; poster?: string; removedAt?: number }
+
+/**
+ * Display fields for a watch state: the state's own denormalized name/poster
+ * first, the library entry as fallback for states written by older clients.
+ * itemId is `${type}:${metaId}`; the type segment never contains a colon, the
+ * meta id may (e.g. kitsu ids).
+ */
+function watchStateMeta(s: HomeWatchState, libById: Map<string, HomeLibraryItem>): MetaPreview | null {
+  const lib = libById.get(s.itemId)
+  const name = s.name ?? lib?.name
+  if (!name) return null
+  const type = s.itemId.slice(0, s.itemId.indexOf(':'))
+  return { id: s.itemId.slice(type.length + 1), type, name, poster: s.poster ?? lib?.poster }
+}
+
+function activeLibraryById(library: HomeLibraryItem[] | undefined): Map<string, HomeLibraryItem> {
+  return new Map((library ?? []).filter((i) => !i.removedAt).map((i) => [i.id, i]))
+}
+
+/** In-progress items, most recent first — no longer requires library membership. */
 function buildContinueWatching(
-  watchStates: { itemId: string; positionSec: number; durationSec: number; watched: boolean; updatedAt: number }[] | undefined,
-  library: { id: string; type: string; name: string; poster?: string; removedAt?: number }[] | undefined,
-): { meta: MetaPreview; progress: number }[] {
-  const libById = new Map(
-    (library ?? []).filter((i) => !i.removedAt).map((i) => [i.id, i]),
-  )
+  watchStates: HomeWatchState[] | undefined,
+  library: HomeLibraryItem[] | undefined,
+): { meta: MetaPreview; progress: number; itemId: string }[] {
+  const libById = activeLibraryById(library)
   // One card per show (most recent episode wins) — two in-progress episodes
   // of the same series must not produce duplicate keys.
   const seenItems = new Set<string>()
@@ -182,13 +254,40 @@ function buildContinueWatching(
     .filter(({ fraction }) => fraction > 0.02 && fraction < 0.95)
     .sort((a, b) => b.s.updatedAt - a.s.updatedAt)
     .flatMap(({ s, fraction }) => {
-      const lib = libById.get(s.itemId)
-      if (!lib || seenItems.has(s.itemId)) return []
+      if (seenItems.has(s.itemId)) return []
       seenItems.add(s.itemId)
-      const metaId = s.itemId.slice(lib.type.length + 1)
-      const meta: MetaPreview = { id: metaId, type: lib.type, name: lib.name, poster: lib.poster }
-      return [{ meta, progress: fraction }]
+      const meta = watchStateMeta(s, libById)
+      return meta ? [{ meta, progress: fraction, itemId: s.itemId }] : []
     })
+}
+
+const RECENTLY_WATCHED_LIMIT = 15
+
+/**
+ * Playback history: last distinct items by recency, any progress — finished
+ * shows included as a rewatch entry point. Items already in Continue Watching
+ * are excluded so the two rows never duplicate.
+ */
+function buildRecentlyWatched(
+  watchStates: HomeWatchState[] | undefined,
+  library: HomeLibraryItem[] | undefined,
+  continueItems: { itemId: string }[],
+  typeFilter: string | null,
+): MetaPreview[] {
+  const libById = activeLibraryById(library)
+  const exclude = new Set(continueItems.map((c) => c.itemId))
+  const seenItems = new Set<string>()
+  return (watchStates ?? [])
+    .filter((s) => !exclude.has(s.itemId))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .flatMap((s) => {
+      if (seenItems.has(s.itemId)) return []
+      seenItems.add(s.itemId)
+      const meta = watchStateMeta(s, libById)
+      if (!meta || (typeFilter && meta.type !== typeFilter)) return []
+      return [meta]
+    })
+    .slice(0, RECENTLY_WATCHED_LIMIT)
 }
 
 const styles = StyleSheet.create({

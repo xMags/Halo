@@ -288,6 +288,10 @@ function PlayerSession() {
       positionSec: Math.floor(positionSec),
       durationSec: Math.floor(total),
       watched: positionSec / total >= WATCHED_THRESHOLD,
+      // Denormalized display fields — Home's history rows render from these
+      // without a library join. Show name over episode title for series.
+      name: params.showName ?? params.title,
+      ...(params.poster ? { poster: params.poster } : {}),
       updatedAt: Date.now(),
     }
     report.mutate([state])

@@ -63,6 +63,26 @@ export function useSetGlobalAddons() {
   })
 }
 
+/** Toggles catalog visibility on one of the caller's own addons. */
+export function usePatchAddon() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ addonId, hideCatalogs }: { addonId: string; hideCatalogs: boolean }) =>
+      api().patchAddon(addonId, { hideCatalogs }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['addons'] }),
+  })
+}
+
+/** Admin-only: toggles catalog visibility on a global addon, for every user. */
+export function usePatchGlobalAddon() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ addonId, hideCatalogs }: { addonId: string; hideCatalogs: boolean }) =>
+      api().patchGlobalAddon(addonId, { hideCatalogs }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['addons'] }),
+  })
+}
+
 /** The current user incl. admin status (server-computed); gates admin-only UI. */
 export function useMe() {
   return useQuery({
