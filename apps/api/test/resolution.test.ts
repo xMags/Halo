@@ -97,6 +97,133 @@ describe('GET /subtitles', () => {
   })
 })
 
+describe('GET /next-episode', () => {
+  const seriesManifest = (name: string, resources: string[]) => ({
+    id: name.toLowerCase(),
+    version: '1.0.0',
+    name,
+    resources,
+    types: ['series'],
+    catalogs: [],
+  })
+
+  const META = {
+    'meta/series/tt1': {
+      meta: {
+        id: 'tt1',
+        type: 'series',
+        name: 'Show',
+        videos: [
+          { id: 'tt1:1:1', season: 1, episode: 1 },
+          { id: 'tt1:1:2', season: 1, episode: 2, title: 'The Follow-up' },
+        ],
+      },
+    },
+  }
+
+  const setup = (streamRoutes: Record<string, unknown>) => {
+    const { app, db } = mount({
+      'https://meta.test': META,
+      'https://str.test': streamRoutes,
+      'https://other.test': {
+        // A rival addon whose stream would binge-match — it must never be
+        // consulted, only the addon named in the request is.
+        'stream/series/tt1%3A1%3A2': { streams: [{ url: 'https://other-cdn.test/ep2.mkv', behaviorHints: { bingeGroup: 'str-1080p' } }] },
+      },
+    })
+    return { app, db }
+  }
+
+  it('returns the next episode and the same-addon stream matching the bingeGroup', async () => {
+    const { app, db } = setup({
+      'stream/series/tt1%3A1%3A2': {
+        streams: [
+          { url: 'https://cdn.test/ep2-720p.mkv', behaviorHints: { bingeGroup: 'str-720p' } },
+          { url: 'https://cdn.test/ep2-1080p.mkv', behaviorHints: { bingeGroup: 'str-1080p' } },
+        ],
+      },
+    })
+    const token = await adminToken()
+    installUserAddon(db, 'admin', 'https://meta.test/manifest.json', seriesManifest('Meta', ['meta']), 0)
+    const strId = installUserAddon(db, 'admin', 'https://str.test/manifest.json', seriesManifest('Str', ['stream']), 1)
+    installUserAddon(db, 'admin', 'https://other.test/manifest.json', seriesManifest('Other', ['stream']), 2)
+
+    const res = await app.request(
+      `/next-episode?type=series&metaId=tt1&videoId=${encodeURIComponent('tt1:1:1')}&addon=${strId}&bingeGroup=str-1080p`,
+      authed(token),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { video: { id: string; title?: string }; stream: { url: string } | null }
+    expect(body.video.id).toBe('tt1:1:2')
+    expect(body.video.title).toBe('The Follow-up')
+    expect(body.stream?.url).toBe('https://cdn.test/ep2-1080p.mkv')
+  })
+
+  it('returns stream null when nothing matches the bingeGroup or the match is not playable', async () => {
+    const { app, db } = setup({
+      'stream/series/tt1%3A1%3A2': {
+        streams: [
+          { url: 'https://cdn.test/ep2.mkv', behaviorHints: { bingeGroup: 'different-group' } },
+          // Matching group but torrent-only — isPlayableStream must reject it.
+          { infoHash: 'deadbeefdeadbeef', behaviorHints: { bingeGroup: 'str-1080p' } },
+        ],
+      },
+    })
+    const token = await adminToken()
+    installUserAddon(db, 'admin', 'https://meta.test/manifest.json', seriesManifest('Meta', ['meta']), 0)
+    const strId = installUserAddon(db, 'admin', 'https://str.test/manifest.json', seriesManifest('Str', ['stream']), 1)
+
+    const res = await app.request(
+      `/next-episode?type=series&metaId=tt1&videoId=${encodeURIComponent('tt1:1:1')}&addon=${strId}&bingeGroup=str-1080p`,
+      authed(token),
+    )
+    const body = (await res.json()) as { video: { id: string }; stream: unknown }
+    expect(body.video.id).toBe('tt1:1:2')
+    expect(body.stream).toBeNull()
+  })
+
+  it('treats an unknown addon id and a failing addon as no-match, not an error', async () => {
+    const { app, db } = mount({ 'https://meta.test': META, 'https://str.test': 'fail' })
+    const token = await adminToken()
+    installUserAddon(db, 'admin', 'https://meta.test/manifest.json', seriesManifest('Meta', ['meta']), 0)
+    const strId = installUserAddon(db, 'admin', 'https://str.test/manifest.json', seriesManifest('Str', ['stream']), 1)
+
+    const gone = await app.request(
+      `/next-episode?type=series&metaId=tt1&videoId=${encodeURIComponent('tt1:1:1')}&addon=uninstalled-id&bingeGroup=g`,
+      authed(token),
+    )
+    expect(((await gone.json()) as { video: { id: string }; stream: unknown }).stream).toBeNull()
+
+    const down = await app.request(
+      `/next-episode?type=series&metaId=tt1&videoId=${encodeURIComponent('tt1:1:1')}&addon=${strId}&bingeGroup=g`,
+      authed(token),
+    )
+    expect(down.status).toBe(200)
+    expect(((await down.json()) as { video: { id: string }; stream: unknown }).stream).toBeNull()
+  })
+
+  it('reports the end of a series as video null', async () => {
+    const { app, db } = setup({})
+    const token = await adminToken()
+    installUserAddon(db, 'admin', 'https://meta.test/manifest.json', seriesManifest('Meta', ['meta']), 0)
+    const res = await app.request(`/next-episode?type=series&metaId=tt1&videoId=${encodeURIComponent('tt1:1:2')}`, authed(token))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ video: null, stream: null })
+  })
+
+  it('404s when no addon can describe the meta and validates params', async () => {
+    const { app, db } = mount({})
+    const token = await adminToken()
+    installUserAddon(db, 'admin', 'https://meta.test/manifest.json', seriesManifest('Meta', ['stream']), 0)
+    expect((await app.request('/next-episode?type=series&metaId=tt1&videoId=tt1:1:1', authed(token))).status).toBe(404)
+    expect((await app.request('/next-episode?type=series&metaId=tt1', authed(token))).status).toBe(400)
+    const longGroup = 'g'.repeat(513)
+    expect(
+      (await app.request(`/next-episode?type=series&metaId=tt1&videoId=tt1:1:1&bingeGroup=${longGroup}`, authed(token))).status,
+    ).toBe(400)
+  })
+})
+
 describe('GET /catalog', () => {
   const CATALOG_URL = 'https://cat.test/manifest.json'
   const setup = async () => {

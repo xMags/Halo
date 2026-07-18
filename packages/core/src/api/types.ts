@@ -1,4 +1,4 @@
-import type { Manifest, Stream, Subtitle } from '../addon/types'
+import type { Manifest, MetaVideo, Stream, Subtitle } from '../addon/types'
 
 /** DTOs shared between the Halo API and both clients. Timestamps are Unix ms. */
 
@@ -95,6 +95,16 @@ export interface AddonError {
 export interface StreamsResult {
   results: Array<{ addon: AddonSource; streams: Stream[] }>
   errors: AddonError[]
+}
+
+/**
+ * Response of GET /next-episode. `video` null = nothing follows (series over,
+ * unknown episode, or the follower is unaired). `stream` null = no same-addon
+ * bingeGroup match — the client should fall back to the stream picker.
+ */
+export interface NextEpisodeResult {
+  video: MetaVideo | null
+  stream: Stream | null
 }
 
 /** Response of GET /subtitles. `hashMatched` is true iff a videoHash was sent. */

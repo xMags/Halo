@@ -4,6 +4,7 @@ import type {
   AddonsResponse,
   LibraryItem,
   Me,
+  NextEpisodeResult,
   SettingsPayload,
   StreamsResult,
   SubtitlesResult,
@@ -172,6 +173,22 @@ export class HaloClient {
   getStreams(type: string, videoId: string, opts?: RequestOptions): Promise<StreamsResult> {
     const qs = new URLSearchParams({ type, videoId })
     return this.request<StreamsResult>('GET', `/streams?${qs.toString()}`, undefined, opts)
+  }
+
+  /**
+   * The episode after `videoId` in `metaId`'s ordering plus, when the addon
+   * that served the current stream still exists, the next episode's stream
+   * with the same bingeGroup (Stremio's binge-continuation rule: exact group
+   * equality, same addon only).
+   */
+  getNextEpisode(
+    params: { type: string; metaId: string; videoId: string; addonId?: string; bingeGroup?: string },
+    opts?: RequestOptions,
+  ): Promise<NextEpisodeResult> {
+    const qs = new URLSearchParams({ type: params.type, metaId: params.metaId, videoId: params.videoId })
+    if (params.addonId) qs.set('addon', params.addonId)
+    if (params.bingeGroup) qs.set('bingeGroup', params.bingeGroup)
+    return this.request<NextEpisodeResult>('GET', `/next-episode?${qs.toString()}`, undefined, opts)
   }
 
   getSubtitles(

@@ -31,6 +31,7 @@ export {
 export type { AddonFetchOptions } from './addon/client'
 
 export { CINEMETA_URL, DEFAULT_ADDON_URLS, OPENSUBTITLES_URL } from './addon/constants'
+export { nextVideo } from './addon/nextVideo'
 
 export { computeVideoHash, computeVideoHashFromChunks, VIDEO_HASH_CHUNK_BYTES } from './subtitles/hash'
 export type { VideoHashResult } from './subtitles/hash'
@@ -46,6 +47,7 @@ export type {
   AddonSource,
   LibraryItem,
   Me,
+  NextEpisodeResult,
   SettingsPayload,
   StreamsResult,
   SubtitleOutline,

@@ -9,10 +9,13 @@ import {
   getStreams,
   getSubtitles,
   isPlayableStream,
+  nextVideo,
   transportBase,
   type AddonEntry,
   type LibraryItem,
   type Manifest,
+  type MetaResponse,
+  type Stream,
   type WatchState,
 } from '@halo/core'
 import { randomUUID } from 'node:crypto'
@@ -490,20 +493,61 @@ export function createApp(config: AppConfig) {
     }
   })
 
-  authed.get('/meta', async (c) => {
-    const type = c.req.query('type')
-    const id = c.req.query('id')
-    if (!type || !id) return c.json({ error: 'type and id are required' }, 400)
-    for (const addon of effectiveAddons(c.get('user').id)) {
+  /** First effective addon that can describe this type/id wins; null if none. */
+  const resolveMeta = async (addons: EffectiveAddon[], type: string, id: string): Promise<MetaResponse | null> => {
+    for (const addon of addons) {
       if (!addonSupportsResource(addon.manifest, 'meta', type, id)) continue
       try {
-        const res = await getMeta(addon.transportUrl, type, id, { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) })
-        return c.json(res)
+        return await getMeta(addon.transportUrl, type, id, { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) })
       } catch {
         // Try the next addon that can describe this id.
       }
     }
-    return c.json({ error: 'no metadata found' }, 404)
+    return null
+  }
+
+  authed.get('/meta', async (c) => {
+    const type = c.req.query('type')
+    const id = c.req.query('id')
+    if (!type || !id) return c.json({ error: 'type and id are required' }, 400)
+    const res = await resolveMeta(effectiveAddons(c.get('user').id), type, id)
+    if (!res) return c.json({ error: 'no metadata found' }, 404)
+    return c.json(res)
+  })
+
+  // Binge continuation: the episode after `videoId` in `metaId`'s ordering,
+  // plus — when the addon that served the current stream still exists — that
+  // addon's stream for the next episode with the same bingeGroup. Matching is
+  // Stremio's rule exactly: same addon, exact group equality, no fuzzy tier.
+  // `stream: null` means "fall back to the stream picker".
+  authed.get('/next-episode', async (c) => {
+    const type = c.req.query('type')
+    const metaId = c.req.query('metaId')
+    const videoId = c.req.query('videoId')
+    if (!type || !metaId || !videoId) return c.json({ error: 'type, metaId and videoId are required' }, 400)
+    const addonId = c.req.query('addon')
+    const bingeGroup = c.req.query('bingeGroup')
+    if (bingeGroup !== undefined && bingeGroup.length > 512) return c.json({ error: 'bingeGroup too long' }, 400)
+
+    const addons = effectiveAddons(c.get('user').id)
+    const meta = await resolveMeta(addons, type, metaId)
+    if (!meta) return c.json({ error: 'no metadata found' }, 404)
+    const next = nextVideo(meta.meta.videos ?? [], videoId)
+    if (!next) return c.json({ video: null, stream: null })
+
+    // A missing addon id is benign — the addon was uninstalled mid-playback.
+    // The next episode is still reported, just without a matched stream.
+    const entry = addonId ? addons.find((a) => a.id === addonId) : undefined
+    let stream: Stream | null = null
+    if (entry && bingeGroup && addonSupportsResource(entry.manifest, 'stream', type, next.id)) {
+      try {
+        const res = await getStreams(entry.transportUrl, type, next.id, { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) })
+        stream = res.streams.filter(isPlayableStream).find((s) => s.behaviorHints?.bingeGroup === bingeGroup) ?? null
+      } catch {
+        // Best-effort: an unreachable addon degrades to the picker, not a 5xx.
+      }
+    }
+    return c.json({ video: next, stream })
   })
 
   authed.get('/streams', async (c) => {
