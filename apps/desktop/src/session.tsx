@@ -1,15 +1,30 @@
-import type { AuthConfig } from '@halo/core'
+import { HaloClient, type AuthConfig } from '@halo/core'
+import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { clearServerUrl, getClient, getServerUrl, onUnauthorized, setServerUrl } from './api'
-import { loadLocalSession, signOutLocal } from './localAuth'
+import {
+  activateSession,
+  clearServerUrl,
+  deactivateSession,
+  getClient,
+  getServerUrl,
+  getSessionKind,
+  onUnauthorized,
+  restoreSession,
+  seedDefaultAddons,
+  setServerUrl,
+  type SessionKind,
+} from './api'
+import { signOutLocal } from './localAuth'
+import { signOutOidc } from './oidc'
 
 /**
  * App-level auth state machine, mirroring mobile's session provider:
  *   no server configured → 'unconfigured' (Connect screen)
  *   server known, no session → 'unauthenticated' (Login screen, branched by auth mode)
  *   session present → 'authenticated'
- * Only a definitive rejection (refresh 401) signs the device out — network
- * failures never do (that policy lives in localAuth/HaloClient).
+ * Only a definitive rejection (OIDC invalid_grant / local refresh 401) signs
+ * the device out — network failures never do (that policy lives in the auth
+ * modules and HaloClient).
  */
 export type SessionState = 'unconfigured' | 'unauthenticated' | 'authenticated'
 
@@ -19,8 +34,8 @@ interface SessionContextValue {
   /** Auth mode of the configured server; null until discovered. */
   authConfig: AuthConfig | null
   connect: (serverUrl: string, config: AuthConfig) => void
-  /** Called by the login screen after a successful sign-in. */
-  signedIn: () => void
+  /** Called by the login screen after a successful sign-in of the given kind. */
+  signedIn: (kind: SessionKind) => void
   signOut: () => void
   /** Forget the server entirely (back to Connect). */
   disconnect: () => void
@@ -33,22 +48,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null)
   const [state, setState] = useState<SessionState>(() => {
     if (!getServerUrl()) return 'unconfigured'
-    return loadLocalSession() ? 'authenticated' : 'unauthenticated'
+    return restoreSession() ? 'authenticated' : 'unauthenticated'
   })
 
   // A 401 that survives the refresh retry means the session is dead.
   useEffect(() => {
-    onUnauthorized(() => {
-      signOutLocal()
-      setState('unauthenticated')
-    })
+    onUnauthorized(() => setState('unauthenticated'))
   }, [])
 
   // Re-discover the auth mode for an already-configured server (needed by the
   // login screen after restart; harmless when authenticated).
   useEffect(() => {
     if (!serverUrl || authConfig) return
-    getClient()
+    new HaloClient({ baseUrl: serverUrl, fetch: nativeFetch })
       .getAuthConfig()
       .then(setAuthConfig)
       .catch(() => {
@@ -63,15 +75,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setState('unauthenticated')
   }, [])
 
-  const signedIn = useCallback(() => setState('authenticated'), [])
+  const signedIn = useCallback((kind: SessionKind) => {
+    activateSession(kind)
+    void seedDefaultAddons()
+    setState('authenticated')
+  }, [])
 
   const signOut = useCallback(() => {
-    signOutLocal()
+    if (getSessionKind() === 'oidc') void signOutOidc()
+    else signOutLocal()
+    deactivateSession()
     setState('unauthenticated')
   }, [])
 
   const disconnect = useCallback(() => {
     signOutLocal()
+    void signOutOidc()
     clearServerUrl()
     setServer(null)
     setAuthConfig(null)

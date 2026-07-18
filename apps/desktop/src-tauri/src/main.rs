@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod mpv;
+mod oauth;
 
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
@@ -79,10 +80,29 @@ fn mpv_unobserve_all(state: tauri::State<PlayerState>) {
     state.mpv.unobserve_all()
 }
 
+/// Async + spawn_blocking: a plain (non-async) command would run ON the main
+/// thread, and this one blocks until the browser redirects (or the 5-minute
+/// timeout) — that froze the whole window. The dedicated blocking worker is
+/// the correct home for a synchronous accept loop.
+#[tauri::command]
+async fn oauth_wait_callback() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(oauth::wait_for_callback)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
-        .invoke_handler(tauri::generate_handler![mpv_cmd, mpv_set, mpv_get, mpv_observe, mpv_unobserve_all])
+        .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![
+            mpv_cmd,
+            mpv_set,
+            mpv_get,
+            mpv_observe,
+            mpv_unobserve_all,
+            oauth_wait_callback
+        ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("main window");
             let hwnd = window.hwnd()?.0 as isize;

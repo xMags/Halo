@@ -1,12 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { signInWithPassword } from '../localAuth'
+import { signInWithOidc } from '../oidc'
 import { useSession } from '../session'
 
 /**
  * Sign-in, branched by the server's declared auth mode. Local mode posts the
- * password form; OIDC (the ditto deployment) needs the system-browser PKCE
- * flow — a separate milestone — so it presents as not-yet-supported rather
- * than a broken form.
+ * password form; OIDC opens the system browser for the PKCE dance and waits
+ * for the loopback redirect.
  */
 export function Login() {
   const { serverUrl, authConfig, signedIn, disconnect } = useSession()
@@ -15,16 +15,30 @@ export function Login() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function submit(e: FormEvent) {
+  async function submitLocal(e: FormEvent) {
     e.preventDefault()
     if (!serverUrl) return
     setBusy(true)
     setError(null)
     try {
       await signInWithPassword(serverUrl, username, password)
-      signedIn()
+      signedIn('local')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign-in failed')
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function submitOidc() {
+    if (authConfig?.mode !== 'oidc') return
+    setBusy(true)
+    setError(null)
+    try {
+      await signInWithOidc(authConfig)
+      signedIn('oidc')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(false)
     }
@@ -43,7 +57,7 @@ export function Login() {
         {!authConfig && <div className="t-caption">Contacting server…</div>}
 
         {authConfig?.mode === 'local' && (
-          <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <form onSubmit={submitLocal} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <input
               className="field"
               placeholder="Username"
@@ -67,9 +81,15 @@ export function Login() {
         )}
 
         {authConfig?.mode === 'oidc' && (
-          <div className="t-caption">
-            This server uses single sign-on ({authConfig.issuer}). Desktop SSO isn&apos;t wired up yet — it&apos;s a
-            planned milestone.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="t-caption">
+              This server signs in through {new URL(authConfig.issuer).host}. Your browser will open;
+              come back here once you&apos;ve signed in.
+            </div>
+            {error && <div className="error-text">{error}</div>}
+            <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void submitOidc()}>
+              {busy ? 'Waiting for the browser…' : 'Sign in with browser'}
+            </button>
           </div>
         )}
 
