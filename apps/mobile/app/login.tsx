@@ -10,10 +10,12 @@ import {
   View,
 } from 'react-native'
 import { DEFAULT_SERVER_URL, getStoredServerUrl } from '@/api'
+import { useResponsive } from '@/responsive'
 import { useSession } from '@/session'
 import { colors, radius, spacing } from '@/theme'
 
 export default function LoginScreen() {
+  const { isTablet } = useResponsive()
   const { signIn, signInLocal } = useSession()
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL)
   // 'server': just the URL; the server's /auth/config decides what comes next.
@@ -68,7 +70,7 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={styles.form}>
+      <View style={[styles.form, isTablet && styles.formTablet]}>
         <Text style={styles.logo}>halo</Text>
         <Text style={styles.hint}>
           {phase === 'server'
@@ -141,6 +143,13 @@ const styles = StyleSheet.create({
   form: {
     paddingHorizontal: spacing.lg,
     gap: spacing.md,
+  },
+  // Auth forms read best narrower than the 700dp reading cap — a lone input
+  // and button stretched across a tablet is the complaint this fixes.
+  formTablet: {
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
   },
   logo: {
     color: colors.text,
