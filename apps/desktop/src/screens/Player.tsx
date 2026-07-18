@@ -46,16 +46,17 @@ const SUBTITLE_OUTLINES: ReadonlyArray<{ key: SubtitleOutline; label: string }> 
   { key: 'thick', label: 'Thick' },
 ]
 /**
- * Windows families for plain-text subs; the synced setting stores a family
- * name, so cross-platform values may not resolve (same wart as mobile's
- * platform-specific lists — an unknown family falls back to the default).
+ * Bundled families (apps/desktop/fonts, fed to libass via sub-fonts-dir) —
+ * these names resolve on every install, independent of OS fonts, and are the
+ * standard values for the synced setting. Mobile bundling the same set is a
+ * planned follow-up; until then a family set on one platform may not resolve
+ * on the other (unknown families fall back to the default).
  */
 const SUBTITLE_FONTS: ReadonlyArray<{ label: string; family?: string }> = [
   { label: 'Default' },
-  { label: 'Segoe UI', family: 'Segoe UI' },
-  { label: 'Arial', family: 'Arial' },
-  { label: 'Georgia', family: 'Georgia' },
-  { label: 'Consolas', family: 'Consolas' },
+  { label: 'Inter', family: 'Inter' },
+  { label: 'Serif', family: 'Source Serif 4' },
+  { label: 'Mono', family: 'JetBrains Mono' },
 ]
 /** mpv's own sub-font default — used to clear a cleared preference. */
 const MPV_DEFAULT_SUB_FONT = 'sans-serif'

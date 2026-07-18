@@ -45,6 +45,23 @@ fn find_libmpv() -> Result<std::path::PathBuf, String> {
     Err("libmpv-2.dll not found beside the exe or in apps/desktop/vendor/mpv — see vendor/README.md".into())
 }
 
+/// Bundled subtitle fonts (committed in `apps/desktop/fonts/`, OFL-licensed).
+/// Same resolution order as the dll: beside the exe in packaged builds
+/// (packaging must copy the directory), repo path in dev. Missing dir is
+/// non-fatal — mpv just falls back to system fonts.
+fn find_fonts_dir() -> Option<std::path::PathBuf> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let bundled = dir.join("fonts");
+            if bundled.is_dir() {
+                return Some(bundled);
+            }
+        }
+    }
+    let dev = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../fonts");
+    dev.is_dir().then_some(dev)
+}
+
 struct PlayerState {
     mpv: Arc<Mpv>,
 }
@@ -119,7 +136,10 @@ fn main() {
             // own child inside it and tracks the window size natively — no
             // resize handling on our side.
             let dll = find_libmpv()?;
-            let mpv = Arc::new(Mpv::load(&dll, hwnd).map_err(|e| format!("mpv init: {e}"))?);
+            let fonts = find_fonts_dir();
+            let mpv = Arc::new(
+                Mpv::load(&dll, hwnd, fonts.as_deref()).map_err(|e| format!("mpv init: {e}"))?,
+            );
 
             let pump = mpv.clone();
             let events = app.handle().clone();

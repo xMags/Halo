@@ -77,8 +77,13 @@ impl Mpv {
     /// Loads the dll, creates the core, applies embedding options, initializes.
     /// `wid` must be the TOP-LEVEL window handle — an intermediate child window
     /// renders but is invisible under the transparent webview (Windows spike,
-    /// 2026-07-18).
-    pub fn load(dll_path: &std::path::Path, wid: isize) -> Result<Self, String> {
+    /// 2026-07-18). `fonts_dir` feeds libass the bundled subtitle fonts so the
+    /// synced font-family setting resolves identically on every install.
+    pub fn load(
+        dll_path: &std::path::Path,
+        wid: isize,
+        fonts_dir: Option<&std::path::Path>,
+    ) -> Result<Self, String> {
         unsafe {
             let lib = libloading::Library::new(dll_path)
                 .map_err(|e| format!("load {}: {e}", dll_path.display()))?;
@@ -131,6 +136,12 @@ impl Mpv {
             opt("osd-level", "0");
             opt("hwdec", "auto-safe");
             opt("terminal", "no");
+            // Bundled subtitle fonts (init-time option): libass loads every
+            // face in the directory, so `sub-font` can name them regardless of
+            // what the OS has installed. System fonts remain the fallback.
+            if let Some(fonts) = fonts_dir {
+                opt("sub-fonts-dir", &fonts.to_string_lossy());
+            }
             let warn = CString::new("warn").unwrap();
             request_log(handle, warn.as_ptr());
 

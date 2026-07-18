@@ -45,10 +45,11 @@ export function mpvUnobserveAll(): Promise<void> {
   return invoke('mpv_unobserve_all')
 }
 
-// Dev-only hook so scripts/cdp.mjs can read/set mpv properties for hands-off
-// verification (same precedent as __haloNav / __haloClient).
+// Dev-only hook so scripts/cdp.mjs can read/set mpv properties and watch the
+// log stream for hands-off verification (same precedent as __haloNav /
+// __haloClient).
 if (import.meta.env.DEV) {
-  ;(window as Window & { __haloMpv?: unknown }).__haloMpv = { mpvCmd, mpvSet, mpvGet }
+  ;(window as Window & { __haloMpv?: unknown }).__haloMpv = { mpvCmd, mpvSet, mpvGet, onMpvLog }
 }
 
 export function onMpvProp(handler: (change: MpvPropChange) => void): Promise<UnlistenFn> {
