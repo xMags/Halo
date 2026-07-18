@@ -1,7 +1,8 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Animated, FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { Animated, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { BlurView } from 'expo-blur'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, radius, spacing } from '../theme'
 
 export interface SubtitleVariant {
@@ -39,11 +40,13 @@ interface Props {
 const groupSelected = (group: SubtitleLanguageGroup): boolean => group.variants.some((v) => v.selected)
 
 /**
- * Subtitles panel: a wide three-column overlay for landscape playback,
- * Stremio-style. Left picks a language, middle picks a variant within it
- * (embedded / downloaded / per-addon results), right holds timing +
- * appearance controls. Same in-tree absolute overlay as SelectSheet —
- * deliberately NOT an RN <Modal> (see SelectSheet for the
+ * Subtitles panel: a full-screen three-column overlay for landscape
+ * playback, Stremio-style. Left picks a language, middle picks a variant
+ * within it (embedded / downloaded / per-addon results), right holds
+ * timing + appearance controls. Full-screen (not a side panel) so the
+ * settings steppers/chips get real width; content pads by the safe-area
+ * insets to clear the Dynamic Island and curved corners. In-tree absolute
+ * overlay — deliberately NOT an RN <Modal> (see SelectSheet for the
  * stale-portrait-metrics reason). Browsing a language applies nothing;
  * only tapping a variant (or Off) changes playback, so exploring and
  * tuning are one continuous flow.
@@ -60,7 +63,7 @@ export function SubtitlesSheet({
   onClose,
 }: Props) {
   const slide = useRef(new Animated.Value(0)).current
-  const { width: windowWidth } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
   /** Language being browsed — decoupled from the active track on purpose. */
   const [langKey, setLangKey] = useState<string | null>(null)
 
@@ -88,17 +91,21 @@ export function SubtitlesSheet({
   if (!visible) return null
 
   const translation = slide.interpolate({ inputRange: [0, 1], outputRange: [90, 0] })
-  const panelWidth = Math.min(windowWidth * 0.92, 980)
   const browsed = groups.find((g) => g.key === langKey)
+  // Clear the Dynamic Island / curved corners on either side in landscape.
+  const padLeft = Math.max(insets.left, spacing.xl)
+  const padRight = Math.max(insets.right, spacing.lg)
 
   return (
     <View style={styles.overlay} pointerEvents="box-none">
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <Animated.View
-        style={[styles.wrap, { width: panelWidth, transform: [{ translateX: translation }], opacity: slide }]}
-      >
+      <Animated.View style={[styles.wrap, { transform: [{ translateX: translation }], opacity: slide }]}>
         <BlurView intensity={44} tint="dark" style={styles.panel}>
-          <View style={styles.header}>
+          <View
+            style={[
+              styles.header,
+              { paddingLeft: padLeft, paddingRight: padRight, paddingTop: Math.max(insets.top, spacing.lg) },
+            ]}
+          >
             <View style={styles.headerText}>
               <Text style={styles.title}>{title}</Text>
               {description ? <Text style={styles.description}>{description}</Text> : null}
@@ -108,8 +115,8 @@ export function SubtitlesSheet({
             </Pressable>
           </View>
 
-          <View style={styles.body}>
-            <View style={styles.languagesPane}>
+          <View style={[styles.body, { paddingBottom: insets.bottom }]}>
+            <View style={[styles.languagesPane, { paddingLeft: padLeft }]}>
               <Text style={styles.paneHeading}>LANGUAGE</Text>
               <FlatList
                 data={groups}
@@ -181,9 +188,9 @@ export function SubtitlesSheet({
             <View style={styles.divider} />
 
             <View style={styles.appearancePane}>
-              <Text style={[styles.paneHeading, styles.appearanceHeading]}>SETTINGS</Text>
+              <Text style={[styles.paneHeading, styles.appearanceHeading, { paddingRight: padRight }]}>SETTINGS</Text>
               <ScrollView
-                contentContainerStyle={styles.appearanceContent}
+                contentContainerStyle={[styles.appearanceContent, { paddingRight: padRight }]}
                 showsVerticalScrollIndicator={false}
               >
                 {appearance}
@@ -224,22 +231,15 @@ function LanguageRow({
 
 const styles = StyleSheet.create({
   overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, elevation: 100 },
-  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.55)' },
-  wrap: { position: 'absolute', top: 0, right: 0, bottom: 0 },
+  wrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   panel: {
     flex: 1,
     backgroundColor: colors.sheetTint,
-    borderTopLeftRadius: radius.xl + 4,
-    borderBottomLeftRadius: radius.xl + 4,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
     overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
     paddingBottom: spacing.md,
   },
   headerText: { flex: 1 },
@@ -254,8 +254,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
   body: { flex: 1, flexDirection: 'row' },
-  languagesPane: { flex: 0.75, paddingLeft: spacing.xl, paddingRight: spacing.md, paddingBottom: spacing.lg },
-  variantsPane: { flex: 1.05, paddingHorizontal: spacing.md, paddingBottom: spacing.lg },
+  // The settings pane gets the largest share: its stepper/chip rows have a
+  // fixed minimum width, while language/variant rows truncate gracefully.
+  // Horizontal safe-area padding is applied inline (insets are runtime).
+  languagesPane: { flex: 0.75, paddingRight: spacing.md, paddingBottom: spacing.lg },
+  variantsPane: { flex: 0.9, paddingHorizontal: spacing.md, paddingBottom: spacing.lg },
   paneHeading: {
     color: colors.textDim,
     fontSize: 11,
@@ -264,7 +267,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.xs,
   },
-  appearanceHeading: { paddingHorizontal: spacing.xl },
+  appearanceHeading: { paddingLeft: spacing.lg },
   list: { flex: 1 },
   option: {
     flexDirection: 'row',
@@ -284,6 +287,6 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
   emptyText: { color: colors.textDim, fontSize: 13, paddingHorizontal: spacing.xs, paddingTop: spacing.sm },
   divider: { width: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.12)', marginVertical: spacing.sm },
-  appearancePane: { flex: 1.2 },
-  appearanceContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl, gap: spacing.lg },
+  appearancePane: { flex: 1.35 },
+  appearanceContent: { paddingLeft: spacing.lg, paddingBottom: spacing.xl, gap: spacing.lg },
 })
