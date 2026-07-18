@@ -408,11 +408,16 @@ export function Player(params: PlayerParams) {
       else if (e.code === 'ArrowLeft') seekBy(-10)
       else if (e.code === 'ArrowRight') seekBy(10)
       else if (e.code === 'KeyF') void toggleFullscreen()
-      else if (e.code === 'Escape') back()
+      else if (e.code === 'Escape') {
+        // The panel swallows the layer beneath it (it covers the toggle
+        // button), so Esc must peel it off before exiting the player.
+        if (subPanelOpen) setSubPanelOpen(false)
+        else back()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [togglePause, seekBy, toggleFullscreen, back, poke])
+  }, [togglePause, seekBy, toggleFullscreen, back, poke, subPanelOpen])
 
   const selectEmbeddedSub = (id: number | 'no') => {
     void mpvSet('sid', String(id)).then(refreshTracks)
@@ -563,7 +568,11 @@ export function Player(params: PlayerParams) {
       onMouseMove={poke}
       onDoubleClick={() => void toggleFullscreen()}
       onClick={(e) => {
-        if (e.target === e.currentTarget) togglePause()
+        if (e.target !== e.currentTarget) return
+        // A video-area click while the panel is open dismisses it — pausing
+        // would read as a misclick.
+        if (subPanelOpen) setSubPanelOpen(false)
+        else togglePause()
       }}
     >
       {playerError && (
@@ -644,8 +653,23 @@ export function Player(params: PlayerParams) {
 
       {subPanelOpen && (
         <div className="sub-panel" onMouseMove={poke}>
-          <div className="t-heading" style={{ marginBottom: 8 }}>
-            Subtitles
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8,
+            }}
+          >
+            <div className="t-heading">Subtitles</div>
+            <button
+              type="button"
+              className="icon-btn"
+              title="Close"
+              onClick={() => setSubPanelOpen(false)}
+            >
+              ✕
+            </button>
           </div>
           {subs.data && !subs.data.hashMatched && (
             <div className="t-caption" style={{ color: 'var(--gold)', marginBottom: 8 }}>
