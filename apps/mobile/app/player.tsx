@@ -135,7 +135,11 @@ function PlayerSession() {
   const [subsSheetOpen, setSubsSheetOpen] = useState(false)
   const [speedSheetOpen, setSpeedSheetOpen] = useState(false)
   const [subtitleDelayMs, setSubtitleDelayMs] = useState(0)
-  const [buffering, setBuffering] = useState(false)
+  // libVLC cache fill 0–100; anything under 100 means playback is stalled
+  // filling the buffer, and the number itself is shown so a seek visibly makes
+  // progress instead of an anonymous spinner.
+  const [bufferPercent, setBufferPercent] = useState(100)
+  const buffering = bufferPercent < 100
   const [bufferingStalled, setBufferingStalled] = useState(false)
   const [locked, setLocked] = useState(false)
   const [unlockVisible, setUnlockVisible] = useState(false)
@@ -722,7 +726,7 @@ function PlayerSession() {
             onLoad={onLoad}
             onTracks={onTracks}
             onProgress={onProgress}
-            onBuffering={setBuffering}
+            onBuffering={setBufferPercent}
             // The package fires this from the native app-lifecycle hook only on
             // a real background transition (never for Control Center or call
             // banners, which RN's AppState reports as 'inactive').
@@ -745,11 +749,13 @@ function PlayerSession() {
         {!loaded && !error ? (
           <View style={styles.overlayCenter}>
             <ActivityIndicator size="large" color={colors.accent} />
+            {buffering ? <Text style={styles.bufferPercent}>{bufferPercent}%</Text> : null}
           </View>
         ) : null}
         {loaded && buffering && !error ? (
           <View style={[styles.overlayCenter, styles.bufferingOverlay]} pointerEvents="none">
             <ActivityIndicator size="large" color={colors.accent} />
+            <Text style={styles.bufferPercent}>{bufferPercent}%</Text>
             {bufferingStalled ? <Text style={styles.bufferingText}>Still loading this stream…</Text> : null}
           </View>
         ) : null}
@@ -1137,6 +1143,16 @@ const styles = StyleSheet.create({
   },
   bufferingOverlay: {
     gap: spacing.sm,
+  },
+  bufferPercent: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.pill,
+    backgroundColor: colors.overlayPill,
   },
   bufferingText: {
     color: colors.text,

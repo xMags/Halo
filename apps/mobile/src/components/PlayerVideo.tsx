@@ -166,7 +166,7 @@ export default function PlayerVideo({
     }
     restartPosition.current = null
     restarting.current = false
-    onBuffering(false)
+    onBuffering(100)
     onLoad({
       durationSec: progress.current.durationSec,
       audioTracks: latestTracks.current.audio,
@@ -190,8 +190,10 @@ export default function PlayerVideo({
       pictureInPicture
       onFirstPlay={handleFirstPlay}
       onESAdded={handleTracksChanged}
-      onBuffering={({ progress: value }) => onBuffering(value < 100)}
-      onPlaying={() => onBuffering(false)}
+      // Rounded so the flood of fractional cache-progress events collapses to
+      // ≤100 distinct values (identical state values skip the re-render).
+      onBuffering={({ progress: value }) => onBuffering(Math.round(value))}
+      onPlaying={() => onBuffering(100)}
       onBackground={onBackground}
       // Time and position arrive as separate events each tick; the ref absorbs
       // both and only the position event emits, halving parent re-renders.

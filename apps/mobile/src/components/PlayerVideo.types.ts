@@ -59,7 +59,8 @@ export interface PlayerVideoProps {
   /** Fires whenever the track lists change — network streams add tracks late. */
   onTracks(audioTracks: PlayerTrack[], textTracks: PlayerTrack[]): void
   onProgress(progress: PlayerProgress): void
-  onBuffering(buffering: boolean): void
+  /** Buffer fill 0–100 (libVLC cache progress); 100 = playing, below = buffering. */
+  onBuffering(bufferPercent: number): void
   /** Fires from the native app-lifecycle hook when the app truly backgrounds. */
   onBackground(): void
   onError(): void
