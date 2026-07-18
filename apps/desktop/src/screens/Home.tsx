@@ -1,71 +1,131 @@
-import type { AddonsResponse, Me } from '@halo/core'
-import { useEffect, useState } from 'react'
-import { getClient } from '../api'
+import type { MetaPreview } from '@halo/core'
+import { useNav } from '../nav'
+import { browsableCatalogs, useCatalog, useEffectiveAddons, type BrowsableCatalog } from '../queries'
 import { useSession } from '../session'
 
-/**
- * Placeholder Home: proves the authenticated wire-through (who am I, which
- * addons are effective). Catalog rows, streams and the player arrive with the
- * playback milestone.
- */
-export function Home() {
-  const { serverUrl, signOut } = useSession()
-  const [me, setMe] = useState<Me | null>(null)
-  const [addons, setAddons] = useState<AddonsResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+/** How many catalog rows Home renders (each is one server round-trip). */
+const MAX_ROWS = 8
 
-  useEffect(() => {
-    let cancelled = false
-    Promise.all([getClient().getMe(), getClient().getAddons()])
-      .then(([meRes, addonsRes]) => {
-        if (cancelled) return
-        setMe(meRes)
-        setAddons(addonsRes)
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+export function Home() {
+  const { signOut } = useSession()
+  const { data: addons, isLoading, error } = useEffectiveAddons()
+  const rows = addons ? browsableCatalogs(addons).slice(0, MAX_ROWS) : []
 
   return (
-    <div style={{ padding: 32, display: 'flex', flexDirection: 'column', gap: 24, height: '100%' }}>
-      <header style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <div className="t-large-title">Home</div>
+    <div style={{ height: '100%', overflowY: 'auto', padding: '24px 0 48px' }}>
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          padding: '0 32px 8px',
+        }}
+      >
+        <div className="t-large-title">Halo</div>
         <button className="btn btn-glass" type="button" onClick={signOut}>
           Sign out
         </button>
       </header>
 
-      {error && <div className="error-text">{error}</div>}
+      {error && <div className="error-text" style={{ padding: '0 32px' }}>{String(error)}</div>}
+      {isLoading && <div className="t-caption" style={{ padding: '0 32px' }}>Loading addons…</div>}
+      {addons && rows.length === 0 && (
+        <div className="t-caption" style={{ padding: '0 32px' }}>
+          No browsable catalogs — add addons with catalogs (e.g. Cinemeta) in a Stremio-compatible
+          manifest.
+        </div>
+      )}
 
-      <section
+      {rows.map((row) => (
+        <CatalogRow key={`${row.addonId}/${row.catalog.type}/${row.catalog.id}`} row={row} />
+      ))}
+    </div>
+  )
+}
+
+function CatalogRow({ row }: { row: BrowsableCatalog }) {
+  const { data: metas, isLoading } = useCatalog(row.addonId, row.catalog.type, row.catalog.id)
+
+  // A catalog that errored or came back empty doesn't earn a row.
+  if (!isLoading && (!metas || metas.length === 0)) return null
+
+  return (
+    <section style={{ marginTop: 24 }}>
+      <div className="t-heading" style={{ padding: '0 32px 12px' }}>
+        {row.title}
+      </div>
+      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '0 32px 8px' }}>
+        {(metas ?? []).slice(0, 30).map((meta) => (
+          <PosterCard key={`${meta.type}:${meta.id}`} meta={meta} />
+        ))}
+        {isLoading && <div className="t-caption">Loading…</div>}
+      </div>
+    </section>
+  )
+}
+
+function PosterCard({ meta }: { meta: MetaPreview }) {
+  const { push } = useNav()
+  return (
+    <button
+      type="button"
+      onClick={() => push({ name: 'detail', type: meta.type, id: meta.id })}
+      title={meta.name}
+      style={{
+        flex: '0 0 auto',
+        width: 112,
+        padding: 0,
+        border: 'none',
+        background: 'transparent',
+        cursor: 'pointer',
+        textAlign: 'left',
+        color: 'var(--text)',
+      }}
+    >
+      {meta.poster ? (
+        <img
+          src={meta.poster}
+          alt=""
+          loading="lazy"
+          style={{
+            width: 112,
+            height: 168,
+            objectFit: 'cover',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--glass-border)',
+            display: 'block',
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 112,
+            height: 168,
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--surface-high)',
+            display: 'grid',
+            placeItems: 'center',
+            fontSize: 11,
+            color: 'var(--text-dim)',
+            padding: 8,
+            textAlign: 'center',
+          }}
+        >
+          {meta.name}
+        </div>
+      )}
+      <div
+        className="t-caption"
         style={{
-          padding: 20,
-          borderRadius: 16,
-          background: 'var(--surface)',
-          border: '1px solid var(--border)',
-          maxWidth: 520,
+          marginTop: 6,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          width: 112,
         }}
       >
-        <div className="t-overline">Connected</div>
-        <div className="t-heading" style={{ marginTop: 8 }}>
-          {me ? me.username : '…'}
-          {me?.isAdmin ? <span className="t-caption"> · admin</span> : null}
-        </div>
-        <div className="t-caption" style={{ marginTop: 4 }}>
-          {serverUrl}
-        </div>
-        <div className="t-caption" style={{ marginTop: 12 }}>
-          {addons
-            ? `${addons.global.length} global addon${addons.global.length === 1 ? '' : 's'}, ${addons.user.length} personal`
-            : 'Loading addons…'}
-        </div>
-      </section>
-
-      <div className="t-caption">Catalog, search and playback land in the next milestone.</div>
-    </div>
+        {meta.name}
+      </div>
+    </button>
   )
 }

@@ -74,10 +74,15 @@ fn mpv_observe(state: tauri::State<PlayerState>, name: String, format: String) -
     state.mpv.observe(&name, format)
 }
 
+#[tauri::command]
+fn mpv_unobserve_all(state: tauri::State<PlayerState>) {
+    state.mpv.unobserve_all()
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
-        .invoke_handler(tauri::generate_handler![mpv_cmd, mpv_set, mpv_get, mpv_observe])
+        .invoke_handler(tauri::generate_handler![mpv_cmd, mpv_set, mpv_get, mpv_observe, mpv_unobserve_all])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("main window");
             let hwnd = window.hwnd()?.0 as isize;

@@ -40,6 +40,11 @@ export function mpvObserve(name: string, format: 'double' | 'flag' | 'string'): 
   return invoke('mpv_observe', { name, format })
 }
 
+/** Clears every property observer (the player re-registers on mount). */
+export function mpvUnobserveAll(): Promise<void> {
+  return invoke('mpv_unobserve_all')
+}
+
 export function onMpvProp(handler: (change: MpvPropChange) => void): Promise<UnlistenFn> {
   return listen<MpvPropChange>('mpv-prop', (event) => handler(event.payload))
 }

@@ -56,6 +56,7 @@ pub struct Mpv {
     get_property_string: unsafe extern "C" fn(MpvHandle, *const c_char) -> *mut c_char,
     free: unsafe extern "C" fn(*mut c_void),
     observe_property: unsafe extern "C" fn(MpvHandle, u64, *const c_char, c_int) -> c_int,
+    unobserve_property: unsafe extern "C" fn(MpvHandle, u64) -> c_int,
     wait_event: unsafe extern "C" fn(MpvHandle, f64) -> *mut MpvEvent,
     error_string: unsafe extern "C" fn(c_int) -> *const c_char,
 }
@@ -100,6 +101,7 @@ impl Mpv {
             let get_property_string = sym!(b"mpv_get_property_string");
             let free = sym!(b"mpv_free");
             let observe_property = sym!(b"mpv_observe_property");
+            let unobserve_property = sym!(b"mpv_unobserve_property");
             let wait_event = sym!(b"mpv_wait_event");
             let error_string = sym!(b"mpv_error_string");
 
@@ -145,6 +147,7 @@ impl Mpv {
                 get_property_string,
                 free,
                 observe_property,
+                unobserve_property,
                 wait_event,
                 error_string,
             })
@@ -198,6 +201,13 @@ impl Mpv {
             return Err(format!("{} (observe {name})", self.err(rc)));
         }
         Ok(())
+    }
+
+    /// Drops every observer (all are registered under userdata 0) — the player
+    /// screen re-registers its set on each mount, so unmount clears the slate
+    /// instead of stacking duplicate observers.
+    pub fn unobserve_all(&self) {
+        unsafe { (self.unobserve_property)(self.handle, 0) };
     }
 
     /// Blocks on mpv's event queue and translates each event; call from the
