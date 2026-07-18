@@ -55,6 +55,7 @@ interface SearchFieldProps {
   editable?: boolean
   onChangeText?: (text: string) => void
   onClear?: () => void
+  onSubmitEditing?: () => void
   autoFocus?: boolean
 }
 
@@ -66,6 +67,7 @@ export function SearchField({
   editable,
   onChangeText,
   onClear,
+  onSubmitEditing,
   autoFocus,
 }: SearchFieldProps) {
   const body = (
@@ -82,6 +84,7 @@ export function SearchField({
           autoCorrect={false}
           autoFocus={autoFocus}
           returnKeyType="search"
+          onSubmitEditing={onSubmitEditing}
         />
       ) : (
         <Text style={[searchStyles.placeholder, value && searchStyles.value]}>{value || placeholder}</Text>

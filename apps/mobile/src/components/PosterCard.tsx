@@ -13,16 +13,19 @@ interface Props {
   showLabel?: boolean
   /** 0..1 watch progress bar under the poster. */
   progress?: number
+  /** Side effect before the default navigation (e.g. recording search history). */
+  onBeforePress?: () => void
 }
 
-export function PosterCard({ meta, width = POSTER_WIDTH, fill = false, showLabel = false, progress }: Props) {
+export function PosterCard({ meta, width = POSTER_WIDTH, fill = false, showLabel = false, progress, onBeforePress }: Props) {
   const router = useRouter()
   return (
     <Pressable
       style={fill ? styles.fillCard : { width }}
-      onPress={() =>
+      onPress={() => {
+        onBeforePress?.()
         router.push({ pathname: '/detail/[type]/[id]', params: { type: meta.type, id: meta.id } })
-      }
+      }}
     >
       <Image
         source={{ uri: meta.poster }}
