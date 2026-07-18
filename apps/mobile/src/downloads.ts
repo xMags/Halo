@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 // The legacy API is the one with resumable downloads + progress callbacks;
 // the SDK 54+ object API has no resume/progress story yet.
 import * as FileSystem from 'expo-file-system/legacy'
+import { subtitleExtension } from './subtitleFiles'
 
 export interface DownloadEntry {
   /** Video id (movie meta id or episode id) — one download per video. */
@@ -165,7 +166,6 @@ export interface StartDownloadOptions {
   filename?: string
   poster?: string
   streamUrl: string
-  subtitle?: { url: string; lang: string }
 }
 
 export async function startDownload(opts: StartDownloadOptions): Promise<void> {
@@ -192,22 +192,35 @@ export async function startDownload(opts: StartDownloadOptions): Promise<void> {
   emit()
   void persist()
 
-  // Subtitles are small — grab the chosen one up front, format untouched
-  // (libVLC renders ASS/SRT natively; converting would only lose styling).
-  if (opts.subtitle) {
-    const subExt = extensionFromUrl(opts.subtitle.url)
-    const subUri = `${DOWNLOADS_DIR}${sanitizeId(opts.id)}.${subExt === 'mkv' ? 'srt' : subExt}`
-    try {
-      await FileSystem.downloadAsync(opts.subtitle.url, subUri)
-      update(opts.id, { subtitleUri: subUri, subtitleLang: opts.subtitle.lang })
-    } catch {
-      // Video without its subtitle beats no download at all.
-    }
-  }
-
   await runTask(opts.id, () =>
     FileSystem.createDownloadResumable(opts.streamUrl, fileUri, {}, progressHandler(opts.id)),
   )
+}
+
+/**
+ * Fetches a subtitle next to an existing download so offline playback keeps
+ * subs. Called in the background after the download starts (the picker was
+ * removed from the flow); format untouched — libVLC renders ASS/SRT natively,
+ * converting would only lose styling. Failures are silent: a video without
+ * its subtitle beats no download at all.
+ */
+export async function attachDownloadSubtitle(id: string, subtitle: { url: string; lang: string }): Promise<void> {
+  const entry = entryById(id)
+  if (!entry || entry.subtitleUri) return
+  const subUri = `${DOWNLOADS_DIR}${sanitizeId(id)}.${subtitleExtension(subtitle.url)}`
+  try {
+    const result = await FileSystem.downloadAsync(subtitle.url, subUri)
+    // downloadAsync writes error bodies too — don't keep an HTML page as .srt.
+    if (result.status !== 200 && result.status !== 206) throw new Error(`subtitle fetch ${result.status}`)
+    if (!entryById(id)) {
+      // Download removed while the subtitle was in flight.
+      await FileSystem.deleteAsync(subUri, { idempotent: true }).catch(() => undefined)
+      return
+    }
+    update(id, { subtitleUri: subUri, subtitleLang: subtitle.lang })
+  } catch {
+    await FileSystem.deleteAsync(subUri, { idempotent: true }).catch(() => undefined)
+  }
 }
 
 function progressHandler(id: string) {

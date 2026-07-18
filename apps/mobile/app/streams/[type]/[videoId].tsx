@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -10,15 +9,14 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { computeVideoHash, languageLabel, type Stream, type Subtitle } from '@halo/core'
+import { computeVideoHash, languageMatches, type Stream } from '@halo/core'
 import { api } from '@/api'
-import { sortSubtitlesByPreference, useStreams } from '@/queries'
-import { getDownload, startDownload, useDownloads } from '@/downloads'
+import { useStreams } from '@/queries'
+import { attachDownloadSubtitle, getDownload, startDownload, useDownloads } from '@/downloads'
 import { useSettings } from '@/settings'
 import { formatBytes } from '@/format'
 import { colors, radius, spacing, type } from '@/theme'
 import { useResponsive } from '@/responsive'
-import { SelectSheet } from '@/components/SelectSheet'
 import { CenterMessage } from '@/components/ui'
 
 const HASH_TIMEOUT_MS = 8_000
@@ -46,9 +44,6 @@ export default function StreamsScreen() {
   const downloads = useDownloads()
   const settings = useSettings()
   const existingDownload = downloads.find((d) => d.id === params.videoId && d.status === 'done')
-  const [subtitlePick, setSubtitlePick] = useState<{ stream: Stream; subtitles: Subtitle[] } | null>(null)
-  /** Stream key currently fetching subtitles pre-download — drives the per-row spinner. */
-  const [preparingKey, setPreparingKey] = useState<string | null>(null)
 
   const play = (stream: Stream) => {
     router.replace({
@@ -65,42 +60,42 @@ export default function StreamsScreen() {
     })
   }
 
-  // Download flow: offer the subtitle choice up front so the file ships with
-  // the video and offline playback keeps subs. Everything here is bounded by
-  // a timeout — a slow stream host must not make the button feel dead.
-  const prepareDownload = async (stream: Stream, key: string) => {
-    setPreparingKey(key)
+  /**
+   * Best preferred-language subtitle for the stream, attached to the download
+   * entry after the fact. Runs fully in the background — the download button
+   * must feel instant, and a video without its subtitle beats no download.
+   * No preferred language means no bundled sub, mirroring the player's
+   * auto-select ("unset = subtitles off by default").
+   */
+  const attachPreferredSubtitle = async (stream: Stream) => {
+    const preferred = settings.preferredSubtitleLang
+    if (!preferred) return
+    let videoHash: string | undefined
+    let videoSize = stream.behaviorHints?.videoSize
     try {
-      let videoHash: string | undefined
-      let videoSize = stream.behaviorHints?.videoSize
-      try {
-        const hash = await computeVideoHash(stream.url!, { signal: timeoutSignal(HASH_TIMEOUT_MS) })
-        videoHash = hash.hash
-        videoSize = videoSize ?? hash.size
-      } catch {
-        // Range-less or slow host: id/name search still returns candidates.
-      }
-      let candidates: Subtitle[] = []
-      try {
-        const { results } = await api().getSubtitles(
-          params.type,
-          params.videoId,
-          { videoHash, videoSize, filename: stream.behaviorHints?.filename },
-          { signal: timeoutSignal(HASH_TIMEOUT_MS) },
-        )
-        candidates = results.flatMap((r) => r.subtitles ?? [])
-      } catch {
-        // Unreachable server: same as every addon failing before — the sheet
-        // still opens so the download itself is never blocked on subtitles.
-      }
-      const subtitles = sortSubtitlesByPreference(candidates, settings.preferredSubtitleLang)
-      setSubtitlePick({ stream, subtitles })
-    } finally {
-      setPreparingKey(null)
+      const hash = await computeVideoHash(stream.url!, { signal: timeoutSignal(HASH_TIMEOUT_MS) })
+      videoHash = hash.hash
+      videoSize = videoSize ?? hash.size
+    } catch {
+      // Range-less or slow host: id/name search still returns candidates.
+    }
+    try {
+      const { results } = await api().getSubtitles(
+        params.type,
+        params.videoId,
+        { videoHash, videoSize, filename: stream.behaviorHints?.filename },
+        { signal: timeoutSignal(HASH_TIMEOUT_MS) },
+      )
+      const match = results
+        .flatMap((r) => r.subtitles ?? [])
+        .find((sub) => languageMatches(sub.lang, preferred))
+      if (match) await attachDownloadSubtitle(params.videoId, { url: match.url, lang: match.lang })
+    } catch {
+      // Unreachable server — the download itself is never blocked on subtitles.
     }
   }
 
-  const beginDownload = (stream: Stream, subtitle?: Subtitle) => {
+  const beginDownload = (stream: Stream) => {
     if (getDownload(params.videoId)) {
       Alert.alert('Already downloaded', 'This video is already in your downloads.')
       return
@@ -115,8 +110,8 @@ export default function StreamsScreen() {
       filename: stream.behaviorHints?.filename,
       poster: params.poster,
       streamUrl: stream.url!,
-      subtitle: subtitle ? { url: subtitle.url, lang: subtitle.lang } : undefined,
     })
+    void attachPreferredSubtitle(stream)
     Alert.alert('Download started', 'Track progress in the Downloads tab.')
   }
 
@@ -138,8 +133,7 @@ export default function StreamsScreen() {
   }
 
   return (
-    <>
-      <ScrollView
+    <ScrollView
         style={styles.container}
         contentContainerStyle={[
           styles.content,
@@ -206,20 +200,11 @@ export default function StreamsScreen() {
                       ) : null}
                     </Pressable>
                     <Pressable
-                      onPress={() => void prepareDownload(stream, key)}
+                      onPress={() => beginDownload(stream)}
                       hitSlop={8}
                       style={({ pressed }) => [styles.downloadButton, pressed && styles.pressed]}
-                      disabled={preparingKey !== null}
                     >
-                      {preparingKey === key ? (
-                        <ActivityIndicator size="small" color={colors.accent} />
-                      ) : (
-                        <Ionicons
-                          name="download-outline"
-                          size={22}
-                          color={preparingKey ? colors.textDim : colors.accent}
-                        />
-                      )}
+                      <Ionicons name="download-outline" size={22} color={colors.accent} />
                     </Pressable>
                   </View>
                 )
@@ -227,27 +212,7 @@ export default function StreamsScreen() {
             </View>
           </View>
         ))}
-      </ScrollView>
-
-      <SelectSheet
-        visible={subtitlePick !== null}
-        title="Download subtitles too?"
-        options={[
-          { key: 'none', label: 'No subtitles' },
-          ...(subtitlePick?.subtitles ?? []).map((sub, index) => ({
-            key: String(index),
-            label: languageLabel(sub.lang),
-            detail: sub.id,
-          })),
-        ]}
-        onSelect={(key) => {
-          if (!subtitlePick) return
-          const subtitle = key === 'none' ? undefined : subtitlePick.subtitles[Number(key)]
-          beginDownload(subtitlePick.stream, subtitle)
-        }}
-        onClose={() => setSubtitlePick(null)}
-      />
-    </>
+    </ScrollView>
   )
 }
 
