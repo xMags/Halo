@@ -19,7 +19,8 @@ import {
 } from '@halo/core'
 import { sortSubtitlesByPreference, useAddonSubtitles, useReportWatchState, useWatchStates } from '@/queries'
 import { getDownload } from '@/downloads'
-import { ensureLocalSubtitle, listLocalSubtitles, subtitleFileName } from '@/subtitleFiles'
+import { ensureLocalSubtitle, listLocalSubtitles, localSubtitleUri, subtitleFileName } from '@/subtitleFiles'
+import { getSubtitleChoice, rememberSubtitleChoice, type SubtitleChoice } from '@/subtitleMemory'
 import { useSettings, useSettingsLoaded, useUpdateSettings } from '@/settings'
 import { clamp01 } from '@/format'
 import { colors, radius, spacing } from '@/theme'
@@ -313,24 +314,77 @@ export default function PlayerScreen() {
     progressRef.current = { positionSec: event.currentTimeSec, durationSec: event.durationSec }
   }
 
-  // Default subtitles: prefer an embedded track in the chosen language, else
-  // the best external match. Runs once per playback, and never overrides a
-  // subtitle that came bundled with a download.
+  // Default subtitles, in priority order: the last explicit choice for this
+  // exact video, the last choice on the same item (language carryover to the
+  // next episode), a download-bundled sub, then the preferred language.
+  // Runs once per playback; only explicit taps ever write the memory.
   const autoSubApplied = useRef(false)
   useEffect(() => {
     if (autoSubApplied.current || !loaded || subtitleGroups === undefined) return
-    if (!settings.preferredSubtitleLang || params.subtitleUri) {
-      autoSubApplied.current = true
-      return
-    }
     autoSubApplied.current = true
-    const embedded = textTracks.find((t) => trackMatchesLanguage(t.name, settings.preferredSubtitleLang!))
-    if (embedded) {
-      setTextTrack(embedded.id)
-      return
-    }
-    const match = sortedSubs.find((s) => languageMatches(s.lang, settings.preferredSubtitleLang!))
-    if (match) void selectExternalSub(match, `external:${subtitleFileName(params.videoId, match)}`)
+    void (async () => {
+      /** Language fallback: embedded track first, then best external result. */
+      const applyLanguage = async (lang: string | undefined): Promise<boolean> => {
+        if (!lang) return false
+        const embedded = textTracks.find((t) => trackMatchesLanguage(t.name, lang))
+        if (embedded) {
+          setTextTrack(embedded.id)
+          setSubtitleUri(undefined)
+          setActiveExternalSub(null)
+          return true
+        }
+        const match = sortedSubs.find((s) => languageMatches(s.lang, lang))
+        if (!match) return false
+        await selectExternalSub(match, `external:${subtitleFileName(params.videoId, match)}`)
+        return true
+      }
+
+      const applyRemembered = async (choice: SubtitleChoice): Promise<boolean> => {
+        if (choice.kind === 'off') {
+          setTextTrack(-1)
+          setSubtitleUri(undefined)
+          setActiveExternalSub(null)
+          return true
+        }
+        if (choice.kind === 'downloaded') {
+          // Same video: the bundle is already the initial state. Another
+          // episode: carry the bundled language over.
+          return params.subtitleUri ? true : applyLanguage(choice.lang)
+        }
+        if (choice.kind === 'embedded') {
+          const exact = choice.trackName ? textTracks.find((t) => t.name === choice.trackName) : undefined
+          if (exact) {
+            setTextTrack(exact.id)
+            setSubtitleUri(undefined)
+            setActiveExternalSub(null)
+            return true
+          }
+          return applyLanguage(choice.lang)
+        }
+        // External: exact result for this video, else the file already on
+        // disk (works offline), else language carryover.
+        const exact = choice.subId ? sortedSubs.find((s) => s.id === choice.subId) : undefined
+        if (exact) {
+          await selectExternalSub(exact, `external:${subtitleFileName(params.videoId, exact)}`)
+          return true
+        }
+        if (choice.fileName) {
+          const onDisk = await listLocalSubtitles(params.videoId)
+          if (onDisk.has(choice.fileName)) {
+            setSubtitleUri(localSubtitleUri(choice.fileName))
+            setTextTrack(undefined)
+            setActiveExternalSub(`external:${choice.fileName}`)
+            return true
+          }
+        }
+        return applyLanguage(choice.lang)
+      }
+
+      const choice = await getSubtitleChoice(params.videoId, params.itemId)
+      if (choice && (await applyRemembered(choice))) return
+      if (params.subtitleUri) return // bundled sub stays as the initial state
+      await applyLanguage(settings.preferredSubtitleLang)
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, subtitleGroups, textTracks, settings.preferredSubtitleLang])
 
@@ -415,22 +469,38 @@ export default function PlayerScreen() {
   // -1 is VLC's explicit "disable text track" value, undefined = never chosen.
   const subtitlesOff = (textTrack === undefined || textTrack === -1) && activeExternalSub === null
 
+  const remember = (choice: Omit<SubtitleChoice, 'updatedAt'>) => {
+    void rememberSubtitleChoice(params.videoId, params.itemId, choice)
+  }
+
   const onSubtitleSelect = (key: string) => {
     if (key === 'off') {
       setTextTrack(-1)
       setSubtitleUri(undefined)
       setActiveExternalSub(null)
+      remember({ kind: 'off' })
     } else if (key === 'downloaded') {
       setSubtitleUri(params.subtitleUri)
       setTextTrack(undefined)
       setActiveExternalSub('downloaded')
+      remember({ kind: 'downloaded', lang: bundledLang })
     } else if (key.startsWith('embedded:')) {
-      setTextTrack(Number(key.slice('embedded:'.length)))
+      const id = Number(key.slice('embedded:'.length))
+      setTextTrack(id)
       setSubtitleUri(undefined)
       setActiveExternalSub(null)
+      const track = textTracks.find((t) => t.id === id)
+      remember({ kind: 'embedded', trackName: track?.name, lang: track ? embeddedTrackLanguage(track.name) : undefined })
     } else {
       const sub = externalByKey.get(key)
-      if (sub) void selectExternalSub(sub, key)
+      if (!sub) return
+      void selectExternalSub(sub, key)
+      remember({
+        kind: 'external',
+        lang: sub.lang,
+        subId: sub.id,
+        fileName: subtitleFileName(params.videoId, sub),
+      })
     }
   }
 

@@ -41,6 +41,11 @@ export function subtitleFileName(videoId: string, sub: Subtitle): string {
   return `${sanitize(videoId)}--${sanitize(sub.lang)}--${bounded}.${subtitleExtension(sub.url)}`
 }
 
+/** Absolute uri for a stored subtitle file name (no existence check). */
+export function localSubtitleUri(fileName: string): string {
+  return `${SUBS_DIR}${fileName}`
+}
+
 /** File names present for this video — feeds the "available locally" markers. */
 export async function listLocalSubtitles(videoId: string): Promise<Set<string>> {
   const names = await FileSystem.readDirectoryAsync(SUBS_DIR).catch(() => [] as string[])
