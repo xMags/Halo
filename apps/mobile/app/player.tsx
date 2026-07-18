@@ -60,25 +60,20 @@ const SUBTITLE_OUTLINES: ReadonlyArray<{ key: SubtitleOutline; label: string }> 
 const PIP_SUPPORTED = LibVlcPlayerModule.isPictureInPictureSupported()
 
 /**
- * VLC's `:freetype-font` resolves against the platform font provider, so the
- * choices are platform family names. `family: undefined` = platform default
- * (sans-serif-condensed on Android, VLC's own default on iOS).
+ * The cross-platform font list — labels and family values must match desktop's
+ * `SUBTITLE_FONTS` (apps/desktop/src/screens/Player.tsx) so a synced
+ * `subtitleFontFamily` means the same thing on every device. iOS bundles these
+ * exact families (assets/fonts + the expo-font plugin registers them with
+ * CoreText, which is where VLC's darwin font provider looks); Android's libvlc
+ * can only see /system/fonts, so PlayerVideo maps each family to the nearest
+ * system generic. `family: undefined` = platform default.
  */
-const SUBTITLE_FONTS: ReadonlyArray<{ label: string; family?: string }> =
-  Platform.OS === 'ios'
-    ? [
-        { label: 'Default' },
-        { label: 'Helvetica', family: 'Helvetica Neue' },
-        { label: 'Avenir', family: 'Avenir Next' },
-        { label: 'Georgia', family: 'Georgia' },
-        { label: 'Menlo', family: 'Menlo' },
-      ]
-    : [
-        { label: 'Default' },
-        { label: 'Sans', family: 'sans-serif' },
-        { label: 'Serif', family: 'serif' },
-        { label: 'Mono', family: 'monospace' },
-      ]
+const SUBTITLE_FONTS: ReadonlyArray<{ label: string; family?: string }> = [
+  { label: 'Default' },
+  { label: 'Inter', family: 'Inter' },
+  { label: 'Serif', family: 'Source Serif 4' },
+  { label: 'Mono', family: 'JetBrains Mono' },
+]
 
 export default function PlayerScreen() {
   // Autoplay replaces this route's params in place (player → next episode's

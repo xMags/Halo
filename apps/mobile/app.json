@@ -36,6 +36,20 @@
       "expo-router",
       "expo-secure-store",
       [
+        "expo-font",
+        {
+          "ios": {
+            "fonts": [
+              "./assets/fonts/Inter-Regular.otf",
+              "./assets/fonts/Inter-Bold.otf",
+              "./assets/fonts/SourceSerif4-Regular.otf",
+              "./assets/fonts/SourceSerif4-Bold.otf",
+              "./assets/fonts/JetBrainsMono-Regular.ttf"
+            ]
+          }
+        }
+      ],
+      [
         "expo-libvlc-player",
         {
           "supportsPictureInPicture": true

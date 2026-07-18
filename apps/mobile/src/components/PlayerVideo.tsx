@@ -6,11 +6,27 @@ import type { SubtitleOutline } from '@halo/core'
 import type { PlayerTrack, PlayerVideoProps } from './PlayerVideo.types'
 
 /**
- * VLC resolves `:freetype-font` through the platform font provider, so the
- * default (and any user pick) is a platform family name. iOS has no
- * "condensed sans" family VLC can resolve, so it keeps VLC's own default.
+ * VLC resolves `--freetype-font` through the platform font provider. On iOS
+ * that provider is CoreText, which sees the app-registered bundled fonts
+ * (assets/fonts via the expo-font plugin), so the synced family names resolve
+ * as-is. Android's libvlc provider only parses /system/etc/fonts.xml — app
+ * fonts are unreachable in the prebuilt binary — so the standard families map
+ * to the nearest system generic instead of falling back to the default sans.
+ * iOS has no "condensed sans" family VLC can resolve, so its default stays
+ * VLC's own.
  */
 const DEFAULT_FONT = Platform.OS === 'android' ? 'sans-serif-condensed' : undefined
+const ANDROID_FAMILY_FALLBACKS: Record<string, string> = {
+  Inter: 'sans-serif',
+  'Source Serif 4': 'serif',
+  'JetBrains Mono': 'monospace',
+}
+
+function resolveFontFamily(family: string | undefined): string | undefined {
+  if (family === undefined) return DEFAULT_FONT
+  if (Platform.OS !== 'android') return family
+  return ANDROID_FAMILY_FALLBACKS[family] ?? family
+}
 
 /** VLC freetype-outline-thickness presets (0=None, 2=Thin, 4=Normal, 6=Thick). */
 const OUTLINE_THICKNESS: Record<SubtitleOutline, number> = {
@@ -76,7 +92,7 @@ export default function PlayerVideo({
   // playback was. `autoplay={!paused}` keeps a paused player paused across the
   // rebuild — there is no declarative paused prop and the [paused] effect
   // won't re-fire.
-  const fontFamily = subtitleFontFamily ?? DEFAULT_FONT
+  const fontFamily = resolveFontFamily(subtitleFontFamily)
   const playbackConfigKey = `${subtitleScalePercent}|${fontFamily ?? ''}|${subtitleOutline}|${subtitleShadow}`
   const previousPlaybackConfig = useRef(playbackConfigKey)
   const restartPosition = useRef<number | null>(null)
