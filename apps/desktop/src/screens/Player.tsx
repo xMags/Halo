@@ -1,7 +1,10 @@
 import {
+  languageLabel,
   languageMatches,
   type MetaVideo,
   type NextEpisodeResult,
+  type Subtitle,
+  type SubtitleOutline,
   type WatchState,
 } from '@halo/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -18,8 +21,9 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { getClient } from '../api'
 import { useNav, type PlayerParams } from '../nav'
-import { sortSubtitlesByPreference, useAddonSubtitles, useReportWatchState } from '../queries'
-import { useSettings, useSettingsLoaded } from '../settings'
+import { useAddonSubtitles, useReportWatchState } from '../queries'
+import { useSettings, useSettingsLoaded, useUpdateSettings } from '../settings'
+import { getSubtitleChoice, rememberSubtitleChoice } from '../subtitleMemory'
 
 /** Watch-state cadence and thresholds — identical to mobile's player. */
 const REPORT_INTERVAL_MS = 15_000
@@ -27,6 +31,64 @@ const WATCHED_THRESHOLD = 0.9
 const CONTROLS_HIDE_DELAY_MS = 3_000
 const NEXT_EPISODE_TIMEOUT_MS = 15_000
 const UP_NEXT_COUNTDOWN_SEC = 5
+
+const SUBTITLE_SCALES = [75, 100, 125, 150] as const
+/**
+ * mpv `sub-border-size` per outline step (mpv's default border is 3). These
+ * style plain-text subs only — embedded ASS keeps its authored look because
+ * we never force `sub-ass-override`.
+ */
+const OUTLINE_BORDER: Record<SubtitleOutline, number> = { none: 0, thin: 1.5, normal: 3, thick: 4.5 }
+const SUBTITLE_OUTLINES: ReadonlyArray<{ key: SubtitleOutline; label: string }> = [
+  { key: 'none', label: 'None' },
+  { key: 'thin', label: 'Thin' },
+  { key: 'normal', label: 'Normal' },
+  { key: 'thick', label: 'Thick' },
+]
+/**
+ * Windows families for plain-text subs; the synced setting stores a family
+ * name, so cross-platform values may not resolve (same wart as mobile's
+ * platform-specific lists — an unknown family falls back to the default).
+ */
+const SUBTITLE_FONTS: ReadonlyArray<{ label: string; family?: string }> = [
+  { label: 'Default' },
+  { label: 'Segoe UI', family: 'Segoe UI' },
+  { label: 'Arial', family: 'Arial' },
+  { label: 'Georgia', family: 'Georgia' },
+  { label: 'Consolas', family: 'Consolas' },
+]
+/** mpv's own sub-font default — used to clear a cleared preference. */
+const MPV_DEFAULT_SUB_FONT = 'sans-serif'
+const SUB_DELAY_STEP_MS = 50
+const SUB_DELAY_LIMIT_MS = 5_000
+
+interface SubtitleLanguageGroup {
+  lang: string
+  label: string
+  variants: Subtitle[]
+}
+
+/**
+ * One row per language, preferred language first then alphabetical. Addons
+ * return dozens of same-language variants ranked by their own scoring (hash
+ * matches first), so variant order within a language is preserved — the first
+ * one is the addon's best guess.
+ */
+function groupSubtitlesByLanguage(subs: Subtitle[], preferredLang?: string): SubtitleLanguageGroup[] {
+  const groups = new Map<string, Subtitle[]>()
+  for (const sub of subs) {
+    const existing = groups.get(sub.lang)
+    if (existing) existing.push(sub)
+    else groups.set(sub.lang, [sub])
+  }
+  const preferred = (lang: string) => (preferredLang ? languageMatches(lang, preferredLang) : false)
+  return [...groups.entries()]
+    .map(([lang, variants]) => ({ lang, label: languageLabel(lang), variants }))
+    .sort(
+      (a, b) =>
+        Number(preferred(b.lang)) - Number(preferred(a.lang)) || a.label.localeCompare(b.label),
+    )
+}
 
 interface MpvTrack {
   id: number
@@ -43,6 +105,7 @@ export function Player(params: PlayerParams) {
   const report = useReportWatchState()
   const settings = useSettings()
   const settingsLoaded = useSettingsLoaded()
+  const updateSettings = useUpdateSettings()
 
   const [position, setPosition] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -57,6 +120,12 @@ export function Player(params: PlayerParams) {
   const [playerError, setPlayerError] = useState<string | null>(null)
   /** Non-null while the user drags the seekbar; committed as one seek on release. */
   const [dragValue, setDragValue] = useState<number | null>(null)
+  /** Session-only subtitle sync offset (mobile parity: never synced). */
+  const [subtitleDelayMs, setSubtitleDelayMs] = useState(0)
+  /** `${addonId}:${lang}` of the language row whose variants are expanded. */
+  const [expandedLang, setExpandedLang] = useState<string | null>(null)
+  /** Addon id of the currently active external sub (mpv can't tell us which). */
+  const [activeExternalId, setActiveExternalId] = useState<string | null>(null)
 
   const subTracks = useMemo(() => tracks.filter((t) => t.type === 'sub'), [tracks])
 
@@ -348,10 +417,36 @@ export function Player(params: PlayerParams) {
   const selectEmbeddedSub = (id: number | 'no') => {
     void mpvSet('sid', String(id)).then(refreshTracks)
   }
-  const addExternalSub = (url: string, lang: string) => {
+  const addExternalSub = (sub: Subtitle) => {
     // sub-add with `select` loads and activates in one step; only valid after
     // file-loaded (rc=-12 before), which holds — the panel opens during playback.
-    void mpvCmd('sub-add', url, 'select', lang, lang).then(refreshTracks)
+    setActiveExternalId(sub.id)
+    void mpvCmd('sub-add', sub.url, 'select', sub.lang, sub.lang).then(refreshTracks)
+  }
+
+  // Panel click handlers — these record the choice for restore next time;
+  // the auto-apply cascade below deliberately never writes to memory.
+  const chooseOff = () => {
+    rememberSubtitleChoice(params.videoId, params.itemId, { kind: 'off' })
+    setActiveExternalId(null)
+    selectEmbeddedSub('no')
+  }
+  const chooseEmbedded = (track: MpvTrack) => {
+    rememberSubtitleChoice(params.videoId, params.itemId, {
+      kind: 'embedded',
+      lang: track.lang,
+      trackName: track.title,
+    })
+    if (!track.external) setActiveExternalId(null)
+    selectEmbeddedSub(track.id)
+  }
+  const chooseExternal = (sub: Subtitle) => {
+    rememberSubtitleChoice(params.videoId, params.itemId, {
+      kind: 'external',
+      lang: sub.lang,
+      subId: sub.id,
+    })
+    addExternalSub(sub)
   }
 
   // ── Preferred-language defaults (applied once per mount) ─────────────────
@@ -367,29 +462,84 @@ export function Player(params: PlayerParams) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tracks, fileLoaded, settingsLoaded, settings.preferredAudioLang])
 
-  // Subtitles: an embedded track matching the preference wins; otherwise the
-  // best external match once the addon fan-out lands. mpv's own default-track
-  // pick stays if the user has no preference.
-  const subLangAppliedRef = useRef(false)
+  // Subtitle default cascade, applied once per mount: the remembered explicit
+  // choice for this video (exact) or item (language carryover) wins; the
+  // synced language preference is the fallback. mpv's own default-track pick
+  // stays when neither yields a match. Auto-application never writes back to
+  // memory — only user clicks record (see the choose* handlers).
+  const subDefaultAppliedRef = useRef(false)
   useEffect(() => {
-    if (subLangAppliedRef.current || !fileLoaded || !settingsLoaded) return
-    const pref = settings.preferredSubtitleLang
-    if (!pref) return
-    const embedded = subTracks.find((t) => !t.external && t.lang && languageMatches(t.lang, pref))
-    if (embedded) {
-      subLangAppliedRef.current = true
-      void mpvSet('sid', String(embedded.id)).then(refreshTracks)
+    if (subDefaultAppliedRef.current || !fileLoaded || !settingsLoaded) return
+
+    const externals = subs.data?.groups.flatMap((g) => g.subtitles) ?? []
+    const applyEmbedded = (track: MpvTrack) => {
+      subDefaultAppliedRef.current = true
+      void mpvSet('sid', String(track.id)).then(refreshTracks)
+    }
+    const applyExternal = (sub: Subtitle) => {
+      subDefaultAppliedRef.current = true
+      addExternalSub(sub)
+    }
+    const embeddedByLang = (lang: string) =>
+      subTracks.find((t) => !t.external && t.lang && languageMatches(t.lang, lang))
+    const externalByLang = (lang: string) => externals.find((s) => languageMatches(s.lang, lang))
+
+    const remembered = getSubtitleChoice(params.videoId, params.itemId)
+    if (remembered?.kind === 'off') {
+      subDefaultAppliedRef.current = true
+      void mpvSet('sid', 'no')
       return
     }
-    if (!subs.data) return // fan-out pending — don't conclude "no match" yet
-    const external = subs.data.groups
-      .flatMap((g) => g.subtitles)
-      .find((s) => languageMatches(s.lang, pref))
-    if (!external) return
-    subLangAppliedRef.current = true
-    addExternalSub(external.url, external.lang)
+    if (remembered?.kind === 'embedded') {
+      const track =
+        (remembered.trackName &&
+          subTracks.find((t) => !t.external && t.title === remembered.trackName)) ||
+        (remembered.lang && embeddedByLang(remembered.lang))
+      if (track) return applyEmbedded(track)
+      // Different file than the one the choice was made on — carry the
+      // language over to external results before giving up.
+      if (!subs.data) return // fan-out pending — don't conclude "no match" yet
+      const external = remembered.lang && externalByLang(remembered.lang)
+      if (external) return applyExternal(external)
+    }
+    if (remembered?.kind === 'external') {
+      if (!subs.data) return
+      const sub =
+        (remembered.subId && externals.find((s) => s.id === remembered.subId)) ||
+        (remembered.lang && externalByLang(remembered.lang))
+      if (sub) return applyExternal(sub)
+    }
+
+    const pref = settings.preferredSubtitleLang
+    if (!pref) return
+    const embedded = embeddedByLang(pref)
+    if (embedded) return applyEmbedded(embedded)
+    if (!subs.data) return
+    const external = externalByLang(pref)
+    if (external) applyExternal(external)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subTracks, subs.data, fileLoaded, settingsLoaded, settings.preferredSubtitleLang])
+
+  // Styling maps straight onto mpv's runtime sub properties — no player
+  // rebuild, unlike VLC's creation-time options on mobile. The mpv handle
+  // outlives player mounts, so reapplying on mount also clears stale values.
+  useEffect(() => {
+    if (!settingsLoaded) return
+    void mpvSet('sub-scale', String((settings.subtitleScalePercent ?? 100) / 100))
+    void mpvSet('sub-font', settings.subtitleFontFamily ?? MPV_DEFAULT_SUB_FONT)
+    void mpvSet('sub-border-size', String(OUTLINE_BORDER[settings.subtitleOutline ?? 'normal']))
+    void mpvSet('sub-shadow-offset', String((settings.subtitleShadow ?? true) ? 2 : 0))
+  }, [
+    settingsLoaded,
+    settings.subtitleScalePercent,
+    settings.subtitleFontFamily,
+    settings.subtitleOutline,
+    settings.subtitleShadow,
+  ])
+
+  useEffect(() => {
+    void mpvSet('sub-delay', String(subtitleDelayMs / 1000))
+  }, [subtitleDelayMs])
 
   const activeSub = subTracks.find((t) => t.selected)
   const fmt = (s: number) =>
@@ -398,11 +548,12 @@ export function Player(params: PlayerParams) {
   const subGroups = useMemo(
     () =>
       (subs.data?.groups ?? [])
+        .filter((g) => g.subtitles.length > 0)
         .map((g) => ({
-          ...g,
-          subtitles: sortSubtitlesByPreference(g.subtitles, settings.preferredSubtitleLang),
-        }))
-        .filter((g) => g.subtitles.length > 0),
+          addonId: g.addonId,
+          addonName: g.addonName,
+          languages: groupSubtitlesByLanguage(g.subtitles, settings.preferredSubtitleLang),
+        })),
     [subs.data, settings.preferredSubtitleLang],
   )
 
@@ -505,7 +656,7 @@ export function Player(params: PlayerParams) {
             type="button"
             className="sub-row"
             style={!activeSub ? { color: 'var(--accent)' } : undefined}
-            onClick={() => selectEmbeddedSub('no')}
+            onClick={chooseOff}
           >
             Off
           </button>
@@ -515,7 +666,7 @@ export function Player(params: PlayerParams) {
               type="button"
               className="sub-row"
               style={t.selected ? { color: 'var(--accent)' } : undefined}
-              onClick={() => selectEmbeddedSub(t.id)}
+              onClick={() => chooseEmbedded(t)}
             >
               {t.title ?? t.lang ?? `Track ${t.id}`}
               {t.lang && t.title ? ` (${t.lang})` : ''}
@@ -525,22 +676,143 @@ export function Player(params: PlayerParams) {
           {subGroups.map((group) => (
             <div key={group.addonId} style={{ marginTop: 10 }}>
               <div className="t-overline">{group.addonName}</div>
-              {group.subtitles.slice(0, 25).map((sub) => (
-                <button
-                  key={sub.id}
-                  type="button"
-                  className="sub-row"
-                  onClick={() => addExternalSub(sub.url, sub.lang)}
-                >
-                  {sub.lang} · {sub.id}
-                </button>
-              ))}
+              {group.languages.map(({ lang, label, variants }) => {
+                const rowKey = `${group.addonId}:${lang}`
+                const active = variants.some((v) => v.id === activeExternalId)
+                return (
+                  <div key={rowKey}>
+                    <div className="sub-lang-row">
+                      {/* Row click = the addon's best variant; the count chip
+                          expands the rest for out-of-sync cases. */}
+                      <button
+                        type="button"
+                        className="sub-row"
+                        style={active ? { color: 'var(--accent)' } : undefined}
+                        onClick={() => chooseExternal(variants[0]!)}
+                      >
+                        {label}
+                      </button>
+                      {variants.length > 1 && (
+                        <button
+                          type="button"
+                          className="chip"
+                          onClick={() => setExpandedLang(expandedLang === rowKey ? null : rowKey)}
+                        >
+                          {variants.length}
+                        </button>
+                      )}
+                    </div>
+                    {expandedLang === rowKey &&
+                      variants.map((sub, i) => (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          className="sub-row sub-variant"
+                          style={sub.id === activeExternalId ? { color: 'var(--accent)' } : undefined}
+                          onClick={() => chooseExternal(sub)}
+                        >
+                          Variant {i + 1} · {sub.id}
+                        </button>
+                      ))}
+                  </div>
+                )
+              })}
             </div>
           ))}
           {subs.isLoading && <div className="t-caption">Searching addons…</div>}
           {subs.data && subGroups.length === 0 && !subs.isLoading && (
             <div className="t-caption">No external subtitles found.</div>
           )}
+
+          <div className="t-heading" style={{ margin: '18px 0 4px' }}>
+            Style
+          </div>
+          <div className="tool-row">
+            <span className="tool-label">Sync</span>
+            <div className="stepper">
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() =>
+                  setSubtitleDelayMs((v) => Math.max(-SUB_DELAY_LIMIT_MS, v - SUB_DELAY_STEP_MS))
+                }
+              >
+                −
+              </button>
+              <button
+                type="button"
+                className="stepper-value"
+                title="Reset"
+                onClick={() => setSubtitleDelayMs(0)}
+              >
+                {subtitleDelayMs > 0 ? '+' : ''}
+                {subtitleDelayMs} ms
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() =>
+                  setSubtitleDelayMs((v) => Math.min(SUB_DELAY_LIMIT_MS, v + SUB_DELAY_STEP_MS))
+                }
+              >
+                +
+              </button>
+            </div>
+          </div>
+          <div className="tool-row">
+            <span className="tool-label">Size</span>
+            <div className="chips">
+              {SUBTITLE_SCALES.map((scale) => (
+                <button
+                  key={scale}
+                  type="button"
+                  className={`chip ${(settings.subtitleScalePercent ?? 100) === scale ? 'chip-active' : ''}`}
+                  onClick={() => updateSettings.mutate({ subtitleScalePercent: scale })}
+                >
+                  {scale}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="tool-row">
+            <span className="tool-label">Outline</span>
+            <div className="chips">
+              {SUBTITLE_OUTLINES.map((o) => (
+                <button
+                  key={o.key}
+                  type="button"
+                  className={`chip ${(settings.subtitleOutline ?? 'normal') === o.key ? 'chip-active' : ''}`}
+                  onClick={() => updateSettings.mutate({ subtitleOutline: o.key })}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="tool-row">
+            <span className="tool-label">Shadow</span>
+            <input
+              type="checkbox"
+              className="toggle"
+              checked={settings.subtitleShadow ?? true}
+              onChange={(e) => updateSettings.mutate({ subtitleShadow: e.target.checked })}
+            />
+          </div>
+          <div className="tool-row">
+            <span className="tool-label">Font</span>
+            <div className="chips chips-wrap">
+              {SUBTITLE_FONTS.map((font) => (
+                <button
+                  key={font.label}
+                  type="button"
+                  className={`chip ${settings.subtitleFontFamily === font.family ? 'chip-active' : ''}`}
+                  onClick={() => updateSettings.mutate({ subtitleFontFamily: font.family })}
+                >
+                  {font.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
