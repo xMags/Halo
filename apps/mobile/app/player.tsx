@@ -8,15 +8,23 @@ import { BlurView } from 'expo-blur'
 import { LinearGradient } from 'expo-linear-gradient'
 import { NavigationBar } from 'expo-navigation-bar'
 import { setStatusBarHidden } from 'expo-status-bar'
-import * as FileSystem from 'expo-file-system/legacy'
 import LibVlcPlayerModule from 'expo-libvlc-player'
-import { languageLabel, languageMatches, type Subtitle, type SubtitleOutline, type WatchState } from '@halo/core'
+import {
+  LANGUAGE_OPTIONS,
+  languageLabel,
+  languageMatches,
+  type Subtitle,
+  type SubtitleOutline,
+  type WatchState,
+} from '@halo/core'
 import { sortSubtitlesByPreference, useAddonSubtitles, useReportWatchState, useWatchStates } from '@/queries'
+import { getDownload } from '@/downloads'
+import { ensureLocalSubtitle, listLocalSubtitles, subtitleFileName } from '@/subtitleFiles'
 import { useSettings, useSettingsLoaded, useUpdateSettings } from '@/settings'
 import { clamp01 } from '@/format'
 import { colors, radius, spacing } from '@/theme'
-import { SelectSheet, type SelectOption } from '@/components/SelectSheet'
-import { SubtitlesSheet } from '@/components/SubtitlesSheet'
+import { SelectSheet } from '@/components/SelectSheet'
+import { SubtitlesSheet, type SubtitleLanguageGroup, type SubtitleVariant } from '@/components/SubtitlesSheet'
 import { PlayerGestureLayer } from '@/components/PlayerGestureLayer'
 import PlayerVideo from '@/components/PlayerVideo'
 import type {
@@ -204,7 +212,7 @@ export default function PlayerScreen() {
 
   // Local files hash from disk, remote streams via range requests — either way
   // the addon gets videoHash/videoSize for exact-match results.
-  const { data: externalSubs } = useAddonSubtitles({
+  const { data: subtitleGroups } = useAddonSubtitles({
     type: params.type,
     videoId: params.videoId,
     streamUrl: isLocal ? undefined : params.uri,
@@ -213,9 +221,33 @@ export default function PlayerScreen() {
     videoSize: params.videoSize ? Number(params.videoSize) : undefined,
   })
   const sortedSubs = useMemo(
-    () => sortSubtitlesByPreference(externalSubs ?? [], settings.preferredSubtitleLang),
-    [externalSubs, settings.preferredSubtitleLang],
+    () =>
+      sortSubtitlesByPreference(
+        (subtitleGroups ?? []).flatMap((g) => g.subtitles),
+        settings.preferredSubtitleLang,
+      ),
+    [subtitleGroups, settings.preferredSubtitleLang],
   )
+  /** Selection keys are stable per (video, sub) — they double as filenames. */
+  const externalByKey = useMemo(() => {
+    const map = new Map<string, Subtitle>()
+    for (const group of subtitleGroups ?? []) {
+      for (const sub of group.subtitles) map.set(`external:${subtitleFileName(params.videoId, sub)}`, sub)
+    }
+    return map
+  }, [subtitleGroups, params.videoId])
+
+  // Which subtitle files are already on device — drives the "local" markers.
+  const [localSubs, setLocalSubs] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    let cancelled = false
+    void listLocalSubtitles(params.videoId).then((names) => {
+      if (!cancelled) setLocalSubs(names)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [params.videoId])
 
   const { data: watchStates } = useWatchStates()
   const report = useReportWatchState()
@@ -286,7 +318,7 @@ export default function PlayerScreen() {
   // subtitle that came bundled with a download.
   const autoSubApplied = useRef(false)
   useEffect(() => {
-    if (autoSubApplied.current || !loaded || externalSubs === undefined) return
+    if (autoSubApplied.current || !loaded || subtitleGroups === undefined) return
     if (!settings.preferredSubtitleLang || params.subtitleUri) {
       autoSubApplied.current = true
       return
@@ -297,20 +329,18 @@ export default function PlayerScreen() {
       setTextTrack(embedded.id)
       return
     }
-    const index = sortedSubs.findIndex((s) => languageMatches(s.lang, settings.preferredSubtitleLang!))
-    if (index >= 0) void selectExternalSub(sortedSubs[index]!, `external:${index}`)
+    const match = sortedSubs.find((s) => languageMatches(s.lang, settings.preferredSubtitleLang!))
+    if (match) void selectExternalSub(match, `external:${subtitleFileName(params.videoId, match)}`)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, externalSubs, textTracks, settings.preferredSubtitleLang])
+  }, [loaded, subtitleGroups, textTracks, settings.preferredSubtitleLang])
 
   const selectExternalSub = async (sub: Subtitle, key: string) => {
     try {
-      // ASS/SRT are handed to VLC untouched — it renders both natively
-      // (ASS with full styling); converting would strip that.
-      const extMatch = sub.url.match(/\.(ass|ssa|srt|vtt|sub)(\?|$)/i)
-      const ext = extMatch ? extMatch[1]!.toLowerCase() : 'srt'
-      const target = `${FileSystem.cacheDirectory}sub-${params.videoId.replace(/[^a-zA-Z0-9._-]/g, '_')}-${key}.${ext}`
-      const result = await FileSystem.downloadAsync(sub.url, target)
-      setSubtitleUri(result.uri)
+      // Persisted, not cached: a sub picked once stays usable next session and
+      // offline; re-selecting an on-disk file skips the network entirely.
+      const uri = await ensureLocalSubtitle(params.videoId, sub)
+      setLocalSubs((prev) => new Set(prev).add(subtitleFileName(params.videoId, sub)))
+      setSubtitleUri(uri)
       setTextTrack(undefined)
       setActiveExternalSub(key)
     } catch {
@@ -319,24 +349,71 @@ export default function PlayerScreen() {
     }
   }
 
-  const subtitleOptions: SelectOption[] = [
-    { key: 'off', label: 'Off', selected: textTrack === undefined && activeExternalSub === null },
-    ...(params.subtitleUri
-      ? [{ key: 'downloaded', label: 'Downloaded subtitle', selected: activeExternalSub === 'downloaded' }]
-      : []),
-    ...textTracks.map((t) => ({
-      key: `embedded:${t.id}`,
-      label: t.name,
-      detail: 'Embedded',
-      selected: textTrack === t.id,
-    })),
-    ...sortedSubs.map((sub, index) => ({
-      key: `external:${index}`,
-      label: languageLabel(sub.lang),
-      detail: 'OpenSubtitles',
-      selected: activeExternalSub === `external:${index}`,
-    })),
-  ]
+  // The download-bundled sub's language is only recorded on the download entry.
+  const bundledLang = useMemo(
+    () => (params.subtitleUri ? getDownload(params.videoId)?.subtitleLang : undefined),
+    [params.subtitleUri, params.videoId],
+  )
+
+  const subtitleLanguageGroups: SubtitleLanguageGroup[] = useMemo(() => {
+    const groups = new Map<string, SubtitleLanguageGroup>()
+    const push = (label: string, variant: SubtitleVariant) => {
+      const key = label.toLowerCase()
+      const group = groups.get(key) ?? { key, label, variants: [] }
+      group.variants.push(variant)
+      groups.set(key, group)
+    }
+
+    if (params.subtitleUri) {
+      push(bundledLang ? languageLabel(bundledLang) : 'Other', {
+        key: 'downloaded',
+        label: 'Bundled with download',
+        detail: 'Downloaded',
+        local: true,
+        selected: activeExternalSub === 'downloaded',
+      })
+    }
+    for (const track of textTracks) {
+      push(embeddedTrackLanguage(track.name) ?? 'Other', {
+        key: `embedded:${track.id}`,
+        label: track.name,
+        detail: 'Embedded',
+        selected: textTrack === track.id,
+      })
+    }
+    for (const group of subtitleGroups ?? []) {
+      for (const sub of group.subtitles) {
+        const fileName = subtitleFileName(params.videoId, sub)
+        push(languageLabel(sub.lang), {
+          key: `external:${fileName}`,
+          label: group.addonName,
+          detail: sub.id,
+          local: localSubs.has(fileName),
+          selected: activeExternalSub === `external:${fileName}`,
+        })
+      }
+    }
+
+    // Preferred language first, then alphabetical; unidentified tracks last.
+    const preferredKey = settings.preferredSubtitleLang
+      ? languageLabel(settings.preferredSubtitleLang).toLowerCase()
+      : undefined
+    const rank = (g: SubtitleLanguageGroup) => (g.key === preferredKey ? 0 : g.key === 'other' ? 2 : 1)
+    return [...groups.values()].sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label))
+  }, [
+    params.subtitleUri,
+    params.videoId,
+    bundledLang,
+    textTracks,
+    subtitleGroups,
+    localSubs,
+    activeExternalSub,
+    textTrack,
+    settings.preferredSubtitleLang,
+  ])
+
+  // -1 is VLC's explicit "disable text track" value, undefined = never chosen.
+  const subtitlesOff = (textTrack === undefined || textTrack === -1) && activeExternalSub === null
 
   const onSubtitleSelect = (key: string) => {
     if (key === 'off') {
@@ -351,9 +428,8 @@ export default function PlayerScreen() {
       setTextTrack(Number(key.slice('embedded:'.length)))
       setSubtitleUri(undefined)
       setActiveExternalSub(null)
-    } else if (key.startsWith('external:')) {
-      const index = Number(key.slice('external:'.length))
-      const sub = sortedSubs[index]
+    } else {
+      const sub = externalByKey.get(key)
       if (sub) void selectExternalSub(sub, key)
     }
   }
@@ -617,9 +693,11 @@ export default function PlayerScreen() {
       <SubtitlesSheet
         visible={subsSheetOpen}
         title="Subtitles"
-        description="Track, timing and appearance"
-        tracks={subtitleOptions}
-        onSelectTrack={onSubtitleSelect}
+        description="Language, variant and appearance"
+        groups={subtitleLanguageGroups}
+        offSelected={subtitlesOff}
+        onSelectOff={() => onSubtitleSelect('off')}
+        onSelectVariant={onSubtitleSelect}
         onClose={() => setSubsSheetOpen(false)}
         appearance={
           <>
@@ -778,6 +856,16 @@ function playbackRateDetail(rate: number): string {
 function trackMatchesLanguage(trackName: string, code: string): boolean {
   const name = trackName.toLowerCase()
   return name.includes(languageLabel(code).toLowerCase()) || name.includes(`[${code.toLowerCase()}]`)
+}
+
+/**
+ * Language label for grouping an embedded track, via the same fuzzy name
+ * match auto-select trusts. Undefined for names naming no known language
+ * (e.g. "Track 1") — those group under "Other".
+ */
+function embeddedTrackLanguage(trackName: string): string | undefined {
+  const match = LANGUAGE_OPTIONS.find(({ code }) => trackMatchesLanguage(trackName, code))
+  return match?.label
 }
 
 function formatTime(totalSec: number): string {

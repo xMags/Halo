@@ -121,8 +121,15 @@ export interface SubtitleOptions {
   videoSize?: number
 }
 
+export interface AddonSubtitles {
+  addonId: string
+  addonName: string
+  subtitles: Subtitle[]
+}
+
 /**
- * External subtitles from every subtitle-capable addon. Hash matching is
+ * External subtitles from every subtitle-capable addon, grouped per addon so
+ * the UI can attribute each variant to its source. Hash matching is
  * best-effort: when the stream host supports range requests the results are
  * exact matches, otherwise addons fall back to id-based search.
  */
@@ -130,7 +137,7 @@ export function useAddonSubtitles(opts: SubtitleOptions) {
   return useQuery({
     queryKey: ['subtitles', opts.type, opts.videoId, opts.streamUrl ?? opts.localFileUri ?? null],
     staleTime: Infinity,
-    queryFn: async (): Promise<Subtitle[]> => {
+    queryFn: async (): Promise<AddonSubtitles[]> => {
       // Hashing stays client-side by design: the server never touches stream
       // bytes, and only the device can read a downloaded file.
       let videoHash: string | undefined
@@ -154,7 +161,7 @@ export function useAddonSubtitles(opts: SubtitleOptions) {
         videoSize,
         filename: opts.filename,
       })
-      return results.flatMap((r) => r.subtitles ?? [])
+      return results.map((r) => ({ addonId: r.addon.id, addonName: r.addon.name, subtitles: r.subtitles ?? [] }))
     },
   })
 }
