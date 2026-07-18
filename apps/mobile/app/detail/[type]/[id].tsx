@@ -46,6 +46,16 @@ export default function DetailScreen() {
     return [...numbers].sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b))
   }, [meta])
 
+  // Open on the season of the most recently watched episode, not season 1 —
+  // mid-binge, "the season I'm in" is almost always where the next tap goes.
+  const lastWatchedSeason = useMemo(() => {
+    const videosById = new Map((meta?.videos ?? []).map((video) => [video.id, video]))
+    const latest = (watchStates ?? [])
+      .filter((s) => s.itemId === itemId && videosById.has(s.videoId))
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0]
+    return latest ? (videosById.get(latest.videoId)!.season ?? null) : null
+  }, [watchStates, itemId, meta])
+
   if (isLoading) {
     return (
       <View style={styles.center}>
@@ -61,7 +71,7 @@ export default function DetailScreen() {
     )
   }
 
-  const activeSeason = season ?? seasons[0] ?? null
+  const activeSeason = season ?? lastWatchedSeason ?? seasons[0] ?? null
   const episodes = (meta.videos ?? [])
     .filter((video) => activeSeason === null || video.season === activeSeason)
     .sort((a, b) => (a.episode ?? 0) - (b.episode ?? 0))
