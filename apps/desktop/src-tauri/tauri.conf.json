@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Halo",
+  "version": "0.1.0",
+  "identifier": "moe.ditto.halo.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm vite",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm vite:build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": { "csp": null },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Halo",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 600,
+        "transparent": true
+      }
+    ]
+  },
+  "bundle": { "active": false }
+}

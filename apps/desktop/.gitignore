@@ -1,0 +1,4 @@
+dist/
+vendor/mpv/
+src-tauri/target/
+src-tauri/gen/

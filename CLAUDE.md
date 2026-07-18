@@ -16,6 +16,7 @@ no build orchestration on purpose.
 | `packages/core` | Addon protocol client, subtitle utils (OpenSubtitles hash, srt→vtt, languages), typed API client | `pnpm --filter @halo/core typecheck` |
 | `apps/api` | Hono + Drizzle/better-sqlite3 sync backend | `pnpm --filter @halo/api test` (vitest), then curl |
 | `apps/mobile` | Expo (dev-client) iOS app, expo-router, VLC player | typecheck + `pnpm --filter @halo/mobile exec expo export --platform ios` |
+| `apps/desktop` | Tauri v2 streaming-only client (Windows-first), React UI over mpv | typecheck + `cargo build` in `src-tauri` (needs `vendor/mpv/libmpv-2.dll`, see `vendor/README.md`) |
 
 Dev: `pnpm dev` (api :8787, needs `apps/api/.env` from `.env.example`).
 Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
@@ -23,6 +24,17 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
 
 ## Architecture invariants
 
+- **Desktop is a thin client over mpv, Stremio-style.** Streaming only — no
+  downloads subsystem, ever. All resolution via the fat-server endpoints
+  (`HaloClient` + tauri-plugin-http native fetch — no CORS allowlisting);
+  playback via a generic mpv channel (`mpv_cmd`/`mpv_set`/`mpv_get`/
+  `mpv_observe` + `mpv-prop`/`mpv-event` events), never a typed player API
+  across the JS↔Rust boundary. Two Windows compositing invariants (each broke
+  video invisibly when violated): mpv's `wid` must be the top-level window
+  HWND, not an intermediate child; and the `transparent: true` window config
+  requires the `DwmEnableBlurBehindWindow(fEnable: FALSE)` counter-call in
+  setup. Non-player screens keep an opaque HTML background — mpv paints the
+  whole window behind the webview.
 - **Sync is last-write-wins by `updatedAt` everywhere** (watch-state, library,
   settings). Clients send their timestamp; server upserts only strictly-newer
   (`setWhere: excluded.updated_at > …`). Library removals are tombstones
