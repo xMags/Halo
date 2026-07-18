@@ -1,7 +1,6 @@
 import type { CatalogResponse, MetaResponse } from '../addon/types'
 import type {
   AddonEntry,
-  AddonRef,
   AddonsResponse,
   LibraryItem,
   Me,
@@ -139,16 +138,17 @@ export class HaloClient {
   }
 
   /**
-   * Replaces the caller's own addon list. Only transportUrl + position are sent;
-   * the server fetches and validates each manifest itself.
+   * Declares the caller's own addon list (array order = priority). Only
+   * transport URLs are sent — the server fetches and validates each manifest
+   * itself, and applies the list as a diff so unchanged entries keep their ids.
    */
-  putAddons(entries: AddonRef[]): Promise<AddonEntry[]> {
-    return this.request<AddonEntry[]>('PUT', '/addons', entries)
+  putAddons(transportUrls: string[]): Promise<AddonEntry[]> {
+    return this.request<AddonEntry[]>('PUT', '/addons', transportUrls)
   }
 
-  /** Admin-only: replaces the global addon list shown to every user. */
-  putGlobalAddons(entries: AddonRef[]): Promise<AddonEntry[]> {
-    return this.request<AddonEntry[]>('PUT', '/addons/global', entries)
+  /** Admin-only: declares the global addon list shown to every user. Same diff contract as putAddons. */
+  putGlobalAddons(transportUrls: string[]): Promise<AddonEntry[]> {
+    return this.request<AddonEntry[]>('PUT', '/addons/global', transportUrls)
   }
 
   /**

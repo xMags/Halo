@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   computeVideoHash,
   languageMatches,
-  type AddonRef,
   type CatalogResponse,
   type LibraryItem,
   type MetaDetail,
@@ -42,24 +41,24 @@ export function useEffectiveAddons() {
   })
 }
 
-/** Replaces the caller's own addons (server fetches the manifests). */
+/** Declares the caller's own addons as transport URLs in priority order (server diffs + fetches new manifests). */
 export function useSetAddons() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (entries: AddonRef[]) => api().putAddons(entries),
+    mutationFn: (transportUrls: string[]) => api().putAddons(transportUrls),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['addons'] }),
   })
 }
 
 /**
- * Replaces the global (admin-managed) addon list shown to every user. The
+ * Declares the global (admin-managed) addon list shown to every user. The
  * server rejects this with 403 for non-admins, so only surface it behind
  * `useMe().isAdmin`. Shares the `['addons']` cache key with the user list.
  */
 export function useSetGlobalAddons() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (entries: AddonRef[]) => api().putGlobalAddons(entries),
+    mutationFn: (transportUrls: string[]) => api().putGlobalAddons(transportUrls),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['addons'] }),
   })
 }

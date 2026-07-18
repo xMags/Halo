@@ -129,7 +129,7 @@ async function seedDefaultAddons(c: HaloClient): Promise<void> {
   try {
     // The server fetches each manifest; a default being down fails the whole
     // set (all-or-nothing), so swallow it — first login must still succeed.
-    await c.putAddons(DEFAULT_ADDON_URLS.map((transportUrl, position) => ({ transportUrl, position })))
+    await c.putAddons([...DEFAULT_ADDON_URLS])
   } catch {
     // Best-effort seed.
   }

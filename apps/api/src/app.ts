@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, notInArray, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { z } from 'zod'
@@ -75,23 +75,19 @@ const manifestSchema = z
   })
   .passthrough()
 
-// Client sends only references; the server fetches and stores the manifest
-// itself, so a client can never inject a forged manifest.
-const addonRefsSchema = z
-  .array(
-    z.object({
-      transportUrl: z.string().url(),
-      position: z.number().int().min(0),
-    }),
-  )
+// Client sends only transport URLs (array order = priority; the server derives
+// positions from it). Manifests are always fetched and stored server-side, so a
+// client can never inject a forged manifest.
+const addonUrlsSchema = z
+  .array(z.string().url())
   .max(50)
-  .superRefine((refs, ctx) => {
+  .superRefine((urls, ctx) => {
     const seen = new Set<string>()
-    for (const ref of refs) {
-      if (seen.has(ref.transportUrl)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate transportUrl: ${ref.transportUrl}` })
+    for (const url of urls) {
+      if (seen.has(url)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate transportUrl: ${url}` })
       }
-      seen.add(ref.transportUrl)
+      seen.add(url)
     }
   })
 
@@ -280,43 +276,77 @@ export function createApp(config: AppConfig) {
     return c.json({ global, user: userList })
   })
 
-  // Full-collection replace of the caller's own addons. The server fetches each
-  // manifest itself (SSRF-guarded) so the stored manifest is trusted; a bad or
-  // unreachable manifest fails the whole request, leaving the old list intact.
+  // Full-collection declaration of the caller's own addons, applied as a diff
+  // keyed by transportUrl: kept entries retain their opaque id, manifest and
+  // addedAt untouched (no manifest re-fetch — ids must stay stable so clients
+  // can hold onto them), new URLs get their manifest fetched server-side
+  // (SSRF-guarded, all-or-nothing: one bad manifest fails the request and
+  // leaves the old list intact), and URLs absent from the payload are deleted.
   authed.put('/addons', async (c) => {
-    const body = addonRefsSchema.safeParse(await c.req.json().catch(() => null))
+    const body = addonUrlsSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
-    const resolved = await resolveManifests(body.data, doSafeFetch)
-    if ('error' in resolved) return c.json({ error: resolved.error }, 400)
     const user = c.get('user')
+    const urls = body.data
+    const existing = new Set(
+      db.select({ transportUrl: userAddons.transportUrl }).from(userAddons).where(eq(userAddons.userId, user.id)).all().map((r) => r.transportUrl),
+    )
+    const resolved = await resolveManifests(urls.filter((u) => !existing.has(u)), doSafeFetch)
+    if ('error' in resolved) return c.json({ error: resolved.error }, 400)
+    const fetched = new Map(resolved.entries.map((e) => [e.transportUrl, e.manifest]))
     const now = Date.now()
-    db.transaction((tx) => {
-      tx.delete(userAddons).where(eq(userAddons.userId, user.id)).run()
-      for (const r of resolved.entries) {
-        tx.insert(userAddons)
-          .values({ userId: user.id, id: r.id, transportUrl: r.transportUrl, manifest: r.manifest, position: r.position, addedAt: now })
-          .run()
-      }
+    const rows = db.transaction((tx) => {
+      // notInArray with an empty list is invalid SQL — clearing the list is a
+      // plain per-user delete.
+      if (urls.length === 0) tx.delete(userAddons).where(eq(userAddons.userId, user.id)).run()
+      else tx.delete(userAddons).where(and(eq(userAddons.userId, user.id), notInArray(userAddons.transportUrl, urls))).run()
+      urls.forEach((transportUrl, position) => {
+        const manifest = fetched.get(transportUrl)
+        if (manifest) {
+          // Upsert, not insert: a concurrent save may have installed the same
+          // URL between the read above and this transaction — its id wins.
+          tx.insert(userAddons)
+            .values({ userId: user.id, id: randomUUID(), transportUrl, manifest, position, addedAt: now })
+            .onConflictDoUpdate({ target: [userAddons.userId, userAddons.transportUrl], set: { manifest, position } })
+            .run()
+        } else {
+          tx.update(userAddons)
+            .set({ position })
+            .where(and(eq(userAddons.userId, user.id), eq(userAddons.transportUrl, transportUrl)))
+            .run()
+        }
+      })
+      return tx.select().from(userAddons).where(eq(userAddons.userId, user.id)).orderBy(userAddons.position).all()
     })
-    return c.json(resolved.entries)
+    return c.json(rows.map(toAddonEntry))
   })
 
-  // Same contract, admin-only, replaces the addons every user sees.
+  // Same diff contract, admin-only, declares the addons every user sees.
   authed.put('/addons/global', adminOnly, async (c) => {
-    const body = addonRefsSchema.safeParse(await c.req.json().catch(() => null))
+    const body = addonUrlsSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
-    const resolved = await resolveManifests(body.data, doSafeFetch)
+    const urls = body.data
+    const existing = new Set(db.select({ transportUrl: globalAddons.transportUrl }).from(globalAddons).all().map((r) => r.transportUrl))
+    const resolved = await resolveManifests(urls.filter((u) => !existing.has(u)), doSafeFetch)
     if ('error' in resolved) return c.json({ error: resolved.error }, 400)
+    const fetched = new Map(resolved.entries.map((e) => [e.transportUrl, e.manifest]))
     const now = Date.now()
-    db.transaction((tx) => {
-      tx.delete(globalAddons).run()
-      for (const r of resolved.entries) {
-        tx.insert(globalAddons)
-          .values({ id: r.id, transportUrl: r.transportUrl, manifest: r.manifest, position: r.position, addedAt: now })
-          .run()
-      }
+    const rows = db.transaction((tx) => {
+      if (urls.length === 0) tx.delete(globalAddons).run()
+      else tx.delete(globalAddons).where(notInArray(globalAddons.transportUrl, urls)).run()
+      urls.forEach((transportUrl, position) => {
+        const manifest = fetched.get(transportUrl)
+        if (manifest) {
+          tx.insert(globalAddons)
+            .values({ id: randomUUID(), transportUrl, manifest, position, addedAt: now })
+            .onConflictDoUpdate({ target: globalAddons.transportUrl, set: { manifest, position } })
+            .run()
+        } else {
+          tx.update(globalAddons).set({ position }).where(eq(globalAddons.transportUrl, transportUrl)).run()
+        }
+      })
+      return tx.select().from(globalAddons).orderBy(globalAddons.position).all()
     })
-    return c.json(resolved.entries)
+    return c.json(rows.map(toAddonEntry))
   })
 
   authed.get('/library', (c) => {
@@ -587,41 +617,32 @@ function toAddonEntry(r: { id: string; transportUrl: string; manifest: Manifest;
 }
 
 interface ResolvedAddon {
-  id: string
   transportUrl: string
-  position: number
   manifest: Manifest
 }
 
 /**
- * Fetches and validates the manifest for every ref, all-or-nothing. Returns the
+ * Fetches and validates the manifest for every URL, all-or-nothing. Returns the
  * resolved entries or the first failing transportUrl. Fetches run concurrently.
  */
 async function resolveManifests(
-  refs: Array<{ transportUrl: string; position: number }>,
+  urls: string[],
   doSafeFetch: (url: string) => Promise<Response>,
 ): Promise<{ entries: ResolvedAddon[] } | { error: string }> {
   const results = await Promise.all(
-    refs.map(async (ref) => {
+    urls.map(async (transportUrl) => {
       try {
-        const res = await doSafeFetch(`${transportBase(ref.transportUrl)}/manifest.json`)
-        if (!res.ok) return { ref, manifest: null }
+        const res = await doSafeFetch(`${transportBase(transportUrl)}/manifest.json`)
+        if (!res.ok) return { transportUrl, manifest: null }
         const parsed = manifestSchema.safeParse(await res.json())
-        return { ref, manifest: parsed.success ? (parsed.data as Manifest) : null }
+        return { transportUrl, manifest: parsed.success ? (parsed.data as Manifest) : null }
       } catch {
-        return { ref, manifest: null }
+        return { transportUrl, manifest: null }
       }
     }),
   )
   const failed = results.find((r) => r.manifest === null)
-  if (failed) return { error: `could not fetch a valid manifest for ${failed.ref.transportUrl}` }
-  return {
-    entries: results.map((r) => ({
-      id: randomUUID(),
-      transportUrl: r.ref.transportUrl,
-      position: r.ref.position,
-      manifest: r.manifest!,
-    })),
-  }
+  if (failed) return { error: `could not fetch a valid manifest for ${failed.transportUrl}` }
+  return { entries: results.map((r) => ({ transportUrl: r.transportUrl, manifest: r.manifest! })) }
 }
 

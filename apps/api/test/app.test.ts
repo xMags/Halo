@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import type { WatchState } from '@halo/core'
-import { users } from '../src/schema'
+import { userAddons, users } from '../src/schema'
 import type { Db } from '../src/db'
 import { ADMIN_GROUP, adminToken, authed, CLIENT_ID, ISSUER, makeApp, mintToken, mockSafeFetch, userToken, type App } from './helpers'
 
@@ -236,7 +236,7 @@ describe('addons: server-fetched manifests', () => {
   it('fetches and stores the manifest server-side, returned under user', async () => {
     const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
     const token = await adminToken()
-    const put = await app.request('/addons', authed(token, [{ transportUrl: CINEMETA_URL, position: 0 }]))
+    const put = await app.request('/addons', authed(token, [CINEMETA_URL]))
     expect(put.status).toBe(200)
     const res = await app.request('/addons', authed(token))
     const body = (await res.json()) as { global: unknown[]; user: Array<{ manifest: { name: string } }> }
@@ -245,29 +245,21 @@ describe('addons: server-fetched manifests', () => {
     expect(body.global).toEqual([])
   })
 
-  it('ignores a client-supplied manifest field, trusting only the fetched one', async () => {
+  it('rejects ref objects — the body is transport URLs only, so a manifest can never ride along', async () => {
     const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
     const token = await adminToken()
-    // Attempt to inject a forged manifest alongside the ref.
-    await app.request(
+    const res = await app.request(
       '/addons',
-      authed(token, [{ transportUrl: CINEMETA_URL, position: 0, manifest: { id: 'evil', name: 'Evil', version: '9', resources: [], types: [], catalogs: [] } }]),
+      authed(token, [{ transportUrl: CINEMETA_URL, manifest: { id: 'evil', name: 'Evil', version: '9', resources: [], types: [], catalogs: [] } }]),
     )
-    const body = (await (await app.request('/addons', authed(token))).json()) as { user: Array<{ manifest: { name: string } }> }
-    expect(body.user[0]!.manifest.name).toBe('Cinemeta')
+    expect(res.status).toBe(400)
   })
 
   it('fails the whole request and keeps the old list when a manifest is unreachable', async () => {
     const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
     const token = await adminToken()
-    await app.request('/addons', authed(token, [{ transportUrl: CINEMETA_URL, position: 0 }]))
-    const res = await app.request(
-      '/addons',
-      authed(token, [
-        { transportUrl: CINEMETA_URL, position: 0 },
-        { transportUrl: 'https://down.test/manifest.json', position: 1 },
-      ]),
-    )
+    await app.request('/addons', authed(token, [CINEMETA_URL]))
+    const res = await app.request('/addons', authed(token, [CINEMETA_URL, 'https://down.test/manifest.json']))
     expect(res.status).toBe(400)
     expect((await res.json()) as { error: string }).toMatchObject({ error: expect.stringContaining('down.test') })
     // Old single-addon list is intact.
@@ -278,13 +270,7 @@ describe('addons: server-fetched manifests', () => {
   it('rejects a duplicate transportUrl', async () => {
     const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
     const token = await adminToken()
-    const res = await app.request(
-      '/addons',
-      authed(token, [
-        { transportUrl: CINEMETA_URL, position: 0 },
-        { transportUrl: CINEMETA_URL, position: 1 },
-      ]),
-    )
+    const res = await app.request('/addons', authed(token, [CINEMETA_URL, CINEMETA_URL]))
     expect(res.status).toBe(400)
   })
 
@@ -292,10 +278,10 @@ describe('addons: server-fetched manifests', () => {
     const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
     const bobToken = await userToken('bob')
 
-    const forbidden = await app.request('/addons/global', authed(bobToken, [{ transportUrl: CINEMETA_URL, position: 0 }], 'PUT'))
+    const forbidden = await app.request('/addons/global', authed(bobToken, [CINEMETA_URL], 'PUT'))
     expect(forbidden.status).toBe(403)
 
-    const ok = await app.request('/addons/global', authed(await adminToken(), [{ transportUrl: CINEMETA_URL, position: 0 }], 'PUT'))
+    const ok = await app.request('/addons/global', authed(await adminToken(), [CINEMETA_URL], 'PUT'))
     expect(ok.status).toBe(200)
 
     const body = (await (await app.request('/addons', authed(bobToken))).json()) as { global: Array<{ manifest: { name: string } }> }
@@ -307,8 +293,8 @@ describe('addons: server-fetched manifests', () => {
     const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
     const admin = await adminToken()
     const bobToken = await userToken('bob')
-    await app.request('/addons/global', authed(admin, [{ transportUrl: CINEMETA_URL, position: 0 }], 'PUT'))
-    await app.request('/addons', authed(bobToken, [{ transportUrl: CINEMETA_URL, position: 0 }]))
+    await app.request('/addons/global', authed(admin, [CINEMETA_URL], 'PUT'))
+    await app.request('/addons', authed(bobToken, [CINEMETA_URL]))
 
     type Entry = { id?: string; transportUrl?: string }
     const bobView = (await (await app.request('/addons', authed(bobToken))).json()) as { global: Entry[]; user: Entry[] }
@@ -329,10 +315,108 @@ describe('addons: server-fetched manifests', () => {
     const withGroup = await mintToken({ sub: 'bob-sub', username: 'bob', groups: [ADMIN_GROUP] })
     const withoutGroup = await mintToken({ sub: 'bob-sub', username: 'bob', groups: [] })
 
-    const ok = await app.request('/addons/global', authed(withGroup, [{ transportUrl: CINEMETA_URL, position: 0 }], 'PUT'))
+    const ok = await app.request('/addons/global', authed(withGroup, [CINEMETA_URL], 'PUT'))
     expect(ok.status).toBe(200)
     const forbidden = await app.request('/addons/global', authed(withoutGroup, [], 'PUT'))
     expect(forbidden.status).toBe(403)
+  })
+})
+
+const OPENSUBS = {
+  id: 'org.stremio.opensubtitles',
+  version: '1.0.0',
+  name: 'OpenSubtitles',
+  resources: ['subtitles'],
+  types: ['movie', 'series'],
+  catalogs: [],
+}
+
+describe('addons: diff-applied saves keep opaque ids stable', () => {
+  const CINEMETA_URL = 'https://cinemeta.test/manifest.json'
+  const OPENSUBS_URL = 'https://opensubs.test/manifest.json'
+
+  /** mockSafeFetch wrapped with a per-URL call log, to assert what got re-fetched. */
+  function countingSafeFetch(manifests: Record<string, unknown>): { safeFetch: typeof fetch; calls: string[] } {
+    const inner = mockSafeFetch(manifests)
+    const calls: string[] = []
+    const safeFetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      calls.push(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+      return inner(input, init)
+    }) as typeof fetch
+    return { safeFetch, calls }
+  }
+
+  type Entry = { id: string; transportUrl: string; position: number }
+  const putList = async (app: App, token: string, urls: string[]): Promise<Entry[]> => {
+    const res = await app.request('/addons', authed(token, urls))
+    expect(res.status).toBe(200)
+    return (await res.json()) as Entry[]
+  }
+
+  it('keeps a kept addon id and addedAt across add, reorder and remove of siblings', async () => {
+    const { safeFetch } = countingSafeFetch({ 'https://cinemeta.test': CINEMETA, 'https://opensubs.test': OPENSUBS })
+    const { app, db } = makeApp({ safeFetch })
+    const token = await adminToken()
+
+    const first = await putList(app, token, [CINEMETA_URL])
+    const cinemetaId = first[0]!.id
+    const addedAt = db.select().from(userAddons).all()[0]!.addedAt
+
+    const afterAdd = await putList(app, token, [CINEMETA_URL, OPENSUBS_URL])
+    expect(afterAdd.find((e) => e.transportUrl === CINEMETA_URL)!.id).toBe(cinemetaId)
+
+    const afterReorder = await putList(app, token, [OPENSUBS_URL, CINEMETA_URL])
+    const cinemetaEntry = afterReorder.find((e) => e.transportUrl === CINEMETA_URL)!
+    expect(cinemetaEntry.id).toBe(cinemetaId)
+    expect(cinemetaEntry.position).toBe(1)
+    expect(afterReorder.find((e) => e.transportUrl === OPENSUBS_URL)!.position).toBe(0)
+
+    const afterRemove = await putList(app, token, [CINEMETA_URL])
+    expect(afterRemove).toHaveLength(1)
+    expect(afterRemove[0]!.id).toBe(cinemetaId)
+    expect(db.select().from(userAddons).all()[0]!.addedAt).toBe(addedAt)
+  })
+
+  it('fetches manifests for new URLs only — a reorder fetches nothing', async () => {
+    const { safeFetch, calls } = countingSafeFetch({ 'https://cinemeta.test': CINEMETA, 'https://opensubs.test': OPENSUBS })
+    const { app } = makeApp({ safeFetch })
+    const token = await adminToken()
+
+    await putList(app, token, [CINEMETA_URL])
+    expect(calls).toHaveLength(1)
+
+    await putList(app, token, [CINEMETA_URL, OPENSUBS_URL])
+    expect(calls).toHaveLength(2)
+    expect(calls[1]).toContain('opensubs.test')
+
+    await putList(app, token, [OPENSUBS_URL, CINEMETA_URL])
+    expect(calls).toHaveLength(2)
+  })
+
+  it('a removed addon re-added later gets a fresh id and manifest', async () => {
+    const { safeFetch, calls } = countingSafeFetch({ 'https://cinemeta.test': CINEMETA })
+    const { app } = makeApp({ safeFetch })
+    const token = await adminToken()
+
+    const first = await putList(app, token, [CINEMETA_URL])
+    await putList(app, token, [])
+    const readded = await putList(app, token, [CINEMETA_URL])
+    expect(readded[0]!.id).not.toBe(first[0]!.id)
+    expect(calls).toHaveLength(2)
+  })
+
+  it('applies the same diff contract to the global list', async () => {
+    const { safeFetch, calls } = countingSafeFetch({ 'https://cinemeta.test': CINEMETA, 'https://opensubs.test': OPENSUBS })
+    const { app } = makeApp({ safeFetch })
+    const admin = await adminToken()
+
+    const first = await app.request('/addons/global', authed(admin, [CINEMETA_URL], 'PUT'))
+    const firstBody = (await first.json()) as Entry[]
+
+    const second = await app.request('/addons/global', authed(admin, [OPENSUBS_URL, CINEMETA_URL], 'PUT'))
+    const secondBody = (await second.json()) as Entry[]
+    expect(secondBody.find((e) => e.transportUrl === CINEMETA_URL)!.id).toBe(firstBody[0]!.id)
+    expect(calls).toHaveLength(2)
   })
 })
 

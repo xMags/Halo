@@ -47,10 +47,9 @@ export default function SettingsScreen() {
   const preferredFor = (pick: 'audio' | 'subtitles') =>
     pick === 'audio' ? settings.preferredAudioLang : settings.preferredSubtitleLang
 
-  // Only the user's own list is sent; the server refetches every manifest, so we
-  // pass transportUrl + position and let it validate.
-  const saveUserAddons = (urls: string[]) =>
-    setAddons.mutateAsync(urls.map((transportUrl, position) => ({ transportUrl, position })))
+  // Only the user's own list is sent, as transport URLs in priority order; the
+  // server diffs against what's stored and fetches manifests for new URLs only.
+  const saveUserAddons = (urls: string[]) => setAddons.mutateAsync(urls)
 
   const add = async () => {
     const transportUrl = url.trim()
@@ -85,11 +84,10 @@ export default function SettingsScreen() {
     ])
   }
 
-  // Global addons: admin-only, replace the list every user sees. Same
-  // full-collection-replace contract as the user list, but writes via
-  // putGlobalAddons (403 for non-admins — the section is gated on isAdmin).
-  const saveGlobalAddons = (urls: string[]) =>
-    setGlobalAddons.mutateAsync(urls.map((transportUrl, position) => ({ transportUrl, position })))
+  // Global addons: admin-only, declares the list every user sees. Same diff
+  // contract as the user list, but writes via putGlobalAddons (403 for
+  // non-admins — the section is gated on isAdmin).
+  const saveGlobalAddons = (urls: string[]) => setGlobalAddons.mutateAsync(urls)
 
   const addGlobal = async () => {
     const transportUrl = globalUrl.trim()

@@ -3,7 +3,11 @@ import type { Manifest, Stream, Subtitle } from '../addon/types'
 /** DTOs shared between the Halo API and both clients. Timestamps are Unix ms. */
 
 export interface AddonEntry {
-  /** Opaque server-assigned id; resolution endpoints are addressed by it. Regenerated on every list replace. */
+  /**
+   * Opaque server-assigned id; resolution endpoints are addressed by it.
+   * Stable for as long as the addon stays installed — list saves only touch
+   * entries whose transportUrl was added or removed.
+   */
   id: string
   /**
    * Absent on global entries for non-admin callers: transport URLs can embed
@@ -12,12 +16,6 @@ export interface AddonEntry {
    */
   transportUrl?: string
   manifest: Manifest
-  position: number
-}
-
-/** What a client sends to set its addons; the server fetches the manifest. */
-export interface AddonRef {
-  transportUrl: string
   position: number
 }
 
