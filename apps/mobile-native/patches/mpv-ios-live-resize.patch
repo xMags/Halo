@@ -1,0 +1,119 @@
+diff --git a/Package.swift b/Package.swift
+index 3067caf..c161c98 100644
+--- a/Package.swift
++++ b/Package.swift
+@@ -301,8 +301,9 @@ let package = Package(
+ 
+         .binaryTarget(
+             name: "Libmpv",
+-            url: "https://github.com/mpvkit/MPVKit/releases/download/0.41.0-n8.1.2/Libmpv.xcframework.zip",
+-            checksum: "b860cd793d4471e3d30370bc36385b845419328d5b6bf9bee1d995abd0d6146d"
++            // Halo resize gate: locally built patched artifact (see halo
++            // spikes/compose-mobile/patches/mpv-ios-live-resize.patch)
++            path: "dist/release/local/Libmpv.xcframework"
+         ),
+         //AUTO_GENERATE_TARGETS_END//
+     ]
+diff --git a/Sources/BuildScripts/patch/libmpv/0001-player-add-moltenvk-context.patch b/Sources/BuildScripts/patch/libmpv/0001-player-add-moltenvk-context.patch
+index c03f82f..a7dd598 100644
+--- a/Sources/BuildScripts/patch/libmpv/0001-player-add-moltenvk-context.patch
++++ b/Sources/BuildScripts/patch/libmpv/0001-player-add-moltenvk-context.patch
+@@ -61,7 +61,7 @@ new file mode 100644
+ index 0000000000000000000000000000000000000000..445b907f795b24b8df80389394d4ae7b3f94c6e5
+ --- /dev/null
+ +++ forkDstPrefix/video/out/vulkan/context_moltenvk.m
+-@@ -0,0 +1,96 @@
++@@ -0,0 +1,150 @@
+ +/*
+ + * This file is part of mpv.
+ + *
+@@ -90,8 +90,41 @@ index 0000000000000000000000000000000000000000..445b907f795b24b8df80389394d4ae7b
+ +struct priv {
+ +    struct mpvk_ctx vk;
+ +    CAMetalLayer *layer;
+++    int last_width;
+++    int last_height;
+ +};
+ +
+++// Use CAMetalLayer.drawableSize as source of truth (not vo->dwidth/dheight)
+++// because in embedded WinID scenarios, mpv doesn't know the real window size.
+++static bool resize(struct ra_ctx *ctx)
+++{
+++    struct priv *p = ctx->priv;
+++    CGSize s = p->layer.drawableSize;
+++    int width = (int)s.width;
+++    int height = (int)s.height;
+++
+++    MP_VERBOSE(ctx, "moltenvk resize probe: drawable %dx%d last %dx%d\n",
+++               width, height, p->last_width, p->last_height);
+++
+++    if (width <= 0 || height <= 0)
+++        return false;
+++
+++    // ALWAYS set vo dimensions first, before checking if swapchain needs resize.
+++    // This is critical because mpv's vo_reconfig overwrites them with video resolution.
+++    ctx->vo->dwidth = width;
+++    ctx->vo->dheight = height;
+++
+++    if (width == p->last_width && height == p->last_height)
+++        return true;
+++
+++    p->last_width = width;
+++    p->last_height = height;
+++
+++    bool ok = ra_vk_ctx_resize(ctx, width, height);
+++    MP_VERBOSE(ctx, "moltenvk resize: %dx%d -> %d\n", width, height, ok);
+++    return ok;
+++}
+++
+ +static void moltenvk_uninit(struct ra_ctx *ctx)
+ +{
+ +    struct priv *p = ctx->priv;
+@@ -131,6 +164,11 @@ index 0000000000000000000000000000000000000000..445b907f795b24b8df80389394d4ae7b
+ +    if (!ra_vk_ctx_init(ctx, vk, params, VK_PRESENT_MODE_FIFO_KHR))
+ +        goto fail;
+ +
+++    // Force one initial resize from the layer size, if available.
+++    p->last_width = 0;
+++    p->last_height = 0;
+++    resize(ctx);
+++
+ +    return true;
+ +fail:
+ +    moltenvk_uninit(ctx);
+@@ -139,15 +177,31 @@ index 0000000000000000000000000000000000000000..445b907f795b24b8df80389394d4ae7b
+ +
+ +static bool moltenvk_reconfig(struct ra_ctx *ctx)
+ +{
+-+    struct priv *p = ctx->priv;
+-+    CGSize s = p->layer.drawableSize;
+-+    ra_vk_ctx_resize(ctx, s.width, s.height);
+++    // Best-effort, like the pre-fix context: a transiently unavailable
+++    // drawable size must not fail the whole video chain. The control path
+++    // re-syncs the swapchain on the next VOCTRL_CHECK_EVENTS poll.
+++    bool ok = resize(ctx);
+++    MP_VERBOSE(ctx, "moltenvk reconfig (best-effort) -> %d\n", ok);
+ +    return true;
+ +}
+ +
+ +static int moltenvk_control(struct ra_ctx *ctx, int *events, int request, void *arg)
+ +{
+-+    return VO_NOTIMPL;
+++    if (request != VOCTRL_CHECK_EVENTS)
+++        return VO_NOTIMPL;
+++
+++    struct priv *p = ctx->priv;
+++    CGSize s = p->layer.drawableSize;
+++    int w = (int)s.width;
+++    int h = (int)s.height;
+++
+++    if (w > 0 && h > 0 && (w != p->last_width || h != p->last_height)) {
+++        if (!resize(ctx))
+++            return VO_ERROR;
+++        *events |= VO_EVENT_RESIZE;
+++    }
+++
+++    return VO_TRUE;
+ +}
+ +
+ +const struct ra_ctx_fns ra_ctx_vulkan_moltenvk = {

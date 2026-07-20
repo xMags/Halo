@@ -1,0 +1,62 @@
+name: Halo
+options:
+  bundleIdPrefix: moe.ditto.halo
+  deploymentTarget:
+    iOS: "15.1"
+# Standard product — never MPVKit-GPL (the GPL variant only adds Samba
+# support this app does not use, at the cost of the LGPL licensing posture).
+#
+# Active reference: local MPVKit checkout at main 5e94d4a with
+# patches/mpv-ios-live-resize.patch applied and Libmpv built locally
+# (resize gate). The prior remote pin — url: https://github.com/mpvkit/MPVKit.git,
+# exactVersion: 0.41.0 — is the fallback if the local checkout is absent.
+# The path is relative: a `mpvkit-resize-build` checkout kept as a sibling
+# of this repo's own parent directory, so the same spec works on any Mac
+# using that layout.
+packages:
+  MPVKit:
+    path: ../../../../mpvkit-resize-build
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: moe.ditto.halo
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    # No team is configured here on purpose: simulator builds need no signing
+    # identity, and device builds are signed manually after building (supply
+    # your team via a local edit or at sign time).
+    CODE_SIGN_STYLE: Automatic
+targets:
+  Halo:
+    type: application
+    platform: iOS
+    sources:
+      - path: Halo
+    dependencies:
+      - package: MPVKit
+        product: MPVKit
+    preBuildScripts:
+      - name: Build ComposeApp framework
+        basedOnDependencyAnalysis: false
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
+    settings:
+      base:
+        INFOPLIST_FILE: Halo/Info.plist
+        PRODUCT_NAME: Halo
+    scheme:
+      gatherCoverageData: false
+      testTargets:
+        - HaloUITests
+  HaloUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: HaloUITests
+    dependencies:
+      - target: Halo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: moe.ditto.halo.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Halo

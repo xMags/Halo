@@ -1,0 +1,9 @@
+.gradle/
+build/
+**/build/
+.kotlin/
+local.properties
+.DS_Store
+iosApp/*.xcodeproj/
+iosApp/*.xcworkspace/
+iosApp/DerivedData/
