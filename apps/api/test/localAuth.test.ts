@@ -242,7 +242,7 @@ describe('user management + cascade', () => {
 describe('admin bootstrap', () => {
   it('seeds the admin even when OIDC-provisioned rows exist (mode switch)', () => {
     const db = createDb(':memory:')
-    db.insert(users).values({ id: 'idp-sub-1', username: 'olduser', createdAt: Date.now() }).run()
+    db.insert(users).values({ id: 'idp-sub-1', username: 'idp-user', createdAt: Date.now() }).run()
     ensureAdminUser(db, 'first-admin-password')
     const admin = db.select().from(users).where(eq(users.username, 'admin')).get()
     expect(admin?.passwordHash).toBeTruthy()
