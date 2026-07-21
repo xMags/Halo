@@ -32,7 +32,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             playerHost: playerHost,
             initialServerUrl: initialServerUrl,
             mediaHttpBase: mediaHttpBase,
-            mediaLocalBase: mediaLocalBase
+            mediaLocalBase: mediaLocalBase,
+            // UI-test escape hatch: a Keychain session survives reinstall and
+            // would strand suites that expect the login form.
+            resetPersistedSession: env["HALO_RESET_SESSION"] == "1"
         )
         window.makeKeyAndVisible()
         self.window = window

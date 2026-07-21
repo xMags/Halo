@@ -23,6 +23,11 @@ top of this boundary; the gate shell is debug/test scaffolding, not product UI.
   (`MPVCore` + `MPVPlayerHost`, MoltenVK `wid` embed with the live-resize
   patch), and OIDC auth (`ASWebAuthenticationSession` + PKCE + hand-built
   `/token/` POST that preserves the trailing slash)
+- Local-mode auth in common code (`auth/`): Ktor login/refresh against the
+  Halo API, persisted sessions behind an owned `SecureStorage` (Keychain on
+  iOS; Android is plaintext prefs until a Keystore pass), expiry-band
+  single-flight refresh, offline session restore, and the sign-out rule —
+  only a definitive 401 from refresh ends a session, never a network failure
 - Android mirror hosts over a thin owned `MpvCore` JNI adapter
   (`dev.jdtech.mpv` prebuilt is emulator-only; the shipping build will be an
   owned reproducible libmpv build like iOS's)

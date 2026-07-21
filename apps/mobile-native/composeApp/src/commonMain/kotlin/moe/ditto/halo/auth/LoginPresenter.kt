@@ -7,6 +7,10 @@ sealed interface LoginPhase {
     data object Discovering : LoginPhase
     data class LocalCredentials(val serverUrl: String) : LoginPhase
 
+    /** Local credentials handed to the session controller; awaiting the login response. */
+    data class LocalSubmitting(val serverUrl: String) : LoginPhase
+    data class LocalSignedIn(val serverUrl: String) : LoginPhase
+
     /** Browser + token exchange handed to the native host; awaiting an [AuthEvent]. */
     data class OidcRequested(val request: OidcHostRequest) : LoginPhase
     data class OidcSucceeded(val request: OidcHostRequest, val tokenProof: String) : LoginPhase
@@ -20,14 +24,17 @@ data class LoginState(
     val phase: LoginPhase = LoginPhase.Server,
     val error: String? = null,
 ) {
-    val isBusy: Boolean = phase == LoginPhase.Discovering
-    val showsCredentials: Boolean = phase is LoginPhase.LocalCredentials
+    val isBusy: Boolean = phase == LoginPhase.Discovering || phase is LoginPhase.LocalSubmitting
+    val showsCredentials: Boolean = phase is LoginPhase.LocalCredentials || phase is LoginPhase.LocalSubmitting
     val canContinue: Boolean = serverUrl.isNotBlank() && !isBusy
+    val canSubmitCredentials: Boolean =
+        phase is LoginPhase.LocalCredentials && username.isNotBlank() && password.isNotBlank()
 }
 
 class LoginPresenter(
     private val authConfigSource: AuthConfigSource,
     private val nativeHostRequests: NativeHostRequests,
+    private val localAuthenticator: LocalAuthenticator,
 ) {
     var state: LoginState = LoginState()
         private set
@@ -76,6 +83,37 @@ class LoginPresenter(
                 )
                 startOidc(request)
             }
+        }
+    }
+
+    /**
+     * Exchanges the entered credentials for a persisted session. Failure keeps
+     * the form intact so the user can correct and resubmit: a server rejection
+     * surfaces the server's own message ("invalid credentials", the rate-limit
+     * notice), while a transport failure reads as a connection problem.
+     */
+    suspend fun submitLocalCredentials() {
+        val phase = state.phase as? LoginPhase.LocalCredentials ?: return
+        if (!state.canSubmitCredentials) return
+
+        // Identity (not equality) so a late outcome is dropped if the user
+        // edited the server URL mid-flight and reset the form — the same rule
+        // onAuthEvent applies to late OIDC events.
+        val submitting = LoginPhase.LocalSubmitting(phase.serverUrl)
+        state = state.copy(phase = submitting, error = null)
+        val failure = try {
+            localAuthenticator.signIn(phase.serverUrl, state.username.trim(), state.password)
+            null
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            error
+        }
+        if (state.phase !== submitting) return
+        state = when {
+            failure == null -> state.copy(phase = LoginPhase.LocalSignedIn(phase.serverUrl), password = "")
+            failure is LocalAuthException -> state.copy(phase = phase, error = failure.message)
+            else -> state.copy(phase = phase, error = failure.message ?: "Could not connect")
         }
     }
 

@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import kotlinx.coroutines.flow.emptyFlow
+import moe.ditto.halo.auth.AndroidSecureStorage
 
 /**
  * Android entry point. Assembles the exact same [PlatformDependencies] the iOS
@@ -34,12 +35,14 @@ class MainActivity : ComponentActivity() {
         val dependencies = PlatformDependencies(
             authConfigSource = authHost,
             nativeHostRequests = authHost,
+            secureStorage = AndroidSecureStorage(applicationContext),
             playerPort = AndroidPlayerPort(playerHost),
             playerEvents = playerHost.playerEvents,
             authEvents = emptyFlow(),
             nativePlayerSurface = AndroidNativePlayerSurface(playerHost),
             nativeHostDiagnostics = AndroidNativeHostDiagnostics(authHost, playerHost),
             initialServerUrl = serverUrl,
+            resetPersistedSession = intent?.getBooleanExtra("resetSession", false) ?: false,
         )
 
         setContent {

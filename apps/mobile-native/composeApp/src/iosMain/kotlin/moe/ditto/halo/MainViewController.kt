@@ -1,6 +1,7 @@
 package moe.ditto.halo
 
 import androidx.compose.ui.window.ComposeUIViewController
+import moe.ditto.halo.auth.IosKeychainStorage
 import platform.UIKit.UIViewController
 
 fun MainViewController(
@@ -9,6 +10,7 @@ fun MainViewController(
     initialServerUrl: String,
     mediaHttpBase: String,
     mediaLocalBase: String,
+    resetPersistedSession: Boolean,
 ): UIViewController {
     val authAdapter = IosAuthHostAdapter(authHost)
     val playerEventBridge = IosPlayerEventBridge()
@@ -18,6 +20,7 @@ fun MainViewController(
     val dependencies = PlatformDependencies(
         authConfigSource = authAdapter,
         nativeHostRequests = authAdapter,
+        secureStorage = IosKeychainStorage(),
         playerPort = IosPlayerHostAdapter(playerHost),
         playerEvents = playerEventBridge.events,
         authEvents = authEventBridge.events,
@@ -26,6 +29,7 @@ fun MainViewController(
         initialServerUrl = initialServerUrl,
         mediaHttpBase = mediaHttpBase,
         mediaLocalBase = mediaLocalBase,
+        resetPersistedSession = resetPersistedSession,
     )
     return ComposeUIViewController {
         HaloGateApp(dependencies = dependencies)

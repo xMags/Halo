@@ -43,9 +43,18 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.ktor.client.HttpClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import moe.ditto.halo.auth.KtorLocalAuthGateway
+import moe.ditto.halo.auth.LocalAuthenticator
 import moe.ditto.halo.auth.LoginPhase
 import moe.ditto.halo.auth.LoginPresenter
+import moe.ditto.halo.auth.SessionController
+import moe.ditto.halo.auth.SessionState
+import moe.ditto.halo.auth.SystemEpochClock
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlaybackStatus
 import moe.ditto.halo.player.PlayerState
@@ -68,12 +77,38 @@ private enum class ShellScreen {
 internal fun HaloGateApp(dependencies: PlatformDependencies) {
     HaloTheme {
         val session = remember(dependencies) { GateSession(dependencies.playerPort) }
+        val sessionController = remember(dependencies) {
+            SessionController(
+                storage = dependencies.secureStorage,
+                gateway = KtorLocalAuthGateway(HttpClient()),
+                clock = SystemEpochClock,
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            )
+        }
         var screen by remember { mutableStateOf(ShellScreen.Login) }
+        var sessionRestored by remember { mutableStateOf(false) }
         var hostSnapshot by remember { mutableStateOf(dependencies.nativeHostDiagnostics.snapshot()) }
         val refreshHostSnapshot = { hostSnapshot = dependencies.nativeHostDiagnostics.snapshot() }
         val recreatePlayerCore = {
             dependencies.nativeHostDiagnostics.destroyAndRecreatePlayerCore()
             refreshHostSnapshot()
+        }
+
+        // Session restore gates the first render (a persisted session must boot
+        // to the app, not flash the login form), then the state collector owns
+        // Login → Gate navigation for both restore and fresh sign-in. Restore
+        // stays on the composition dispatcher: it reads one small storage blob,
+        // and staying inside the frame keeps UI-test idle-tracking honest.
+        LaunchedEffect(sessionController) {
+            if (dependencies.resetPersistedSession) sessionController.signOut()
+            sessionController.restore()
+            sessionRestored = true
+            sessionController.state.collect { state ->
+                if (state is SessionState.SignedIn && screen == ShellScreen.Login) {
+                    refreshHostSnapshot()
+                    screen = ShellScreen.Gate
+                }
+            }
         }
 
         // Native playback events feed the presenter for the whole app lifetime,
@@ -88,9 +123,16 @@ internal fun HaloGateApp(dependencies: PlatformDependencies) {
         }
 
         Box(Modifier.fillMaxSize().background(HaloColors.Background)) {
+            if (!sessionRestored) return@Box
             when (screen) {
                 ShellScreen.Login -> LoginScreen(
                     dependencies = dependencies,
+                    localAuthenticator = sessionController,
+                    initialServerUrl = remember(sessionController) {
+                        dependencies.initialServerUrl.takeIf { it != PlatformDependencies.DefaultServerUrl }
+                            ?: sessionController.storedServerUrl()
+                            ?: PlatformDependencies.DefaultServerUrl
+                    },
                     onOpenGate = {
                         refreshHostSnapshot()
                         screen = ShellScreen.Gate
@@ -128,11 +170,13 @@ internal fun HaloGateApp(dependencies: PlatformDependencies) {
 @Composable
 private fun LoginScreen(
     dependencies: PlatformDependencies,
+    localAuthenticator: LocalAuthenticator,
+    initialServerUrl: String,
     onOpenGate: () -> Unit,
 ) {
     val presenter = remember {
-        LoginPresenter(dependencies.authConfigSource, dependencies.nativeHostRequests).also {
-            it.editServerUrl(dependencies.initialServerUrl)
+        LoginPresenter(dependencies.authConfigSource, dependencies.nativeHostRequests, localAuthenticator).also {
+            it.editServerUrl(initialServerUrl)
         }
     }
     var state by remember { mutableStateOf(presenter.state) }
@@ -168,7 +212,7 @@ private fun LoginScreen(
             )
             Text(
                 text = if (state.showsCredentials) {
-                    "This server uses local accounts. Enter credentials to validate the native form; session exchange is intentionally not part of this gate."
+                    "This server uses local accounts. Sign in with your Halo username and password."
                 } else {
                     "Your Halo server decides whether the native host starts OIDC or reveals local credentials."
                 },
@@ -263,10 +307,29 @@ private fun LoginScreen(
                             },
                         )
                     }
-                    else -> {
+                    is LoginPhase.LocalCredentials, is LoginPhase.LocalSubmitting -> {
                         Text(text = "Local mode discovered", color = HaloColors.Success, style = HaloType.Callout)
+                        HaloButton(
+                            label = "Sign In",
+                            enabled = state.canSubmitCredentials,
+                            busy = phase is LoginPhase.LocalSubmitting,
+                            onClick = {
+                                scope.launch {
+                                    presenter.submitLocalCredentials()
+                                    state = presenter.state
+                                }
+                            },
+                        )
+                        // The diagnostics suites navigate through here without a
+                        // session; the button must survive until the product
+                        // shell replaces the gate menu.
                         HaloButton(label = "Open gate menu", onClick = onOpenGate)
                     }
+                    is LoginPhase.LocalSignedIn -> {
+                        Text(text = "Signed in", color = HaloColors.Success, style = HaloType.Callout)
+                        HaloButton(label = "Open gate menu", onClick = onOpenGate)
+                    }
+                    else -> Unit
                 }
             }
         }
