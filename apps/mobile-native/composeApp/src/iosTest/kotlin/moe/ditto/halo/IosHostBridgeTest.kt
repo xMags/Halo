@@ -50,7 +50,7 @@ class IosHostBridgeTest {
             override fun fetchOidcAccessToken(forceRefresh: Boolean, completion: (String?, String?) -> Unit) =
                 completion(null, null)
 
-            override fun signOutOidc(completion: () -> Unit) = completion()
+            override fun signOutOidc(endIdpSession: Boolean, completion: () -> Unit) = completion()
             override fun setAuthEventSink(sink: HaloIosAuthEventSink?) = Unit
         }
         val adapter = IosAuthHostAdapter(host)
@@ -100,8 +100,11 @@ class IosHostBridgeTest {
         val error = assertFailsWith<IllegalStateException> { port.accessToken(forceRefresh = false) }
         assertEquals("refresh request failed", error.message)
 
-        port.signOut()
+        port.signOut(endIdpSession = true)
         assertEquals(1, host.signOutCount)
+        assertEquals(true, host.lastEndIdpSession)
+        port.signOut(endIdpSession = false)
+        assertEquals(false, host.lastEndIdpSession)
     }
 
     @Test
@@ -202,6 +205,8 @@ class IosHostBridgeTest {
             private set
         var signOutCount = 0
             private set
+        var lastEndIdpSession: Boolean? = null
+            private set
 
         override fun fetchAuthConfig(serverUrl: String, completion: (String?, String?) -> Unit) =
             completion("""{"mode":"local"}""", null)
@@ -226,8 +231,9 @@ class IosHostBridgeTest {
             }
         }
 
-        override fun signOutOidc(completion: () -> Unit) {
+        override fun signOutOidc(endIdpSession: Boolean, completion: () -> Unit) {
             signOutCount += 1
+            lastEndIdpSession = endIdpSession
             persistedServerUrl = null
             completion()
         }

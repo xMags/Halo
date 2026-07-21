@@ -30,8 +30,14 @@ interface OidcSessionPort {
      */
     suspend fun accessToken(forceRefresh: Boolean): String?
 
-    /** Clears the persisted session; token revocation is best-effort. */
-    suspend fun signOut()
+    /**
+     * Clears the persisted session; token revocation is best-effort.
+     * [endIdpSession] additionally runs the RP-initiated browser logout that
+     * ends the IdP's SSO cookie session (revocation alone leaves it alive,
+     * and the next sign-in would silently re-login) — true only for the
+     * user-facing sign-out, never for the automation reset hatch.
+     */
+    suspend fun signOut(endIdpSession: Boolean)
 }
 
 /** Platforms without a native OIDC host (Android until its M7 pass; tests). */
@@ -40,5 +46,5 @@ object NoOidcSessionPort : OidcSessionPort {
 
     override suspend fun accessToken(forceRefresh: Boolean): String? = null
 
-    override suspend fun signOut() = Unit
+    override suspend fun signOut(endIdpSession: Boolean) = Unit
 }

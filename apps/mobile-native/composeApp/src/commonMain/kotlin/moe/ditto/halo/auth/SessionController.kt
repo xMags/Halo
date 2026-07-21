@@ -124,7 +124,7 @@ class SessionController(
      */
     fun signOut() {
         localSessions.clear()
-        scope.launch { runCatching { oidcPort.signOut() } }
+        scope.launch { runCatching { oidcPort.signOut(endIdpSession = true) } }
         _state.value = SessionState.SignedOut
     }
 
@@ -137,7 +137,7 @@ class SessionController(
      */
     suspend fun resetPersistedSessions() {
         localSessions.clear()
-        runCatching { oidcPort.signOut() }
+        runCatching { oidcPort.signOut(endIdpSession = false) }
         _state.value = SessionState.SignedOut
     }
 

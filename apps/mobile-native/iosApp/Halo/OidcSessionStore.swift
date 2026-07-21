@@ -12,10 +12,16 @@ struct OidcSession: Codable {
     /// motivated the hand-built token POST applies to the refresh grant too.
     var tokenEndpoint: String
     var revocationEndpoint: String?
+    var endSessionEndpoint: String?
     var accessToken: String
     /// Epoch seconds.
     var accessTokenExpiresAt: Double
     var refreshToken: String
+    /// Kept solely as the end-session `id_token_hint` — Authentik refuses
+    /// `post_logout_redirect_uri` without it (and verifies it ignoring
+    /// expiry, so a stale one is fine). Absent when the IdP omits it; logout
+    /// then falls back to the redirect-less flow.
+    var idToken: String?
 }
 
 /// One Keychain generic-password item for the whole session blob. Same service

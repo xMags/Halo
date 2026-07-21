@@ -545,6 +545,54 @@ class FixtureServerTest(unittest.TestCase):
             self.assertEqual("fixture_http_error", json.loads(body)["error"])
             self.assertEqual(200, self.refresh(server, token)[0])
 
+    def test_both_grants_issue_id_tokens_and_end_session_redirects_on_a_valid_hint(self) -> None:
+        with running_server(self.media_dir) as server:
+            _, _, discovery = self.request(server, "GET", "/.well-known/openid-configuration")
+            self.assertEqual(
+                f"{server.base_url}/end-session/",
+                json.loads(discovery)["end_session_endpoint"],
+            )
+
+            code = self.valid_code(server)
+            status, _, body = self.token(server, code)
+            self.assertEqual(200, status)
+            exchange = json.loads(body)
+            self.assertTrue(exchange["id_token"].startswith("fixture-id-token-"))
+            status, _, body = self.refresh(server, exchange["refresh_token"])
+            self.assertEqual(200, status)
+            refreshed = json.loads(body)
+            self.assertTrue(refreshed["id_token"].startswith("fixture-id-token-"))
+
+            # A known hint (even a superseded one - the IdP verifies ignoring
+            # expiry) plus the registered logout redirect bounces the browser
+            # back to the app scheme.
+            for hint in (exchange["id_token"], refreshed["id_token"]):
+                query = urlencode({"post_logout_redirect_uri": "halo://oauth/logout", "id_token_hint": hint})
+                status, headers, _ = self.request(server, "GET", f"/end-session/?{query}")
+                self.assertEqual(302, status)
+                self.assertEqual("halo://oauth/logout", headers["Location"])
+
+    def test_end_session_refuses_unknown_hints_and_skips_the_redirect_without_one(self) -> None:
+        with running_server(self.media_dir) as server:
+            query = urlencode({"post_logout_redirect_uri": "halo://oauth/logout", "id_token_hint": "forged"})
+            status, _, body = self.request(server, "GET", f"/end-session/?{query}")
+            self.assertEqual(400, status)
+            self.assertEqual("invalid_request", json.loads(body)["error"])
+
+            # No hint: the session page renders but nothing may redirect.
+            status, headers, body = self.request(server, "GET", "/end-session/")
+            self.assertEqual(200, status)
+            self.assertNotIn("Location", headers)
+            self.assertEqual(False, json.loads(body)["redirected"])
+
+            # A valid hint with an unregistered redirect target is rejected.
+            token = self.signed_in_refresh_token(server)
+            _, _, refreshed = self.refresh(server, token)
+            hint = json.loads(refreshed)["id_token"]
+            query = urlencode({"post_logout_redirect_uri": "evil://phish", "id_token_hint": hint})
+            status, _, _ = self.request(server, "GET", f"/end-session/?{query}")
+            self.assertEqual(400, status)
+
     def test_revocation_kills_the_refresh_token_and_answers_200_for_unknown_tokens(self) -> None:
         with running_server(self.media_dir) as server:
             token = self.signed_in_refresh_token(server)

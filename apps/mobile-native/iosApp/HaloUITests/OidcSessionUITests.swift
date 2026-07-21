@@ -78,12 +78,20 @@ final class OidcSessionUITests: XCTestCase {
         assertText(beginningWith: "Session: oidc", timeout: 20)
     }
 
-    func testSignOutClearsThePersistedSession() {
+    func testSignOutClearsThePersistedSessionAndEndsTheIdpSession() {
         launch(resetSession: true)
         signInToGate()
 
         tapButton("Sign out")
         XCTAssertTrue(element(labeled: "Continue").waitForExistence(timeout: 15), "Sign out did not return to the login form")
+
+        // The user-facing sign-out must also run RP-initiated logout — the
+        // fixture's request log is the evidence the browser actually hit
+        // end-session with a valid hint (302 = hint accepted + redirect back).
+        XCTAssertTrue(
+            fixtureSawEndSessionRedirect(timeout: 15),
+            "No accepted /end-session/ request reached the fixture"
+        )
 
         app.terminate()
         launch(resetSession: false)
@@ -128,6 +136,32 @@ final class OidcSessionUITests: XCTestCase {
     }
 
     // MARK: - Assertions
+
+    /// Polls the fixture's `/status` request log for a 302-answered
+    /// `/end-session/` entry — the sheet itself dismisses too fast to assert on.
+    private func fixtureSawEndSessionRedirect(timeout: TimeInterval) -> Bool {
+        let statusURL = URL(string: "http://127.0.0.1:18787/status")!
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let expectation = XCTestExpectation(description: "fixture status")
+            var matched = false
+            URLSession.shared.dataTask(with: statusURL) { data, _, _ in
+                defer { expectation.fulfill() }
+                guard
+                    let data = data,
+                    let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                    let requests = json["requests"] as? [[String: Any]]
+                else { return }
+                matched = requests.contains { entry in
+                    entry["path"] as? String == "/end-session/" && entry["status"] as? Int == 302
+                }
+            }.resume()
+            _ = XCTWaiter.wait(for: [expectation], timeout: 5)
+            if matched { return true }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return false
+    }
 
     private func assertText(beginningWith prefix: String, timeout: TimeInterval = 20) {
         let predicate = NSPredicate(format: "label BEGINSWITH %@", prefix)

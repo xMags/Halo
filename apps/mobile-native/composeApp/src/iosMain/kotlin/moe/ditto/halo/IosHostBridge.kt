@@ -69,10 +69,13 @@ interface HaloIosAuthHost {
 
     /**
      * Clears the persisted OIDC session synchronously, then calls
-     * [completion]; token revocation is fired best-effort and never awaited —
-     * the automation reset hatch runs this with no server up at all.
+     * [completion]; token revocation — and, when [endIdpSession] is set, the
+     * RP-initiated browser logout that clears the IdP's SSO cookie — is fired
+     * best-effort and never awaited. Only the user-facing sign-out passes
+     * [endIdpSession] = true: the automation reset hatch must stay silent (a
+     * sheet at launch would wedge every suite).
      */
-    fun signOutOidc(completion: () -> Unit)
+    fun signOutOidc(endIdpSession: Boolean, completion: () -> Unit)
 
     /** Registers the sink the host pushes OIDC outcomes into. */
     fun setAuthEventSink(sink: HaloIosAuthEventSink?)
@@ -250,9 +253,9 @@ internal class IosOidcSessionPort(
             }
         }
 
-    override suspend fun signOut() {
+    override suspend fun signOut(endIdpSession: Boolean) {
         suspendCancellableCoroutine { continuation ->
-            host.signOutOidc {
+            host.signOutOidc(endIdpSession) {
                 if (continuation.isActive) continuation.resume(Unit)
             }
         }

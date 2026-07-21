@@ -194,6 +194,22 @@ class SessionControllerTest {
         assertEquals(SessionState.SignedOut, controller.state.value)
         assertNull(storage.read(AuthStorageKeys.LocalSession))
         assertEquals(1, port.signOutCount)
+        // The hatch is automation plumbing: it must never pop the IdP's
+        // browser logout, which only the user-facing sign-out runs.
+        assertEquals(false, port.lastEndIdpSession)
+    }
+
+    @Test
+    fun userSignOutEndsTheIdpBrowserSession() = runTest {
+        val port = FakeOidcPort(persistedServerUrl = "https://halo.ditto.moe")
+        val controller = SessionController(InMemorySecureStorage(), NoNetworkGateway(), clock, backgroundScope, port)
+        controller.restore()
+
+        controller.signOut()
+        while (port.signOutCount == 0) kotlinx.coroutines.yield()
+
+        assertEquals(SessionState.SignedOut, controller.state.value)
+        assertEquals(true, port.lastEndIdpSession)
     }
 
     private class FakeOidcPort(
@@ -205,6 +221,8 @@ class SessionControllerTest {
             private set
         var signOutCount = 0
             private set
+        var lastEndIdpSession: Boolean? = null
+            private set
 
         override fun restoreSession(): String? = persistedServerUrl
 
@@ -214,8 +232,9 @@ class SessionControllerTest {
             return if (persistedServerUrl != null) token else null
         }
 
-        override suspend fun signOut() {
+        override suspend fun signOut(endIdpSession: Boolean) {
             signOutCount += 1
+            lastEndIdpSession = endIdpSession
             persistedServerUrl = null
         }
     }

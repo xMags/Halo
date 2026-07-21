@@ -42,7 +42,7 @@ final class FakeAuthHost: NSObject, HaloIosAuthHost {
         completion(nil, nil)
     }
 
-    func signOutOidc(completion: @escaping () -> Void) {
+    func signOutOidc(endIdpSession _: Bool, completion: @escaping () -> Void) {
         completion()
     }
 }

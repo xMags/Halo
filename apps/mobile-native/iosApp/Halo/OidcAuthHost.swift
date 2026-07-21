@@ -68,6 +68,7 @@ final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresenta
         let authorization: String
         let token: String
         let revocation: String?
+        let endSession: String?
     }
 
     // MARK: - HaloIosAuthHost
@@ -183,7 +184,8 @@ final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresenta
                 OidcEndpoints(
                     authorization: authorization,
                     token: token,
-                    revocation: json["revocation_endpoint"] as? String
+                    revocation: json["revocation_endpoint"] as? String,
+                    endSession: json["end_session_endpoint"] as? String
                 ),
                 nil
             )
@@ -315,9 +317,11 @@ final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresenta
                         clientId: signIn.clientId,
                         tokenEndpoint: endpoints.token,
                         revocationEndpoint: endpoints.revocation,
+                        endSessionEndpoint: endpoints.endSession,
                         accessToken: issued.accessToken,
                         accessTokenExpiresAt: Date().timeIntervalSince1970 + issued.expiresIn,
-                        refreshToken: issued.refreshToken
+                        refreshToken: issued.refreshToken,
+                        idToken: issued.idToken
                     )
                     // Persisting must be loud: a silent failure would look like
                     // a successful sign-in that vanishes on the next launch.
@@ -339,6 +343,7 @@ final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresenta
         let accessToken: String
         let expiresIn: Double
         let refreshToken: String
+        let idToken: String?
     }
 
     private enum TokenOutcome {
@@ -421,7 +426,8 @@ final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresenta
             completion(.success(IssuedTokens(
                 accessToken: accessToken,
                 expiresIn: expiresIn,
-                refreshToken: refreshToken
+                refreshToken: refreshToken,
+                idToken: json["id_token"] as? String
             )))
         }.resume()
     }
@@ -473,7 +479,7 @@ final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresenta
         }
     }
 
-    func signOutOidc(completion: @escaping () -> Void) {
+    func signOutOidc(endIdpSession: Bool, completion: @escaping () -> Void) {
         sessionQueue.async {
             self.loadSessionIfNeeded()
             let signedOut = self.session
@@ -481,14 +487,20 @@ final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresenta
             self.session = nil
             self.sessionGeneration += 1
             // Completion fires as soon as storage is clear — the automation
-            // reset hatch runs this with no server up, so the revoke below is
+            // reset hatch runs this with no server up, so everything below is
             // fire-and-forget by design.
             completion()
-            guard
-                let session = signedOut,
-                let revocationEndpoint = session.revocationEndpoint
-            else { return }
-            self.revoke(refreshToken: session.refreshToken, clientId: session.clientId, endpoint: revocationEndpoint)
+            guard let session = signedOut else { return }
+            if let revocationEndpoint = session.revocationEndpoint {
+                self.revoke(refreshToken: session.refreshToken, clientId: session.clientId, endpoint: revocationEndpoint)
+            }
+            // Only the user-facing sign-out ends the IdP browser session; the
+            // reset hatch must stay silent (a sheet at launch would wedge
+            // automation), and the invalid_grant path never gets here at all —
+            // that session is already dead at the IdP.
+            if endIdpSession {
+                self.endIdpSession(session)
+            }
         }
     }
 
@@ -525,6 +537,10 @@ final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresenta
                     // issues the successor; persisting it is what keeps the
                     // session alive across launches.
                     updated.refreshToken = issued.refreshToken
+                    // A refresh may mint a fresh id_token; keep the old one
+                    // otherwise — the end-session hint is verified ignoring
+                    // expiry, so stale beats absent.
+                    if let idToken = issued.idToken { updated.idToken = idToken }
                     guard self.sessionStore.save(updated) else {
                         self.flushTokenCompletions(token: nil, error: "Could not persist the refreshed session")
                         return
@@ -564,14 +580,61 @@ final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresenta
     /// reachable, so the result is only logged by the server, never awaited.
     private func revoke(refreshToken: String, clientId: String, endpoint: String) {
         guard let url = URL(string: endpoint) else { return }
-        let body = [("token", refreshToken), ("client_id", clientId)]
-            .map { "\(Self.formEncode($0.0))=\(Self.formEncode($0.1))" }
-            .joined(separator: "&")
+        let body = [
+            ("token", refreshToken),
+            ("client_id", clientId),
+            ("token_type_hint", "refresh_token"),
+        ]
+        .map { "\(Self.formEncode($0.0))=\(Self.formEncode($0.1))" }
+        .joined(separator: "&")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = body.data(using: .utf8)
         URLSession.shared.dataTask(with: request).resume()
+    }
+
+    /// RP-initiated logout, ported from the Expo client's `signOutOidc`:
+    /// revocation only kills the refresh token — the browser still holds the
+    /// SSO cookie, which would silently re-login the same account on the next
+    /// sign-in. `post_logout_redirect_uri` makes the IdP bounce back to our
+    /// scheme so the sheet dismisses itself (the URI must be registered on the
+    /// provider as a logout-type redirect, and Authentik rejects the redirect
+    /// unless `id_token_hint` proves the request comes from the minting
+    /// client). Fire-and-forget: the device is already signed out either way.
+    private func endIdpSession(_ session: OidcSession) {
+        guard let endpoint = session.endSessionEndpoint else { return }
+        DispatchQueue.main.async {
+            guard let idToken = session.idToken else {
+                // No hint means the IdP refuses the redirect, so an auth
+                // session would wait forever; a plain browser hop (user
+                // returns manually) is the only honest fallback.
+                if let url = URL(string: endpoint) {
+                    UIApplication.shared.open(url)
+                }
+                return
+            }
+            guard var comps = URLComponents(string: endpoint) else { return }
+            comps.queryItems = (comps.queryItems ?? []) + [
+                URLQueryItem(name: "post_logout_redirect_uri", value: "halo://oauth/logout"),
+                URLQueryItem(name: "id_token_hint", value: idToken),
+            ]
+            guard let url = comps.url else { return }
+            let logoutSession = ASWebAuthenticationSession(
+                url: url,
+                callbackURLScheme: Self.callbackScheme
+            ) { [weak self] _, _ in
+                // Redirect or cancel both mean the sheet is gone; nothing to do.
+                DispatchQueue.main.async { self?.authSession = nil }
+            }
+            logoutSession.presentationContextProvider = self
+            // Match the sign-in cookie jar: the logout must run where the SSO
+            // cookie lives, or it clears nothing.
+            logoutSession.prefersEphemeralWebBrowserSession =
+                ProcessInfo.processInfo.environment["HALO_OIDC_EPHEMERAL"] != "0"
+            self.authSession = logoutSession
+            logoutSession.start()
+        }
     }
 
     // MARK: - ASWebAuthenticationPresentationContextProviding

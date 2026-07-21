@@ -143,6 +143,22 @@ class FixtureHTTPServer(ThreadingHTTPServer):
         self.oidc_refresh_lock = threading.Lock()
         self._oidc_refresh_counter = 0
         self._oidc_rotated_access_counter = 0
+        # id_tokens issued by either grant; the end-session route only honours
+        # a redirect when the id_token_hint is one of these, mirroring
+        # Authentik's rule that the hint proves the minting client.
+        self.oidc_id_tokens: set[str] = set()
+        self._oidc_id_token_counter = 0
+
+    def issue_oidc_id_token(self) -> str:
+        with self.oidc_refresh_lock:
+            self._oidc_id_token_counter += 1
+            token = f"fixture-id-token-{self._oidc_id_token_counter}-{secrets.token_urlsafe(8)}"
+            self.oidc_id_tokens.add(token)
+            return token
+
+    def oidc_id_token_is_known(self, token: str) -> bool:
+        with self.oidc_refresh_lock:
+            return token in self.oidc_id_tokens
 
     def issue_oidc_refresh_token(self, client_id: str) -> str:
         with self.oidc_refresh_lock:
@@ -311,6 +327,9 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
             if self.command == "GET" and parsed.path == "/authorize/":
                 self._handle_authorize(query, mode)
                 return
+            if self.command == "GET" and parsed.path == "/end-session/":
+                self._handle_end_session(query, send_body)
+                return
             if self.command == "POST" and parsed.path == "/token/":
                 self._handle_token(mode, send_body)
                 return
@@ -404,6 +423,7 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
                 "authorization_endpoint": f"{self.server.base_url}/authorize/",
                 "token_endpoint": f"{self.server.base_url}/token/",
                 "revocation_endpoint": f"{self.server.base_url}/revoke/",
+                "end_session_endpoint": f"{self.server.base_url}/end-session/",
                 "response_types_supported": ["code"],
                 "grant_types_supported": ["authorization_code", "refresh_token"],
                 "token_endpoint_auth_methods_supported": ["none"],
@@ -528,6 +548,7 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
                 "token_type": "Bearer",
                 "expires_in": self._token_expires_in(mode),
                 "refresh_token": self.server.issue_oidc_refresh_token(client_id),
+                "id_token": self.server.issue_oidc_id_token(),
             },
             send_body,
         )
@@ -572,9 +593,36 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
                 "token_type": "Bearer",
                 "expires_in": self._token_expires_in(mode),
                 "refresh_token": successor,
+                "id_token": self.server.issue_oidc_id_token(),
             },
             send_body,
         )
+
+    def _handle_end_session(self, query: Mapping[str, list[str]], send_body: bool) -> None:
+        """RP-initiated logout, with Authentik's redirect rule: the redirect
+        only happens when id_token_hint proves the request comes from the
+        client the token was minted for; no hint means no redirect (a plain
+        page); a bogus hint is rejected outright."""
+        hints = query.get("id_token_hint", [])
+        redirects = query.get("post_logout_redirect_uri", [])
+        if not hints:
+            self._send_json(HTTPStatus.OK, {"ok": True, "sessionEnded": True, "redirected": False}, send_body)
+            return
+        if len(hints) != 1 or not self.server.oidc_id_token_is_known(hints[0]):
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_request", "error_description": "unknown id_token_hint"},
+                send_body,
+            )
+            return
+        if len(redirects) != 1 or redirects[0] != "halo://oauth/logout":
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_request", "error_description": "post_logout_redirect_uri must be halo://oauth/logout"},
+                send_body,
+            )
+            return
+        self._send_redirect(redirects[0])
 
     def _handle_revoke(self, send_body: bool) -> None:
         content_type = self.headers.get("Content-Type", "")
