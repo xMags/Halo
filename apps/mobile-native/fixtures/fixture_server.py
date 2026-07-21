@@ -34,7 +34,25 @@ NEGATIVE_MODES = {
     "malformed_token_json",
     "http_error",
 }
-HTTP_ERROR_ROUTES = {"any", "health", "status", "auth_config", "discovery", "authorize", "token", "media"}
+HTTP_ERROR_ROUTES = {
+    "any",
+    "health",
+    "status",
+    "auth_config",
+    "discovery",
+    "authorize",
+    "token",
+    "media",
+    "local_login",
+    "local_refresh",
+}
+# The only credentials the local-mode login accepts. Fixed values keep every
+# consumer (Python tests, XCUITest, manual runs) on the same known-good pair.
+LOCAL_USERNAME = "fixture-user"
+LOCAL_PASSWORD = "fixture-pass"
+# Mirrors the API's 30-day session tokens; override with --local-token-ttl to
+# force refresh-band behavior in tests.
+DEFAULT_LOCAL_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60.0
 REDACTED = "[REDACTED]"
 SENSITIVE_FIELD_PARTS = ("authorization", "challenge", "code", "password", "secret", "state", "token", "verifier")
 PKCE_CHALLENGE_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
@@ -85,6 +103,7 @@ class FixtureHTTPServer(ThreadingHTTPServer):
         negative_mode: str,
         http_error_route: str,
         transaction_ttl_seconds: float,
+        local_token_ttl_seconds: float,
         emit_logs: bool,
         clock: Callable[[], float],
     ) -> None:
@@ -94,12 +113,42 @@ class FixtureHTTPServer(ThreadingHTTPServer):
         self.negative_mode = negative_mode
         self.http_error_route = http_error_route
         self.transaction_ttl_seconds = transaction_ttl_seconds
+        self.local_token_ttl_seconds = local_token_ttl_seconds
         self.emit_logs = emit_logs
         self.clock = clock
         self.transactions: dict[str, AuthorizationTransaction] = {}
         self.transaction_lock = threading.Lock()
         self.request_log: list[dict[str, object]] = []
         self.request_log_lock = threading.Lock()
+        # Local-mode session tokens: token -> expiry (server-clock seconds).
+        # Tokens stay valid after a refresh, matching the API: refresh issues a
+        # fresh token but does not revoke the one that authenticated it.
+        self.local_tokens: dict[str, float] = {}
+        self.local_token_lock = threading.Lock()
+        self._local_token_counter = 0
+
+    def issue_local_token(self) -> tuple[str, float]:
+        """Mints a local session token; returns (token, expiry in seconds)."""
+        with self.local_token_lock:
+            self._remove_expired_local_tokens()
+            self._local_token_counter += 1
+            # The counter makes rotation observable: a refreshed token is
+            # visibly distinct from the login token it replaced.
+            token = f"fixture-local-token-{self._local_token_counter}-{secrets.token_urlsafe(12)}"
+            expires_at = self.clock() + self.local_token_ttl_seconds
+            self.local_tokens[token] = expires_at
+            return token, expires_at
+
+    def local_token_is_valid(self, token: str) -> bool:
+        with self.local_token_lock:
+            self._remove_expired_local_tokens()
+            return token in self.local_tokens
+
+    def _remove_expired_local_tokens(self) -> None:
+        now = self.clock()
+        expired = [token for token, expires_at in self.local_tokens.items() if expires_at <= now]
+        for token in expired:
+            del self.local_tokens[token]
 
     @property
     def base_url(self) -> str:
@@ -159,10 +208,14 @@ class FixtureHTTPServer(ThreadingHTTPServer):
         with self.transaction_lock:
             self._remove_expired_transactions()
             transaction_count = len(self.transactions)
+        with self.local_token_lock:
+            self._remove_expired_local_tokens()
+            local_token_count = len(self.local_tokens)
         with self.request_log_lock:
             requests = list(self.request_log)
         return {
             "ok": True,
+            "activeLocalTokens": local_token_count,
             "authMode": self.auth_mode,
             "negativeMode": self.negative_mode,
             "httpErrorRoute": self.http_error_route,
@@ -216,6 +269,12 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
                 return
             if self.command == "POST" and parsed.path == "/token/":
                 self._handle_token(mode, send_body)
+                return
+            if self.command == "POST" and parsed.path == "/auth/login":
+                self._handle_local_login(mode, send_body)
+                return
+            if self.command == "POST" and parsed.path == "/auth/refresh":
+                self._handle_local_refresh(mode, send_body)
                 return
             if self.command in {"GET", "HEAD"} and parsed.path.startswith("/media/"):
                 self._handle_media(parsed.path, mode, send_body)
@@ -404,6 +463,76 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
             send_body,
         )
 
+    def _read_json_body(self) -> dict[str, object]:
+        content_type = self.headers.get("Content-Type", "")
+        if content_type.split(";", 1)[0].strip().lower() != "application/json":
+            raise ValueError("Content-Type must be application/json")
+        content_length_text = self.headers.get("Content-Length")
+        if content_length_text is None:
+            raise ValueError("Content-Length is required")
+        try:
+            content_length = int(content_length_text)
+        except ValueError as error:
+            raise ValueError("Content-Length is invalid") from error
+        if content_length < 0 or content_length > MAX_FORM_BYTES:
+            raise ValueError("body is too large")
+        raw_body = self.rfile.read(content_length)
+        try:
+            payload = json.loads(raw_body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError("body must be valid JSON") from error
+        if not isinstance(payload, dict):
+            raise ValueError("body must be a JSON object")
+        self._logged_form = payload
+        return payload
+
+    def _bearer_token(self) -> str | None:
+        authorization = self.headers.get("Authorization", "")
+        scheme, _, credentials = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not credentials.strip():
+            return None
+        return credentials.strip()
+
+    def _send_issued_local_token(self, send_body: bool) -> None:
+        token, expires_at_seconds = self.server.issue_local_token()
+        # expiresAt is epoch milliseconds on the wire, like the real API.
+        self._send_json(
+            HTTPStatus.OK,
+            {"token": token, "expiresAt": int(expires_at_seconds * 1000)},
+            send_body,
+        )
+
+    def _handle_local_login(self, mode: str, send_body: bool) -> None:
+        # Local auth endpoints exist only in local mode, mirroring the API's
+        # deployment-exclusive AUTH_MODE route registration.
+        if self.server.auth_mode != "local":
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"}, send_body)
+            return
+        payload = self._read_json_body()
+        if self._should_http_error(mode, "local_login"):
+            self._send_fixture_http_error(send_body)
+            return
+        username = payload.get("username")
+        password = payload.get("password")
+        if username != LOCAL_USERNAME or password != LOCAL_PASSWORD:
+            # Exact body the API sends for a bad login.
+            self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "invalid credentials"}, send_body)
+            return
+        self._send_issued_local_token(send_body)
+
+    def _handle_local_refresh(self, mode: str, send_body: bool) -> None:
+        if self.server.auth_mode != "local":
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"}, send_body)
+            return
+        if self._should_http_error(mode, "local_refresh"):
+            self._send_fixture_http_error(send_body)
+            return
+        token = self._bearer_token()
+        if token is None or not self.server.local_token_is_valid(token):
+            self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "invalid token"}, send_body)
+            return
+        self._send_issued_local_token(send_body)
+
     def _handle_media(self, request_path: str, mode: str, send_body: bool) -> None:
         relative_text = unquote(request_path[len("/media/") :])
         if not relative_text or "\x00" in relative_text:
@@ -537,6 +666,7 @@ def create_server(
     negative_mode: str = "normal",
     http_error_route: str = "any",
     transaction_ttl_seconds: float = 120.0,
+    local_token_ttl_seconds: float = DEFAULT_LOCAL_TOKEN_TTL_SECONDS,
     emit_logs: bool = True,
     clock: Callable[[], float] = time.time,
 ) -> FixtureHTTPServer:
@@ -548,6 +678,8 @@ def create_server(
         raise ValueError(f"http_error_route must be one of: {', '.join(sorted(HTTP_ERROR_ROUTES))}")
     if transaction_ttl_seconds <= 0:
         raise ValueError("transaction_ttl_seconds must be positive")
+    if local_token_ttl_seconds <= 0:
+        raise ValueError("local_token_ttl_seconds must be positive")
     resolved_media_dir = Path(media_dir) if media_dir is not None else Path(__file__).with_name("media")
     return FixtureHTTPServer(
         (host, port),
@@ -556,6 +688,7 @@ def create_server(
         negative_mode,
         http_error_route,
         transaction_ttl_seconds,
+        local_token_ttl_seconds,
         emit_logs,
         clock,
     )
@@ -580,6 +713,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="route targeted when --negative-mode=http_error (default: any)",
     )
     parser.add_argument("--transaction-ttl", type=float, default=120.0, metavar="SECONDS")
+    parser.add_argument(
+        "--local-token-ttl",
+        type=float,
+        default=DEFAULT_LOCAL_TOKEN_TTL_SECONDS,
+        metavar="SECONDS",
+        help="lifetime of local-mode session tokens (default: 30 days)",
+    )
     return parser.parse_args(argv)
 
 
@@ -593,6 +733,7 @@ def main(argv: list[str] | None = None) -> int:
         negative_mode=args.negative_mode,
         http_error_route=args.http_error_route,
         transaction_ttl_seconds=args.transaction_ttl,
+        local_token_ttl_seconds=args.local_token_ttl,
     )
     print(
         json.dumps(

@@ -32,11 +32,13 @@ top of this boundary; the gate shell is debug/test scaffolding, not product UI.
   (`dev.jdtech.mpv` prebuilt is emulator-only; the shipping build will be an
   owned reproducible libmpv build like iOS's)
 - Common tests (auth discovery, login state machine, player lifecycle,
-  responsive classification), iOS host-bridge tests, seven XCUITest suites
+  responsive classification), iOS host-bridge tests, eight XCUITest suites
   (ownership, playback, resize, core/app lifecycle, soak, OIDC incl. negative
-  modes), and an instrumented Android ownership test
+  modes, local-mode sign-in incl. the cross-process Keychain persistence
+  proof), and an instrumented Android ownership test
 - `fixtures/`: a stdlib-only Python fixture server (OIDC flows with injectable
-  negative modes + Range-capable media serving) used by the integration suites
+  negative modes, local-mode login/refresh with real token rotation, and
+  Range-capable media serving) used by the integration suites
 
 ## Local commands
 
@@ -59,7 +61,9 @@ The app target's pre-build phase runs
 `:composeApp:embedAndSignAppleFrameworkForXcode`. UI test suites run against
 a booted arm64 simulator via
 `xcodebuild test -project iosApp/Halo.xcodeproj -scheme Halo
--only-testing:HaloUITests/<Suite>`, with the fixture server (see
-`fixtures/README.md`) providing auth flows and Range-capable media; the
-local-media suites additionally need `TEST_RUNNER_HALO_MEDIA_LOCAL_BASE`
+-only-testing:HaloUITests/<Suite>`, with the fixture server providing auth
+flows and Range-capable media. The OIDC suites expect it on `:18787` in its
+default mode; `LocalAuthUITests` expects a second instance on `:18788` with
+`--auth-mode local` (fixture credentials `fixture-user` / `fixture-pass`);
+the local-media suites additionally need `TEST_RUNNER_HALO_MEDIA_LOCAL_BASE`
 pointing at a `file://` copy of the samples.

@@ -7,6 +7,7 @@ import json
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
@@ -18,6 +19,8 @@ sys.path.insert(0, str(COMPOSE_MOBILE_DIR))
 
 from fixtures.fixture_server import (
     DEFAULT_CLIENT_ID,
+    LOCAL_PASSWORD,
+    LOCAL_USERNAME,
     OIDC_SCOPES,
     REDACTED,
     REDIRECT_URI,
@@ -41,7 +44,11 @@ def running_server(
     auth_mode: str = "oidc",
     negative_mode: str = "normal",
     http_error_route: str = "any",
+    local_token_ttl_seconds: float | None = None,
 ) -> Iterator[FixtureHTTPServer]:
+    extra_kwargs = {}
+    if local_token_ttl_seconds is not None:
+        extra_kwargs["local_token_ttl_seconds"] = local_token_ttl_seconds
     server = create_server(
         host="127.0.0.1",
         port=0,
@@ -50,6 +57,7 @@ def running_server(
         negative_mode=negative_mode,
         http_error_route=http_error_route,
         emit_logs=False,
+        **extra_kwargs,
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -395,11 +403,19 @@ class FixtureServerTest(unittest.TestCase):
 
     def test_media_traversal_is_rejected_and_only_regular_files_are_served(self) -> None:
         with running_server(self.media_dir) as server:
-            for path in ("/media/../outside.bin", "/media/%2e%2e%2foutside.bin", "/media/..%5coutside.bin"):
+            for path in ("/media/../outside.bin", "/media/%2e%2e%2foutside.bin"):
                 with self.subTest(path=path):
                     status, _, body = self.request(server, "GET", path)
                     self.assertEqual(403, status)
                     self.assertEqual("path_traversal_rejected", json.loads(body)["error"])
+
+            # Backslash traversal is separator-dependent: on Windows `..\` escapes
+            # the media dir (403); on POSIX the backslash is an ordinary filename
+            # character, so the lookup just misses (404). Either way nothing may
+            # be served.
+            status, _, body = self.request(server, "GET", "/media/..%5coutside.bin")
+            self.assertIn(status, (403, 404))
+            self.assertNotIn(b"outside", body)
 
             status, _, _ = self.request(server, "GET", "/media/nested")
             self.assertEqual(404, status)
@@ -434,6 +450,131 @@ class FixtureServerTest(unittest.TestCase):
             status, _, body = self.request(server, "GET", "/health?fixture_mode=unknown")
             self.assertEqual(400, status)
             self.assertEqual("invalid_request", json.loads(body)["error"])
+
+    # ------------------------------------------------------------------
+    # Local-mode auth endpoints
+    # ------------------------------------------------------------------
+
+    def local_login(
+        self,
+        server: FixtureHTTPServer,
+        *,
+        username: str = LOCAL_USERNAME,
+        password: str = LOCAL_PASSWORD,
+    ) -> tuple[int, dict[str, str], bytes]:
+        return self.request(
+            server,
+            "POST",
+            "/auth/login",
+            body=json.dumps({"username": username, "password": password}),
+            headers={"Content-Type": "application/json"},
+        )
+
+    def local_refresh(
+        self,
+        server: FixtureHTTPServer,
+        token: str | None,
+    ) -> tuple[int, dict[str, str], bytes]:
+        headers = {"Content-Type": "application/json"}
+        if token is not None:
+            headers["Authorization"] = f"Bearer {token}"
+        return self.request(server, "POST", "/auth/refresh", body="{}", headers=headers)
+
+    def test_local_login_issues_wire_contract_token(self) -> None:
+        with running_server(self.media_dir, auth_mode="local") as server:
+            status, _, body = self.local_login(server)
+            self.assertEqual(200, status)
+            issued = json.loads(body)
+            self.assertEqual({"token", "expiresAt"}, set(issued))
+            self.assertTrue(issued["token"])
+            # expiresAt is epoch milliseconds roughly 30 days out.
+            expected_ms = (time.time() + 30 * 24 * 60 * 60) * 1000
+            self.assertAlmostEqual(expected_ms, issued["expiresAt"], delta=60_000)
+
+            _, _, status_body = self.request(server, "GET", "/status")
+            self.assertEqual(1, json.loads(status_body)["activeLocalTokens"])
+
+    def test_local_login_rejects_wrong_credentials_with_api_error_body(self) -> None:
+        with running_server(self.media_dir, auth_mode="local") as server:
+            status, _, body = self.local_login(server, password="wrong-pass")
+            self.assertEqual(401, status)
+            self.assertEqual({"error": "invalid credentials"}, json.loads(body))
+
+    def test_local_login_requires_json_object_body(self) -> None:
+        with running_server(self.media_dir, auth_mode="local") as server:
+            status, _, body = self.request(
+                server,
+                "POST",
+                "/auth/login",
+                body="not-json",
+                headers={"Content-Type": "application/json"},
+            )
+            self.assertEqual(400, status)
+            self.assertEqual("invalid_request", json.loads(body)["error"])
+
+    def test_local_refresh_rotates_without_revoking_the_old_token(self) -> None:
+        with running_server(self.media_dir, auth_mode="local") as server:
+            _, _, login_body = self.local_login(server)
+            login_token = json.loads(login_body)["token"]
+
+            status, _, refresh_body = self.local_refresh(server, login_token)
+            self.assertEqual(200, status)
+            refreshed = json.loads(refresh_body)
+            self.assertNotEqual(login_token, refreshed["token"])
+
+            # The API does not revoke the authenticating token on refresh; both
+            # must keep working.
+            self.assertEqual(200, self.local_refresh(server, login_token)[0])
+            self.assertEqual(200, self.local_refresh(server, refreshed["token"])[0])
+
+    def test_local_refresh_rejects_unknown_or_missing_tokens(self) -> None:
+        with running_server(self.media_dir, auth_mode="local") as server:
+            status, _, body = self.local_refresh(server, "unknown-token")
+            self.assertEqual(401, status)
+            self.assertEqual({"error": "invalid token"}, json.loads(body))
+            self.assertEqual(401, self.local_refresh(server, None)[0])
+
+    def test_local_refresh_rejects_expired_tokens(self) -> None:
+        with running_server(
+            self.media_dir,
+            auth_mode="local",
+            local_token_ttl_seconds=0.05,
+        ) as server:
+            _, _, login_body = self.local_login(server)
+            token = json.loads(login_body)["token"]
+            time.sleep(0.2)
+            status, _, body = self.local_refresh(server, token)
+            self.assertEqual(401, status)
+            self.assertEqual({"error": "invalid token"}, json.loads(body))
+
+    def test_local_endpoints_do_not_exist_in_oidc_mode(self) -> None:
+        with running_server(self.media_dir) as server:
+            self.assertEqual(404, self.local_login(server)[0])
+            self.assertEqual(404, self.local_refresh(server, "any-token")[0])
+
+    def test_local_http_error_routes_are_independently_targetable(self) -> None:
+        with running_server(
+            self.media_dir,
+            auth_mode="local",
+            negative_mode="http_error",
+            http_error_route="local_refresh",
+        ) as server:
+            status, _, login_body = self.local_login(server)
+            self.assertEqual(200, status)
+            token = json.loads(login_body)["token"]
+            status, _, body = self.local_refresh(server, token)
+            self.assertEqual(503, status)
+            self.assertEqual("fixture_http_error", json.loads(body)["error"])
+
+    def test_local_login_password_is_redacted_in_the_request_log(self) -> None:
+        with running_server(self.media_dir, auth_mode="local") as server:
+            self.local_login(server)
+            snapshot = server.status_snapshot()
+            login_request = next(
+                entry for entry in snapshot["requests"] if entry["path"] == "/auth/login"
+            )
+            self.assertEqual(REDACTED, login_request["form"]["password"])
+            self.assertNotIn(LOCAL_PASSWORD, json.dumps(snapshot["requests"]))
 
 
 if __name__ == "__main__":
