@@ -130,6 +130,8 @@ class LoginPresenter(
                 state.copy(phase = LoginPhase.OidcSucceeded(request, event.tokenProof))
             is AuthEvent.OidcFailed ->
                 state.copy(phase = LoginPhase.OidcFailed(request, event.reason))
+            // Session lifecycle, not sign-in outcome — SessionController owns it.
+            AuthEvent.OidcSessionInvalidated -> state
         }
     }
 

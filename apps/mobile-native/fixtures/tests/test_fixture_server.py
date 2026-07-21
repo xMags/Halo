@@ -452,6 +452,111 @@ class FixtureServerTest(unittest.TestCase):
             self.assertEqual("invalid_request", json.loads(body)["error"])
 
     # ------------------------------------------------------------------
+    # OIDC refresh + revocation
+    # ------------------------------------------------------------------
+
+    def refresh(
+        self,
+        server: FixtureHTTPServer,
+        refresh_token: str,
+        *,
+        fixture_mode: str | None = None,
+    ) -> tuple[int, dict[str, str], bytes]:
+        form = {
+            "grant_type": "refresh_token",
+            "client_id": DEFAULT_CLIENT_ID,
+            "refresh_token": refresh_token,
+        }
+        suffix = "" if fixture_mode is None else f"?{urlencode({'fixture_mode': fixture_mode})}"
+        return self.request(
+            server,
+            "POST",
+            f"/token/{suffix}",
+            body=urlencode(form),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    def revoke(self, server: FixtureHTTPServer, token: str) -> tuple[int, dict[str, str], bytes]:
+        return self.request(
+            server,
+            "POST",
+            "/revoke/",
+            body=urlencode({"token": token, "client_id": DEFAULT_CLIENT_ID}),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    def signed_in_refresh_token(self, server: FixtureHTTPServer, *, fixture_mode: str | None = None) -> str:
+        code = self.valid_code(server)
+        status, _, body = self.token(server, code, fixture_mode=fixture_mode)
+        self.assertEqual(200, status)
+        return json.loads(body)["refresh_token"]
+
+    def test_exchange_issues_a_refresh_token_and_discovery_advertises_revocation(self) -> None:
+        with running_server(self.media_dir) as server:
+            _, _, discovery = self.request(server, "GET", "/.well-known/openid-configuration")
+            document = json.loads(discovery)
+            self.assertEqual(f"{server.base_url}/revoke/", document["revocation_endpoint"])
+            self.assertIn("refresh_token", document["grant_types_supported"])
+
+            token = self.signed_in_refresh_token(server)
+            self.assertTrue(token.startswith("fixture-refresh-"))
+
+    def test_short_access_ttl_mode_squeezes_the_token_inside_the_refresh_margin(self) -> None:
+        with running_server(self.media_dir) as server:
+            code = self.valid_code(server)
+            status, _, body = self.token(server, code, fixture_mode="short_access_ttl")
+            self.assertEqual(200, status)
+            self.assertEqual(30, json.loads(body)["expires_in"])
+
+    def test_refresh_rotates_and_invalidates_the_used_token(self) -> None:
+        with running_server(self.media_dir) as server:
+            first = self.signed_in_refresh_token(server)
+
+            status, _, body = self.refresh(server, first)
+            self.assertEqual(200, status)
+            rotated = json.loads(body)
+            self.assertTrue(rotated["access_token"].startswith("fixture-access-rotated-"))
+            self.assertNotEqual(first, rotated["refresh_token"])
+
+            # The consumed token is dead; its successor keeps working.
+            status, _, body = self.refresh(server, first)
+            self.assertEqual(400, status)
+            self.assertEqual("invalid_grant", json.loads(body)["error"])
+            self.assertEqual(200, self.refresh(server, rotated["refresh_token"])[0])
+
+    def test_unknown_refresh_token_is_a_definitive_invalid_grant(self) -> None:
+        with running_server(self.media_dir) as server:
+            status, _, body = self.refresh(server, "fixture-refresh-unknown")
+            self.assertEqual(400, status)
+            self.assertEqual("invalid_grant", json.loads(body)["error"])
+
+    def test_refresh_negative_modes_target_only_the_refresh_grant(self) -> None:
+        with running_server(self.media_dir) as server:
+            # Sign-in succeeds while the ride-along modes are present.
+            token = self.signed_in_refresh_token(server, fixture_mode="refresh_invalid_grant")
+
+            status, _, body = self.refresh(server, token, fixture_mode="refresh_invalid_grant")
+            self.assertEqual(400, status)
+            self.assertEqual("invalid_grant", json.loads(body)["error"])
+            # The forced rejection short-circuits before rotation: the token
+            # survives and works once the mode is lifted.
+            status, _, body = self.refresh(server, token, fixture_mode="refresh_http_error")
+            self.assertEqual(503, status)
+            self.assertEqual("fixture_http_error", json.loads(body)["error"])
+            self.assertEqual(200, self.refresh(server, token)[0])
+
+    def test_revocation_kills_the_refresh_token_and_answers_200_for_unknown_tokens(self) -> None:
+        with running_server(self.media_dir) as server:
+            token = self.signed_in_refresh_token(server)
+
+            self.assertEqual(200, self.revoke(server, token)[0])
+            status, _, body = self.refresh(server, token)
+            self.assertEqual(400, status)
+            self.assertEqual("invalid_grant", json.loads(body)["error"])
+
+            self.assertEqual(200, self.revoke(server, "never-issued")[0])
+
+    # ------------------------------------------------------------------
     # Local-mode auth endpoints
     # ------------------------------------------------------------------
 

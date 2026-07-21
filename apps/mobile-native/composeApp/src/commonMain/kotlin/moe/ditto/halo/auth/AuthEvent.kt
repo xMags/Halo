@@ -1,18 +1,26 @@
 package moe.ditto.halo.auth
 
 /**
- * Outcome of a native OIDC sign-in, pushed from the Swift host back into common
- * code. Mirrors the player-event pattern: Swift drives the async
- * `ASWebAuthenticationSession` + token exchange and reports the terminal result
- * here, which [LoginPresenter.onAuthEvent] folds into the login state machine.
+ * Auth-relevant outcomes pushed from the native host back into common code.
+ * Mirrors the player-event pattern: the host drives the async browser flow /
+ * token lifecycle and reports results here. [SessionController.onAuthEvent]
+ * folds the session-shaped ones into app state; [LoginPresenter.onAuthEvent]
+ * folds the sign-in-shaped ones into the login state machine.
  *
- * This event proves the flow, not a session — [OidcSucceeded.tokenProof] is the
- * fixture's non-authoritative access-token string, surfaced only as evidence
- * that the full discovery → authorize → `/token/` round-trip completed. A
- * production client would never render a token.
+ * [OidcSucceeded.tokenProof] is harness evidence only — the fixture's
+ * access-token string, re-surfaced on the debug gate so automation can prove
+ * the full discovery → authorize → `/token/` → persist round-trip. Production
+ * UI never renders a token.
  */
 sealed interface AuthEvent {
-    data class OidcSucceeded(val tokenProof: String) : AuthEvent
+    data class OidcSucceeded(val serverUrl: String, val tokenProof: String) : AuthEvent
 
     data class OidcFailed(val reason: String) : AuthEvent
+
+    /**
+     * The native host's refresh was definitively rejected (`invalid_grant`)
+     * and the persisted session is already cleared. The only event that may
+     * end an OIDC session — transport failures never emit it.
+     */
+    data object OidcSessionInvalidated : AuthEvent
 }

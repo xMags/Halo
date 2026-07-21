@@ -33,4 +33,16 @@ final class FakeAuthHost: NSObject, HaloIosAuthHost {
         oidcRequestCount += 1
         lastOidcServerUrl = serverUrl
     }
+
+    // The fake never holds a session: the ownership/playback suites walk to the
+    // gate signed out, and the token fetch resolves to "none" without network.
+    func restoreOidcSession() -> String? { nil }
+
+    func fetchOidcAccessToken(forceRefresh _: Bool, completion: @escaping (String?, String?) -> Void) {
+        completion(nil, nil)
+    }
+
+    func signOutOidc(completion: @escaping () -> Void) {
+        completion()
+    }
 }

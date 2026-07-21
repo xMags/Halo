@@ -43,16 +43,22 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.collectAsState
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import moe.ditto.halo.auth.AuthEvent
 import moe.ditto.halo.auth.KtorLocalAuthGateway
 import moe.ditto.halo.auth.LocalAuthenticator
 import moe.ditto.halo.auth.LoginPhase
 import moe.ditto.halo.auth.LoginPresenter
 import moe.ditto.halo.auth.SessionController
+import moe.ditto.halo.auth.SessionKind
 import moe.ditto.halo.auth.SessionState
 import moe.ditto.halo.auth.SystemEpochClock
 import moe.ditto.halo.player.MediaItem
@@ -83,6 +89,7 @@ internal fun HaloGateApp(dependencies: PlatformDependencies) {
                 gateway = KtorLocalAuthGateway(HttpClient()),
                 clock = SystemEpochClock,
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                oidcPort = dependencies.oidcSessionPort,
             )
         }
         var screen by remember { mutableStateOf(ShellScreen.Login) }
@@ -96,18 +103,41 @@ internal fun HaloGateApp(dependencies: PlatformDependencies) {
 
         // Session restore gates the first render (a persisted session must boot
         // to the app, not flash the login form), then the state collector owns
-        // Login → Gate navigation for both restore and fresh sign-in. Restore
-        // stays on the composition dispatcher: it reads one small storage blob,
-        // and staying inside the frame keeps UI-test idle-tracking honest.
+        // both navigation directions: Login → Gate on sign-in/restore, and any
+        // screen → Login on a live sign-out (the button, or invalid_grant from
+        // a background refresh). The sign-out kick fires only on a
+        // SignedIn → SignedOut transition, so the fake-host diagnostics suites
+        // — which walk to the gate with no session at all — never bounce.
         LaunchedEffect(sessionController) {
-            if (dependencies.resetPersistedSession) sessionController.signOut()
+            if (dependencies.resetPersistedSession) sessionController.resetPersistedSessions()
             sessionController.restore()
             sessionRestored = true
+            var previous: SessionState? = null
             sessionController.state.collect { state ->
                 if (state is SessionState.SignedIn && screen == ShellScreen.Login) {
                     refreshHostSnapshot()
                     screen = ShellScreen.Gate
                 }
+                if (state == SessionState.SignedOut &&
+                    previous is SessionState.SignedIn &&
+                    screen != ShellScreen.Login
+                ) {
+                    screen = ShellScreen.Login
+                }
+                previous = state
+            }
+        }
+
+        // Auth events fan out from here for the app's whole lifetime: the
+        // channel behind dependencies.authEvents is single-consumer, but the
+        // session controller must see lifecycle events even when the login
+        // screen is not composed (an invalid_grant can arrive on any screen).
+        // The login screen re-collects through this shared flow instead.
+        val loginAuthEvents = remember(dependencies) { MutableSharedFlow<AuthEvent>(extraBufferCapacity = 16) }
+        LaunchedEffect(sessionController) {
+            dependencies.authEvents.collect { event ->
+                sessionController.onAuthEvent(event)
+                loginAuthEvents.emit(event)
             }
         }
 
@@ -122,12 +152,14 @@ internal fun HaloGateApp(dependencies: PlatformDependencies) {
             }
         }
 
+        val sessionState by sessionController.state.collectAsState()
         Box(Modifier.fillMaxSize().background(HaloColors.Background)) {
             if (!sessionRestored) return@Box
             when (screen) {
                 ShellScreen.Login -> LoginScreen(
                     dependencies = dependencies,
                     localAuthenticator = sessionController,
+                    authEvents = loginAuthEvents,
                     initialServerUrl = remember(sessionController) {
                         dependencies.initialServerUrl.takeIf { it != PlatformDependencies.DefaultServerUrl }
                             ?: sessionController.storedServerUrl()
@@ -140,6 +172,9 @@ internal fun HaloGateApp(dependencies: PlatformDependencies) {
                 )
                 ShellScreen.Gate -> GateScreen(
                     hostSnapshot = hostSnapshot,
+                    sessionState = sessionState,
+                    onFetchToken = { sessionController.tokenProvider.accessToken() },
+                    onSignOut = { sessionController.signOut() },
                     onRefresh = refreshHostSnapshot,
                     onLogin = { screen = ShellScreen.Login },
                     onPlayer = {
@@ -171,6 +206,7 @@ internal fun HaloGateApp(dependencies: PlatformDependencies) {
 private fun LoginScreen(
     dependencies: PlatformDependencies,
     localAuthenticator: LocalAuthenticator,
+    authEvents: Flow<AuthEvent>,
     initialServerUrl: String,
     onOpenGate: () -> Unit,
 ) {
@@ -182,11 +218,12 @@ private fun LoginScreen(
     var state by remember { mutableStateOf(presenter.state) }
     val scope = rememberCoroutineScope()
 
-    // The native OIDC host reports its terminal outcome here. The login screen
-    // stays composed for the whole flow (ASWebAuthenticationSession is a sheet
-    // over it), so a screen-scoped collector never misses the event.
+    // The native OIDC host reports its terminal outcome here (re-fanned through
+    // the app-level shared flow). The login screen stays composed for the whole
+    // flow (ASWebAuthenticationSession is a sheet over it), so a screen-scoped
+    // collector never misses the event.
     LaunchedEffect(Unit) {
-        dependencies.authEvents.collect { event ->
+        authEvents.collect { event ->
             presenter.onAuthEvent(event)
             state = presenter.state
         }
@@ -339,10 +376,15 @@ private fun LoginScreen(
 @Composable
 private fun GateScreen(
     hostSnapshot: NativeHostSnapshot,
+    sessionState: SessionState,
+    onFetchToken: suspend () -> String?,
+    onSignOut: () -> Unit,
     onRefresh: () -> Unit,
     onLogin: () -> Unit,
     onPlayer: () -> Unit,
 ) {
+    var tokenResult by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -365,6 +407,42 @@ private fun GateScreen(
                 "Swift owns one auth host, one player host, and one libmpv core. Navigate and resize, then confirm their ids and creation counts remain stable.",
                 style = HaloType.Body.copy(color = HaloColors.TextDim),
             )
+            // Session diagnostics: the row mirrors SessionController state; the
+            // fetch button exercises the full TokenProvider path (port → native
+            // host → Keychain read → margin/forced refresh) and surfaces the
+            // returned token — on fixture runs that string IS the round-trip
+            // proof, now including persistence, so the OIDC suites assert on it.
+            Text(
+                text = "Session: " + when (sessionState) {
+                    is SessionState.SignedIn ->
+                        "${if (sessionState.kind == SessionKind.Oidc) "oidc" else "local"} · ${sessionState.serverUrl}"
+                    SessionState.SignedOut -> "signed out"
+                    SessionState.Restoring -> "restoring"
+                },
+                style = HaloType.Caption,
+            )
+            tokenResult?.let { Text(it, style = HaloType.Caption) }
+            Row(horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm)) {
+                HaloButton(
+                    label = "Fetch access token",
+                    compact = true,
+                    onClick = {
+                        scope.launch {
+                            tokenResult = try {
+                                when (val token = onFetchToken()) {
+                                    null -> "Token: none"
+                                    else -> "Token: $token"
+                                }
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: Throwable) {
+                                "Token error: ${error.message}"
+                            }
+                        }
+                    },
+                )
+                HaloButton(label = "Sign out", compact = true, onClick = onSignOut)
+            }
             NativeHostSummary(hostSnapshot)
             HaloButton(label = "Refresh host counters", onClick = onRefresh)
             HaloButton(label = "Login shell", onClick = onLogin)

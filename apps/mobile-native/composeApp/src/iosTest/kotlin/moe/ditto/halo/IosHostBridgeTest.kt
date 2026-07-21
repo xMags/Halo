@@ -46,6 +46,11 @@ class IosHostBridgeTest {
                 completion(null, "boom")
 
             override fun requestOidc(serverUrl: String, issuer: String, clientId: String, scopes: String) = Unit
+            override fun restoreOidcSession(): String? = null
+            override fun fetchOidcAccessToken(forceRefresh: Boolean, completion: (String?, String?) -> Unit) =
+                completion(null, null)
+
+            override fun signOutOidc(completion: () -> Unit) = completion()
             override fun setAuthEventSink(sink: HaloIosAuthEventSink?) = Unit
         }
         val adapter = IosAuthHostAdapter(host)
@@ -58,16 +63,45 @@ class IosHostBridgeTest {
     fun authEventBridgeTranslatesSinkCallsIntoTypedEvents() = runTest {
         val bridge = IosAuthEventBridge()
 
-        bridge.onOidcSucceeded("fixture-access-proof-abc123")
+        bridge.onOidcSucceeded("https://halo.example", "fixture-access-proof-abc123")
         bridge.onOidcFailed("Authorization state did not match")
+        bridge.onOidcSessionInvalidated()
 
         val received = mutableListOf<AuthEvent>()
         val job = launch { bridge.events.collect { received += it } }
-        while (received.size < 2) yield()
+        while (received.size < 3) yield()
         job.cancel()
 
-        assertEquals(AuthEvent.OidcSucceeded("fixture-access-proof-abc123"), received[0])
+        assertEquals(AuthEvent.OidcSucceeded("https://halo.example", "fixture-access-proof-abc123"), received[0])
         assertEquals(AuthEvent.OidcFailed("Authorization state did not match"), received[1])
+        assertEquals(AuthEvent.OidcSessionInvalidated, received[2])
+    }
+
+    @Test
+    fun oidcSessionPortMapsTheCallbackPairOntoPortSemantics() = runTest {
+        val host = RecordingAuthHost()
+        val port = IosOidcSessionPort(host)
+
+        // No persisted session: restore misses, fetch resolves to null.
+        assertEquals(null, port.restoreSession())
+        assertEquals(null, port.accessToken(forceRefresh = false))
+
+        host.persistedServerUrl = "https://halo.example"
+        host.nextToken = "fixture-access-proof-live"
+        assertEquals("https://halo.example", port.restoreSession())
+        assertEquals("fixture-access-proof-live", port.accessToken(forceRefresh = false))
+        assertEquals(false, host.lastForceRefresh)
+        assertEquals("fixture-access-proof-live", port.accessToken(forceRefresh = true))
+        assertEquals(true, host.lastForceRefresh)
+
+        // Transport failure: the error message surfaces as an exception, so the
+        // caller cannot misread it as signed-out.
+        host.nextError = "refresh request failed"
+        val error = assertFailsWith<IllegalStateException> { port.accessToken(forceRefresh = false) }
+        assertEquals("refresh request failed", error.message)
+
+        port.signOut()
+        assertEquals(1, host.signOutCount)
     }
 
     @Test
@@ -161,6 +195,13 @@ class IosHostBridgeTest {
         override var oidcRequestCount = 0L
         var requestedScopes: String? = null
             private set
+        var persistedServerUrl: String? = null
+        var nextToken: String? = null
+        var nextError: String? = null
+        var lastForceRefresh: Boolean? = null
+            private set
+        var signOutCount = 0
+            private set
 
         override fun fetchAuthConfig(serverUrl: String, completion: (String?, String?) -> Unit) =
             completion("""{"mode":"local"}""", null)
@@ -173,6 +214,22 @@ class IosHostBridgeTest {
         ) {
             oidcRequestCount += 1
             requestedScopes = scopes
+        }
+
+        override fun restoreOidcSession(): String? = persistedServerUrl
+
+        override fun fetchOidcAccessToken(forceRefresh: Boolean, completion: (String?, String?) -> Unit) {
+            lastForceRefresh = forceRefresh
+            when (val error = nextError) {
+                null -> completion(if (persistedServerUrl != null) nextToken else null, null)
+                else -> completion(null, error)
+            }
+        }
+
+        override fun signOutOidc(completion: () -> Unit) {
+            signOutCount += 1
+            persistedServerUrl = null
+            completion()
         }
 
         override fun setAuthEventSink(sink: HaloIosAuthEventSink?) = Unit

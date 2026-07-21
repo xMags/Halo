@@ -99,6 +99,127 @@ class SessionControllerTest {
         assertEquals("https://halo.local", controller.storedServerUrl())
     }
 
+    // ------------------------------------------------------------------
+    // OIDC arm (fake port; the wire lives with the native host)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun restorePrefersLocalThenFallsBackToTheOidcPort() = runTest {
+        val port = FakeOidcPort(persistedServerUrl = "https://halo.ditto.moe")
+        val controller = SessionController(InMemorySecureStorage(), NoNetworkGateway(), clock, backgroundScope, port)
+
+        controller.restore()
+
+        assertEquals(SessionState.SignedIn(SessionKind.Oidc, "https://halo.ditto.moe"), controller.state.value)
+    }
+
+    @Test
+    fun oidcSuccessEventEstablishesTheSessionAndTheServerPrefill() = runTest {
+        val storage = InMemorySecureStorage()
+        val controller = SessionController(storage, NoNetworkGateway(), clock, backgroundScope, FakeOidcPort())
+        controller.restore()
+
+        controller.onAuthEvent(AuthEvent.OidcSucceeded("https://halo.ditto.moe", "proof"))
+
+        assertEquals(SessionState.SignedIn(SessionKind.Oidc, "https://halo.ditto.moe"), controller.state.value)
+        assertEquals("https://halo.ditto.moe", controller.storedServerUrl())
+    }
+
+    @Test
+    fun tokenProviderDispatchesToTheOidcPortWhileOidcIsSignedIn() = runTest {
+        val port = FakeOidcPort(persistedServerUrl = "https://halo.ditto.moe", token = "oidc-token")
+        val controller = SessionController(InMemorySecureStorage(), NoNetworkGateway(), clock, backgroundScope, port)
+        controller.restore()
+
+        assertEquals("oidc-token", controller.tokenProvider.accessToken())
+        assertEquals(false, port.lastForceRefresh)
+        assertEquals("oidc-token", controller.tokenProvider.refreshAccessToken())
+        assertEquals(true, port.lastForceRefresh)
+    }
+
+    @Test
+    fun oidcTransportFailureThrowsAndNeverSignsOut() = runTest {
+        val port = FakeOidcPort(
+            persistedServerUrl = "https://halo.ditto.moe",
+            tokenFailure = IllegalStateException("refresh request failed"),
+        )
+        val controller = SessionController(InMemorySecureStorage(), NoNetworkGateway(), clock, backgroundScope, port)
+        controller.restore()
+
+        assertFailsWith<IllegalStateException> { controller.tokenProvider.accessToken() }
+
+        // The invariant both arms share: only a definitive rejection may end a
+        // session, and a transport failure is not one.
+        assertEquals(SessionState.SignedIn(SessionKind.Oidc, "https://halo.ditto.moe"), controller.state.value)
+    }
+
+    @Test
+    fun invalidationEventSignsOutOnlyTheOidcSessionItBelongsTo() = runTest {
+        val port = FakeOidcPort(persistedServerUrl = "https://halo.ditto.moe")
+        val controller = SessionController(InMemorySecureStorage(), NoNetworkGateway(), clock, backgroundScope, port)
+        controller.restore()
+
+        controller.onAuthEvent(AuthEvent.OidcSessionInvalidated)
+        assertEquals(SessionState.SignedOut, controller.state.value)
+    }
+
+    @Test
+    fun staleInvalidationCannotClobberALocalSession() = runTest {
+        val storage = InMemorySecureStorage()
+        val gateway = LoginGateway(IssuedToken("issued-token", now + 1_000_000))
+        val controller = SessionController(storage, gateway, clock, backgroundScope, FakeOidcPort())
+        controller.restore()
+        controller.signIn("https://halo.local", "testuser", "hunter22")
+
+        // A late OIDC invalidation (e.g. from a superseded session's in-flight
+        // refresh) must not sign out the local session that replaced it.
+        controller.onAuthEvent(AuthEvent.OidcSessionInvalidated)
+
+        assertEquals(SessionState.SignedIn(SessionKind.Local, "https://halo.local"), controller.state.value)
+    }
+
+    @Test
+    fun resetHatchClearsBothArmsBeforeRestoreCanRun() = runTest {
+        val storage = InMemorySecureStorage()
+        storage.write(
+            AuthStorageKeys.LocalSession,
+            """{"serverUrl":"https://halo.local","token":"t1","expiresAt":${now + 1_000_000}}""",
+        )
+        val port = FakeOidcPort(persistedServerUrl = "https://halo.ditto.moe")
+        val controller = SessionController(storage, NoNetworkGateway(), clock, backgroundScope, port)
+
+        controller.resetPersistedSessions()
+        controller.restore()
+
+        assertEquals(SessionState.SignedOut, controller.state.value)
+        assertNull(storage.read(AuthStorageKeys.LocalSession))
+        assertEquals(1, port.signOutCount)
+    }
+
+    private class FakeOidcPort(
+        var persistedServerUrl: String? = null,
+        var token: String? = null,
+        var tokenFailure: Throwable? = null,
+    ) : OidcSessionPort {
+        var lastForceRefresh: Boolean? = null
+            private set
+        var signOutCount = 0
+            private set
+
+        override fun restoreSession(): String? = persistedServerUrl
+
+        override suspend fun accessToken(forceRefresh: Boolean): String? {
+            lastForceRefresh = forceRefresh
+            tokenFailure?.let { throw it }
+            return if (persistedServerUrl != null) token else null
+        }
+
+        override suspend fun signOut() {
+            signOutCount += 1
+            persistedServerUrl = null
+        }
+    }
+
     private class NoNetworkGateway : LocalAuthGateway {
         override suspend fun login(serverUrl: String, username: String, password: String): IssuedToken =
             error("network use is a test failure here")

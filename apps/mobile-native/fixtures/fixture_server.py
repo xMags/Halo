@@ -33,6 +33,16 @@ NEGATIVE_MODES = {
     "malformed_discovery",
     "malformed_token_json",
     "http_error",
+    # Ride-along modes for the OIDC token lifecycle. They travel on every
+    # request like the others, but only the routes below react:
+    # short_access_ttl - both token grants issue a token already inside the
+    # client's 60s refresh margin, so the next fetch must refresh.
+    # refresh_invalid_grant / refresh_http_error - only the refresh_token
+    # grant fails (definitively / transiently); the sign-in exchange that the
+    # same launch performs is untouched.
+    "short_access_ttl",
+    "refresh_invalid_grant",
+    "refresh_http_error",
 }
 HTTP_ERROR_ROUTES = {
     "any",
@@ -126,6 +136,40 @@ class FixtureHTTPServer(ThreadingHTTPServer):
         self.local_tokens: dict[str, float] = {}
         self.local_token_lock = threading.Lock()
         self._local_token_counter = 0
+        # OIDC refresh tokens: token -> client_id. Rotation on use (the old
+        # token is invalidated when a refresh succeeds) mirrors Authentik, and
+        # is exactly what forces the client to persist the successor.
+        self.oidc_refresh_tokens: dict[str, str] = {}
+        self.oidc_refresh_lock = threading.Lock()
+        self._oidc_refresh_counter = 0
+        self._oidc_rotated_access_counter = 0
+
+    def issue_oidc_refresh_token(self, client_id: str) -> str:
+        with self.oidc_refresh_lock:
+            self._oidc_refresh_counter += 1
+            token = f"fixture-refresh-{self._oidc_refresh_counter}-{secrets.token_urlsafe(12)}"
+            self.oidc_refresh_tokens[token] = client_id
+            return token
+
+    def rotate_oidc_refresh_token(self, token: str, client_id: str) -> str | None:
+        """Consumes a valid refresh token and returns its successor, or None."""
+        with self.oidc_refresh_lock:
+            if self.oidc_refresh_tokens.get(token) != client_id:
+                return None
+            del self.oidc_refresh_tokens[token]
+            self._oidc_refresh_counter += 1
+            successor = f"fixture-refresh-{self._oidc_refresh_counter}-{secrets.token_urlsafe(12)}"
+            self.oidc_refresh_tokens[successor] = client_id
+            return successor
+
+    def revoke_oidc_refresh_token(self, token: str) -> None:
+        with self.oidc_refresh_lock:
+            self.oidc_refresh_tokens.pop(token, None)
+
+    def next_rotated_access_token(self) -> str:
+        with self.oidc_refresh_lock:
+            self._oidc_rotated_access_counter += 1
+            return f"fixture-access-rotated-{self._oidc_rotated_access_counter}"
 
     def issue_local_token(self) -> tuple[str, float]:
         """Mints a local session token; returns (token, expiry in seconds)."""
@@ -270,6 +314,9 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
             if self.command == "POST" and parsed.path == "/token/":
                 self._handle_token(mode, send_body)
                 return
+            if self.command == "POST" and parsed.path == "/revoke/":
+                self._handle_revoke(send_body)
+                return
             if self.command == "POST" and parsed.path == "/auth/login":
                 self._handle_local_login(mode, send_body)
                 return
@@ -356,8 +403,9 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
                 "issuer": self.server.issuer,
                 "authorization_endpoint": f"{self.server.base_url}/authorize/",
                 "token_endpoint": f"{self.server.base_url}/token/",
+                "revocation_endpoint": f"{self.server.base_url}/revoke/",
                 "response_types_supported": ["code"],
-                "grant_types_supported": ["authorization_code"],
+                "grant_types_supported": ["authorization_code", "refresh_token"],
                 "token_endpoint_auth_methods_supported": ["none"],
                 "code_challenge_methods_supported": ["S256"],
             },
@@ -424,12 +472,32 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
         self._logged_form = {key: value if len(value) != 1 else value[0] for key, value in form.items()}
 
         grant_type = _single_value(form, "grant_type")
+        if grant_type == "authorization_code":
+            self._handle_authorization_code_grant(form, mode, send_body)
+            return
+        if grant_type == "refresh_token":
+            self._handle_refresh_token_grant(form, mode, send_body)
+            return
+        raise ValueError("grant_type must be authorization_code or refresh_token")
+
+    def _token_expires_in(self, mode: str) -> int:
+        # Every lifecycle mode issues a token already inside the client's 60s
+        # refresh margin, so its very next fetch is forced to refresh. The two
+        # refresh-failure modes need this coupling because the client sends a
+        # single fixture_mode: without a near-expired token they would never
+        # reach the refresh they exist to fail.
+        return 30 if mode in {"short_access_ttl", "refresh_invalid_grant", "refresh_http_error"} else 300
+
+    def _handle_authorization_code_grant(
+        self,
+        form: Mapping[str, list[str]],
+        mode: str,
+        send_body: bool,
+    ) -> None:
         client_id = _single_value(form, "client_id")
         redirect_uri = _single_value(form, "redirect_uri")
         code = _single_value(form, "code")
         verifier = _single_value(form, "code_verifier")
-        if grant_type != "authorization_code":
-            raise ValueError("grant_type must be authorization_code")
         if client_id != DEFAULT_CLIENT_ID:
             raise ValueError("client_id is invalid")
         if redirect_uri != REDIRECT_URI:
@@ -458,10 +526,81 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
             {
                 "access_token": f"fixture-access-proof-{proof_digest}",
                 "token_type": "Bearer",
-                "expires_in": 300,
+                "expires_in": self._token_expires_in(mode),
+                "refresh_token": self.server.issue_oidc_refresh_token(client_id),
             },
             send_body,
         )
+
+    def _handle_refresh_token_grant(
+        self,
+        form: Mapping[str, list[str]],
+        mode: str,
+        send_body: bool,
+    ) -> None:
+        client_id = _single_value(form, "client_id")
+        refresh_token = _single_value(form, "refresh_token")
+        if client_id != DEFAULT_CLIENT_ID:
+            raise ValueError("client_id is invalid")
+
+        if mode == "refresh_http_error":
+            self._send_fixture_http_error(send_body)
+            return
+        if mode == "refresh_invalid_grant":
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_grant", "error_description": "fixture forced invalid_grant"},
+                send_body,
+            )
+            return
+
+        successor = self.server.rotate_oidc_refresh_token(refresh_token, client_id)
+        if successor is None:
+            # Unknown, revoked, or already-rotated token: the definitive
+            # rejection, exactly how the IdP answers a dead session.
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_grant", "error_description": "unknown refresh token"},
+                send_body,
+            )
+            return
+
+        self._send_json(
+            HTTPStatus.OK,
+            {
+                "access_token": self.server.next_rotated_access_token(),
+                "token_type": "Bearer",
+                "expires_in": self._token_expires_in(mode),
+                "refresh_token": successor,
+            },
+            send_body,
+        )
+
+    def _handle_revoke(self, send_body: bool) -> None:
+        content_type = self.headers.get("Content-Type", "")
+        if content_type.split(";", 1)[0].strip().lower() != "application/x-www-form-urlencoded":
+            raise ValueError("Content-Type must be application/x-www-form-urlencoded")
+        content_length_text = self.headers.get("Content-Length")
+        if content_length_text is None:
+            raise ValueError("Content-Length is required")
+        try:
+            content_length = int(content_length_text)
+        except ValueError as error:
+            raise ValueError("Content-Length is invalid") from error
+        if content_length < 0 or content_length > MAX_FORM_BYTES:
+            raise ValueError("form body is too large")
+        raw_body = self.rfile.read(content_length)
+        try:
+            body_text = raw_body.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise ValueError("form body must be UTF-8") from error
+        form = parse_qs(body_text, keep_blank_values=True)
+        self._logged_form = {key: value if len(value) != 1 else value[0] for key, value in form.items()}
+
+        token = _single_value(form, "token")
+        self.server.revoke_oidc_refresh_token(token)
+        # RFC 7009: revocation answers 200 even for unknown tokens.
+        self._send_json(HTTPStatus.OK, {}, send_body)
 
     def _read_json_body(self) -> dict[str, object]:
         content_type = self.headers.get("Content-Type", "")

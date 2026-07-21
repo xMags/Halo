@@ -6,6 +6,9 @@ final class OwnershipUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        // These suites drive the harness signed out from the login form; a session
+        // persisted by an auth suite or manual run must not auto-restore past it.
+        app.launchEnvironment["HALO_RESET_SESSION"] = "1"
         app.launch()
     }
 

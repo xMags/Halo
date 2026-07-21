@@ -21,6 +21,7 @@ fun MainViewController(
         authConfigSource = authAdapter,
         nativeHostRequests = authAdapter,
         secureStorage = IosKeychainStorage(),
+        oidcSessionPort = IosOidcSessionPort(authHost),
         playerPort = IosPlayerHostAdapter(playerHost),
         playerEvents = playerEventBridge.events,
         authEvents = authEventBridge.events,

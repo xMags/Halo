@@ -14,6 +14,7 @@ import moe.ditto.halo.auth.AuthConfigSource
 import moe.ditto.halo.auth.AuthEvent
 import moe.ditto.halo.auth.NativeHostRequests
 import moe.ditto.halo.auth.OidcHostRequest
+import moe.ditto.halo.auth.OidcSessionPort
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -48,19 +49,47 @@ interface HaloIosAuthHost {
         scopes: String,
     )
 
-    /** Registers the sink the host pushes the terminal OIDC outcome into. */
+    /**
+     * Server URL of the host's persisted OIDC session, or null. A synchronous
+     * device-storage read — restore must work offline; the token behind it is
+     * validated lazily by the first [fetchOidcAccessToken].
+     */
+    fun restoreOidcSession(): String?
+
+    /**
+     * Reports `(token, errorMessage)` with at most one argument non-null:
+     * a token on success; an error message on transport/HTTP failure (the
+     * session survives those); both null when there is no session — including
+     * the case where this very call was definitively rejected
+     * (`invalid_grant`), which also clears the session and emits
+     * [HaloIosAuthEventSink.onOidcSessionInvalidated]. [forceRefresh] is the
+     * post-401 path; otherwise the host refreshes only beneath its margin.
+     */
+    fun fetchOidcAccessToken(forceRefresh: Boolean, completion: (String?, String?) -> Unit)
+
+    /**
+     * Clears the persisted OIDC session synchronously, then calls
+     * [completion]; token revocation is fired best-effort and never awaited —
+     * the automation reset hatch runs this with no server up at all.
+     */
+    fun signOutOidc(completion: () -> Unit)
+
+    /** Registers the sink the host pushes OIDC outcomes into. */
     fun setAuthEventSink(sink: HaloIosAuthEventSink?)
 }
 
 /**
- * Swift→Kotlin OIDC outcome. The Swift host runs discovery, the browser, and
- * the token exchange off the main thread, then reports exactly one terminal
- * result here. Mirrors [HaloIosPlayerEventSink]: the receiving bridge only does
- * a thread-safe, non-suspending channel send.
+ * Swift→Kotlin OIDC outcomes. The Swift host runs discovery, the browser, and
+ * the token lifecycle off the main thread, then reports results here. Mirrors
+ * [HaloIosPlayerEventSink]: the receiving bridge only does a thread-safe,
+ * non-suspending channel send.
  */
 interface HaloIosAuthEventSink {
-    fun onOidcSucceeded(tokenProof: String)
+    fun onOidcSucceeded(serverUrl: String, tokenProof: String)
     fun onOidcFailed(reason: String)
+
+    /** Refresh was definitively rejected; the host already cleared the session. */
+    fun onOidcSessionInvalidated()
 }
 
 /**
@@ -186,12 +215,47 @@ internal class IosAuthEventBridge : HaloIosAuthEventSink {
 
     val events: Flow<AuthEvent> = channel.receiveAsFlow()
 
-    override fun onOidcSucceeded(tokenProof: String) {
-        channel.trySend(AuthEvent.OidcSucceeded(tokenProof))
+    override fun onOidcSucceeded(serverUrl: String, tokenProof: String) {
+        channel.trySend(AuthEvent.OidcSucceeded(serverUrl, tokenProof))
     }
 
     override fun onOidcFailed(reason: String) {
         channel.trySend(AuthEvent.OidcFailed(reason))
+    }
+
+    override fun onOidcSessionInvalidated() {
+        channel.trySend(AuthEvent.OidcSessionInvalidated)
+    }
+}
+
+/**
+ * Bridges the common [OidcSessionPort] onto the Swift host's callback shape.
+ * The `(token, error)` pair maps exactly: error → throw (transport failure,
+ * session intact), token → success, both null → no session (or a definitive
+ * rejection whose invalidation event arrives through the auth bridge).
+ */
+internal class IosOidcSessionPort(
+    private val host: HaloIosAuthHost,
+) : OidcSessionPort {
+    override fun restoreSession(): String? = host.restoreOidcSession()
+
+    override suspend fun accessToken(forceRefresh: Boolean): String? =
+        suspendCancellableCoroutine { continuation ->
+            host.fetchOidcAccessToken(forceRefresh) { token, error ->
+                when {
+                    !continuation.isActive -> Unit
+                    error != null -> continuation.resumeWithException(IllegalStateException(error))
+                    else -> continuation.resume(token)
+                }
+            }
+        }
+
+    override suspend fun signOut() {
+        suspendCancellableCoroutine { continuation ->
+            host.signOutOidc {
+                if (continuation.isActive) continuation.resume(Unit)
+            }
+        }
     }
 }
 

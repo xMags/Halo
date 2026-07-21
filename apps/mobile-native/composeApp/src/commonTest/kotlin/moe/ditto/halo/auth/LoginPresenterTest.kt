@@ -71,7 +71,7 @@ class LoginPresenterTest {
     fun oidcSuccessEventTransitionsToSucceeded() = runTest {
         val presenter = oidcPresenterAfterRequest()
 
-        presenter.onAuthEvent(AuthEvent.OidcSucceeded("fixture-access-proof-abc123"))
+        presenter.onAuthEvent(AuthEvent.OidcSucceeded("https://halo.example", "fixture-access-proof-abc123"))
 
         val phase = assertIs<LoginPhase.OidcSucceeded>(presenter.state.phase)
         assertEquals("fixture-access-proof-abc123", phase.tokenProof)
@@ -94,7 +94,7 @@ class LoginPresenterTest {
         val presenter = presenter(AuthConfig.Local)
         presenter.editServerUrl("https://halo.local")
 
-        presenter.onAuthEvent(AuthEvent.OidcSucceeded("proof"))
+        presenter.onAuthEvent(AuthEvent.OidcSucceeded("https://halo.example", "proof"))
 
         assertEquals(LoginPhase.Server, presenter.state.phase)
     }

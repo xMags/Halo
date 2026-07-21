@@ -13,6 +13,9 @@ final class ResizeUITests: XCTestCase {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         app = XCUIApplication()
+        // These suites drive the harness signed out from the login form; a session
+        // persisted by an auth suite or manual run must not auto-restore past it.
+        app.launchEnvironment["HALO_RESET_SESSION"] = "1"
         // The runner receives TEST_RUNNER_-prefixed vars from xcodebuild; the
         // local media base is machine-specific so it rides the environment.
         if let localBase = ProcessInfo.processInfo.environment["HALO_MEDIA_LOCAL_BASE"] {

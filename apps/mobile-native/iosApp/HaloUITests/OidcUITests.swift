@@ -19,16 +19,20 @@ final class OidcUITests: XCTestCase {
 
     // MARK: - Success
 
-    func testSuccessfulSignInSurfacesTokenProof() {
+    func testSuccessfulSignInEstablishesASessionAndSurfacesTokenProof() {
         launch()
         startSignIn()
 
-        // The fixture's access-token proof only exists if discovery → authorize →
-        // /token/ all completed, so its presence is the round-trip evidence.
-        assertText(containing: "fixture-access-proof", timeout: 45)
-        assertText(beginningWith: "OIDC signed in", timeout: 5)
+        // A successful sign-in now establishes a session, so the shell
+        // auto-navigates to the gate; the session row mirrors Kotlin's state.
+        assertText(beginningWith: "Session: oidc · http://127.0.0.1:18787", timeout: 45)
 
-        tapButton("Open gate menu")
+        // The proof is read back through the persisted session (Keychain →
+        // token fetch), so its presence covers discovery → authorize →
+        // /token/ → persist → provider, strictly more than the old transient
+        // login-screen text did.
+        tapButton("Fetch access token")
+        assertText(containing: "Token: fixture-access-proof", timeout: 10)
         assertText(beginningWith: "OIDC requests: 1", timeout: 10)
     }
 
@@ -90,6 +94,9 @@ final class OidcUITests: XCTestCase {
         app = XCUIApplication()
         app.launchEnvironment["HALO_AUTH_HOST"] = "oidc"
         app.launchEnvironment["HALO_SERVER_URL"] = "http://127.0.0.1:18787"
+        // Every test here starts from the login form; a session persisted by an
+        // earlier test (or a manual run) would auto-restore past it.
+        app.launchEnvironment["HALO_RESET_SESSION"] = "1"
         if let mode = mode { app.launchEnvironment["HALO_OIDC_FIXTURE_MODE"] = mode }
         if let httpRoute = httpRoute { app.launchEnvironment["HALO_OIDC_FIXTURE_HTTP_ROUTE"] = httpRoute }
         if !ephemeral { app.launchEnvironment["HALO_OIDC_EPHEMERAL"] = "0" }

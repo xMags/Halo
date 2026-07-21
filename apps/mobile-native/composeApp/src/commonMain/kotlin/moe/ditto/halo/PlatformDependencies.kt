@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.emptyFlow
 import moe.ditto.halo.auth.AuthConfigSource
 import moe.ditto.halo.auth.AuthEvent
 import moe.ditto.halo.auth.NativeHostRequests
+import moe.ditto.halo.auth.NoOidcSessionPort
+import moe.ditto.halo.auth.OidcSessionPort
 import moe.ditto.halo.auth.SecureStorage
 import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerPort
@@ -13,6 +15,11 @@ internal data class PlatformDependencies(
     val authConfigSource: AuthConfigSource,
     val nativeHostRequests: NativeHostRequests,
     val secureStorage: SecureStorage,
+    /**
+     * Native OIDC session owner; [NoOidcSessionPort] where the platform has
+     * no OIDC host yet (Android until its port, fakes in tests).
+     */
+    val oidcSessionPort: OidcSessionPort = NoOidcSessionPort,
     val playerPort: PlayerPort,
     val playerEvents: Flow<PlayerEvent> = emptyFlow(),
     val authEvents: Flow<AuthEvent> = emptyFlow(),
