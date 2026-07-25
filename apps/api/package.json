@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "build": "tsc",
     "typecheck": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev:fixtures": "tsx dev/server.ts"
   },
   "dependencies": {
     "@halo/core": "workspace:*",
