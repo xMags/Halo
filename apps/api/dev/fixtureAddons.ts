@@ -215,7 +215,10 @@ function streamsFor(videoId: string, mediaUrl: string | null): Stream[] {
       },
     },
     {
-      url: mediaUrl ?? `https://cdn.fixture.test/${encodeURIComponent(videoId)}/1080p.mp4`,
+      // A query string on purpose: real debrid URLs carry them, and a client
+      // that mishandles one when passing the URL around fails here rather than
+      // against someone's paid account.
+      url: mediaUrl ? `${mediaUrl}?variant=1080p` : `https://cdn.fixture.test/${encodeURIComponent(videoId)}/1080p.mp4`,
       name: 'Fixture\n1080p',
       title: `📺 1080p • H.264 • AAC\n💾 4.1 GB`,
       behaviorHints: {
