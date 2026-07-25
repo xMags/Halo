@@ -39,6 +39,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import dev.chrisbanes.haze.rememberHazeState
+import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.screens.HomeScreen
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloIcons
@@ -61,7 +63,8 @@ import moe.ditto.halo.ui.glassSurface
  * anywhere inside a screen samples that screen's own content.
  */
 @Composable
-fun HaloShell(
+internal fun HaloShell(
+    graph: SignedInGraph,
     modifier: Modifier = Modifier,
     /**
      * Opens the diagnostics harness from Settings. Null in a shipped build,
@@ -80,7 +83,18 @@ fun HaloShell(
                 startDestination = HomeRoute,
                 modifier = Modifier.fillMaxSize().glassSource(hazeState),
             ) {
-                composable<HomeRoute> { PlaceholderScreen("Home") }
+                composable<HomeRoute> {
+                    HomeScreen(
+                        graph = graph,
+                        // Search, detail and the stream picker are their own
+                        // destinations and are not registered yet; the taps
+                        // land nowhere until they are, rather than being wired
+                        // to a route that does not exist.
+                        onOpenSearch = {},
+                        onOpenDetail = {},
+                        onPlayMovie = {},
+                    )
+                }
                 composable<LibraryRoute> { PlaceholderScreen("Library") }
                 composable<DownloadsRoute> { PlaceholderScreen("Downloads") }
                 composable<SettingsRoute> {

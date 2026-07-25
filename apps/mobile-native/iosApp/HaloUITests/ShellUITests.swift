@@ -9,8 +9,11 @@ import XCTest
 ///   `LocalAuthUITests` uses:
 ///   `python3 -u fixtures/fixture_server.py --port 18788 --auth-mode local`
 ///
-/// The tab screens are placeholders, so the per-tab content assertions name
-/// their filler rows; those move to real content when the screens land.
+/// Library and Downloads are still placeholders, so their assertions name the
+/// filler rows. Home is real, and it is asserted on its header rather than on
+/// posters: this fixture serves auth flows and media, not catalogs, so Home's
+/// body here can only be an empty state. What the header proves is the thing
+/// this suite is about — that the tab's screen composed at all.
 final class ShellUITests: XCTestCase {
     private static let serverUrl = "http://127.0.0.1:18788"
     private static let username = "fixture-user"
@@ -34,13 +37,13 @@ final class ShellUITests: XCTestCase {
                 "Missing tab: \(tab)"
             )
         }
-        assertText(containing: "Home row 1")
+        assertText(containing: "Watch")
     }
 
     func testTabsSwitchContent() {
         launch()
         signIn()
-        assertText(containing: "Home row 1")
+        assertText(containing: "Watch")
 
         tapButton("Library")
         assertText(containing: "Library row 1")

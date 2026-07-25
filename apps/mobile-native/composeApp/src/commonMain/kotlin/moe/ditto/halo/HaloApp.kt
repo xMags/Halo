@@ -25,6 +25,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -162,21 +163,48 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
         }
 
         val sessionState by sessionController.state.collectAsState()
+
+        // One graph per session. Keyed on the generation as well as the server
+        // because session state alone cannot distinguish two users on one
+        // server — see SessionController.sessionGeneration. Signing out drops
+        // it to null, which closes the outgoing one.
+        val sessionGeneration by sessionController.sessionGeneration.collectAsState()
+        val serverUrl = (sessionState as? SessionState.SignedIn)?.serverUrl
+        val graph = remember(sessionGeneration, serverUrl) {
+            serverUrl?.let {
+                SignedInGraph(
+                    serverUrl = it,
+                    tokens = sessionController.tokenProvider,
+                    keyValueStore = dependencies.keyValueStore,
+                )
+            }
+        }
+        DisposableEffect(graph) {
+            onDispose { graph?.close() }
+        }
+
         Box(Modifier.fillMaxSize().background(HaloColors.Background)) {
             if (!sessionRestored) return@Box
             when (screen) {
-                ShellScreen.Shell -> HaloShell(
-                    // Null in a shipped build, which removes the row entirely
-                    // rather than hiding a live one behind a flag.
-                    onOpenDebugGate = if (dependencies.diagnosticsEnabled) {
-                        {
-                            refreshHostSnapshot()
-                            screen = ShellScreen.Gate
-                        }
-                    } else {
-                        null
-                    },
-                )
+                // The graph can be null here for the frame between a sign-out
+                // landing in session state and the collector above moving the
+                // screen to Login. Rendering nothing beats rendering a shell
+                // with no data source behind it.
+                ShellScreen.Shell -> graph?.let { sessionGraph ->
+                    HaloShell(
+                        graph = sessionGraph,
+                        // Null in a shipped build, which removes the row entirely
+                        // rather than hiding a live one behind a flag.
+                        onOpenDebugGate = if (dependencies.diagnosticsEnabled) {
+                            {
+                                refreshHostSnapshot()
+                                screen = ShellScreen.Gate
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                }
                 ShellScreen.Login -> LoginScreen(
                     dependencies = dependencies,
                     localAuthenticator = sessionController,

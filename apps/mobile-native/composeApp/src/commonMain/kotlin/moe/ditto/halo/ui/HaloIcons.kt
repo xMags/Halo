@@ -51,6 +51,8 @@ object HaloIcons {
         icon("M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z")
     }
 
+    val Play: ImageVector by lazy { icon("M8 5v14l11-7z") }
+
     val Star: ImageVector by lazy {
         icon("M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z")
     }
