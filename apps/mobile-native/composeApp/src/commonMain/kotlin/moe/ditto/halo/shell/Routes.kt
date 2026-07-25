@@ -22,3 +22,19 @@ data object DownloadsRoute
 
 @Serializable
 data object SettingsRoute
+
+/**
+ * Search is a destination rather than a tab: it raises a keyboard and owns the
+ * whole screen, and it is entered from Home's search field.
+ */
+@Serializable
+data object SearchRoute
+
+/**
+ * Destinations that replace the shell's chrome instead of living under it.
+ *
+ * The tab bar floats over content, so a screen like this would otherwise have a
+ * translucent bar sitting on top of its own controls. Item detail, the stream
+ * picker and the player join this list as they land.
+ */
+internal val ChromeCoveringRoutes = listOf(SearchRoute::class)

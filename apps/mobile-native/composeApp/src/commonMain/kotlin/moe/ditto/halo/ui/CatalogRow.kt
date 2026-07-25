@@ -37,6 +37,12 @@ fun CatalogRow(
     posterWidth: Dp,
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
+    /**
+     * Names under the art. Off for browse rows, where the poster is the point
+     * and a caption under every card is noise; on for search results, where the
+     * titles are unfamiliar by definition.
+     */
+    showLabels: Boolean = false,
 ) {
     if (!isLoading && items.isEmpty()) return
 
@@ -73,6 +79,7 @@ fun CatalogRow(
                     item = item,
                     onClick = { onItemClick(item) },
                     modifier = Modifier.width(posterWidth),
+                    showLabel = showLabels,
                 )
             }
         }

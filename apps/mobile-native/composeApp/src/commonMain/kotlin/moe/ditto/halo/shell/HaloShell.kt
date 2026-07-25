@@ -41,6 +41,7 @@ import androidx.navigation.compose.rememberNavController
 import dev.chrisbanes.haze.rememberHazeState
 import moe.ditto.halo.SignedInGraph
 import moe.ditto.halo.screens.HomeScreen
+import moe.ditto.halo.screens.SearchScreen
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloIcons
@@ -86,13 +87,19 @@ internal fun HaloShell(
                 composable<HomeRoute> {
                     HomeScreen(
                         graph = graph,
-                        // Search, detail and the stream picker are their own
-                        // destinations and are not registered yet; the taps
-                        // land nowhere until they are, rather than being wired
-                        // to a route that does not exist.
-                        onOpenSearch = {},
+                        onOpenSearch = { navController.navigate(SearchRoute) },
+                        // Detail and the stream picker are not registered yet;
+                        // the taps land nowhere until they are, rather than
+                        // being wired to a route that does not exist.
                         onOpenDetail = {},
                         onPlayMovie = {},
+                    )
+                }
+                composable<SearchRoute> {
+                    SearchScreen(
+                        graph = graph,
+                        onOpenDetail = {},
+                        onClose = { navController.popBackStack() },
                     )
                 }
                 composable<LibraryRoute> { PlaceholderScreen("Library") }
@@ -136,6 +143,13 @@ private val TabIconSize = 24.dp
 private fun HaloTabBar(navController: NavHostController, modifier: Modifier = Modifier) {
     val entry by navController.currentBackStackEntryAsState()
     val destination = entry?.destination
+
+    // Screens that own the whole viewport leave the bar out of the tree rather
+    // than drawing it over their own controls. Checked against the hierarchy, so
+    // a nested graph inside one of them still counts as covering.
+    val covered = destination != null &&
+        ChromeCoveringRoutes.any { route -> destination.hierarchy.any { it.hasRoute(route) } }
+    if (covered) return
 
     Column(modifier.fillMaxWidth().glassSurface(HaloColors.TabBarTint)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(HaloColors.GlassBorder))
