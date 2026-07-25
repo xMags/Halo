@@ -92,7 +92,7 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
         haloImageLoader(context, dependencies.imageCacheDirectory)
     }
     HaloTheme {
-        val session = remember(dependencies) { GateSession(dependencies.playerPort) }
+        val playback = remember(dependencies) { PlaybackHost(dependencies.playerPort) }
         val sessionController = remember(dependencies) {
             SessionController(
                 storage = dependencies.secureStorage,
@@ -152,15 +152,12 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
         }
 
         // Native playback events feed the presenter for the whole app lifetime,
-        // not just while the player screen is composed — otherwise events that
-        // arrive on the gate screen would only apply after re-entry.
-        var playerState by remember(session) { mutableStateOf(session.playerPresenter.state) }
-        LaunchedEffect(session) {
-            dependencies.playerEvents.collect { event ->
-                session.playerPresenter.onEvent(event)
-                playerState = session.playerPresenter.state
-            }
+        // not just while a player screen is composed — otherwise events that
+        // arrive elsewhere would only apply after re-entry.
+        LaunchedEffect(playback) {
+            dependencies.playerEvents.collect { event -> playback.onEvent(event) }
         }
+        val playerState by playback.state.collectAsState()
 
         val sessionState by sessionController.state.collectAsState()
 
@@ -193,6 +190,8 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                 ShellScreen.Shell -> graph?.let { sessionGraph ->
                     HaloShell(
                         graph = sessionGraph,
+                        playback = playback,
+                        playerSurface = dependencies.nativePlayerSurface,
                         // Null in a shipped build, which removes the row entirely
                         // rather than hiding a live one behind a flag.
                         onOpenDebugGate = if (dependencies.diagnosticsEnabled) {
@@ -233,9 +232,9 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                     },
                 )
                 ShellScreen.Player -> PlayerShellScreen(
-                    session = session,
+                    playback = playback,
                     state = playerState,
-                    onStateChanged = { playerState = session.playerPresenter.state },
+                    onStateChanged = { playback.publish() },
                     mediaHttpBase = dependencies.mediaHttpBase,
                     mediaLocalBase = dependencies.mediaLocalBase,
                     nativePlayerSurface = dependencies.nativePlayerSurface,
@@ -519,7 +518,7 @@ private fun GateScreen(
 
 @Composable
 private fun PlayerShellScreen(
-    session: GateSession,
+    playback: PlaybackHost,
     state: PlayerState,
     onStateChanged: () -> Unit,
     mediaHttpBase: String,
@@ -530,7 +529,7 @@ private fun PlayerShellScreen(
     onRecreateCore: () -> Unit,
     onBack: () -> Unit,
 ) {
-    val presenter = session.playerPresenter
+    val presenter = playback.playerPresenter
     var recompositionProbe by remember { mutableStateOf(0) }
     // Mid-playback layout-resize driver (mpvkit/MPVKit#3 regression): cycling the
     // surface height forces drawableSize changes without touching the core.
@@ -552,10 +551,10 @@ private fun PlayerShellScreen(
         MediaItem("sample-bitmap", "4K bitmap (${transportOf(base)})", "${base.trimEnd('/')}/sample4k-bitmap.mkv")
     }
 
-    LaunchedEffect(session) {
+    LaunchedEffect(playback) {
         // The 60s ASS sample with the bitmap sample queued next makes natural
         // end exercise load-next-on-the-same-core for real.
-        session.ensurePlayerStarted(assItem(httpBase), bitmapItem(httpBase))
+        playback.ensurePlayerStarted(assItem(httpBase), bitmapItem(httpBase))
         onStateChanged()
         onRefresh()
     }

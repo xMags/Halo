@@ -51,12 +51,17 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import dev.chrisbanes.haze.rememberHazeState
+import moe.ditto.halo.NativePlayerSurface
+import moe.ditto.halo.PlaybackHost
 import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.browse.episodeTag
 import moe.ditto.halo.screens.DetailScreen
 import moe.ditto.halo.screens.HomeScreen
 import moe.ditto.halo.screens.LibraryScreen
 import moe.ditto.halo.screens.MetaRef
+import moe.ditto.halo.screens.PlayerScreen
 import moe.ditto.halo.screens.SearchScreen
+import moe.ditto.halo.screens.StreamsScreen
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloIcons
@@ -81,6 +86,9 @@ import moe.ditto.halo.ui.glassSurface
 @Composable
 internal fun HaloShell(
     graph: SignedInGraph,
+    /** The app's one playback owner; the player route drives it, nothing else does. */
+    playback: PlaybackHost,
+    playerSurface: NativePlayerSurface,
     modifier: Modifier = Modifier,
     /**
      * Opens the diagnostics harness from Settings. Null in a shipped build,
@@ -116,10 +124,7 @@ internal fun HaloShell(
                         graph = graph,
                         onOpenSearch = { navController.navigate(SearchRoute) },
                         onOpenDetail = { navController.openDetail(it) },
-                        // The stream picker is not registered yet, so a movie's
-                        // Play lands nowhere rather than being wired to a route
-                        // that does not exist.
-                        onPlayMovie = {},
+                        onPlayMovie = { meta -> navController.openStreams(meta.type, meta.id, meta.name) },
                     )
                 }
                 composable<SearchRoute> {
@@ -143,8 +148,43 @@ internal fun HaloShell(
                         type = route.type,
                         metaId = route.metaId,
                         onBack = { navController.popBackStack() },
-                        onPlayMovie = {},
-                        onPlayEpisode = { _, _ -> },
+                        onPlayMovie = { meta -> navController.openStreams(meta.type, meta.id, meta.name) },
+                        onPlayEpisode = { meta, video ->
+                            // The episode tag rather than its name: an episode
+                            // title alone does not say what it is an episode of,
+                            // and the picker's header is all the context there is.
+                            navController.openStreams(meta.type, video.id, "${meta.name} — ${episodeTag(video)}")
+                        },
+                    )
+                }
+                composable<StreamsRoute> { entry ->
+                    val route = entry.toRoute<StreamsRoute>()
+                    StreamsScreen(
+                        graph = graph,
+                        type = route.type,
+                        videoId = route.videoId,
+                        title = route.title,
+                        onBack = { navController.popBackStack() },
+                        onPlay = { stream ->
+                            val url = stream.url ?: return@StreamsScreen
+                            // The picker is replaced rather than stacked, so
+                            // leaving the player returns to the title — being
+                            // handed the source list again after choosing from
+                            // it reads as the choice not having taken.
+                            navController.navigate(PlayerRoute(url = url, title = route.title)) {
+                                popUpTo<StreamsRoute> { inclusive = true }
+                            }
+                        },
+                    )
+                }
+                composable<PlayerRoute> { entry ->
+                    val route = entry.toRoute<PlayerRoute>()
+                    PlayerScreen(
+                        playback = playback,
+                        surface = playerSurface,
+                        url = route.url,
+                        title = route.title,
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable<DownloadsRoute> { PlaceholderScreen("Downloads") }
@@ -301,6 +341,13 @@ private fun TabButton(tab: Tab, selected: Boolean, onClick: () -> Unit, modifier
  */
 private fun NavHostController.openDetail(ref: MetaRef) =
     navigate(DetailRoute(type = ref.type, metaId = ref.metaId))
+
+/**
+ * Opens a video's sources. A film's own id is the video id; an episode's is its
+ * own, which is why this takes the video rather than the title.
+ */
+private fun NavHostController.openStreams(type: String, videoId: String, title: String) =
+    navigate(StreamsRoute(type = type, videoId = videoId, title = title))
 
 /**
  * Switches tabs without stacking them.
