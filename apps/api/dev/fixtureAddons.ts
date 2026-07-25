@@ -193,14 +193,17 @@ function detail(title: Title): MetaDetail {
  * Shaped like the real thing on purpose: names carry newlines and emoji,
  * sizes are large enough to overflow a 32-bit integer, and a torrent-only
  * result is included so the server's filtering is visible rather than assumed.
- * The playable URLs are deliberately unreachable — this fixture drives
- * browsing, and nothing before the player follows them.
+ *
+ * The playable URLs are unreachable unless the server was started with a media
+ * file to serve, in which case both point at it. Only the URL changes: names,
+ * sizes and hints stay identical in both modes, so nothing a picker displays
+ * depends on whether playback is wired up.
  */
-function streamsFor(videoId: string): Stream[] {
+function streamsFor(videoId: string, mediaUrl: string | null): Stream[] {
   const filename = `${videoId.replace(/:/g, '.')}.2160p.WEB-DL.DDP5.1.HDR.HEVC`
   return [
     {
-      url: `https://cdn.fixture.test/${encodeURIComponent(videoId)}/2160p.mkv`,
+      url: mediaUrl ?? `https://cdn.fixture.test/${encodeURIComponent(videoId)}/2160p.mkv`,
       name: 'Fixture\n4K HDR',
       title: `📺 2160p • HEVC • DDP5.1\n💾 34.2 GB • ⚡ Cached`,
       behaviorHints: {
@@ -212,7 +215,7 @@ function streamsFor(videoId: string): Stream[] {
       },
     },
     {
-      url: `https://cdn.fixture.test/${encodeURIComponent(videoId)}/1080p.mp4`,
+      url: mediaUrl ?? `https://cdn.fixture.test/${encodeURIComponent(videoId)}/1080p.mp4`,
       name: 'Fixture\n1080p',
       title: `📺 1080p • H.264 • AAC\n💾 4.1 GB`,
       behaviorHints: {
@@ -240,7 +243,8 @@ export interface FixtureAddon {
   manifest: Manifest
   catalog?: (type: string, id: string, extra: URLSearchParams) => MetaPreview[] | null
   meta?: (type: string, id: string) => MetaDetail | null
-  stream?: (type: string, videoId: string) => Stream[] | null
+  /** [mediaUrl] is the dev server's own media route, or null when it serves none. */
+  stream?: (type: string, videoId: string, mediaUrl: string | null) => Stream[] | null
 }
 
 const catalogManifest: Manifest = {
@@ -320,14 +324,14 @@ export const FIXTURE_ADDONS: FixtureAddon[] = [
     base: 'https://streams.fixture.test',
     entryId: 'fixture-streams',
     manifest: streamManifest,
-    stream: (_type, videoId) => streamsFor(videoId),
+    stream: (_type, videoId, mediaUrl) => streamsFor(videoId, mediaUrl),
   },
   {
     base: 'https://cloud.fixture.test',
     entryId: 'fixture-cloud',
     manifest: cloudManifest,
     catalog: (type, id, extra) => (id === 'cloud' ? matchTitles(MOVIES, type, extra).slice(0, 4) : null),
-    stream: (_type, videoId) => streamsFor(videoId).slice(0, 1),
+    stream: (_type, videoId, mediaUrl) => streamsFor(videoId, mediaUrl).slice(0, 1),
   },
 ]
 
@@ -342,8 +346,16 @@ export const FIXTURE_TITLES = { movies: MOVIES, series: SERIES, poster: POSTER }
  *
  * Anything unknown answers 404, which is how a real addon says it cannot serve
  * a resource — the API turns that into a per-addon error rather than a failure.
+ *
+ * [resolveMediaUrl] is consulted per stream request rather than captured once,
+ * because the URL has to name the host the client actually reached: a phone on
+ * `10.0.2.2` and a simulator on `127.0.0.1` are the same server, and a stream
+ * URL naming the wrong one is unplayable on the device that asked for it.
  */
-export function fixtureAddonFetch(addons: FixtureAddon[] = FIXTURE_ADDONS): typeof fetch {
+export function fixtureAddonFetch(
+  addons: FixtureAddon[] = FIXTURE_ADDONS,
+  resolveMediaUrl: () => string | null = () => null,
+): typeof fetch {
   return async (input) => {
     const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     const addon = addons.find((entry) => href.startsWith(`${entry.base}/`))
@@ -369,7 +381,7 @@ export function fixtureAddonFetch(addons: FixtureAddon[] = FIXTURE_ADDONS): type
       return meta ? json({ meta }) : json({ error: 'no such meta' }, 404)
     }
     if (resource === 'stream') {
-      const streams = addon.stream?.(type!, id!)
+      const streams = addon.stream?.(type!, id!, resolveMediaUrl())
       return streams ? json({ streams }) : json({ error: 'no such stream' }, 404)
     }
     return json({ error: `unsupported resource ${resource}` }, 404)

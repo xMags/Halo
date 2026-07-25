@@ -22,7 +22,9 @@ Dev: `pnpm dev` (api :8787, needs `apps/api/.env` from `.env.example`).
 Client work against a disposable server: `pnpm --filter @halo/api dev:fixtures`
 runs the real API on :18790 in local mode (`admin`/`fixture-pass`) over an
 in-memory DB and canned addons, seeded with addons, a library and watch history
-(`--passthrough` swaps in real addons over the network). Addons are injected
+(`--passthrough` swaps in real addons over the network; `--media <file>` serves
+one video with byte ranges beside the API and points every canned stream at it,
+which is what makes the picker→player path exercisable). Addons are injected
 through `createApp`'s `safeFetch` because the SSRF guard rejects loopback with
 no override — so a fake addon cannot simply be hosted on the dev machine.
 Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
