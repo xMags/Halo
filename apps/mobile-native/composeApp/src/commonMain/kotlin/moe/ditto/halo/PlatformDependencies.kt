@@ -19,6 +19,13 @@ internal data class PlatformDependencies(
     /** Non-secret device state; kept apart from [secureStorage] deliberately. */
     val keyValueStore: KeyValueStore,
     /**
+     * Where the on-disk image cache lives. Platform-owned because the right
+     * location differs per OS, and both platforms' choices share the property
+     * that matters: the system may purge it, and it is excluded from backups.
+     * Poster art is re-fetchable, so it must never occupy backed-up storage.
+     */
+    val imageCacheDirectory: String,
+    /**
      * Native OIDC session owner; [NoOidcSessionPort] where the platform has
      * no OIDC host yet (Android until its port, fakes in tests).
      */

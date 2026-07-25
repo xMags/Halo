@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import kotlinx.coroutines.flow.emptyFlow
 import moe.ditto.halo.auth.AndroidSecureStorage
 import moe.ditto.halo.storage.AndroidPreferencesStore
+import java.io.File
 
 /**
  * Android entry point. Assembles the exact same [PlatformDependencies] the iOS
@@ -38,6 +39,9 @@ class MainActivity : ComponentActivity() {
             nativeHostRequests = authHost,
             secureStorage = AndroidSecureStorage(applicationContext),
             keyValueStore = AndroidPreferencesStore(applicationContext),
+            // cacheDir, not filesDir: Android's auto-backup skips it and the
+            // system may reclaim it, which suits re-fetchable poster art.
+            imageCacheDirectory = File(applicationContext.cacheDir, "halo-images").path,
             playerPort = AndroidPlayerPort(playerHost),
             playerEvents = playerHost.playerEvents,
             authEvents = emptyFlow(),

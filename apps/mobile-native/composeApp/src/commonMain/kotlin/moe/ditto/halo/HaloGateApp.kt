@@ -6,7 +6,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -44,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.collectAsState
+import coil3.compose.setSingletonImageLoaderFactory
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -71,7 +71,8 @@ import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.HaloTheme
 import moe.ditto.halo.ui.HaloType
-import moe.ditto.halo.ui.classifyWindow
+import moe.ditto.halo.ui.haloImageLoader
+import moe.ditto.halo.ui.rememberResponsive
 
 private enum class ShellScreen {
     Login,
@@ -81,6 +82,11 @@ private enum class ShellScreen {
 
 @Composable
 internal fun HaloGateApp(dependencies: PlatformDependencies) {
+    // Installed above every screen: Coil resolves the singleton loader lazily on
+    // the first request, so this only has to run before any art is composed.
+    setSingletonImageLoaderFactory { context ->
+        haloImageLoader(context, dependencies.imageCacheDirectory)
+    }
     HaloTheme {
         val session = remember(dependencies) { GateSession(dependencies.playerPort) }
         val sessionController = remember(dependencies) {
@@ -229,8 +235,8 @@ private fun LoginScreen(
         }
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val responsive = classifyWindow(maxWidth.value, maxHeight.value)
+    val responsive = rememberResponsive()
+    Box(Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
@@ -256,7 +262,7 @@ private fun LoginScreen(
                 style = HaloType.Body.copy(color = HaloColors.TextDim, textAlign = TextAlign.Center),
             )
             Text(
-                text = "${responsive.deviceClass} · shortest edge ${responsive.shortestEdgeDp.toInt()}dp",
+                text = "${responsive.deviceClass} · shortest edge ${responsive.shortestEdge.value.toInt()}dp",
                 style = HaloType.Caption,
             )
             HaloTextField(
