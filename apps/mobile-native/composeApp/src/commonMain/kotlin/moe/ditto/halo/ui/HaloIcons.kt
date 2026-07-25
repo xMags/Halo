@@ -51,6 +51,23 @@ object HaloIcons {
         icon("M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z")
     }
 
+    /** Marks a watched episode. Upstream draws the disc and the tick as one path. */
+    val CheckCircle: ImageVector by lazy {
+        icon(
+            "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 " +
+                "14.17l7.59-7.59L19 8l-9 9z",
+        )
+    }
+
+    /** Opens a picker (the season chip); the back affordance points the other way. */
+    val ChevronDown: ImageVector by lazy {
+        icon("M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z")
+    }
+
+    val ChevronLeft: ImageVector by lazy {
+        icon("M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z")
+    }
+
     val Play: ImageVector by lazy { icon("M8 5v14l11-7z") }
 
     /** Marks a past search term. Upstream ships the dial and the hands as two paths. */

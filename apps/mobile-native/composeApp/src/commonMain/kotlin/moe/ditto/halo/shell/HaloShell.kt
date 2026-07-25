@@ -49,10 +49,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import dev.chrisbanes.haze.rememberHazeState
 import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.screens.DetailScreen
 import moe.ditto.halo.screens.HomeScreen
 import moe.ditto.halo.screens.LibraryScreen
+import moe.ditto.halo.screens.MetaRef
 import moe.ditto.halo.screens.SearchScreen
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloDimensions
@@ -112,17 +115,17 @@ internal fun HaloShell(
                     HomeScreen(
                         graph = graph,
                         onOpenSearch = { navController.navigate(SearchRoute) },
-                        // Detail and the stream picker are not registered yet;
-                        // the taps land nowhere until they are, rather than
-                        // being wired to a route that does not exist.
-                        onOpenDetail = {},
+                        onOpenDetail = { navController.openDetail(it) },
+                        // The stream picker is not registered yet, so a movie's
+                        // Play lands nowhere rather than being wired to a route
+                        // that does not exist.
                         onPlayMovie = {},
                     )
                 }
                 composable<SearchRoute> {
                     SearchScreen(
                         graph = graph,
-                        onOpenDetail = {},
+                        onOpenDetail = { navController.openDetail(it) },
                         onClose = { navController.popBackStack() },
                     )
                 }
@@ -130,7 +133,18 @@ internal fun HaloShell(
                     LibraryScreen(
                         graph = graph,
                         onOpenSearch = { navController.navigate(SearchRoute) },
-                        onOpenDetail = {},
+                        onOpenDetail = { navController.openDetail(it) },
+                    )
+                }
+                composable<DetailRoute> { entry ->
+                    val route = entry.toRoute<DetailRoute>()
+                    DetailScreen(
+                        graph = graph,
+                        type = route.type,
+                        metaId = route.metaId,
+                        onBack = { navController.popBackStack() },
+                        onPlayMovie = {},
+                        onPlayEpisode = { _, _ -> },
                     )
                 }
                 composable<DownloadsRoute> { PlaceholderScreen("Downloads") }
@@ -278,6 +292,15 @@ private fun TabButton(tab: Tab, selected: Boolean, onClick: () -> Unit, modifier
         )
     }
 }
+
+/**
+ * Opens a title from any browse surface.
+ *
+ * Every one of them hands over the same [MetaRef], so the three entry points into
+ * detail cannot disagree about how a title is addressed.
+ */
+private fun NavHostController.openDetail(ref: MetaRef) =
+    navigate(DetailRoute(type = ref.type, metaId = ref.metaId))
 
 /**
  * Switches tabs without stacking them.

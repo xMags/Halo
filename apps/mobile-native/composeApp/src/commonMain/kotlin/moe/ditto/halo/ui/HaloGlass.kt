@@ -25,7 +25,18 @@ import dev.chrisbanes.haze.hazeSource
  */
 val LocalHazeState = staticCompositionLocalOf<HazeState?> { null }
 
-/** Marks this content as the backdrop that frosted chrome above it samples. */
+/**
+ * Marks this content as the backdrop that frosted chrome above it samples.
+ *
+ * **A frosted surface must not be a descendant of the source it samples.** A blur
+ * cannot read content it is itself part of, and the failure is not a graceful
+ * one: the tint is applied inside the render effect, so an effect that samples
+ * nothing draws nothing at all and the surface comes out clear. The shell marks
+ * the whole navigation host, which serves chrome outside it — the tab bar. A
+ * screen that renders its own overlay (a sheet) must therefore mark only its
+ * content and provide [LocalHazeState] for its own subtree, keeping the overlay
+ * a sibling of the source rather than a child.
+ */
 fun Modifier.glassSource(state: HazeState): Modifier = hazeSource(state)
 
 /**
