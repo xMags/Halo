@@ -1,5 +1,13 @@
 package moe.ditto.halo.shell
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -28,8 +36,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -84,6 +95,18 @@ internal fun HaloShell(
                 navController = navController,
                 startDestination = HomeRoute,
                 modifier = Modifier.fillMaxSize().glassSource(hazeState),
+                // Tabs are peers: switching between them is not a journey and gets
+                // no animation, which is also what the platform does with a tab
+                // bar. Only a push onto a covering screen animates, and it animates
+                // in the direction it travels.
+                enterTransition = { if (targetState.destination.coversChrome()) pushEnter() else EnterTransition.None },
+                exitTransition = { if (targetState.destination.coversChrome()) pushExit() else ExitTransition.None },
+                popEnterTransition = {
+                    if (initialState.destination.coversChrome()) popEnter() else EnterTransition.None
+                },
+                popExitTransition = {
+                    if (initialState.destination.coversChrome()) popExit() else ExitTransition.None
+                },
             ) {
                 composable<HomeRoute> {
                     HomeScreen(
@@ -124,6 +147,44 @@ internal fun HaloShell(
     }
 }
 
+/**
+ * How long a push takes. Short enough to feel like a response to the tap rather
+ * than a scene change, and the same in both directions so back never feels like
+ * a different gesture from forward.
+ */
+private val PushSpec = tween<IntOffset>(durationMillis = 300, easing = FastOutSlowInEasing)
+
+/**
+ * How far the screen being left behind travels — a fraction of the way, not off
+ * the edge. The two screens moving at different speeds is what reads as one
+ * sliding *over* the other rather than the pair sliding sideways together.
+ */
+private const val ParallaxFraction = 3
+
+/** The pushed screen arrives from the trailing edge. */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.pushEnter(): EnterTransition =
+    slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, PushSpec)
+
+/** The screen underneath drifts a third of the way out, and waits there. */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.pushExit(): ExitTransition =
+    slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, PushSpec) { full ->
+        full / ParallaxFraction
+    }
+
+/** Popping is the exact mirror: what drifted out drifts back in from where it went. */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.popEnter(): EnterTransition =
+    slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, PushSpec) { full ->
+        full / ParallaxFraction
+    }
+
+/** And the pushed screen leaves the way it came, out through the trailing edge. */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.popExit(): ExitTransition =
+    slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, PushSpec)
+
+/** True for destinations that replace the shell chrome — see [ChromeCoveringRoutes]. */
+private fun NavDestination?.coversChrome(): Boolean =
+    this != null && ChromeCoveringRoutes.any { route -> hierarchy.any { it.hasRoute(route) } }
+
 private class Tab(
     val route: Any,
     val label: String,
@@ -151,34 +212,38 @@ private fun HaloTabBar(navController: NavHostController, modifier: Modifier = Mo
     val entry by navController.currentBackStackEntryAsState()
     val destination = entry?.destination
 
-    // Screens that own the whole viewport leave the bar out of the tree rather
-    // than drawing it over their own controls. Checked against the hierarchy, so
-    // a nested graph inside one of them still counts as covering.
-    val covered = destination != null &&
-        ChromeCoveringRoutes.any { route -> destination.hierarchy.any { it.hasRoute(route) } }
-    if (covered) return
-
-    Column(modifier.fillMaxWidth().glassSurface(HaloColors.TabBarTint)) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(HaloColors.GlassBorder))
-        Row(
-            // The inset padding sits inside the glass so the frosted fill runs
-            // to the bottom of the screen, under the home indicator, instead of
-            // stopping short and leaving an opaque strip beneath it.
-            Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .height(TabBarHeight),
-        ) {
-            tabs.forEach { tab ->
-                val selected = destination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true
-                TabButton(
-                    tab = tab,
-                    selected = selected,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        if (!selected) navController.switchTab(tab.route)
-                    },
-                )
+    // Screens that own the whole viewport hide the bar rather than having it
+    // float over their controls — and it leaves downwards, with the push, instead
+    // of blinking out of existence while the screen it belongs to is still on
+    // screen. Returning slides it back up under the returning screen.
+    AnimatedVisibility(
+        visible = !destination.coversChrome(),
+        modifier = modifier,
+        enter = slideInVertically(PushSpec) { height -> height },
+        exit = slideOutVertically(PushSpec) { height -> height },
+    ) {
+        Column(Modifier.fillMaxWidth().glassSurface(HaloColors.TabBarTint)) {
+            Box(Modifier.fillMaxWidth().height(1.dp).background(HaloColors.GlassBorder))
+            Row(
+                // The inset padding sits inside the glass so the frosted fill runs
+                // to the bottom of the screen, under the home indicator, instead of
+                // stopping short and leaving an opaque strip beneath it.
+                Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .height(TabBarHeight),
+            ) {
+                tabs.forEach { tab ->
+                    val selected = destination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true
+                    TabButton(
+                        tab = tab,
+                        selected = selected,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            if (!selected) navController.switchTab(tab.route)
+                        },
+                    )
+                }
             }
         }
     }
