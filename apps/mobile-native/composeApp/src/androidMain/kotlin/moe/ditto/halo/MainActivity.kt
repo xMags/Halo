@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import kotlinx.coroutines.flow.emptyFlow
 import moe.ditto.halo.auth.AndroidSecureStorage
+import moe.ditto.halo.storage.AndroidPreferencesStore
 
 /**
  * Android entry point. Assembles the exact same [PlatformDependencies] the iOS
@@ -36,6 +37,7 @@ class MainActivity : ComponentActivity() {
             authConfigSource = authHost,
             nativeHostRequests = authHost,
             secureStorage = AndroidSecureStorage(applicationContext),
+            keyValueStore = AndroidPreferencesStore(applicationContext),
             playerPort = AndroidPlayerPort(playerHost),
             playerEvents = playerHost.playerEvents,
             authEvents = emptyFlow(),

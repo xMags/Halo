@@ -8,6 +8,7 @@ import moe.ditto.halo.auth.NativeHostRequests
 import moe.ditto.halo.auth.NoOidcSessionPort
 import moe.ditto.halo.auth.OidcSessionPort
 import moe.ditto.halo.auth.SecureStorage
+import moe.ditto.halo.storage.KeyValueStore
 import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerPort
 
@@ -15,6 +16,8 @@ internal data class PlatformDependencies(
     val authConfigSource: AuthConfigSource,
     val nativeHostRequests: NativeHostRequests,
     val secureStorage: SecureStorage,
+    /** Non-secret device state; kept apart from [secureStorage] deliberately. */
+    val keyValueStore: KeyValueStore,
     /**
      * Native OIDC session owner; [NoOidcSessionPort] where the platform has
      * no OIDC host yet (Android until its port, fakes in tests).

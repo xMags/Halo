@@ -2,6 +2,7 @@ package moe.ditto.halo
 
 import androidx.compose.ui.window.ComposeUIViewController
 import moe.ditto.halo.auth.IosKeychainStorage
+import moe.ditto.halo.storage.IosUserDefaultsStore
 import platform.UIKit.UIViewController
 
 fun MainViewController(
@@ -21,6 +22,7 @@ fun MainViewController(
         authConfigSource = authAdapter,
         nativeHostRequests = authAdapter,
         secureStorage = IosKeychainStorage(),
+        keyValueStore = IosUserDefaultsStore(),
         oidcSessionPort = IosOidcSessionPort(authHost),
         playerPort = IosPlayerHostAdapter(playerHost),
         playerEvents = playerEventBridge.events,
