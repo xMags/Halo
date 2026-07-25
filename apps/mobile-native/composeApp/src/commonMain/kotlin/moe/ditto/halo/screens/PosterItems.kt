@@ -1,5 +1,6 @@
 package moe.ditto.halo.screens
 
+import moe.ditto.halo.api.LibraryItem
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.ui.PosterItem
 
@@ -19,6 +20,19 @@ fun MetaCard.posterItem(progress: Float? = null): PosterItem = PosterItem(
     title = name,
     posterUrl = poster,
     progress = progress,
+)
+
+/**
+ * A saved row as a card.
+ *
+ * `LibraryItem.id` is already the `"${type}:${metaId}"` key form, so the key is
+ * taken as-is rather than rebuilt — the library and the poster grid agree on
+ * identity by construction, not by two spellings that could drift.
+ */
+fun LibraryItem.posterItem(): PosterItem = PosterItem(
+    key = id,
+    title = name,
+    posterUrl = poster,
 )
 
 /**

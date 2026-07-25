@@ -89,6 +89,50 @@ class SearchGroupsTest {
         }
     }
 
+    // ------------------------------------------------------------------
+    // Saved matches, which lead the results
+    // ------------------------------------------------------------------
+
+    @Test
+    fun savedMatchesIgnoreCaseAndMatchAnywhereInTheName() {
+        val library = listOf(
+            libraryItem("series:tt1", name = "Breaking Bad"),
+            libraryItem("movie:tt2", name = "Inception"),
+        )
+
+        assertEquals(listOf("Breaking Bad"), savedSearchMatches(library, "bREAK").map { it.name })
+        assertEquals(listOf("Breaking Bad"), savedSearchMatches(library, "ing b").map { it.name })
+    }
+
+    @Test
+    fun savedMatchesExcludeRemovedTitles() {
+        // A tombstone is not in the library, and offering it back under a
+        // "My Library" heading would state the opposite.
+        val library = listOf(libraryItem("movie:tt1", name = "The Godfather", removedAt = 5_000))
+
+        assertEquals(emptyList(), savedSearchMatches(library, "godfather"))
+    }
+
+    @Test
+    fun savedMatchesComeBackNewestFirst() {
+        val library = listOf(
+            libraryItem("movie:tt1", name = "Dune", addedAt = 1_000),
+            libraryItem("movie:tt2", name = "Dune: Part Two", addedAt = 9_000),
+        )
+
+        assertEquals(listOf("Dune: Part Two", "Dune"), savedSearchMatches(library, "dune").map { it.name })
+    }
+
+    @Test
+    fun savedMatchesNeedTheSameTermLengthTheCatalogSearchDoes() {
+        // One character matches most of a library; the row would be noise, and
+        // the addon rows beside it would not have run at all.
+        val library = listOf(libraryItem("movie:tt1", name = "Dune"))
+
+        assertEquals(emptyList(), savedSearchMatches(library, "d"))
+        assertEquals(emptyList(), savedSearchMatches(null, "dune"))
+    }
+
     private fun target(key: String) =
         SearchTarget(key = key, addonId = key, type = "movie", catalogId = "top", title = "Title $key")
 }

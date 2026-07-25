@@ -104,7 +104,11 @@ internal fun HaloShell(
                     )
                 }
                 composable<LibraryRoute> {
-                    LibraryScreen(graph = graph, onOpenDetail = {})
+                    LibraryScreen(
+                        graph = graph,
+                        onOpenSearch = { navController.navigate(SearchRoute) },
+                        onOpenDetail = {},
+                    )
                 }
                 composable<DownloadsRoute> { PlaceholderScreen("Downloads") }
                 composable<SettingsRoute> {

@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import moe.ditto.halo.SignedInGraph
 import moe.ditto.halo.browse.MinSearchTermLength
+import moe.ditto.halo.browse.savedSearchMatches
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.ui.CatalogRow
 import moe.ditto.halo.ui.CenterMessage
@@ -82,9 +83,13 @@ internal fun SearchScreen(
 
     val history by graph.searchHistory.terms.collectAsState()
     val results by remember(graph, debounced) { graph.browse.search(debounced) }.collectAsState(QueryState())
+    // Already cached by the time search is opened, so its matches render before
+    // any addon answers.
+    val library by remember(graph) { graph.library.observe() }.collectAsState(QueryState())
 
     val trimmed = debounced.trim()
     val searching = trimmed.length >= MinSearchTermLength
+    val saved = remember(library.value, trimmed) { savedSearchMatches(library.value, trimmed) }
 
     // History records deliberate acts only — submitting, re-running a past term,
     // or opening a result. The debounced keystroke stream is not intent.
@@ -144,13 +149,15 @@ internal fun SearchScreen(
             // A failed search is not an empty one. Every per-catalog failure is
             // already swallowed inside the fan-out, so an error here means the
             // addon list itself could not be read — saying "no results" would
-            // blame the query for a dead connection.
-            groups == null && results.error != null ->
+            // blame the query for a dead connection. Saved matches still show:
+            // they came from the cache and are unaffected by that failure.
+            groups == null && results.error != null && saved.isEmpty() ->
                 CenterMessage("Could not reach your Halo server.")
-            groups == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = HaloColors.Accent)
-            }
-            groups.isEmpty() -> CenterMessage("No results for “$trimmed”.")
+            groups == null && saved.isEmpty() ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = HaloColors.Accent)
+                }
+            groups.orEmpty().isEmpty() && saved.isEmpty() -> CenterMessage("No results for “$trimmed”.")
             else -> {
                 val listState = rememberLazyListState()
                 val focusManager = LocalFocusManager.current
@@ -159,13 +166,43 @@ internal fun SearchScreen(
                 LaunchedEffect(listState.isScrollInProgress) {
                     if (listState.isScrollInProgress) focusManager.clearFocus()
                 }
+                val posterWidth = responsive.pick(132.dp, 150.dp, 168.dp)
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     // No tab-bar allowance: this screen covers the bar.
                     contentPadding = PaddingValues(bottom = HaloSpacing.Xl),
                 ) {
-                    items(items = groups, key = { it.key }) { group ->
+                    // What the user already owns leads: it is the one row here
+                    // they have definitely chosen before, and it needs no request
+                    // to appear.
+                    if (saved.isNotEmpty()) {
+                        item(key = "saved") {
+                            CatalogRow(
+                                title = "My Library",
+                                items = remember(saved) { saved.map { it.posterItem() } },
+                                onItemClick = { item ->
+                                    record(trimmed)
+                                    onOpenDetail(item.metaRef())
+                                },
+                                posterWidth = posterWidth,
+                                showLabels = true,
+                            )
+                        }
+                    }
+                    // The addon rows keep arriving behind it; a spinner under the
+                    // saved row says so without hiding what already landed.
+                    if (groups == null) {
+                        item(key = "addons-pending") {
+                            Box(
+                                Modifier.fillMaxWidth().padding(vertical = HaloSpacing.Lg),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(color = HaloColors.Accent)
+                            }
+                        }
+                    }
+                    items(items = groups.orEmpty(), key = { it.key }) { group ->
                         CatalogRow(
                             title = group.title,
                             items = remember(group) { group.metas.map { it.posterItem() } },
@@ -175,7 +212,7 @@ internal fun SearchScreen(
                                 record(trimmed)
                                 onOpenDetail(item.metaRef())
                             },
-                            posterWidth = responsive.pick(132.dp, 150.dp, 168.dp),
+                            posterWidth = posterWidth,
                             showLabels = true,
                         )
                     }

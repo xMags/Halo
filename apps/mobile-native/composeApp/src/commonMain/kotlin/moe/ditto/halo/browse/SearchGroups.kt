@@ -1,6 +1,7 @@
 package moe.ditto.halo.browse
 
 import moe.ditto.halo.api.AddonEntry
+import moe.ditto.halo.api.LibraryItem
 import moe.ditto.halo.api.MetaPreview
 
 /**
@@ -24,6 +25,27 @@ data class SearchResultGroup(
     val title: String,
     val metas: List<MetaPreview>,
 )
+
+/**
+ * Saved titles matching [term], newest first.
+ *
+ * Answered from what the library cache already holds, so it costs no request and
+ * lands before any addon can answer — which is why it leads the results: the one
+ * thing the user has definitely seen before should not wait behind a third-party
+ * catalog.
+ *
+ * Matching is a case-insensitive substring of the name, the same forgiveness a
+ * catalog search gives. Tombstones are excluded: a removed title is not saved,
+ * and offering it back under "My Library" would misreport what is in it.
+ */
+fun savedSearchMatches(library: List<LibraryItem>?, term: String): List<LibraryItem> {
+    val trimmed = term.trim()
+    if (trimmed.length < MinSearchTermLength) return emptyList()
+    return library.orEmpty()
+        .filterNot { it.isRemoved }
+        .filter { it.name.contains(trimmed, ignoreCase = true) }
+        .sortedByDescending { it.addedAt }
+}
 
 /**
  * Every catalog that advertises the `search` extra, in resolution order.

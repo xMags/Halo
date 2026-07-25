@@ -7,14 +7,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,11 +47,8 @@ import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.HaloSpacing
-import moe.ditto.halo.ui.HaloType
 import moe.ditto.halo.ui.HeroScrim
 import moe.ditto.halo.ui.MetaLine
-import moe.ditto.halo.ui.SearchFieldButton
-import moe.ditto.halo.ui.Segmented
 import moe.ditto.halo.ui.rememberResponsive
 
 /**
@@ -125,18 +119,17 @@ internal fun HomeScreen(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        // Content scrolls under the status bar, the way it scrolls under the tab
-        // bar — hence content padding rather than an inset on the container.
-        contentPadding = PaddingValues(
-            top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + HaloSpacing.Xs,
-            bottom = HaloDimensions.TabBarSpace,
-        ),
+        // The header owns the status-bar inset; only the floating tab bar has to
+        // be allowed for here.
+        contentPadding = PaddingValues(bottom = HaloDimensions.TabBarSpace),
     ) {
         item(key = "header") {
-            HomeHeader(
+            ScreenHeader(
+                title = "Watch",
+                modifier = Modifier.padding(horizontal = HaloSpacing.Md),
+                onOpenSearch = onOpenSearch,
                 filter = filter,
                 onFilterChange = { filter = it },
-                onOpenSearch = onOpenSearch,
             )
         }
 
@@ -222,33 +215,6 @@ private const val MovieType = "movie"
 
 /** Tall enough that a spinner or message lands near the middle of the screen. */
 private val BodyStateHeight = 420.dp
-
-@Composable
-private fun HomeHeader(
-    filter: MediaTypeFilter,
-    onFilterChange: (MediaTypeFilter) -> Unit,
-    onOpenSearch: () -> Unit,
-) {
-    Column(
-        Modifier
-            .padding(horizontal = HaloSpacing.Md)
-            .padding(bottom = HaloSpacing.Md),
-    ) {
-        Text(text = "Watch", style = HaloType.LargeTitle)
-        // A button, not a field: search is its own screen, so tapping here
-        // navigates instead of raising a keyboard over the browse surface.
-        SearchFieldButton(
-            onClick = onOpenSearch,
-            modifier = Modifier.padding(top = HaloSpacing.Sm + 4.dp),
-        )
-        Segmented(
-            options = MediaTypeFilter.labels,
-            value = filter.label,
-            onChange = { label -> MediaTypeFilter.byLabel(label)?.let(onFilterChange) },
-            modifier = Modifier.padding(top = HaloSpacing.Sm + 4.dp),
-        )
-    }
-}
 
 /**
  * One catalog's row, observing its own query.

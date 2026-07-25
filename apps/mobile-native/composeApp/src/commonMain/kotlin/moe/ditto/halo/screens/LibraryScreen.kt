@@ -4,13 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -20,16 +16,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import moe.ditto.halo.SignedInGraph
-import moe.ditto.halo.api.LibraryItem
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloSpacing
-import moe.ditto.halo.ui.HaloType
 import moe.ditto.halo.ui.PosterGrid
-import moe.ditto.halo.ui.PosterItem
-import moe.ditto.halo.ui.Segmented
 import moe.ditto.halo.ui.rememberResponsive
 
 /**
@@ -41,6 +33,7 @@ import moe.ditto.halo.ui.rememberResponsive
 @Composable
 internal fun LibraryScreen(
     graph: SignedInGraph,
+    onOpenSearch: () -> Unit,
     onOpenDetail: (MetaRef) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -64,16 +57,17 @@ internal fun LibraryScreen(
 
     Box(modifier.fillMaxSize().background(HaloColors.Background)) {
         when {
-            // The three empty-ish states keep the title and fill the rest, so the
-            // screen still names itself while it has nothing to show.
+            // The three empty-ish states keep the title and search, so the screen
+            // still names itself — and can still reach search — while it has
+            // nothing of its own to show.
             saved == null && library.error != null ->
-                LibraryPlaceholder(filter) { CenterMessage("Could not reach your Halo server.") }
-            saved == null -> LibraryPlaceholder(filter) {
+                LibraryPlaceholder(onOpenSearch) { CenterMessage("Could not reach your Halo server.") }
+            saved == null -> LibraryPlaceholder(onOpenSearch) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = HaloColors.Accent)
                 }
             }
-            saved.isEmpty() -> LibraryPlaceholder(filter) {
+            saved.isEmpty() -> LibraryPlaceholder(onOpenSearch) {
                 CenterMessage("Nothing saved yet. Open a title and tap “Add to library”.")
             }
             else -> PosterGrid(
@@ -89,59 +83,30 @@ internal fun LibraryScreen(
                     bottom = HaloDimensions.TabBarSpace,
                 ),
                 header = {
-                    // The filter appears only once something is saved: three
-                    // segments over an empty grid is a control with nothing to do.
-                    LibraryChrome(showFilter = true, filter = filter, onFilterChange = { filter = it })
+                    ScreenHeader(
+                        title = LibraryTitle,
+                        onOpenSearch = onOpenSearch,
+                        // The filter appears only once something is saved: three
+                        // segments over an empty grid control nothing.
+                        filter = filter,
+                        onFilterChange = { filter = it },
+                    )
                 },
             )
         }
     }
 }
 
+private const val LibraryTitle = "Library"
+
 /**
- * Title over whatever stands in for the grid. Carries the horizontal padding the
+ * Header over whatever stands in for the grid. Carries the horizontal padding the
  * grid would otherwise supply through its content padding.
  */
 @Composable
-private fun LibraryPlaceholder(filter: MediaTypeFilter, body: @Composable () -> Unit) {
+private fun LibraryPlaceholder(onOpenSearch: () -> Unit, body: @Composable () -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = HaloSpacing.Md)) {
-        LibraryChrome(showFilter = false, filter = filter, onFilterChange = {})
+        ScreenHeader(title = LibraryTitle, onOpenSearch = onOpenSearch)
         Box(Modifier.weight(1f)) { body() }
     }
 }
-
-@Composable
-private fun LibraryChrome(
-    showFilter: Boolean,
-    filter: MediaTypeFilter,
-    onFilterChange: (MediaTypeFilter) -> Unit,
-) {
-    Column(
-        Modifier.padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + HaloSpacing.Xs),
-    ) {
-        Text(
-            text = "Library",
-            style = HaloType.LargeTitle,
-            modifier = Modifier.padding(bottom = HaloSpacing.Xs),
-        )
-        if (showFilter) {
-            Segmented(
-                options = MediaTypeFilter.labels,
-                value = filter.label,
-                onChange = { label -> MediaTypeFilter.byLabel(label)?.let(onFilterChange) },
-                modifier = Modifier.padding(bottom = HaloSpacing.Md),
-            )
-        }
-    }
-}
-
-/**
- * A saved row as a card. The library id carries the type and the meta id, which
- * is exactly what [posterItem] wants — so the mapping is the same one every
- * other browse surface uses rather than a second spelling of it.
- */
-private fun LibraryItem.posterItem(): PosterItem = PosterItem(
-    key = id,
-    title = name,
-    posterUrl = poster,
-)
