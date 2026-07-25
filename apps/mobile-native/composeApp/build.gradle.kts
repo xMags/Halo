@@ -33,6 +33,10 @@ kotlin {
             implementation("org.jetbrains.compose.foundation:foundation:1.11.1")
             implementation("org.jetbrains.compose.material3:material3:1.9.0")
             implementation("org.jetbrains.compose.ui:ui:1.11.1")
+            // System back, in common code: the player has to intercept it to
+            // wind the engine down before its surface is taken away. Same
+            // version as ui, and already on the graph via navigation-compose.
+            implementation("org.jetbrains.compose.ui:ui-backhandler:1.11.1")
             implementation("org.jetbrains.androidx.navigation:navigation-compose:2.9.2")
             implementation("dev.chrisbanes.haze:haze:1.7.2")
             implementation("io.coil-kt.coil3:coil-compose:3.5.0")

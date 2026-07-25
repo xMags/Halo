@@ -18,16 +18,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import moe.ditto.halo.NativePlayerSurface
 import moe.ditto.halo.PlaybackHost
 import moe.ditto.halo.player.MediaItem
@@ -47,6 +51,10 @@ import moe.ditto.halo.ui.HaloType
  * the picker reaches the engine and paints. Anything richer belongs with the
  * real player rather than here, where it would be written twice.
  */
+// BackHandler is still marked experimental in Compose 1.11; the opt-in is
+// scoped to this screen rather than turned on for the whole module, so a future
+// signature change surfaces here and nowhere else.
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun PlayerScreen(
     playback: PlaybackHost,
@@ -57,25 +65,41 @@ internal fun PlayerScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by playback.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    var leaving by remember { mutableStateOf(false) }
 
     LaunchedEffect(url) {
         playback.play(MediaItem(id = url, title = title, url = url))
-        try {
-            awaitCancellation()
-        } finally {
-            // Pausing rather than tearing down: teardown is terminal for the
-            // presenter, and on iOS it shuts libmpv down for the rest of the
-            // process, so a screen that tore down on the way out would play
-            // exactly once per launch. The engine holds the source until the
-            // next one replaces it.
-            //
-            // NonCancellable because this runs *because* the effect was
-            // cancelled — a plain call here would be cancelled before it
-            // reached the engine, and the audio would follow the user back to
-            // the previous screen.
-            withContext(NonCancellable) { playback.pause() }
+    }
+
+    /**
+     * Leaving is asynchronous on purpose, and every way out goes through here.
+     *
+     * The engine is wound down first and the navigation happens only once that
+     * has finished — the screen is still on screen while it runs, which is the
+     * one moment its render surface is guaranteed to still exist. Doing this
+     * from a disposal callback instead cannot work: the surface is torn down
+     * before those run.
+     *
+     * Playback is paused rather than torn down. Teardown is terminal for the
+     * presenter, and on iOS it shuts libmpv down for the rest of the process,
+     * so a screen that tore down on the way out would play exactly once per
+     * launch.
+     */
+    val leave: () -> Unit = {
+        if (!leaving) {
+            leaving = true
+            scope.launch {
+                playback.windDownForExit()
+                onBack()
+            }
         }
     }
+
+    // The system gesture and button take the same path as the button drawn
+    // here; a back that skipped the wind-down would hang the app just as
+    // reliably as no wind-down at all.
+    BackHandler(enabled = !leaving, onBack = leave)
 
     Box(modifier.fillMaxSize().background(Color.Black)) {
         // The engine paints the whole box; everything else sits on top of it.
@@ -113,7 +137,7 @@ internal fun PlayerScreen(
                 .size(34.dp)
                 .clip(RoundedCornerShape(HaloRadius.Pill))
                 .background(Color.Black.copy(alpha = 0.4f))
-                .clickable(role = Role.Button, onClick = onBack),
+                .clickable(role = Role.Button, onClick = leave),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

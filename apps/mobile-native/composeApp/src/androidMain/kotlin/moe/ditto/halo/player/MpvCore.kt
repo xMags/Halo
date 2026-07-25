@@ -103,6 +103,18 @@ internal class MpvCore private constructor(
         mpv.setPropertyString("android-surface-size", "${width}x$height")
     }
 
+    /**
+     * Selects or drops the video track.
+     *
+     * Dropping it is how the decoder is destroyed on demand: mpv reinitialises
+     * the video chain synchronously here, so when this returns no MediaCodec
+     * instance is left holding buffers. Audio is untouched.
+     */
+    fun setVideoEnabled(enabled: Boolean) {
+        if (destroyed) return
+        mpv.setPropertyString("vid", if (enabled) "auto" else "no")
+    }
+
     /** Turn video output off before releasing the surface (mpv-android order). */
     fun detachSurface() {
         if (destroyed) return

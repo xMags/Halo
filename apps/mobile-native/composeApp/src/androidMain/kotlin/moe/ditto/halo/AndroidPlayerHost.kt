@@ -8,7 +8,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import moe.ditto.halo.player.MediaItem
@@ -82,7 +86,31 @@ internal class AndroidMpvPlayerHost(
     // --- Player control surface (called by AndroidPlayerPort) ---
     fun load(item: MediaItem) {
         loadCount += 1
+        // Undoes releaseVideo(): the track selection survives a load, so a
+        // source opened after a previous one was released would play sound
+        // over a black surface.
+        core.setVideoEnabled(true)
         core.load(item.url)
+    }
+
+    /**
+     * Destroys the video decode chain and waits for it, so the render surface
+     * can be released without the core still decoding into it.
+     *
+     * Runs on [coreExecutor] rather than the caller's thread because mpv
+     * applies the change synchronously, and is bounded because an already-sick
+     * core must not strand the screen that asked. Called while the surface is
+     * still alive — that is the entire point, and doing it from
+     * `surfaceDestroyed` instead is too late by construction.
+     */
+    fun releaseVideoBlocking(timeoutMs: Long = ReleaseTimeoutMs) {
+        val task = coreExecutor.submit { core.setVideoEnabled(false) }
+        try {
+            task.get(timeoutMs, TimeUnit.MILLISECONDS)
+        } catch (_: TimeoutException) {
+            android.util.Log.w("HALO_MPV", "video release timed out after ${timeoutMs}ms")
+            task.cancel(true)
+        }
     }
 
     fun setPaused(paused: Boolean) = core.setPaused(paused)
@@ -187,6 +215,12 @@ internal class AndroidMpvPlayerHost(
     }
 }
 
+/**
+ * Long enough for a healthy core to reinitialise its video chain, short enough
+ * that a sick one does not hold the screen that asked to leave.
+ */
+private const val ReleaseTimeoutMs = 1_500L
+
 internal class AndroidPlayerPort(
     private val host: AndroidMpvPlayerHost,
 ) : PlayerPort {
@@ -199,6 +233,11 @@ internal class AndroidPlayerPort(
     override suspend fun setSubtitleScale(scale: Double) = host.setSubtitleScale(scale)
     override suspend fun setSubtitleFont(font: String?) = host.setSubtitleFont(font)
     override suspend fun addSubtitle(url: String) = host.addSubtitle(url)
+
+    override suspend fun releaseVideoOutput() = withContext(Dispatchers.Default) {
+        host.releaseVideoBlocking()
+    }
+
     override suspend fun teardown() = host.teardown()
 }
 

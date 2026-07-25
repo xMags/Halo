@@ -42,6 +42,35 @@ class PlaybackHostTest {
     }
 
     @Test
+    fun playingUnpausesWhatALeavingScreenPaused() = runTest {
+        val port = RecordingPlayerPort()
+        val host = PlaybackHost(port)
+
+        host.play(current)
+        host.windDownForExit()
+        host.play(next)
+
+        // `pause` lives on the core, not on the file, and the iOS core loads
+        // paused deliberately — so a source that is merely loaded stays
+        // stopped, which reads as the second source in a session being broken.
+        assertEquals(listOf(false, true, false), port.pauses)
+    }
+
+    @Test
+    fun leavingReleasesTheVideoChainBeforeTheScreenCanGoAway() = runTest {
+        val port = RecordingPlayerPort()
+        val host = PlaybackHost(port)
+
+        host.play(current)
+        host.windDownForExit()
+
+        // Without this the render surface is torn down while a hardware
+        // decoder still holds it, and the two deadlock on the main thread.
+        assertEquals(1, port.videoReleases)
+        assertEquals(0, port.teardownCount)
+    }
+
+    @Test
     fun stateFollowsThePresenterWithoutAScreenAskingItTo() = runTest {
         val port = RecordingPlayerPort()
         val host = PlaybackHost(port)
@@ -55,14 +84,19 @@ class PlaybackHostTest {
 
     private class RecordingPlayerPort : PlayerPort {
         val loads = mutableListOf<MediaItem>()
+        val pauses = mutableListOf<Boolean>()
         var teardownCount = 0
+            private set
+        var videoReleases = 0
             private set
 
         override suspend fun load(item: MediaItem) {
             loads += item
         }
 
-        override suspend fun setPaused(paused: Boolean) = Unit
+        override suspend fun setPaused(paused: Boolean) {
+            pauses += paused
+        }
         override suspend fun seekTo(positionSeconds: Double) = Unit
         override suspend fun selectAudioTrack(id: String?) = Unit
         override suspend fun selectSubtitleTrack(id: String?) = Unit
@@ -70,6 +104,10 @@ class PlaybackHostTest {
         override suspend fun setSubtitleScale(scale: Double) = Unit
         override suspend fun setSubtitleFont(font: String?) = Unit
         override suspend fun addSubtitle(url: String) = Unit
+
+        override suspend fun releaseVideoOutput() {
+            videoReleases += 1
+        }
 
         override suspend fun teardown() {
             teardownCount += 1

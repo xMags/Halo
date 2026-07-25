@@ -26,7 +26,7 @@ import moe.ditto.halo.player.PlayerState
  * driven from callbacks off the main thread and predates Compose entirely, so
  * this republishes it as something a screen can collect.
  */
-internal class PlaybackHost(playerPort: PlayerPort) {
+internal class PlaybackHost(private val playerPort: PlayerPort) {
     val playerPresenter = PlayerPresenter(playerPort)
 
     private val _state = MutableStateFlow(playerPresenter.state)
@@ -53,6 +53,13 @@ internal class PlaybackHost(playerPort: PlayerPort) {
      */
     suspend fun play(item: MediaItem) {
         playerPresenter.start(item)
+        // `pause` belongs to the core, not to the file: whatever paused the
+        // previous source is still in force when the next one loads, and the
+        // iOS core additionally loads paused on purpose so automation is not
+        // racing wall-clock playback. Choosing something to watch says watch
+        // it, on both platforms, rather than trusting a load to arrive
+        // unpaused.
+        playerPresenter.setPaused(false)
         publish()
     }
 
@@ -62,6 +69,22 @@ internal class PlaybackHost(playerPort: PlayerPort) {
      */
     suspend fun pause() {
         playerPresenter.setPaused(true)
+        publish()
+    }
+
+    /**
+     * Winds playback down far enough that the screen showing it can be taken
+     * apart: sound stops, and the video decoder is destroyed and confirmed gone.
+     *
+     * This must be awaited *before* the player screen leaves, not as it leaves.
+     * The render surface dies with that screen, and a decoder still holding
+     * buffers cannot answer the surface owner's request to release it — the two
+     * wait on each other on the main thread, which the system reports as the app
+     * having stopped responding.
+     */
+    suspend fun windDownForExit() {
+        playerPresenter.setPaused(true)
+        playerPort.releaseVideoOutput()
         publish()
     }
 

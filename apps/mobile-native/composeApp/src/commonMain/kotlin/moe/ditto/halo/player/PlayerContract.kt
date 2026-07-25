@@ -43,5 +43,20 @@ interface PlayerPort {
     suspend fun setSubtitleFont(font: String?)
     suspend fun addSubtitle(url: String)
 
+    /**
+     * Tears the video decode chain down and returns once it is gone, so the
+     * render surface can be taken away without the core still using it.
+     *
+     * This has to be awaited before the surface disappears, never afterwards.
+     * A hardware decoder mid-frame cannot answer a request to give up its
+     * surface, and the surface's owner is waiting on the main thread for
+     * exactly that answer — which is a deadlock, not a slow frame. The next
+     * [load] restores video.
+     *
+     * Platforms whose surface outlives the screens that show it have nothing
+     * to release, and say so by leaving this alone.
+     */
+    suspend fun releaseVideoOutput() = Unit
+
     suspend fun teardown()
 }
