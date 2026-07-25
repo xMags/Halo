@@ -80,15 +80,25 @@ final class OwnershipUITests: XCTestCase {
         let element = app.descendants(matching: .any).matching(predicate).firstMatch
         XCTAssertTrue(element.waitForExistence(timeout: 10), "Missing action: \(label)")
 
-        let hittable = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "hittable == true"),
-            object: element
-        )
-        XCTAssertEqual(
-            XCTWaiter.wait(for: [hittable], timeout: 10),
-            .completed,
-            "Action is not hittable: \(label)"
-        )
+        // Both screens this suite drives scroll: the gate's card outgrew the
+        // viewport once it gained a fourth full-width button, which leaves its
+        // last one ("Player shell") under the home indicator and unhittable.
+        // Bring off-screen controls into reach in either direction, waiting for
+        // each fling to settle — Compose consumes a tap during a fling as "stop
+        // scrolling", silently dropping the click.
+        var downSwipesLeft = 4
+        while !element.isHittable && downSwipesLeft > 0 {
+            app.swipeDown()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            downSwipesLeft -= 1
+        }
+        var upSwipesLeft = 6
+        while !element.isHittable && upSwipesLeft > 0 {
+            app.swipeUp()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            upSwipesLeft -= 1
+        }
+        XCTAssertTrue(element.isHittable, "Action is not hittable: \(label)")
         element.tap()
     }
 
