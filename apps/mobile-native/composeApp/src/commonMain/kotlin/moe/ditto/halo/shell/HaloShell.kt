@@ -41,6 +41,7 @@ import androidx.navigation.compose.rememberNavController
 import dev.chrisbanes.haze.rememberHazeState
 import moe.ditto.halo.SignedInGraph
 import moe.ditto.halo.screens.HomeScreen
+import moe.ditto.halo.screens.LibraryScreen
 import moe.ditto.halo.screens.SearchScreen
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloDimensions
@@ -102,7 +103,9 @@ internal fun HaloShell(
                         onClose = { navController.popBackStack() },
                     )
                 }
-                composable<LibraryRoute> { PlaceholderScreen("Library") }
+                composable<LibraryRoute> {
+                    LibraryScreen(graph = graph, onOpenDetail = {})
+                }
                 composable<DownloadsRoute> { PlaceholderScreen("Downloads") }
                 composable<SettingsRoute> {
                     PlaceholderScreen("Settings") {

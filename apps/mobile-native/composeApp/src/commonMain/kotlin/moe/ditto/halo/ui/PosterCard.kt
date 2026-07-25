@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -115,6 +116,13 @@ fun PosterGrid(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(horizontal = HaloSpacing.Md),
     showLabels: Boolean = false,
+    /**
+     * Screen chrome above the first row, spanning the full width and scrolling
+     * with the grid. A title and filter fixed above the grid instead would cost
+     * the posters that height permanently, on the screen that has the least of
+     * it to spare.
+     */
+    header: @Composable (() -> Unit)? = null,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
@@ -123,6 +131,9 @@ fun PosterGrid(
         horizontalArrangement = Arrangement.spacedBy(PosterGap),
         verticalArrangement = Arrangement.spacedBy(HaloSpacing.Md),
     ) {
+        if (header != null) {
+            item(key = "grid-header", span = { GridItemSpan(maxLineSpan) }) { header() }
+        }
         items(items = items, key = { it.key }) { item ->
             PosterCard(item = item, onClick = { onItemClick(item) }, showLabel = showLabels)
         }

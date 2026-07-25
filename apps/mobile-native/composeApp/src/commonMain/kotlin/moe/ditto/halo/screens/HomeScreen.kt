@@ -58,16 +58,6 @@ import moe.ditto.halo.ui.Segmented
 import moe.ditto.halo.ui.rememberResponsive
 
 /**
- * The media-type filter. Continue Watching deliberately ignores it — see
- * `homeShelves` — while every other shelf and every catalog row honours it.
- */
-private enum class HomeFilter(val label: String, val type: String?) {
-    All("All", null),
-    Movies("Movies", "movie"),
-    Series("Series", "series"),
-}
-
-/**
  * Home: a featured title, the three personal shelves, then one row per
  * browsable catalog.
  *
@@ -86,7 +76,9 @@ internal fun HomeScreen(
     modifier: Modifier = Modifier,
 ) {
     val responsive = rememberResponsive()
-    var filter by remember { mutableStateOf(HomeFilter.All) }
+    // Continue Watching deliberately ignores this — see homeShelves — while
+    // every other shelf and every catalog row honours it.
+    var filter by remember { mutableStateOf(MediaTypeFilter.All) }
 
     val addons by remember(graph) { graph.addons.observeEffective() }.collectAsState(QueryState())
     val watchStates by remember(graph) { graph.watchStates.observe() }.collectAsState(QueryState())
@@ -233,8 +225,8 @@ private val BodyStateHeight = 420.dp
 
 @Composable
 private fun HomeHeader(
-    filter: HomeFilter,
-    onFilterChange: (HomeFilter) -> Unit,
+    filter: MediaTypeFilter,
+    onFilterChange: (MediaTypeFilter) -> Unit,
     onOpenSearch: () -> Unit,
 ) {
     Column(
@@ -250,9 +242,9 @@ private fun HomeHeader(
             modifier = Modifier.padding(top = HaloSpacing.Sm + 4.dp),
         )
         Segmented(
-            options = HomeFilter.entries.map { it.label },
+            options = MediaTypeFilter.labels,
             value = filter.label,
-            onChange = { label -> HomeFilter.entries.firstOrNull { it.label == label }?.let(onFilterChange) },
+            onChange = { label -> MediaTypeFilter.byLabel(label)?.let(onFilterChange) },
             modifier = Modifier.padding(top = HaloSpacing.Sm + 4.dp),
         )
     }
