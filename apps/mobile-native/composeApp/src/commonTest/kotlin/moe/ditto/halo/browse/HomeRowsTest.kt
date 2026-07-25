@@ -106,9 +106,10 @@ class HomeRowsTest {
 
     @Test
     fun continueWatchingIgnoresTheTypeFilter() {
-        // Parity with the shipping client, which filters the other two shelves
-        // but not this one. Resuming is about where you left off, not about
-        // what you are currently browsing for.
+        // Intended, not inherited: the unfinished pile is not a browsing
+        // surface. A half-watched film stays half-watched while the filter
+        // reads Series, and hiding it there would lose the resume point. The
+        // other two shelves do filter.
         val shelves = homeShelves(
             watchStates = listOf(watchState("tt1", "movie:tt1", name = "A film")),
             library = null,

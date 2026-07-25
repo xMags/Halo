@@ -6,6 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SessionControllerTest {
 
@@ -97,6 +98,30 @@ class SessionControllerTest {
         assertEquals(SessionState.SignedOut, controller.state.value)
         assertNull(storage.read(AuthStorageKeys.LocalSession))
         assertEquals("https://halo.local", controller.storedServerUrl())
+    }
+
+    @Test
+    fun reSigningInMovesTheGenerationEvenWhenTheStateCannotChange() = runTest {
+        val storage = InMemorySecureStorage()
+        val gateway = LoginGateway(IssuedToken("issued-token", now + 1_000_000))
+        val controller = SessionController(storage, gateway, clock, backgroundScope)
+        controller.restore()
+        controller.signIn("https://halo.local", "first-user", "hunter22")
+        val firstState = controller.state.value
+        val firstGeneration = controller.sessionGeneration.value
+
+        controller.signOut()
+        controller.signIn("https://halo.local", "second-user", "hunter22")
+
+        // The whole point: two different users on one server produce an
+        // equal SessionState, so a StateFlow collector sees no emission. Only
+        // the generation distinguishes them, and per-session resources (caches
+        // keyed by user) must be rebuilt on it or they leak across accounts.
+        assertEquals(firstState, controller.state.value)
+        assertTrue(
+            controller.sessionGeneration.value > firstGeneration,
+            "generation must advance across a re-sign-in",
+        )
     }
 
     // ------------------------------------------------------------------

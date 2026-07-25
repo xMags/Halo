@@ -32,9 +32,10 @@ private const val RecentlyWatchedLimit = 15
  *
  * [type] filters by media type ("movie"/"series"), null meaning no filter.
  *
- * Note that it does NOT reach Continue Watching — that shelf ignores the filter
- * entirely, matching the shipping client. Resuming is treated as being about
- * where you left off rather than about what you are browsing for.
+ * It deliberately does NOT reach Continue Watching. That shelf is not part of
+ * what the filter browses: it is the unfinished pile, and something half-watched
+ * does not stop being half-watched because the filter currently reads Movies.
+ * Recently Watched and the library shelf are browsing surfaces and do honour it.
  */
 fun homeShelves(
     watchStates: List<WatchState>?,

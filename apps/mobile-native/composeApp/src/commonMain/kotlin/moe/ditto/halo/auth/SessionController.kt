@@ -43,11 +43,35 @@ class SessionController(
         gateway = gateway,
         clock = clock,
         scope = scope,
-        onSessionInvalidated = { _state.value = SessionState.SignedOut },
+        onSessionInvalidated = { publish(SessionState.SignedOut) },
     )
 
     private val _state = MutableStateFlow<SessionState>(SessionState.Restoring)
     val state: StateFlow<SessionState> = _state
+
+    private val _sessionGeneration = MutableStateFlow(0)
+
+    /**
+     * Counts session writes, so "a different session is current" is observable
+     * even when [state] cannot express it.
+     *
+     * [SessionState.SignedIn] is a data class in a [StateFlow], which conflates
+     * equal values: signing in as a *different user on the same server* emits
+     * nothing at all. Anything keyed on [state] alone would keep serving the
+     * previous user's cached library to the new one. Consumers that own
+     * per-session resources must key on this as well.
+     */
+    val sessionGeneration: StateFlow<Int> = _sessionGeneration
+
+    /**
+     * The one place session state is written. The counter moves first, so a
+     * consumer reacting to [state] never observes a new session under the old
+     * generation.
+     */
+    private fun publish(next: SessionState) {
+        _sessionGeneration.value += 1
+        _state.value = next
+    }
 
     /**
      * Serves whichever arm is signed in. The dispatch happens per call, not at
@@ -78,14 +102,16 @@ class SessionController(
     fun restore() {
         val local = localSessions.restore()
         if (local != null) {
-            _state.value = SessionState.SignedIn(SessionKind.Local, local.serverUrl)
+            publish(SessionState.SignedIn(SessionKind.Local, local.serverUrl))
             return
         }
         val oidcServerUrl = oidcPort.restoreSession()
-        _state.value = when (oidcServerUrl) {
-            null -> SessionState.SignedOut
-            else -> SessionState.SignedIn(SessionKind.Oidc, oidcServerUrl)
-        }
+        publish(
+            when (oidcServerUrl) {
+                null -> SessionState.SignedOut
+                else -> SessionState.SignedIn(SessionKind.Oidc, oidcServerUrl)
+            },
+        )
     }
 
     override suspend fun signIn(serverUrl: String, username: String, password: String) {
@@ -93,7 +119,7 @@ class SessionController(
         localSessions.establish(LocalSessionData(serverUrl = serverUrl, token = issued.token, expiresAt = issued.expiresAt))
         // Survives sign-out on purpose: the login form prefills the last server.
         storage.write(AuthStorageKeys.ServerUrl, serverUrl)
-        _state.value = SessionState.SignedIn(SessionKind.Local, serverUrl)
+        publish(SessionState.SignedIn(SessionKind.Local, serverUrl))
     }
 
     /**
@@ -107,10 +133,10 @@ class SessionController(
         when (event) {
             is AuthEvent.OidcSucceeded -> {
                 storage.write(AuthStorageKeys.ServerUrl, event.serverUrl)
-                _state.value = SessionState.SignedIn(SessionKind.Oidc, event.serverUrl)
+                publish(SessionState.SignedIn(SessionKind.Oidc, event.serverUrl))
             }
             AuthEvent.OidcSessionInvalidated -> {
-                if (currentKind() == SessionKind.Oidc) _state.value = SessionState.SignedOut
+                if (currentKind() == SessionKind.Oidc) publish(SessionState.SignedOut)
             }
             is AuthEvent.OidcFailed -> Unit
         }
@@ -125,7 +151,7 @@ class SessionController(
     fun signOut() {
         localSessions.clear()
         scope.launch { runCatching { oidcPort.signOut(endIdpSession = true) } }
-        _state.value = SessionState.SignedOut
+        publish(SessionState.SignedOut)
     }
 
     /**
@@ -138,7 +164,7 @@ class SessionController(
     suspend fun resetPersistedSessions() {
         localSessions.clear()
         runCatching { oidcPort.signOut(endIdpSession = false) }
-        _state.value = SessionState.SignedOut
+        publish(SessionState.SignedOut)
     }
 
     /** Last server a sign-in succeeded against; prefill only, never trusted as a session. */
