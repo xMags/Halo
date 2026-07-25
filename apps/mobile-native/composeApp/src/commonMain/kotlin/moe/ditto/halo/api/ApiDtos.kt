@@ -101,6 +101,13 @@ data class WatchState(
     val updatedAt: Long,
 )
 
+/**
+ * Per-addon knobs, sent separately from the addon list so that list stays a
+ * plain array of transport URLs.
+ */
+@Serializable
+internal data class AddonPatch(val hideCatalogs: Boolean)
+
 /** Identifies which effective addon a resolution result came from. */
 @Serializable
 data class AddonSource(
