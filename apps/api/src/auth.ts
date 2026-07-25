@@ -204,8 +204,17 @@ function upsertUser(db: Db, id: string, username: string): Omit<AuthUser, 'isAdm
   return { id, username, createdAt }
 }
 
-/** Gate for admin-only routes. Runs after authMiddleware. */
-export async function adminOnly(c: Context<{ Variables: AuthVariables }>, next: () => Promise<void>): Promise<Response | void> {
+/**
+ * Gate for admin-only routes. Runs after authMiddleware.
+ *
+ * Typed as a MiddlewareHandler rather than a bare function for the same reason
+ * the others are, and it is not cosmetic: Hono infers a handler's path
+ * parameters from the route literal, and it can only do that across a chain of
+ * handlers whose types it recognises. A plain function shape breaks that
+ * inference for every handler behind it, so `c.req.param('id')` silently
+ * widens to `string | undefined` on exactly the routes that are gated here.
+ */
+export const adminOnly: MiddlewareHandler<{ Variables: AuthVariables }> = async (c, next) => {
   if (!c.get('user').isAdmin) return c.json({ error: 'forbidden' }, 403)
   await next()
 }
