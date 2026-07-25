@@ -13,6 +13,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+
+/**
+ * A translucent white band rather than a step between two surface tokens: on
+ * this near-black palette the neighbouring surface colours sit about eight RGB
+ * levels apart, which is invisible in motion. Being translucent also lets the
+ * skeleton sit over any background, not just the surface it draws by default.
+ */
+private val highlightBand = listOf(
+    Color.Transparent,
+    Color.White.copy(alpha = 0.09f),
+    Color.Transparent,
+)
 
 /**
  * Loading placeholder: a highlight band sweeping across a surface tile. Sized
@@ -46,7 +59,7 @@ fun HaloSkeleton(modifier: Modifier = Modifier) {
             val startX = -band + sweep * band * 2f
             drawRect(
                 brush = Brush.linearGradient(
-                    colors = listOf(HaloColors.Surface, HaloColors.SurfaceHigh, HaloColors.Surface),
+                    colors = highlightBand,
                     start = Offset(startX, 0f),
                     end = Offset(startX + band, 0f),
                 ),
