@@ -65,6 +65,7 @@ import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlaybackStatus
 import moe.ditto.halo.player.PlayerState
 import moe.ditto.halo.player.PlayerTrack
+import moe.ditto.halo.shell.HaloShell
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloRadius
@@ -76,12 +77,14 @@ import moe.ditto.halo.ui.rememberResponsive
 
 private enum class ShellScreen {
     Login,
+    /** The product shell — four tabs, and where a signed-in session lands. */
+    Shell,
     Gate,
     Player,
 }
 
 @Composable
-internal fun HaloGateApp(dependencies: PlatformDependencies) {
+internal fun HaloApp(dependencies: PlatformDependencies) {
     // Installed above every screen: Coil resolves the singleton loader lazily on
     // the first request, so this only has to run before any art is composed.
     setSingletonImageLoaderFactory { context ->
@@ -109,7 +112,7 @@ internal fun HaloGateApp(dependencies: PlatformDependencies) {
 
         // Session restore gates the first render (a persisted session must boot
         // to the app, not flash the login form), then the state collector owns
-        // both navigation directions: Login → Gate on sign-in/restore, and any
+        // both navigation directions: Login → Shell on sign-in/restore, and any
         // screen → Login on a live sign-out (the button, or invalid_grant from
         // a background refresh). The sign-out kick fires only on a
         // SignedIn → SignedOut transition, so the fake-host diagnostics suites
@@ -122,7 +125,7 @@ internal fun HaloGateApp(dependencies: PlatformDependencies) {
             sessionController.state.collect { state ->
                 if (state is SessionState.SignedIn && screen == ShellScreen.Login) {
                     refreshHostSnapshot()
-                    screen = ShellScreen.Gate
+                    screen = ShellScreen.Shell
                 }
                 if (state == SessionState.SignedOut &&
                     previous is SessionState.SignedIn &&
@@ -162,6 +165,18 @@ internal fun HaloGateApp(dependencies: PlatformDependencies) {
         Box(Modifier.fillMaxSize().background(HaloColors.Background)) {
             if (!sessionRestored) return@Box
             when (screen) {
+                ShellScreen.Shell -> HaloShell(
+                    // Null in a shipped build, which removes the row entirely
+                    // rather than hiding a live one behind a flag.
+                    onOpenDebugGate = if (dependencies.diagnosticsEnabled) {
+                        {
+                            refreshHostSnapshot()
+                            screen = ShellScreen.Gate
+                        }
+                    } else {
+                        null
+                    },
+                )
                 ShellScreen.Login -> LoginScreen(
                     dependencies = dependencies,
                     localAuthenticator = sessionController,
@@ -182,6 +197,7 @@ internal fun HaloGateApp(dependencies: PlatformDependencies) {
                     onFetchToken = { sessionController.tokenProvider.accessToken() },
                     onSignOut = { sessionController.signOut() },
                     onRefresh = refreshHostSnapshot,
+                    onBackToApp = { screen = ShellScreen.Shell },
                     onLogin = { screen = ShellScreen.Login },
                     onPlayer = {
                         refreshHostSnapshot()
@@ -324,7 +340,7 @@ private fun LoginScreen(
                             color = HaloColors.TextDim,
                             style = HaloType.Callout,
                         )
-                        HaloButton(label = "Open gate menu", onClick = onOpenGate)
+                        GateShortcut(dependencies.diagnosticsEnabled, onOpenGate)
                     }
                     is LoginPhase.OidcSucceeded -> {
                         Text(
@@ -333,7 +349,7 @@ private fun LoginScreen(
                             style = HaloType.Callout,
                             textAlign = TextAlign.Center,
                         )
-                        HaloButton(label = "Open gate menu", onClick = onOpenGate)
+                        GateShortcut(dependencies.diagnosticsEnabled, onOpenGate)
                     }
                     is LoginPhase.OidcFailed -> {
                         Text(
@@ -366,17 +382,31 @@ private fun LoginScreen(
                         // The diagnostics suites navigate through here without a
                         // session; the button must survive until the product
                         // shell replaces the gate menu.
-                        HaloButton(label = "Open gate menu", onClick = onOpenGate)
+                        GateShortcut(dependencies.diagnosticsEnabled, onOpenGate)
                     }
                     is LoginPhase.LocalSignedIn -> {
                         Text(text = "Signed in", color = HaloColors.Success, style = HaloType.Callout)
-                        HaloButton(label = "Open gate menu", onClick = onOpenGate)
+                        GateShortcut(dependencies.diagnosticsEnabled, onOpenGate)
                     }
                     else -> Unit
                 }
             }
         }
     }
+}
+
+/**
+ * The login screen's jump straight into the diagnostics harness, without a
+ * session. The engine suites depend on it: they exercise host ownership and
+ * playback, neither of which needs an account, so making them sign in first
+ * would couple every one of them to a running auth fixture.
+ *
+ * Absent from a shipped build, where the flag is false.
+ */
+@Composable
+private fun GateShortcut(enabled: Boolean, onOpenGate: () -> Unit) {
+    if (!enabled) return
+    HaloButton(label = "Open gate menu", onClick = onOpenGate)
 }
 
 @Composable
@@ -386,6 +416,7 @@ private fun GateScreen(
     onFetchToken: suspend () -> String?,
     onSignOut: () -> Unit,
     onRefresh: () -> Unit,
+    onBackToApp: () -> Unit,
     onLogin: () -> Unit,
     onPlayer: () -> Unit,
 ) {
@@ -451,6 +482,7 @@ private fun GateScreen(
             }
             NativeHostSummary(hostSnapshot)
             HaloButton(label = "Refresh host counters", onClick = onRefresh)
+            HaloButton(label = "Back to app", onClick = onBackToApp)
             HaloButton(label = "Login shell", onClick = onLogin)
             HaloButton(label = "Player shell", onClick = onPlayer)
         }

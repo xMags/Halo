@@ -50,6 +50,14 @@ internal data class PlatformDependencies(
     val mediaHttpBase: String = "http://127.0.0.1:18787/media",
     val mediaLocalBase: String = "",
     /**
+     * Whether the diagnostics harness is reachable — the gate screen, its host
+     * counters, and the login screen's shortcut into it.
+     *
+     * Set from the build's own debuggable flag rather than from a launch
+     * argument, so a shipped build cannot be talked into exposing it.
+     */
+    val diagnosticsEnabled: Boolean = false,
+    /**
      * Wipes any persisted session before restore. Automation escape hatch:
      * a session persisted by a manual sign-in survives reinstalls (Keychain)
      * and would otherwise strand every UI suite that expects the login form.

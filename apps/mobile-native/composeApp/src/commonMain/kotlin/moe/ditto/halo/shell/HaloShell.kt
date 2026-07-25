@@ -1,6 +1,7 @@
 package moe.ditto.halo.shell
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -60,7 +61,15 @@ import moe.ditto.halo.ui.glassSurface
  * anywhere inside a screen samples that screen's own content.
  */
 @Composable
-fun HaloShell(modifier: Modifier = Modifier) {
+fun HaloShell(
+    modifier: Modifier = Modifier,
+    /**
+     * Opens the diagnostics harness from Settings. Null in a shipped build,
+     * which leaves the row out of the tree entirely rather than rendering a
+     * disabled one.
+     */
+    onOpenDebugGate: (() -> Unit)? = null,
+) {
     val navController = rememberNavController()
     val hazeState = rememberHazeState()
 
@@ -74,7 +83,13 @@ fun HaloShell(modifier: Modifier = Modifier) {
                 composable<HomeRoute> { PlaceholderScreen("Home") }
                 composable<LibraryRoute> { PlaceholderScreen("Library") }
                 composable<DownloadsRoute> { PlaceholderScreen("Downloads") }
-                composable<SettingsRoute> { PlaceholderScreen("Settings") }
+                composable<SettingsRoute> {
+                    PlaceholderScreen("Settings") {
+                        if (onOpenDebugGate != null) {
+                            DebugGateRow(onOpenDebugGate)
+                        }
+                    }
+                }
             }
             HaloTabBar(navController, Modifier.align(Alignment.BottomCenter))
         }
@@ -181,12 +196,28 @@ private fun NavHostController.switchTab(route: Any) {
 }
 
 /**
+ * Entry into the diagnostics harness. It lives under Settings because that is
+ * the one tab a debug affordance can sit in without displacing product content.
+ */
+@Composable
+private fun DebugGateRow(onClick: () -> Unit) {
+    Text(
+        text = "Debug gate",
+        style = HaloType.Callout.copy(color = HaloColors.Accent),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = HaloSpacing.Md),
+    )
+}
+
+/**
  * Stand-in until the real screens land. Deliberately scrollable and taller than
  * the viewport so the bottom-padding contract above is visible rather than
  * theoretical.
  */
 @Composable
-private fun PlaceholderScreen(name: String) {
+private fun PlaceholderScreen(name: String, header: @Composable () -> Unit = {}) {
     Column(
         Modifier
             .fillMaxSize()
@@ -199,6 +230,7 @@ private fun PlaceholderScreen(name: String) {
             style = HaloType.LargeTitle,
             modifier = Modifier.padding(vertical = HaloSpacing.Md),
         )
+        header()
         repeat(24) { index ->
             Text(
                 text = "$name row ${index + 1}",

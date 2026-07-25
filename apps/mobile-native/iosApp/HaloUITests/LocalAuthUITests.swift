@@ -2,7 +2,8 @@ import XCTest
 
 /// Local-mode sign-in against the fixture server, including the Keychain
 /// persistence proof: a session established in one process must survive
-/// termination and restore straight to the gate screen in the next.
+/// termination and restore straight into the app shell in the next, without
+/// the login form appearing at all.
 ///
 /// Prerequisites:
 /// - the fixture server running in local mode on its own port so the OIDC
@@ -17,6 +18,7 @@ final class LocalAuthUITests: XCTestCase {
     private static let serverUrl = "http://127.0.0.1:18788"
     private static let username = "fixture-user"
     private static let password = "fixture-pass"
+    private let shellMarker = "Library"
 
     private var app: XCUIApplication!
 
@@ -29,13 +31,13 @@ final class LocalAuthUITests: XCTestCase {
     func testSignInPersistsSessionAcrossRelaunch() {
         launch(resetSession: true)
         signIn()
-        assertGateScreen()
+        assertSignedIn()
 
         // The relaunch (no reset) must restore the Keychain session and skip
         // the login form entirely — this is the cross-process persistence proof.
         app.terminate()
         launch(resetSession: false)
-        assertGateScreen()
+        assertSignedIn()
         XCTAssertFalse(
             element(labeled: "Continue").exists,
             "Login form rendered despite a persisted session"
@@ -61,14 +63,14 @@ final class LocalAuthUITests: XCTestCase {
     func testResetHatchClearsThePersistedSession() {
         launch(resetSession: true)
         signIn()
-        assertGateScreen()
+        assertSignedIn()
 
         app.terminate()
         launch(resetSession: true)
         assertText(containing: "Continue")
         XCTAssertFalse(
-            element(labeled: "Refresh host counters").exists,
-            "Gate screen appeared despite the session reset hatch"
+            element(labeled: shellMarker).exists,
+            "The app shell appeared despite the session reset hatch"
         )
     }
 
@@ -114,11 +116,12 @@ final class LocalAuthUITests: XCTestCase {
 
     // MARK: - Assertions
 
-    private func assertGateScreen(timeout: TimeInterval = 20) {
-        // "Refresh host counters" only exists on the gate screen, which the shell
-        // auto-navigates to once the session state reports signed in.
-        let gateMarker = element(labeled: "Refresh host counters")
-        XCTAssertTrue(gateMarker.waitForExistence(timeout: timeout), "Gate screen never appeared")
+    private func assertSignedIn(timeout: TimeInterval = 20) {
+        // An established session lands on the product shell. "Library" is a tab
+        // label that exists on every tab and collides with no screen title, so
+        // it identifies the shell without depending on which tab is showing.
+        let marker = element(labeled: shellMarker)
+        XCTAssertTrue(marker.waitForExistence(timeout: timeout), "App shell never appeared")
     }
 
     private func assertText(containing substring: String, timeout: TimeInterval = 20) {

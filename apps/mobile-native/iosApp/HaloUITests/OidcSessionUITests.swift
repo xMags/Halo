@@ -24,10 +24,11 @@ final class OidcSessionUITests: XCTestCase {
         launch(resetSession: true)
         signInToGate()
 
-        // The relaunch must restore from the Keychain straight to the gate —
+        // The relaunch must restore from the Keychain straight into the shell —
         // no ASWebAuthenticationSession, no network.
         app.terminate()
         launch(resetSession: false)
+        openDebugGate(timeout: 20)
         assertText(beginningWith: "Session: oidc · http://127.0.0.1:18787", timeout: 20)
         XCTAssertFalse(element(labeled: "Continue").exists, "Login form rendered despite a persisted session")
 
@@ -75,6 +76,7 @@ final class OidcSessionUITests: XCTestCase {
         // The session also survives a relaunch after the failed refresh.
         app.terminate()
         launch(resetSession: false)
+        openDebugGate(timeout: 20)
         assertText(beginningWith: "Session: oidc", timeout: 20)
     }
 
@@ -109,14 +111,28 @@ final class OidcSessionUITests: XCTestCase {
         app.launch()
     }
 
-    /// Full ephemeral browser sign-in ending on the debug gate (the shell
-    /// auto-navigates once the session is established).
+    /// Full ephemeral browser sign-in, then into the debug gate.
+    ///
+    /// A session now lands on the product shell, so the diagnostics this suite
+    /// asserts on — the session row, the token fetch, the sign-out — are two
+    /// taps away rather than on the landing screen.
     private func signInToGate() {
         tapButton("Continue")
         // The ephemeral session shows no consent and the fixture auto-redirects;
         // answer a consent only if this environment surfaces one.
         _ = resolveConsent(button: "Continue", timeout: 2)
-        assertText(beginningWith: "Session: oidc · http://127.0.0.1:18787", timeout: 45)
+        openDebugGate(timeout: 45)
+        assertText(beginningWith: "Session: oidc · http://127.0.0.1:18787", timeout: 20)
+    }
+
+    /// Settings tab, then the debug row. Tapped from whichever tab is showing;
+    /// "Settings" is unambiguous until that tab is itself on screen, which is
+    /// never the case at a call site here.
+    private func openDebugGate(timeout: TimeInterval = 20) {
+        let settingsTab = element(labeled: "Settings")
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: timeout), "App shell never appeared")
+        tapButton("Settings")
+        tapButton("Debug gate")
     }
 
     @discardableResult

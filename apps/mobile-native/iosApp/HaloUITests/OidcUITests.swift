@@ -23,9 +23,10 @@ final class OidcUITests: XCTestCase {
         launch()
         startSignIn()
 
-        // A successful sign-in now establishes a session, so the shell
-        // auto-navigates to the gate; the session row mirrors Kotlin's state.
-        assertText(beginningWith: "Session: oidc · http://127.0.0.1:18787", timeout: 45)
+        // A successful sign-in establishes a session and lands on the product
+        // shell; the gate's session row, two taps in, mirrors Kotlin's state.
+        openDebugGate(timeout: 45)
+        assertText(beginningWith: "Session: oidc · http://127.0.0.1:18787", timeout: 20)
 
         // The proof is read back through the persisted session (Keychain →
         // token fetch), so its presence covers discovery → authorize →
@@ -109,6 +110,17 @@ final class OidcUITests: XCTestCase {
         // so the flow completes on its own. Answer a consent only if one appears
         // (other iOS versions/environments); keep the wait short.
         _ = resolveConsent(button: "Continue", timeout: 2)
+    }
+
+    /// Settings tab, then the debug row. Tapped from whichever tab is showing;
+    /// "Settings" is unambiguous until that tab is itself on screen, which is
+    /// never the case at a call site here.
+    private func openDebugGate(timeout: TimeInterval = 20) {
+        let predicate = NSPredicate(format: "label == %@", "Settings")
+        let settingsTab = app.descendants(matching: .any).matching(predicate).firstMatch
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: timeout), "App shell never appeared")
+        tapButton("Settings")
+        tapButton("Debug gate")
     }
 
     @discardableResult

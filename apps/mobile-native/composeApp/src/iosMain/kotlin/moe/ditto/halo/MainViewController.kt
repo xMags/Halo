@@ -1,6 +1,8 @@
 package moe.ditto.halo
 
 import androidx.compose.ui.window.ComposeUIViewController
+import kotlin.experimental.ExperimentalNativeApi
+import kotlin.native.Platform
 import moe.ditto.halo.auth.IosKeychainStorage
 import moe.ditto.halo.storage.IosUserDefaultsStore
 import platform.Foundation.NSCachesDirectory
@@ -19,6 +21,7 @@ private fun imageCacheDirectory(): String {
     return "$caches/halo-images"
 }
 
+@OptIn(ExperimentalNativeApi::class)
 fun MainViewController(
     authHost: HaloIosAuthHost,
     playerHost: HaloIosPlayerHost,
@@ -38,6 +41,10 @@ fun MainViewController(
         secureStorage = IosKeychainStorage(),
         keyValueStore = IosUserDefaultsStore(),
         imageCacheDirectory = imageCacheDirectory(),
+        // Whether the Kotlin framework itself was linked debug. Taken from the
+        // binary rather than plumbed down from Swift so the host cannot pass
+        // the wrong answer, and so a release framework has no way to say yes.
+        diagnosticsEnabled = Platform.isDebugBinary,
         oidcSessionPort = IosOidcSessionPort(authHost),
         playerPort = IosPlayerHostAdapter(playerHost),
         playerEvents = playerEventBridge.events,
@@ -50,6 +57,6 @@ fun MainViewController(
         resetPersistedSession = resetPersistedSession,
     )
     return ComposeUIViewController {
-        HaloGateApp(dependencies = dependencies)
+        HaloApp(dependencies = dependencies)
     }
 }

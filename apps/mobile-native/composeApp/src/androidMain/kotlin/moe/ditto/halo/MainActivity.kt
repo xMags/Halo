@@ -1,5 +1,6 @@
 package moe.ditto.halo
 
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -42,6 +43,11 @@ class MainActivity : ComponentActivity() {
             // cacheDir, not filesDir: Android's auto-backup skips it and the
             // system may reclaim it, which suits re-fetchable poster art.
             imageCacheDirectory = File(applicationContext.cacheDir, "halo-images").path,
+            // The manifest's own debuggable flag, so a release build cannot
+            // reach the diagnostics harness. Read from ApplicationInfo rather
+            // than BuildConfig, which this module does not generate.
+            diagnosticsEnabled =
+                (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,
             playerPort = AndroidPlayerPort(playerHost),
             playerEvents = playerHost.playerEvents,
             authEvents = emptyFlow(),
@@ -52,7 +58,7 @@ class MainActivity : ComponentActivity() {
         )
 
         setContent {
-            HaloGateApp(dependencies)
+            HaloApp(dependencies)
         }
     }
 }

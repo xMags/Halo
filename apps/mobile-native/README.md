@@ -10,9 +10,10 @@ Standalone Gradle project — deliberately not part of the pnpm workspace
 
 ## Current state
 
-The proven engine/boundary layer, plus the diagnostics gate harness its test
-suites drive. Product screens (auth, catalog, player UI, downloads) land on
-top of this boundary; the gate shell is debug/test scaffolding, not product UI.
+The proven engine/boundary layer, the auth and sync subsystems on top of it,
+and the beginnings of the product shell. A signed-in session lands on the tab
+shell; the diagnostics gate is debug-only scaffolding reached from a row in
+Settings, and is absent from a build that is not debuggable.
 
 - Gradle 9.5.0, Kotlin 2.4.10, Compose Multiplatform 1.11.1, Ktor 3.5.1
 - Targets: `iosArm64`, `iosSimulatorArm64`, `androidTarget` (Android kept
@@ -31,11 +32,16 @@ top of this boundary; the gate shell is debug/test scaffolding, not product UI.
 - Android mirror hosts over a thin owned `MpvCore` JNI adapter
   (`dev.jdtech.mpv` prebuilt is emulator-only; the shipping build will be an
   owned reproducible libmpv build like iOS's)
-- Common tests (auth discovery, login state machine, player lifecycle,
-  responsive classification), iOS host-bridge tests, eight XCUITest suites
-  (ownership, playback, resize, core/app lifecycle, soak, OIDC incl. negative
-  modes, local-mode sign-in incl. the cross-process Keychain persistence
-  proof), and an instrumented Android ownership test
+- Compose Multiplatform UI layer: design-system components (poster card and
+  grid, catalog row, hero scrim, segmented control, search fields, select
+  sheet) over Coil image loading and Haze backdrop blur, and a four-tab shell
+  on a type-safe navigation graph
+- Common tests (auth discovery, login state machine, player lifecycle, API
+  decoding, cache, sync repositories, device-local stores, responsive
+  classification), iOS host-bridge tests, nine XCUITest suites (ownership,
+  playback, resize, core/app lifecycle, soak, OIDC incl. negative modes,
+  local-mode sign-in incl. the cross-process Keychain persistence proof, and
+  the tab shell), and an instrumented Android ownership test
 - `fixtures/`: a stdlib-only Python fixture server (OIDC flows with injectable
   negative modes, local-mode login/refresh with real token rotation, and
   Range-capable media serving) used by the integration suites
@@ -63,7 +69,8 @@ a booted arm64 simulator via
 `xcodebuild test -project iosApp/Halo.xcodeproj -scheme Halo
 -only-testing:HaloUITests/<Suite>`, with the fixture server providing auth
 flows and Range-capable media. The OIDC suites expect it on `:18787` in its
-default mode; `LocalAuthUITests` expects a second instance on `:18788` with
-`--auth-mode local` (fixture credentials `fixture-user` / `fixture-pass`);
+default mode; `LocalAuthUITests` and `ShellUITests` expect a second instance on
+`:18788` with `--auth-mode local` (fixture credentials `fixture-user` /
+`fixture-pass`);
 the local-media suites additionally need `TEST_RUNNER_HALO_MEDIA_LOCAL_BASE`
 pointing at a `file://` copy of the samples.
