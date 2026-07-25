@@ -78,18 +78,4 @@ class ResponsiveTest {
         assertEquals("tablet", largeTablet.pick(phone = "phone", tablet = "tablet"))
     }
 
-    @Test
-    fun gridItemWidthSubtractsGuttersAndFloors() {
-        // 390 - (16 * 2) - (11 * 2) = 336, evenly divided across three columns.
-        assertEquals(112.dp, gridItemWidth(390.dp, columns = 3, horizontalPadding = 16.dp, gap = 11.dp))
-        // 1024 - 32 - 44 = 948; 948 / 5 = 189.6 truncates rather than overflowing the row.
-        assertEquals(189.dp, gridItemWidth(1_024.dp, columns = 5, horizontalPadding = 16.dp, gap = 11.dp))
-    }
-
-    @Test
-    fun gridItemWidthRejectsAColumnlessGrid() {
-        assertFailsWith<IllegalArgumentException> {
-            gridItemWidth(390.dp, columns = 0, horizontalPadding = 16.dp, gap = 11.dp)
-        }
-    }
 }

@@ -7,7 +7,6 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
-import kotlin.math.floor
 
 /**
  * The single source of truth for phone/tablet branching.
@@ -80,23 +79,6 @@ private fun posterColumnsFor(width: Dp): Int = when {
     width >= 820.dp -> 5
     width >= 600.dp -> 4
     else -> 3
-}
-
-/**
- * Exact width of one cell in a fixed-column poster grid, so cells keep a fixed
- * size instead of flex-filling. This is what makes a partial final row
- * left-align at its natural width rather than stretching to fill it — egregious
- * at high column counts.
- */
-fun gridItemWidth(
-    windowWidth: Dp,
-    columns: Int,
-    horizontalPadding: Dp,
-    gap: Dp,
-): Dp {
-    require(columns > 0) { "A grid needs at least one column" }
-    val inner = windowWidth - horizontalPadding * 2 - gap * (columns - 1)
-    return floor((inner / columns).value).dp
 }
 
 /**
