@@ -172,6 +172,11 @@ internal class AndroidMpvPlayerHost(
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
+                // Stop the core before the surface is pulled out from under it.
+                // Detaching runs mpv_set_option on the UI thread and blocks until
+                // the video chain acknowledges — with playback live that wait can
+                // never be satisfied, which is an ANR rather than a slow frame.
+                core.setPaused(true)
                 core.detachSurface()
                 currentSurface = null
                 detachCount += 1
