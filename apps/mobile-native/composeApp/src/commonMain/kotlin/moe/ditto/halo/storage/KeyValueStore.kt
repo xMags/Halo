@@ -25,4 +25,14 @@ object StorageKeys {
      * network has one — an unreachable server must not silently mean defaults.
      */
     const val SettingsMirror = "halo.settings.v1"
+
+    /**
+     * Recent search terms. Deliberately not synced: whole-document
+     * last-write-wins would let one device's list clobber another's, and
+     * per-term sync is not worth a table for something this disposable.
+     */
+    const val SearchHistory = "halo.searchHistory.v1"
+
+    /** Remembered subtitle selections, per video and per series. */
+    const val SubtitleChoices = "halo.subtitleChoices.v1"
 }

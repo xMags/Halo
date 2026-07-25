@@ -3,9 +3,9 @@ package moe.ditto.halo.sync
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.http.content.TextContent
-import io.ktor.utils.io.errors.IOException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.IOException
 import moe.ditto.halo.api.HaloClient
 import moe.ditto.halo.api.SettingsPayload
 import moe.ditto.halo.api.SubtitleOutline
