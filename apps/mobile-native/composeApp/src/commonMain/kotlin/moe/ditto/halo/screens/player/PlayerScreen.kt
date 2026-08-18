@@ -329,6 +329,42 @@ internal fun PlayerScreen(
         playerEpisodes(metaState.value, context.videoId, watchStateList.value)
     }
 
+    /**
+     * Leaving is asynchronous on purpose, and every way out goes through here.
+     *
+     * The engine is wound down first and the navigation happens only once that
+     * has finished. The screen is still on screen while it runs, which is the
+     * one moment its render surface is guaranteed to still exist. Doing this
+     * from a disposal callback instead cannot work: the surface is torn down
+     * before those run.
+     *
+     * An episode change is a way out too. It replaces this screen rather than
+     * stacking on it, so the engine has to be wound down for it exactly as it is
+     * for back — otherwise the decoder is still holding the surface Compose is
+     * about to take away, which is the deadlock the bounded release exists for.
+     *
+     * Playback is paused rather than torn down. Teardown is terminal for the
+     * presenter, and on iOS it shuts libmpv down for the rest of the process,
+     * so a screen that tore down on the way out would play exactly once per
+     * launch.
+     */
+    val leaveTo: (() -> Unit) -> Unit = { destination ->
+        if (!leaving) {
+            leaving = true
+            scope.launch {
+                // Before the wind-down: pausing moves nothing, but the state
+                // read has to happen while the position is still the one the
+                // viewer stopped at.
+                windDownAndLeave(
+                    report = { reportProgress(graph, context, playback.state.value, metaState.value) },
+                    windDown = playback::windDownForExit,
+                    navigate = destination,
+                )
+            }
+        }
+    }
+    val leave: () -> Unit = { leaveTo(onBack) }
+
     // Progress is reported while watching, when it pauses, and once on the way
     // out. The periodic sample is what survives the app being killed; the pause
     // and exit samples are what make the common cases exact rather than up to
@@ -365,7 +401,7 @@ internal fun PlayerScreen(
     LaunchedEffect(state.status, upNext) {
         val next = upNext ?: return@LaunchedEffect
         if (state.status != PlaybackStatus.Ended) return@LaunchedEffect
-        controller.showUpNext { onSelectEpisode(EpisodeChoice.Resolved(next)) }
+        controller.showUpNext { leaveTo { onSelectEpisode(EpisodeChoice.Resolved(next)) } }
     }
 
     // Landscape, a display that will not sleep and no system bars, for as long
@@ -414,37 +450,6 @@ internal fun PlayerScreen(
             }
         }
     }
-
-    /**
-     * Leaving is asynchronous on purpose, and every way out goes through here.
-     *
-     * The engine is wound down first and the navigation happens only once that
-     * has finished. The screen is still on screen while it runs, which is the
-     * one moment its render surface is guaranteed to still exist. Doing this
-     * from a disposal callback instead cannot work: the surface is torn down
-     * before those run.
-     *
-     * Playback is paused rather than torn down. Teardown is terminal for the
-     * presenter, and on iOS it shuts libmpv down for the rest of the process,
-     * so a screen that tore down on the way out would play exactly once per
-     * launch.
-     */
-    val leaveTo: (() -> Unit) -> Unit = { destination ->
-        if (!leaving) {
-            leaving = true
-            scope.launch {
-                // Before the wind-down: pausing moves nothing, but the state
-                // read has to happen while the position is still the one the
-                // viewer stopped at.
-                windDownAndLeave(
-                    report = { reportProgress(graph, context, playback.state.value, metaState.value) },
-                    windDown = playback::windDownForExit,
-                    navigate = destination,
-                )
-            }
-        }
-    }
-    val leave: () -> Unit = { leaveTo(onBack) }
 
     // The system gesture and button take the same path as the button drawn
     // here; a back that skipped the wind-down would hang the app just as
@@ -644,7 +649,13 @@ internal fun PlayerScreen(
                     if (episode.videoId == context.videoId) return@PlayerEpisodeDrawer
                     val video = metaState.value?.videos?.firstOrNull { it.id == episode.videoId }
                         ?: return@PlayerEpisodeDrawer
-                    scope.launch { onSelectEpisode(resolveEpisodePlayback(graph, context, video)) }
+                    // Resolved first, wound down second: the lookup needs the
+                    // engine's own position, and a second tap while it is in
+                    // flight is absorbed by the exit's single claim.
+                    scope.launch {
+                        val choice = resolveEpisodePlayback(graph, context, video)
+                        leaveTo { onSelectEpisode(choice) }
+                    }
                 },
             )
         }

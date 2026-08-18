@@ -1,6 +1,7 @@
 package moe.ditto.halo.screens.player
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.SignedInGraph
 import moe.ditto.halo.api.AddonSource
 import moe.ditto.halo.api.AddonStreams
@@ -189,16 +190,28 @@ internal suspend fun reportProgressBestEffort(report: suspend () -> Unit) {
     }
 }
 
-/** The exit order is load-bearing: report, decoder wind-down, then navigation. */
+/**
+ * The exit order is load-bearing: report, decoder wind-down, then navigation.
+ *
+ * The report is bounded because it is the only step that talks to the network.
+ * A stalled uplink must not hold the decoder open behind it: the viewer has
+ * already asked to leave, the picture is still on screen until the wind-down
+ * runs, and the back control does nothing for as long as this waits. Losing the
+ * sample to a timeout costs one sampling interval of progress at worst, because
+ * the periodic sampler has been writing all along.
+ */
 internal suspend fun windDownAndLeave(
     report: suspend () -> Unit,
     windDown: suspend () -> Unit,
     navigate: () -> Unit,
 ) {
-    reportProgressBestEffort(report)
+    withTimeoutOrNull(ExitReportTimeoutMillis) { reportProgressBestEffort(report) }
     windDown()
     navigate()
 }
+
+/** Long enough for a healthy round trip, short enough not to feel like a hang. */
+private const val ExitReportTimeoutMillis = 2_000L
 
 /**
  * What follows the episode playing, ready to start.
