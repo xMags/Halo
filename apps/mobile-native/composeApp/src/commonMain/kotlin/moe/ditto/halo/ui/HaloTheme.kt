@@ -17,9 +17,23 @@ object HaloColors {
     val Text = Color(0xFFF4F6FB)
     val TextDim = Color(0xFF8B93A5)
     val Accent = Color(0xFF0A84FF)
+
+    /**
+     * The light end of the accent. Only ever the far stop of a gradient that
+     * starts at [Accent] — a progress fill, a throughput bar — so that a moving
+     * figure reads as lit rather than flat. Never a text or icon colour.
+     */
+    val AccentLight = Color(0xFF4CC2FF)
     val Danger = Color(0xFFFF6B6B)
     val Success = Color(0xFF5DD39E)
     val Primary = Color.White
+
+    /**
+     * The bottom stop of a white button's fill. Paired with [Primary] it gives
+     * the button a lit top edge; a flat white one reads as a disabled surface at
+     * this size.
+     */
+    val PrimaryShade = Color(0xFFDDE2EC)
     val OnPrimary = Color.Black
     val OnAccent = Color.White
     val Glass = Color(red = 1f, green = 1f, blue = 1f, alpha = 0.07f)
@@ -30,6 +44,65 @@ object HaloColors {
     val SheetTint = Color(red = 20f / 255f, green = 22f / 255f, blue = 30f / 255f, alpha = 0.72f)
     val OverlayPill = Color(red = 5f / 255f, green = 7f / 255f, blue = 12f / 255f, alpha = 0.82f)
     val Gold = Color(0xFFFFD479)
+
+    /** Secondary line under a title: dot-separated metadata, chip values. */
+    val TextMeta = Color(0xFFC7CDD9)
+}
+
+/**
+ * Colours that exist only inside the player. They are darker and more opaque
+ * than the app's glass system on purpose: the player's chrome sits over moving
+ * video rather than over the app canvas, so it has to stay legible against an
+ * arbitrary frame instead of blending with a known background.
+ *
+ * Kept apart from [HaloColors] so nothing outside the player reaches for them.
+ */
+object HaloPlayerColors {
+    /** Vertical wash behind the top bar. */
+    val ScrimTop = Color(red = 4f / 255f, green = 5f / 255f, blue = 8f / 255f, alpha = 0.72f)
+
+    /** Vertical wash behind the bottom bar; heavier, it carries more controls. */
+    val ScrimBottom = Color(red = 4f / 255f, green = 5f / 255f, blue = 8f / 255f, alpha = 0.82f)
+
+    // One smoked glass in four densities. Which one a control gets tracks how
+    // much it has to survive being over a bright frame: a lone circular button
+    // needs more cover than a chip sitting in a row of them, and the utility
+    // pill holds three targets so it carries the most.
+    /** Seek buttons. */
+    val SeekButtonFill = Color(red = 9f / 255f, green = 11f / 255f, blue = 16f / 255f, alpha = 0.72f)
+
+    /** State chips. */
+    val ChipFill = Color(red = 9f / 255f, green = 11f / 255f, blue = 16f / 255f, alpha = 0.62f)
+
+    /** Standalone circular buttons, such as back. */
+    val CircleButtonFill = Color(red = 9f / 255f, green = 11f / 255f, blue = 16f / 255f, alpha = 0.50f)
+
+    /** The three-button utility pill. */
+    val UtilityPillFill = Color(red = 9f / 255f, green = 11f / 255f, blue = 16f / 255f, alpha = 0.68f)
+
+    /** Play/pause needs the strongest cover because no edge scrim sits behind it. */
+    val PlayButtonFill = Color(red = 9f / 255f, green = 11f / 255f, blue = 16f / 255f, alpha = 0.76f)
+
+    /** Audio/subtitles/speed rail. */
+    val RailFill = Color(red = 18f / 255f, green = 20f / 255f, blue = 27f / 255f, alpha = 0.90f)
+
+    /** Episode drawer; a shade heavier than the rail because it covers more. */
+    val DrawerFill = Color(red = 18f / 255f, green = 20f / 255f, blue = 27f / 255f, alpha = 0.92f)
+
+    // A selected chip is tinted rather than filled, so the video stays readable
+    // behind it. The label lifts to a light blue instead of white.
+    val ChipActiveFill = Color(red = 10f / 255f, green = 132f / 255f, blue = 255f / 255f, alpha = 0.16f)
+    val ChipActiveBorder = Color(red = 10f / 255f, green = 132f / 255f, blue = 255f / 255f, alpha = 0.55f)
+    val ChipActiveLabel = Color(0xFF7EC0FF)
+
+    /** Engine strings: mpv messages, track ids, cache figures. */
+    val DiagnosticText = Color(0xFF6F7789)
+
+    /** Endpoint labels under a slider's scale. */
+    val TickLabel = Color(0xFF565E70)
+
+    /** Track of a switch in its off position. */
+    val SwitchOff = Color(0xFF424753)
 }
 
 object HaloSpacing {

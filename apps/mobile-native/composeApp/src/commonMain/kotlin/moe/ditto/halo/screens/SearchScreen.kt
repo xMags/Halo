@@ -1,10 +1,12 @@
 package moe.ditto.halo.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -15,9 +17,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -30,10 +34,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -45,6 +51,8 @@ import moe.ditto.halo.ui.CatalogRow
 import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
+import moe.ditto.halo.ui.HaloLayout
+import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.HaloType
 import moe.ditto.halo.ui.SearchField
@@ -100,21 +108,33 @@ internal fun SearchScreen(
         record(value)
     }
 
+    val gutter = responsive.gutter
+
     Column(
         modifier
             .fillMaxSize()
             .background(HaloColors.Background)
-            .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + HaloSpacing.Xs),
+            // The rail floats over the leading edge; everything on this screen
+            // begins beside it, and the gutter is measured from there.
+            .padding(start = responsive.contentInsetStart)
+            .padding(
+                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+                    responsive.pick(HaloSpacing.Xs, HaloSpacing.Sm),
+            ),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = HaloSpacing.Md)
-                .padding(bottom = HaloSpacing.Md),
+                .padding(horizontal = gutter)
+                .padding(bottom = responsive.pick(HaloSpacing.Md, HaloSpacing.Lg)),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Md),
         ) {
-            Box(Modifier.weight(1f)) {
+            Box(
+                // Capped rather than full-bleed: the clear button on a
+                // tablet-wide field ends up a hand's width from the text.
+                Modifier.weight(1f, fill = false).widthIn(max = HaloLayout.SearchFieldMaxWidth),
+            ) {
                 SearchField(
                     value = term,
                     onValueChange = { term = it },
@@ -137,6 +157,10 @@ internal fun SearchScreen(
         if (!searching) {
             SearchHistory(
                 terms = history,
+                gutter = gutter,
+                // A stacked list of four words down the side of a tablet is a
+                // column of empty space; the same terms wrap as chips instead.
+                asChips = responsive.isTablet,
                 onRunAgain = runAgain,
                 onRemove = { graph.searchHistory.remove(it) },
                 onClear = { graph.searchHistory.clear() },
@@ -166,7 +190,7 @@ internal fun SearchScreen(
                 LaunchedEffect(listState.isScrollInProgress) {
                     if (listState.isScrollInProgress) focusManager.clearFocus()
                 }
-                val posterWidth = responsive.pick(132.dp, 150.dp, 168.dp)
+                val posterWidth = responsive.searchPosterWidth
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
@@ -187,6 +211,9 @@ internal fun SearchScreen(
                                 },
                                 posterWidth = posterWidth,
                                 showLabels = true,
+                                gutter = gutter,
+                                gap = responsive.catalogRowGap,
+                                bottomPadding = responsive.pick(HaloSpacing.Lg, 26.dp),
                             )
                         }
                     }
@@ -214,6 +241,9 @@ internal fun SearchScreen(
                             },
                             posterWidth = posterWidth,
                             showLabels = true,
+                            gutter = gutter,
+                            gap = responsive.catalogRowGap,
+                            bottomPadding = responsive.pick(HaloSpacing.Lg, 26.dp),
                         )
                     }
                 }
@@ -225,6 +255,8 @@ internal fun SearchScreen(
 @Composable
 private fun SearchHistory(
     terms: List<String>,
+    gutter: Dp,
+    asChips: Boolean,
     onRunAgain: (String) -> Unit,
     onRemove: (String) -> Unit,
     onClear: () -> Unit,
@@ -234,30 +266,57 @@ private fun SearchHistory(
         return
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = HaloSpacing.Md, vertical = HaloSpacing.Xs),
-    ) {
-        item(key = "recent-head") {
-            Row(
+    val head: @Composable () -> Unit = {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = HaloSpacing.Xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(text = "Recent", style = HaloType.Heading.copy(fontSize = 16.sp, letterSpacing = (-0.2).sp))
+            Text(
+                text = "Clear",
+                color = HaloColors.Accent,
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = HaloSpacing.Xs),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .clickable(role = Role.Button, onClick = onClear)
+                    .padding(HaloSpacing.Xs),
+            )
+        }
+    }
+
+    if (asChips) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(start = gutter, end = gutter)
+                .padding(vertical = HaloSpacing.Xs),
+        ) {
+            head()
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(top = HaloSpacing.Sm),
+                horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
+                verticalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
             ) {
-                Text(text = "Recent", style = HaloType.Heading.copy(fontSize = 16.sp, letterSpacing = (-0.2).sp))
-                Text(
-                    text = "Clear",
-                    color = HaloColors.Accent,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clickable(role = Role.Button, onClick = onClear)
-                        .padding(HaloSpacing.Xs),
-                )
+                terms.forEach { entry ->
+                    HistoryChip(
+                        term = entry,
+                        onRunAgain = { onRunAgain(entry) },
+                        onRemove = { onRemove(entry) },
+                    )
+                }
             }
         }
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = gutter, vertical = HaloSpacing.Xs),
+    ) {
+        item(key = "recent-head") { head() }
         items(items = terms, key = { it }) { entry ->
             HistoryRow(
                 term = entry,
@@ -265,6 +324,37 @@ private fun SearchHistory(
                 onRemove = { onRemove(entry) },
             )
         }
+    }
+}
+
+/**
+ * One past term as a chip: the tablet's form of the phone's [HistoryRow].
+ *
+ * The remove affordance rides inside the chip rather than at the end of a row,
+ * because there is no row for it to end — but it stays a separate target, so
+ * running a term again and forgetting it are not the same tap.
+ */
+@Composable
+private fun HistoryChip(term: String, onRunAgain: () -> Unit, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(HaloRadius.Pill))
+            .background(HaloColors.Glass)
+            .border(1.dp, HaloColors.GlassBorder, RoundedCornerShape(HaloRadius.Pill))
+            .clickable(role = Role.Button, onClick = onRunAgain)
+            .padding(start = 14.dp, end = HaloSpacing.Sm, top = 7.dp, bottom = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(text = term, color = HaloColors.TextMeta, fontSize = 12.5.sp, maxLines = 1)
+        Icon(
+            imageVector = HaloIcons.Close,
+            contentDescription = "Remove $term",
+            tint = HaloColors.TextDim,
+            modifier = Modifier
+                .clickable(role = Role.Button, onClick = onRemove)
+                .size(13.dp),
+        )
     }
 }
 

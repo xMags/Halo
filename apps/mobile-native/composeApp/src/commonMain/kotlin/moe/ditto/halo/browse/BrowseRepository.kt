@@ -5,11 +5,12 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
-import moe.ditto.halo.api.AddonStreams
+import moe.ditto.halo.api.AddonSubtitles
 import moe.ditto.halo.api.HaloClient
 import moe.ditto.halo.api.ManifestCatalog
 import moe.ditto.halo.api.MetaDetail
 import moe.ditto.halo.api.MetaPreview
+import moe.ditto.halo.api.StreamsResult
 import moe.ditto.halo.cache.HaloKey
 import moe.ditto.halo.cache.QueryCache
 import moe.ditto.halo.cache.QueryState
@@ -57,13 +58,40 @@ class BrowseRepository(
      * external-link results and omits addons left with none, so an empty list
      * means no source can play this video, not that one was discarded.
      *
-     * Addons that failed are reported separately by the API and deliberately
-     * not surfaced — a source that did not answer is indistinguishable, to
-     * someone trying to watch something, from one that had nothing.
+     * The complete result is retained because a failed addon is materially
+     * different from one that answered with no playable source. Screens use
+     * that distinction for partial warnings and manual recovery.
      */
-    fun streams(type: String, videoId: String): Flow<QueryState<List<AddonStreams>>> {
+    fun streams(type: String, videoId: String): Flow<QueryState<StreamsResult>> {
         val key = HaloKey.Streams(type, videoId)
-        return cache.query(key, key.staleMs) { client.getStreams(type, videoId).results }
+        return cache.query(key, key.staleMs) { client.getStreams(type, videoId) }
+    }
+
+    /** Manual retry only. Invalidation reuses the active query's fetcher and never loops. */
+    suspend fun retryStreams(type: String, videoId: String) {
+        cache.invalidate(HaloKey.Streams(type, videoId))
+    }
+
+    /**
+     * External subtitles for a video, grouped by the addon that offered them.
+     *
+     * [videoHash] and [videoSize] are what make the results exact rather than a
+     * guess from the title, so a caller that can compute them should. They are
+     * part of the cache key through [source]: the same episode from a different
+     * release is a different file and deserves different subtitles.
+     */
+    fun subtitles(
+        type: String,
+        videoId: String,
+        videoHash: String? = null,
+        videoSize: Long? = null,
+        filename: String? = null,
+        enabled: Boolean = true,
+    ): Flow<QueryState<List<AddonSubtitles>>> {
+        val key = HaloKey.Subtitles(type, videoId, videoHash ?: filename)
+        return cache.query(key, key.staleMs, enabled) {
+            client.getSubtitles(type, videoId, videoHash, videoSize, filename).results
+        }
     }
 
     /**

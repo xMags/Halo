@@ -30,10 +30,27 @@ address the device can reach. The custom redirect URI is fixed to
 `halo://oauth/callback`.
 
 Local-mode discovery can be exercised with `--auth-mode local`. It returns the
-exact Halo `{ "mode": "local" }` wire response. This fixture deliberately does
-not implement a password login endpoint: the current gate needs mode discovery
-and OIDC proof, and adding even fake password semantics would create an
-unnecessary surface that could be mistaken for reusable auth code.
+exact Halo `{ "mode": "local" }` wire response and implements the fixture-only
+login and refresh contracts used by the native UI suites.
+
+## Android ownership fixture
+
+`PlayerOwnershipInstrumentedTest` intentionally uses one fixture for both
+authentication and media. Start it in local mode, with the media directory that
+contains the sample files used by the test:
+
+```powershell
+python apps/mobile-native/fixtures/fixture_server.py `
+  --port 18788 `
+  --auth-mode local `
+  --media-dir C:\path\to\media
+adb reverse tcp:18788 tcp:18788
+```
+
+The test launch supplies `serverUrl=http://127.0.0.1:18788` and the debug-only
+`mediaHttpBase=http://127.0.0.1:18788/media` override. Both routes therefore
+reach the same fixture process. The override is read only from a debuggable
+Android build and is not a production media configuration API.
 
 ## Endpoints
 
@@ -50,6 +67,9 @@ unnecessary surface that could be mistaken for reusable auth code.
   non-production access-token proof.
 - `GET|HEAD /media/<relative-path>` serves regular files beneath the configured
   media root, including single byte ranges.
+- `GET|HEAD /media/generated.bin` creates deterministic media without a checked
+  in binary. Query controls can set its size, throttle it, interrupt a response,
+  or return a fixed number of controlled HTTP failures.
 
 `/authorize` and `/token` without trailing slashes intentionally return 404.
 This catches client libraries that strip the slash and trigger the same class
@@ -120,6 +140,18 @@ The server supports:
 - `Content-Range` and exact `Content-Length`;
 - HTTP 416 with `Content-Range: bytes */<size>` for malformed or unsatisfiable
   ranges.
+- matching and mismatching `If-Range` validators;
+- deterministic generated media through `fixture_size` and `fixture_seed`;
+- per-chunk delay through `fixture_throttle_ms`;
+- an incomplete response through `fixture_interrupt_after`;
+- the first N requests failing through `fixture_failures` and `fixture_status`.
+
+For example, this 8 MiB source fails twice with HTTP 503, then streams in 64 KiB
+chunks with a 20 ms delay:
+
+```text
+/media/generated.bin?fixture_size=8388608&fixture_failures=2&fixture_status=503&fixture_throttle_ms=20
+```
 
 Resolved paths must remain beneath the media root, and only regular files are
 served. Traversal attempts are rejected even when `..` or path separators are

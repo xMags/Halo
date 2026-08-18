@@ -115,18 +115,67 @@ class IosHostBridgeTest {
 
         adapter.load(item)
         adapter.seekTo(42.5)
+        adapter.setPlaybackRate(1.25)
+        adapter.setAudioDelay(-0.2)
+        adapter.setVideoFillsScreen(true)
         adapter.setSubtitleDelay(0.5)
         adapter.setSubtitleScale(1.5)
         adapter.setSubtitleFont("Courier New")
+        adapter.setSubtitleTrackStyling(false)
+        adapter.setSubtitleOutline(5.0)
+        adapter.setSubtitleShadow(2.0)
+        adapter.setSubtitleLift(18)
         adapter.addSubtitle("http://127.0.0.1:18787/media/sample4k.ass")
 
         assertEquals(listOf(item), host.loads)
         assertEquals(42.5, host.lastSeekSeconds)
+        assertEquals(listOf(1.25), host.playbackRates)
+        assertEquals(listOf(-0.2), host.audioDelays)
+        assertEquals(listOf(true), host.videoFillChoices)
         assertEquals(listOf(0.5), host.subtitleDelays)
         assertEquals(listOf(1.5), host.subtitleScales)
         assertEquals(listOf<String?>("Courier New"), host.subtitleFonts)
+        assertEquals(listOf(false), host.subtitleTrackStyling)
+        assertEquals(listOf(5.0), host.subtitleOutlines)
+        assertEquals(listOf(2.0), host.subtitleShadows)
+        assertEquals(listOf(18), host.subtitleLifts)
         assertEquals(listOf("http://127.0.0.1:18787/media/sample4k.ass"), host.addedSubtitles)
         assertEquals(1, host.coreCreationCount)
+    }
+
+    @Test
+    fun playerSystemAdapterClampsValuesAndDelegatesBalancedClaims() {
+        val host = RecordingPlayerSystemHost()
+        val system = IosPlayerSystemPort(host)
+
+        assertEquals(0.65f, system.screenBrightness())
+        assertEquals(0.4f, system.volume())
+        assertEquals(16, system.volumeSteps())
+
+        system.setScreenBrightness(1.5f)
+        system.setVolume(-0.5f)
+        system.lockLandscape()
+        system.keepScreenOn()
+        system.hideSystemBars()
+        system.releaseSystemBars()
+        system.releaseScreenOn()
+        system.releaseLandscape()
+        system.clearScreenBrightnessOverride()
+
+        assertEquals(listOf(1.0), host.brightnessValues)
+        assertEquals(listOf(0.0), host.volumeValues)
+        assertEquals(
+            listOf(
+                "lockLandscape",
+                "keepScreenOn",
+                "hideSystemBars",
+                "releaseSystemBars",
+                "releaseScreenOn",
+                "releaseLandscape",
+                "clearBrightness",
+            ),
+            host.claimCalls,
+        )
     }
 
     @Test
@@ -137,9 +186,9 @@ class IosHostBridgeTest {
         bridge.onTracks(
             """
             {
-              "audio": [{"id": "2", "label": "AAC stereo", "language": "eng"}],
+              "audio": [{"id": "2", "label": "AAC stereo", "language": "eng", "codec": "aac", "channels": 2, "sampleRateHz": 48000}],
               "subtitles": [
-                {"id": "3", "label": "English ASS", "language": "eng"},
+                {"id": "3", "label": "English ASS", "language": "eng", "codec": "ass"},
                 {"id": "4", "label": "Signs"}
               ],
               "selectedAudioId": "2",
@@ -148,25 +197,53 @@ class IosHostBridgeTest {
             """.trimIndent(),
         )
         bridge.onTracks("this is not json")
+        bridge.onBufferingChanged(
+            active = true,
+            percent = 72,
+            bytesPerSecond = 1_250_000,
+            cachedSeconds = 12.5,
+        )
+        bridge.onBufferedPositionChanged(-1.0)
+        bridge.onBufferedPositionChanged(51.5)
+        bridge.onBufferingChanged(
+            active = false,
+            percent = -1,
+            bytesPerSecond = -1,
+            cachedSeconds = -1.0,
+        )
         bridge.onEnded()
 
         val received = mutableListOf<PlayerEvent>()
         val flowJob = launch { bridge.events.collect { received += it } }
         // Channel is buffered; everything already sent is immediately available.
-        while (received.size < 3) yield()
+        while (received.size < 6) yield()
         flowJob.cancel()
 
         assertEquals(PlayerEvent.Ready(60.0), received[0])
         val tracks = (received[1] as PlayerEvent.TracksChanged).tracks
-        assertEquals(listOf(PlayerTrack("2", "AAC stereo", "eng")), tracks.audio)
         assertEquals(
-            listOf(PlayerTrack("3", "English ASS", "eng"), PlayerTrack("4", "Signs")),
+            listOf(PlayerTrack("2", "AAC stereo", "eng", "aac", 2, 48000)),
+            tracks.audio,
+        )
+        assertEquals(
+            listOf(PlayerTrack("3", "English ASS", "eng", "ass"), PlayerTrack("4", "Signs")),
             tracks.subtitles,
         )
         assertEquals("2", tracks.selectedAudioId)
         assertEquals("3", tracks.selectedSubtitleId)
-        // The malformed document was dropped, so the third event is the end.
-        assertEquals(PlayerEvent.NaturalEnd, received[2])
+        // The malformed document and negative buffered position were dropped.
+        assertEquals(
+            PlayerEvent.BufferingChanged(
+                active = true,
+                percent = 72,
+                bytesPerSecond = 1_250_000,
+                cachedSeconds = 12.5,
+            ),
+            received[2],
+        )
+        assertEquals(PlayerEvent.BufferedPositionChanged(51.5), received[3])
+        assertEquals(PlayerEvent.BufferingChanged(active = false), received[4])
+        assertEquals(PlayerEvent.NaturalEnd, received[5])
     }
 
     @Test
@@ -257,6 +334,13 @@ class IosHostBridgeTest {
         val subtitleDelays = mutableListOf<Double>()
         val subtitleScales = mutableListOf<Double>()
         val subtitleFonts = mutableListOf<String?>()
+        val playbackRates = mutableListOf<Double>()
+        val audioDelays = mutableListOf<Double>()
+        val videoFillChoices = mutableListOf<Boolean>()
+        val subtitleTrackStyling = mutableListOf<Boolean>()
+        val subtitleOutlines = mutableListOf<Double>()
+        val subtitleShadows = mutableListOf<Double>()
+        val subtitleLifts = mutableListOf<Int>()
         val addedSubtitles = mutableListOf<String>()
         var lastSeekSeconds: Double? = null
             private set
@@ -288,6 +372,18 @@ class IosHostBridgeTest {
         override fun selectAudioTrack(id: String?) = Unit
         override fun selectSubtitleTrack(id: String?) = Unit
 
+        override fun setPlaybackRate(rate: Double) {
+            playbackRates += rate
+        }
+
+        override fun setAudioDelay(seconds: Double) {
+            audioDelays += seconds
+        }
+
+        override fun setVideoFillsScreen(fills: Boolean) {
+            videoFillChoices += fills
+        }
+
         override fun setEventSink(sink: HaloIosPlayerEventSink?) = Unit
 
         override fun setSubtitleDelay(seconds: Double) {
@@ -302,6 +398,22 @@ class IosHostBridgeTest {
             subtitleFonts += font
         }
 
+        override fun setSubtitleTrackStyling(keepScript: Boolean) {
+            subtitleTrackStyling += keepScript
+        }
+
+        override fun setSubtitleOutline(widthPixels: Double) {
+            subtitleOutlines += widthPixels
+        }
+
+        override fun setSubtitleShadow(offsetPixels: Double) {
+            subtitleShadows += offsetPixels
+        }
+
+        override fun setSubtitleLift(percent: Int) {
+            subtitleLifts += percent
+        }
+
         override fun addSubtitle(url: String) {
             addedSubtitles += url
         }
@@ -312,6 +424,52 @@ class IosHostBridgeTest {
             coreDestructionCount += 1
             coreCreationCount += 1
             instanceId = "core-$coreCreationCount"
+        }
+    }
+
+    private class RecordingPlayerSystemHost : HaloIosPlayerSystemHost {
+        val brightnessValues = mutableListOf<Double>()
+        val volumeValues = mutableListOf<Double>()
+        val claimCalls = mutableListOf<String>()
+
+        override fun screenBrightness(): Double = 0.65
+        override fun volume(): Double = 0.4
+        override fun volumeSteps(): Int = 16
+
+        override fun setScreenBrightness(value: Double) {
+            brightnessValues += value
+        }
+
+        override fun clearScreenBrightnessOverride() {
+            claimCalls += "clearBrightness"
+        }
+
+        override fun setVolume(value: Double) {
+            volumeValues += value
+        }
+
+        override fun lockLandscape() {
+            claimCalls += "lockLandscape"
+        }
+
+        override fun releaseLandscape() {
+            claimCalls += "releaseLandscape"
+        }
+
+        override fun keepScreenOn() {
+            claimCalls += "keepScreenOn"
+        }
+
+        override fun releaseScreenOn() {
+            claimCalls += "releaseScreenOn"
+        }
+
+        override fun hideSystemBars() {
+            claimCalls += "hideSystemBars"
+        }
+
+        override fun releaseSystemBars() {
+            claimCalls += "releaseSystemBars"
         }
     }
 }

@@ -31,10 +31,17 @@ data class LoginState(
         phase is LoginPhase.LocalCredentials && username.isNotBlank() && password.isNotBlank()
 }
 
+data class LoginCredentialsPrefill(
+    val serverUrl: String,
+    val username: String,
+    val password: String,
+)
+
 class LoginPresenter(
     private val authConfigSource: AuthConfigSource,
     private val nativeHostRequests: NativeHostRequests,
     private val localAuthenticator: LocalAuthenticator,
+    private val localCredentialsPrefill: LoginCredentialsPrefill? = null,
 ) {
     var state: LoginState = LoginState()
         private set
@@ -72,7 +79,14 @@ class LoginPresenter(
 
         when (config) {
             AuthConfig.Local -> {
-                state = state.copy(phase = LoginPhase.LocalCredentials(normalizedUrl))
+                val matchingPrefill = localCredentialsPrefill?.takeIf {
+                    it.serverUrl.trim().trimEnd('/') == normalizedUrl
+                }
+                state = state.copy(
+                    phase = LoginPhase.LocalCredentials(normalizedUrl),
+                    username = matchingPrefill?.username.orEmpty(),
+                    password = matchingPrefill?.password.orEmpty(),
+                )
             }
             is AuthConfig.Oidc -> {
                 val request = OidcHostRequest(

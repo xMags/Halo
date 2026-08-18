@@ -10,6 +10,14 @@ enum MPVCoreEvent {
     case position(seconds: Double)
     case pauseChanged(paused: Bool)
     case tracks(json: String)
+    /// Negative metrics mean mpv did not report that particular figure.
+    case buffering(
+        active: Bool,
+        percent: Int32,
+        bytesPerSecond: Int64,
+        cachedSeconds: Double
+    )
+    case bufferedPosition(seconds: Double)
     case ended
     case error(message: String)
 }
@@ -46,6 +54,8 @@ final class MPVCore {
     private var onEvent: ((MPVCoreEvent) -> Void)?
     private var isShutdown = false
     private var eofNotified = false
+    private var pausedForCache = false
+    private var cacheFillPercent: Int32 = -1
 
     private enum Observed: UInt64 {
         case timePos = 1
@@ -54,6 +64,9 @@ final class MPVCore {
         case trackList = 4
         case audioId = 5
         case subtitleId = 6
+        case pausedForCache = 7
+        case cacheBufferingState = 8
+        case demuxerCacheTime = 9
     }
 
     init(muted: Bool) {
@@ -91,6 +104,19 @@ final class MPVCore {
         mpv_observe_property(handle, Observed.trackList.rawValue, "track-list", MPV_FORMAT_NONE)
         mpv_observe_property(handle, Observed.audioId.rawValue, "aid", MPV_FORMAT_NONE)
         mpv_observe_property(handle, Observed.subtitleId.rawValue, "sid", MPV_FORMAT_NONE)
+        mpv_observe_property(handle, Observed.pausedForCache.rawValue, "paused-for-cache", MPV_FORMAT_FLAG)
+        mpv_observe_property(
+            handle,
+            Observed.cacheBufferingState.rawValue,
+            "cache-buffering-state",
+            MPV_FORMAT_INT64
+        )
+        mpv_observe_property(
+            handle,
+            Observed.demuxerCacheTime.rawValue,
+            "demuxer-cache-time",
+            MPV_FORMAT_DOUBLE
+        )
 
         // The wakeup callback runs on an mpv-internal thread. It must only
         // schedule a drain; the unretained pointer is safe because shutdown()
@@ -118,6 +144,8 @@ final class MPVCore {
     func load(url: String) {
         perform { handle in
             self.eofNotified = false
+            self.pausedForCache = false
+            self.cacheFillPercent = -1
             self.setFlag(handle, "pause", true)
             self.command(handle, "loadfile", [url, "replace"])
         }
@@ -137,6 +165,19 @@ final class MPVCore {
         }
     }
 
+    func setPlaybackRate(_ rate: Double) {
+        perform { handle in self.setDouble(handle, "speed", rate) }
+    }
+
+    func setAudioDelay(seconds: Double) {
+        perform { handle in self.setDouble(handle, "audio-delay", seconds) }
+    }
+
+    /// mpv's `panscan` endpoints are the product's fit and fill choices.
+    func setVideoFillsScreen(_ fills: Bool) {
+        perform { handle in self.setDouble(handle, "panscan", fills ? 1 : 0) }
+    }
+
     func setSubtitleDelay(seconds: Double) {
         perform { handle in mpv_set_property_string(handle, "sub-delay", String(seconds)) }
     }
@@ -150,8 +191,28 @@ final class MPVCore {
         perform { handle in mpv_set_property_string(handle, "sub-font", font ?? "sans-serif") }
     }
 
+    func setSubtitleTrackStyling(keepScript: Bool) {
+        perform { handle in
+            mpv_set_property_string(handle, "sub-ass-override", keepScript ? "no" : "force")
+        }
+    }
+
+    func setSubtitleOutline(widthPixels: Double) {
+        perform { handle in self.setDouble(handle, "sub-border-size", widthPixels) }
+    }
+
+    func setSubtitleShadow(offsetPixels: Double) {
+        perform { handle in self.setDouble(handle, "sub-shadow-offset", offsetPixels) }
+    }
+
+    /// mpv counts `sub-pos` down from the top; the UI expresses a lift.
+    func setSubtitleLift(percent: Int32) {
+        perform { handle in self.setInt64(handle, "sub-pos", Int64(100 - percent)) }
+    }
+
     func addSubtitle(url: String) {
-        perform { handle in self.command(handle, "sub-add", [url, "select"]) }
+        // Re-select an already-added URL rather than creating a duplicate row.
+        perform { handle in self.command(handle, "sub-add", [url, "cached"]) }
     }
 
     func setVideoDecodingSuspended(_ suspended: Bool) {
@@ -177,6 +238,9 @@ final class MPVCore {
             mpv_unobserve_property(handle, Observed.trackList.rawValue)
             mpv_unobserve_property(handle, Observed.audioId.rawValue)
             mpv_unobserve_property(handle, Observed.subtitleId.rawValue)
+            mpv_unobserve_property(handle, Observed.pausedForCache.rawValue)
+            mpv_unobserve_property(handle, Observed.cacheBufferingState.rawValue)
+            mpv_unobserve_property(handle, Observed.demuxerCacheTime.rawValue)
             mpv_terminate_destroy(handle)
             mpv = nil
         }
@@ -253,9 +317,39 @@ final class MPVCore {
             }
         case .trackList, .audioId, .subtitleId:
             emitTracks(handle)
+        case .pausedForCache:
+            guard property.format == MPV_FORMAT_FLAG, let value = property.data else { return }
+            pausedForCache = value.assumingMemoryBound(to: Int32.self).pointee != 0
+            emitBuffering(handle)
+        case .cacheBufferingState:
+            guard property.format == MPV_FORMAT_INT64, let value = property.data else { return }
+            let raw = value.assumingMemoryBound(to: Int64.self).pointee
+            cacheFillPercent = Int32(clamping: raw)
+            if pausedForCache { emitBuffering(handle) }
+        case .demuxerCacheTime:
+            guard property.format == MPV_FORMAT_DOUBLE, let value = property.data else { return }
+            let seconds = value.assumingMemoryBound(to: Double.self).pointee
+            if seconds.isFinite && seconds >= 0 {
+                emit(.bufferedPosition(seconds: seconds))
+            }
         case nil:
             break
         }
+    }
+
+    private func emitBuffering(_ handle: OpaquePointer) {
+        guard pausedForCache else {
+            emit(.buffering(active: false, percent: -1, bytesPerSecond: -1, cachedSeconds: -1))
+            return
+        }
+        emit(
+            .buffering(
+                active: true,
+                percent: cacheFillPercent,
+                bytesPerSecond: optionalInt64(handle, "cache-speed") ?? -1,
+                cachedSeconds: optionalDouble(handle, "demuxer-cache-duration") ?? -1
+            )
+        )
     }
 
     /// Normalizes mpv's `track-list` into the boundary's neutral JSON schema.
@@ -273,7 +367,10 @@ final class MPVCore {
         var selectedAudioId: String?
         var selectedSubtitleId: String?
         for entry in entries {
-            guard let type = entry["type"] as? String, let id = entry["id"] as? Int else { continue }
+            guard
+                let type = entry["type"] as? String,
+                let id = (entry["id"] as? NSNumber)?.intValue
+            else { continue }
             let language = entry["lang"] as? String
             let title = entry["title"] as? String
             var track: [String: Any] = [
@@ -281,7 +378,14 @@ final class MPVCore {
                 "label": title ?? language ?? "Track \(id)",
             ]
             if let language { track["language"] = language }
-            let selected = entry["selected"] as? Bool ?? false
+            if let codec = entry["codec"] as? String { track["codec"] = codec }
+            if let channels = (entry["demux-channel-count"] as? NSNumber)?.intValue {
+                track["channels"] = channels
+            }
+            if let sampleRate = (entry["demux-samplerate"] as? NSNumber)?.intValue {
+                track["sampleRateHz"] = sampleRate
+            }
+            let selected = (entry["selected"] as? NSNumber)?.boolValue ?? false
             if type == "audio" {
                 audio.append(track)
                 if selected { selectedAudioId = String(id) }
@@ -317,7 +421,17 @@ final class MPVCore {
 
     private func setFlag(_ handle: OpaquePointer, _ name: String, _ value: Bool) {
         var flag: Int32 = value ? 1 : 0
-        mpv_set_property(handle, name, MPV_FORMAT_FLAG, &flag)
+        check(mpv_set_property(handle, name, MPV_FORMAT_FLAG, &flag))
+    }
+
+    private func setDouble(_ handle: OpaquePointer, _ name: String, _ value: Double) {
+        var value = value
+        check(mpv_set_property(handle, name, MPV_FORMAT_DOUBLE, &value))
+    }
+
+    private func setInt64(_ handle: OpaquePointer, _ name: String, _ value: Int64) {
+        var value = value
+        check(mpv_set_property(handle, name, MPV_FORMAT_INT64, &value))
     }
 
     private func getFlag(_ handle: OpaquePointer, _ name: String) -> Bool {
@@ -327,8 +441,18 @@ final class MPVCore {
     }
 
     private func getDouble(_ handle: OpaquePointer, _ name: String) -> Double {
+        optionalDouble(handle, name) ?? 0
+    }
+
+    private func optionalDouble(_ handle: OpaquePointer, _ name: String) -> Double? {
         var value = Double(0)
-        mpv_get_property(handle, name, MPV_FORMAT_DOUBLE, &value)
+        guard mpv_get_property(handle, name, MPV_FORMAT_DOUBLE, &value) >= 0 else { return nil }
+        return value.isFinite ? value : nil
+    }
+
+    private func optionalInt64(_ handle: OpaquePointer, _ name: String) -> Int64? {
+        var value = Int64(0)
+        guard mpv_get_property(handle, name, MPV_FORMAT_INT64, &value) >= 0 else { return nil }
         return value
     }
 

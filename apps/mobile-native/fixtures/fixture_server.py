@@ -11,6 +11,7 @@ import json
 import mimetypes
 import re
 import secrets
+import socket
 import sys
 import threading
 import time
@@ -68,6 +69,7 @@ SENSITIVE_FIELD_PARTS = ("authorization", "challenge", "code", "password", "secr
 PKCE_CHALLENGE_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 MAX_FORM_BYTES = 64 * 1024
+MAX_GENERATED_MEDIA_BYTES = 64 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -130,6 +132,8 @@ class FixtureHTTPServer(ThreadingHTTPServer):
         self.transaction_lock = threading.Lock()
         self.request_log: list[dict[str, object]] = []
         self.request_log_lock = threading.Lock()
+        self.media_failure_counts: dict[str, int] = {}
+        self.media_failure_lock = threading.Lock()
         # Local-mode session tokens: token -> expiry (server-clock seconds).
         # Tokens stay valid after a refresh, matching the API: refresh issues a
         # fresh token but does not revoke the one that authenticated it.
@@ -343,7 +347,7 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
                 self._handle_local_refresh(mode, send_body)
                 return
             if self.command in {"GET", "HEAD"} and parsed.path.startswith("/media/"):
-                self._handle_media(parsed.path, mode, send_body)
+                self._handle_media(parsed.path, query, mode, send_body)
                 return
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"}, send_body)
         except ValueError as error:
@@ -720,25 +724,52 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
             return
         self._send_issued_local_token(send_body)
 
-    def _handle_media(self, request_path: str, mode: str, send_body: bool) -> None:
+    def _handle_media(
+        self,
+        request_path: str,
+        query: Mapping[str, list[str]],
+        mode: str,
+        send_body: bool,
+    ) -> None:
         relative_text = unquote(request_path[len("/media/") :])
         if not relative_text or "\x00" in relative_text:
             raise ValueError("media path is invalid")
+        generated = relative_text == "generated.bin"
         candidate = (self.server.media_dir / relative_text).resolve()
-        try:
-            candidate.relative_to(self.server.media_dir)
-        except ValueError:
-            self._send_json(HTTPStatus.FORBIDDEN, {"error": "path_traversal_rejected"}, send_body)
-            return
-        if not candidate.is_file():
-            self._send_json(HTTPStatus.NOT_FOUND, {"error": "media_not_found"}, send_body)
-            return
+        if not generated:
+            try:
+                candidate.relative_to(self.server.media_dir)
+            except ValueError:
+                self._send_json(HTTPStatus.FORBIDDEN, {"error": "path_traversal_rejected"}, send_body)
+                return
+            if not candidate.is_file():
+                self._send_json(HTTPStatus.NOT_FOUND, {"error": "media_not_found"}, send_body)
+                return
         if self._should_http_error(mode, "media"):
             self._send_fixture_http_error(send_body)
             return
 
-        size = candidate.stat().st_size
+        controlled_status = self._controlled_media_failure(request_path, query)
+        if controlled_status is not None:
+            self._send_json(controlled_status, {"error": "controlled_media_failure"}, send_body)
+            return
+
+        size = self._media_int(query, "fixture_size", default=1024 * 1024, minimum=1, maximum=MAX_GENERATED_MEDIA_BYTES) \
+            if generated else candidate.stat().st_size
+        seed = self._media_value(query, "fixture_seed", default="halo")
+        throttle_seconds = self._media_int(query, "fixture_throttle_ms", default=0, minimum=0, maximum=5_000) / 1000
+        interrupt_after = self._media_int(
+            query,
+            "fixture_interrupt_after",
+            default=0,
+            minimum=0,
+            maximum=MAX_GENERATED_MEDIA_BYTES,
+        )
+        validator = self._media_validator(candidate, size, seed, generated)
         range_header = self.headers.get("Range")
+        if_range = self.headers.get("If-Range")
+        if range_header is not None and if_range is not None and if_range != validator:
+            range_header = None
         start = 0
         end = size - 1
         status = HTTPStatus.OK
@@ -756,21 +787,102 @@ class FixtureRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", mimetypes.guess_type(candidate.name)[0] or "application/octet-stream")
         self.send_header("Content-Length", str(content_length))
         self.send_header("Accept-Ranges", "bytes")
+        self.send_header("ETag", validator)
         if status == HTTPStatus.PARTIAL_CONTENT:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         if not send_body or content_length == 0:
             return
-        with candidate.open("rb") as media_file:
-            media_file.seek(start)
+        media_file = None if generated else candidate.open("rb")
+        try:
+            if media_file is not None:
+                media_file.seek(start)
             remaining = content_length
+            offset = start
+            sent = 0
             while remaining:
-                chunk = media_file.read(min(64 * 1024, remaining))
+                read_size = min(64 * 1024, remaining)
+                chunk = self._generated_media(offset, read_size, seed) if generated else media_file.read(read_size)
                 if not chunk:
                     break
+                if interrupt_after > 0:
+                    chunk = chunk[: max(0, interrupt_after - sent)]
+                    if not chunk:
+                        self._interrupt_connection()
+                        return
                 self.wfile.write(chunk)
+                self.wfile.flush()
                 remaining -= len(chunk)
+                offset += len(chunk)
+                sent += len(chunk)
+                if throttle_seconds > 0:
+                    time.sleep(throttle_seconds)
+                if interrupt_after > 0 and sent >= interrupt_after and remaining > 0:
+                    self._interrupt_connection()
+                    return
+        finally:
+            if media_file is not None:
+                media_file.close()
+
+    def _controlled_media_failure(
+        self,
+        request_path: str,
+        query: Mapping[str, list[str]],
+    ) -> HTTPStatus | None:
+        failures = self._media_int(query, "fixture_failures", default=0, minimum=0, maximum=20)
+        if failures == 0:
+            return None
+        status_value = self._media_int(query, "fixture_status", default=503, minimum=400, maximum=599)
+        try:
+            status = HTTPStatus(status_value)
+        except ValueError as error:
+            raise ValueError("fixture_status must be a recognized HTTP failure") from error
+        key = f"{request_path}?{urlencode(sorted((name, tuple(values)) for name, values in query.items()))}"
+        with self.server.media_failure_lock:
+            seen = self.server.media_failure_counts.get(key, 0)
+            self.server.media_failure_counts[key] = seen + 1
+        return status if seen < failures else None
+
+    @staticmethod
+    def _media_value(query: Mapping[str, list[str]], name: str, default: str) -> str:
+        values = query.get(name)
+        return values[0] if values else default
+
+    def _media_int(
+        self,
+        query: Mapping[str, list[str]],
+        name: str,
+        *,
+        default: int,
+        minimum: int,
+        maximum: int,
+    ) -> int:
+        raw = self._media_value(query, name, str(default))
+        try:
+            value = int(raw)
+        except ValueError as error:
+            raise ValueError(f"{name} must be an integer") from error
+        if value < minimum or value > maximum:
+            raise ValueError(f"{name} must be between {minimum} and {maximum}")
+        return value
+
+    @staticmethod
+    def _media_validator(candidate: Path, size: int, seed: str, generated: bool) -> str:
+        identity = f"generated:{seed}:{size}" if generated else f"file:{candidate.name}:{size}:{candidate.stat().st_mtime_ns}"
+        return f'"fixture-{hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]}"'
+
+    @staticmethod
+    def _generated_media(offset: int, length: int, seed: str) -> bytes:
+        digest = hashlib.sha256(seed.encode("utf-8")).digest()
+        return bytes(digest[index % len(digest)] ^ ((index // len(digest)) & 0xFF) for index in range(offset, offset + length))
+
+    def _interrupt_connection(self) -> None:
+        self.close_connection = True
+        try:
+            self.connection.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
 
     @staticmethod
     def _parse_range(value: str, size: int) -> tuple[int, int] | None:

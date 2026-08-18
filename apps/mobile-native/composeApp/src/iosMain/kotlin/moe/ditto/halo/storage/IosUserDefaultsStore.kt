@@ -12,7 +12,13 @@ class IosUserDefaultsStore(
 ) : KeyValueStore {
     override fun read(key: String): String? = defaults.stringForKey(key)
 
-    override fun write(key: String, value: String) = defaults.setObject(value, forKey = key)
+    override fun write(key: String, value: String) {
+        defaults.setObject(value, forKey = key)
+        check(defaults.synchronize()) { "Could not persist app state." }
+    }
 
-    override fun delete(key: String) = defaults.removeObjectForKey(key)
+    override fun delete(key: String) {
+        defaults.removeObjectForKey(key)
+        check(defaults.synchronize()) { "Could not delete app state." }
+    }
 }

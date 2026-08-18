@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import moe.ditto.halo.api.AddonSource
 import moe.ditto.halo.api.AddonStreams
+import moe.ditto.halo.api.AddonError
 import moe.ditto.halo.api.HaloJson
 import moe.ditto.halo.api.MetaDetail
 import moe.ditto.halo.api.MetaResponse
@@ -81,15 +82,59 @@ class BrowseRepositoryTest {
                     results = listOf(
                         AddonStreams(AddonSource("torbox", "TorBox"), listOf(Stream(url = "https://cdn.test/a.mp4"))),
                     ),
+                    errors = listOf(
+                        AddonError(
+                            id = "failed-opaque-id",
+                            message = "Addon timed out.",
+                            name = "Slow addon",
+                            code = "timeout",
+                        ),
+                    ),
                 ),
             )
         }
         val repository = repository(api)
 
-        val groups = repository.streams("movie", "tt1").first { it.value != null }.value
+        val result = repository.streams("movie", "tt1").first { it.value != null }.value
 
-        assertEquals(listOf("TorBox"), groups?.map { it.addon.name })
-        assertEquals(listOf("https://cdn.test/a.mp4"), groups?.single()?.streams?.map { it.url })
+        assertEquals(listOf("TorBox"), result?.results?.map { it.addon.name })
+        assertEquals(listOf("https://cdn.test/a.mp4"), result?.results?.single()?.streams?.map { it.url })
+        assertEquals(listOf("Slow addon"), result?.errors?.map { it.name })
+        assertEquals(listOf("timeout"), result?.errors?.map { it.code })
+    }
+
+    @Test
+    fun retryInvalidatesTheStreamQueryWithoutStartingALoop() = runTest {
+        var attempts = 0
+        val api = browseApi {
+            attempts += 1
+            HaloJson.encodeToString(
+                StreamsResult.serializer(),
+                StreamsResult(
+                    results = listOf(
+                        AddonStreams(
+                            AddonSource("torbox", "TorBox"),
+                            listOf(Stream(url = "https://cdn.test/$attempts.mp4")),
+                        ),
+                    ),
+                ),
+            )
+        }
+        val repository = repository(api)
+        repository.streams("movie", "tt1").first { it.value != null }
+        assertEquals(1, attempts)
+
+        repository.retryStreams("movie", "tt1")
+        // No automatic loop is introduced for an unobserved key. The next
+        // observer sees the cached value, then receives the one refetch that
+        // manual invalidation requested.
+        assertEquals(1, attempts)
+        val refreshed = repository.streams("movie", "tt1").first {
+            it.value?.results?.single()?.streams?.single()?.url == "https://cdn.test/2.mp4"
+        }
+
+        assertEquals(2, attempts)
+        assertEquals("https://cdn.test/2.mp4", refreshed.value?.results?.single()?.streams?.single()?.url)
     }
 
     @Test

@@ -6,34 +6,43 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -50,35 +59,53 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import kotlinx.coroutines.flow.Flow
 import dev.chrisbanes.haze.rememberHazeState
 import moe.ditto.halo.NativePlayerSurface
 import moe.ditto.halo.PlaybackHost
 import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.api.MetaCard
+import moe.ditto.halo.api.MetaDetail
+import moe.ditto.halo.api.MetaVideo
 import moe.ditto.halo.browse.episodeTag
 import moe.ditto.halo.screens.DetailScreen
+import moe.ditto.halo.screens.DownloadsScreen
 import moe.ditto.halo.screens.HomeScreen
 import moe.ditto.halo.screens.LibraryScreen
 import moe.ditto.halo.screens.MetaRef
-import moe.ditto.halo.screens.PlayerScreen
+import moe.ditto.halo.player.PlayerSystemPort
+import moe.ditto.halo.player.VideoFrameSource
+import moe.ditto.halo.resources.Res
+import moe.ditto.halo.resources.halo_mark
+import moe.ditto.halo.screens.player.EpisodeChoice
+import moe.ditto.halo.screens.player.PlayerScreen
 import moe.ditto.halo.screens.SearchScreen
+import moe.ditto.halo.screens.SettingsScreen
 import moe.ditto.halo.screens.StreamsScreen
+import moe.ditto.halo.screens.SourcesRequest
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloIcons
-import moe.ditto.halo.ui.HaloSpacing
-import moe.ditto.halo.ui.HaloType
+import moe.ditto.halo.ui.HaloLayout
+import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.LocalHazeState
 import moe.ditto.halo.ui.glassSource
 import moe.ditto.halo.ui.glassSurface
+import moe.ditto.halo.ui.rememberResponsive
+import org.jetbrains.compose.resources.painterResource
 
 /**
- * The signed-in shell: four tabs over one navigation graph, with a frosted bar
- * floating above the content rather than sitting beside it.
+ * The signed-in shell: four tabs over one navigation graph, as a frosted bar
+ * floating above the content or — on a tablet in landscape — as a rail beside
+ * it. Same four tabs, same icons, same accent-marks-selection rule either way.
  *
  * Because the bar floats, screens scroll underneath it and are responsible for
  * ending their own content with [HaloDimensions.TabBarSpace] of bottom padding.
- * A screen that forgets it will hide its last row behind the glass — which is
- * the price of letting poster art bleed through the chrome.
+ * A screen that forgets it will hide its last row behind the glass, which is
+ * the price of letting poster art bleed through the chrome. The rail does not
+ * float — it takes its own column — so beside it that allowance is not merely
+ * unnecessary but wrong, which is what [ResponsiveInfo.bottomContentPadding]
+ * settles for every screen.
  *
  * The whole graph is registered as the blur source here, so any frosted surface
  * anywhere inside a screen samples that screen's own content.
@@ -89,6 +116,14 @@ internal fun HaloShell(
     /** The app's one playback owner; the player route drives it, nothing else does. */
     playback: PlaybackHost,
     playerSurface: NativePlayerSurface,
+    /** See [moe.ditto.halo.PlatformDependencies.bundledSubtitleFonts]. */
+    bundledSubtitleFonts: Set<String>,
+    /** The device side of playback: brightness, volume, orientation, sleep. */
+    playerSystem: PlayerSystemPort,
+    /** Frames behind the player's scrub preview; see [VideoFrameSource]. */
+    videoFrames: VideoFrameSource,
+    openDownloadsEvents: Flow<Unit>,
+    onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
     /**
      * Opens the diagnostics harness from Settings. Null in a shipped build,
@@ -99,6 +134,11 @@ internal fun HaloShell(
 ) {
     val navController = rememberNavController()
     val hazeState = rememberHazeState()
+    val responsive = rememberResponsive()
+
+    LaunchedEffect(navController, openDownloadsEvents) {
+        openDownloadsEvents.collect { navController.switchTab(DownloadsRoute) }
+    }
 
     CompositionLocalProvider(LocalHazeState provides hazeState) {
         Box(modifier.fillMaxSize().background(HaloColors.Background)) {
@@ -124,7 +164,7 @@ internal fun HaloShell(
                         graph = graph,
                         onOpenSearch = { navController.navigate(SearchRoute) },
                         onOpenDetail = { navController.openDetail(it) },
-                        onPlayMovie = { meta -> navController.openStreams(meta.type, meta.id, meta.name) },
+                        onPlayMovie = { meta -> navController.navigate(movieSources(meta)) },
                     )
                 }
                 composable<SearchRoute> {
@@ -148,12 +188,16 @@ internal fun HaloShell(
                         type = route.type,
                         metaId = route.metaId,
                         onBack = { navController.popBackStack() },
-                        onPlayMovie = { meta -> navController.openStreams(meta.type, meta.id, meta.name) },
-                        onPlayEpisode = { meta, video ->
-                            // The episode tag rather than its name: an episode
-                            // title alone does not say what it is an episode of,
-                            // and the picker's header is all the context there is.
-                            navController.openStreams(meta.type, video.id, "${meta.name} — ${episodeTag(video)}")
+                        onPlayMovie = { meta -> navController.navigate(movieSources(meta)) },
+                        onPlayEpisode = { meta, video -> navController.navigate(episodeSources(meta, video)) },
+                        // Where there is room beside the title, the picker
+                        // arrives as a rail over it instead of as a screen that
+                        // replaces it. The routes it builds are the same ones
+                        // the pushed picker is given.
+                        sourcesRequest = { meta, video ->
+                            navController.sourcesRequest(
+                                if (video == null) movieSources(meta) else episodeSources(meta, video),
+                            )
                         },
                     )
                 }
@@ -163,15 +207,16 @@ internal fun HaloShell(
                         graph = graph,
                         type = route.type,
                         videoId = route.videoId,
-                        title = route.title,
+                        title = route.displayTitle,
                         onBack = { navController.popBackStack() },
-                        onPlay = { stream ->
+                        downloadMedia = { addon, stream, url -> route.downloadMedia(addon, stream, url) },
+                        onPlay = { addon, stream ->
                             val url = stream.url ?: return@StreamsScreen
                             // The picker is replaced rather than stacked, so
-                            // leaving the player returns to the title — being
+                            // leaving the player returns to the title. Being
                             // handed the source list again after choosing from
                             // it reads as the choice not having taken.
-                            navController.navigate(PlayerRoute(url = url, title = route.title)) {
+                            navController.navigate(route.playerRoute(addon, stream, url)) {
                                 popUpTo<StreamsRoute> { inclusive = true }
                             }
                         },
@@ -180,23 +225,65 @@ internal fun HaloShell(
                 composable<PlayerRoute> { entry ->
                     val route = entry.toRoute<PlayerRoute>()
                     PlayerScreen(
+                        graph = graph,
                         playback = playback,
                         surface = playerSurface,
-                        url = route.url,
-                        title = route.title,
+                        bundledSubtitleFonts = bundledSubtitleFonts,
+                        system = playerSystem,
+                        videoFrames = videoFrames,
+                        context = route.playbackContext(),
+                        // Both outcomes replace the player rather than stacking
+                        // on it, so back still returns to the title rather than
+                        // walking every episode watched in this sitting.
+                        onSelectEpisode = { choice ->
+                            when (choice) {
+                                is EpisodeChoice.Resolved ->
+                                    navController.navigate(route.withContext(choice.context)) {
+                                        popUpTo<PlayerRoute> { inclusive = true }
+                                    }
+                                is EpisodeChoice.NeedsSource ->
+                                    navController.navigate(route.episodeSources(choice)) {
+                                        popUpTo<PlayerRoute> { inclusive = true }
+                                    }
+                            }
+                        },
+                        onPickAnotherSource = {
+                            navController.navigate(route.sourcesRoute()) {
+                                popUpTo<PlayerRoute> { inclusive = true }
+                            }
+                        },
                         onBack = { navController.popBackStack() },
                     )
                 }
-                composable<DownloadsRoute> { PlaceholderScreen("Downloads") }
+                composable<DownloadsRoute> {
+                    DownloadsScreen(
+                        graph = graph,
+                        onPlay = { entry ->
+                            // Stacked rather than replacing: leaving playback
+                            // returns to the list it was started from, which is
+                            // the tab the viewer is standing in.
+                            graph.downloads.playbackFiles(entry)?.let { files ->
+                                navController.navigate(entry.playerRoute(files))
+                            }
+                        },
+                    )
+                }
                 composable<SettingsRoute> {
-                    PlaceholderScreen("Settings") {
-                        if (onOpenDebugGate != null) {
-                            DebugGateRow(onOpenDebugGate)
-                        }
-                    }
+                    SettingsScreen(
+                        graph = graph,
+                        onSignOut = onSignOut,
+                        onOpenDebugGate = onOpenDebugGate,
+                    )
                 }
             }
-            HaloTabBar(navController, Modifier.align(Alignment.BottomCenter))
+            // Both are chrome over the same graph, and exactly one of them is
+            // ever in use: the rail replaces the bar in landscape rather than
+            // joining it.
+            if (responsive.usesNavigationRail) {
+                HaloNavRail(navController, Modifier.align(Alignment.CenterStart))
+            } else {
+                HaloTabBar(navController, Modifier.align(Alignment.BottomCenter))
+            }
         }
     }
 }
@@ -209,7 +296,7 @@ internal fun HaloShell(
 private val PushSpec = tween<IntOffset>(durationMillis = 300, easing = FastOutSlowInEasing)
 
 /**
- * How far the screen being left behind travels — a fraction of the way, not off
+ * How far the screen being left behind travels: a fraction of the way, not off
  * the edge. The two screens moving at different speeds is what reads as one
  * sliding *over* the other rather than the pair sliding sideways together.
  */
@@ -235,9 +322,19 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.popEnter(): EnterT
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.popExit(): ExitTransition =
     slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, PushSpec)
 
-/** True for destinations that replace the shell chrome — see [ChromeCoveringRoutes]. */
+/** True for destinations that replace the shell chrome. See [ChromeCoveringRoutes]. */
 private fun NavDestination?.coversChrome(): Boolean =
     this != null && ChromeCoveringRoutes.any { route -> hierarchy.any { it.hasRoute(route) } }
+
+/**
+ * True for destinations that take the navigation rail down as well.
+ *
+ * A shorter list than [ChromeCoveringRoutes] on purpose: those screens cover the
+ * bar because a phone has no room to keep it, and a tablet in landscape does.
+ * Only the player, which owns the whole window, takes the rail with it.
+ */
+private fun NavDestination?.coversRail(): Boolean =
+    this != null && hierarchy.any { it.hasRoute(PlayerRoute::class) }
 
 private class Tab(
     val route: Any,
@@ -267,7 +364,7 @@ private fun HaloTabBar(navController: NavHostController, modifier: Modifier = Mo
     val destination = entry?.destination
 
     // Screens that own the whole viewport hide the bar rather than having it
-    // float over their controls — and it leaves downwards, with the push, instead
+    // float over their controls. It leaves downwards, with the push, instead
     // of blinking out of existence while the screen it belongs to is still on
     // screen. Returning slides it back up under the returning screen.
     AnimatedVisibility(
@@ -334,6 +431,151 @@ private fun TabButton(tab: Tab, selected: Boolean, onClick: () -> Unit, modifier
 }
 
 /**
+ * The tab bar turned on its side, for a landscape tablet.
+ *
+ * It floats over the content exactly as the bar does — screens inset their own
+ * leading edge by [HaloLayout.NavRailWidth], the way they allow for
+ * [HaloDimensions.TabBarSpace] at the bottom — so the glass has something to
+ * frost. A rail with the content stopping at its edge would have nothing behind
+ * it to blur, and the tint alone does not read as glass.
+ *
+ * Only the player takes the rail down: it owns the whole window, and every other
+ * screen keeps it, because losing it for a title would make going back to
+ * Library a two-step trip on a device with room for both.
+ */
+@Composable
+private fun HaloNavRail(navController: NavHostController, modifier: Modifier = Modifier) {
+    val entry by navController.currentBackStackEntryAsState()
+    val destination = entry?.destination
+
+    AnimatedVisibility(
+        visible = !destination.coversRail(),
+        modifier = modifier,
+        // Leaves towards the leading edge, with the push that took it down,
+        // rather than blinking out while the screen it belongs to is still up.
+        enter = slideInHorizontally(PushSpec) { width -> -width },
+        exit = slideOutHorizontally(PushSpec) { width -> -width },
+    ) {
+        Box(Modifier.fillMaxHeight().width(HaloLayout.NavRailWidth)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .glassSurface(HaloColors.TabBarTint)
+                    // Inside the glass, so the frosted fill runs into the
+                    // cutout and under the home indicator instead of stopping
+                    // short of them. Only the sides this rail can actually
+                    // touch: it is pinned to the leading edge at a fixed width.
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(WindowInsetsSides.Start + WindowInsetsSides.Vertical),
+                    )
+                    .padding(top = RailTopPadding, bottom = RailBottomPadding),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                AppMark()
+                // The tabs are their own group so the gap under the mark is the
+                // one stated here, rather than that gap plus a tab's spacing.
+                Column(
+                    modifier = Modifier.padding(top = RailMarkGap),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(RailTabGap),
+                ) {
+                    tabs.forEach { tab ->
+                        val selected = destination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true
+                        RailTabButton(
+                            tab = tab,
+                            selected = selected,
+                            onClick = { if (!selected) navController.switchTab(tab.route) },
+                        )
+                    }
+                }
+            }
+            // The trailing edge, drawn over the fill rather than as padding
+            // inside it, so the rail stays exactly its stated width.
+            Box(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(1.dp)
+                    .background(HaloColors.GlassBorder),
+            )
+        }
+    }
+}
+
+private val RailTopPadding = 18.dp
+private val RailBottomPadding = 14.dp
+private val RailTabGap = 2.dp
+private val RailMarkGap = 24.dp
+private val RailMarkSize = 34.dp
+private val RailTabShape = RoundedCornerShape(14.dp)
+
+/** The canonical Halo mark used by the main app. */
+@Composable
+private fun AppMark() {
+    Image(
+        painter = painterResource(Res.drawable.halo_mark),
+        contentDescription = null,
+        modifier = Modifier.size(RailMarkSize),
+        contentScale = ContentScale.Fit,
+    )
+}
+
+/** Selected tabs are tinted rather than filled: the rail is translucent too. */
+private val RailSelectedFill = HaloColors.Accent.copy(alpha = 0.14f)
+
+@Composable
+private fun RailTabButton(tab: Tab, selected: Boolean, onClick: () -> Unit) {
+    val tint = if (selected) HaloColors.Accent else HaloColors.Text
+    Column(
+        modifier = Modifier
+            .width(HaloLayout.NavRailTabWidth)
+            .clip(RailTabShape)
+            .background(if (selected) RailSelectedFill else Color.Transparent)
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            imageVector = if (selected) tab.activeIcon else tab.icon,
+            // The label below already names this tab.
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(TabIconSize),
+        )
+        Text(
+            text = tab.label,
+            color = tint,
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+/**
+ * What the sources rail needs to show and act on one video's sources.
+ *
+ * Built from the same [StreamsRoute] the pushed picker would have been given, so
+ * the rail and the screen cannot disagree about what is being played, what it is
+ * called, or what a download of it would be.
+ */
+private fun NavHostController.sourcesRequest(route: StreamsRoute) = SourcesRequest(
+    type = route.type,
+    videoId = route.videoId,
+    title = route.displayTitle,
+    onPlay = { addon, stream ->
+        val url = stream.url
+        if (url != null) {
+            // Stacked on the title rather than replacing it: the rail never
+            // took the title's place, so there is nothing for leaving playback
+            // to fall back to but the title itself.
+            navigate(route.playerRoute(addon, stream, url))
+        }
+    },
+    downloadMedia = { addon, stream, url -> route.downloadMedia(addon, stream, url) },
+)
+
+/**
  * Opens a title from any browse surface.
  *
  * Every one of them hands over the same [MetaRef], so the three entry points into
@@ -343,18 +585,45 @@ private fun NavHostController.openDetail(ref: MetaRef) =
     navigate(DetailRoute(type = ref.type, metaId = ref.metaId))
 
 /**
- * Opens a video's sources. A film's own id is the video id; an episode's is its
- * own, which is why this takes the video rather than the title.
+ * A film's sources. Its meta id is also its video id: there is one video, and it
+ * is the title.
  */
-private fun NavHostController.openStreams(type: String, videoId: String, title: String) =
-    navigate(StreamsRoute(type = type, videoId = videoId, title = title))
+private fun movieSources(meta: MetaCard) = StreamsRoute(
+    type = meta.type,
+    metaId = meta.id,
+    videoId = meta.id,
+    showTitle = meta.name,
+    poster = meta.poster,
+)
+
+/**
+ * An episode's sources, named in the parts that are set separately downstream:
+ * the show, which episode of it, and what that episode is called.
+ *
+ * The name is dropped when it is the tag: [episodeTag] falls back to the video's
+ * own title for anything unnumbered, and the same string printed twice reads as
+ * a rendering fault rather than as a missing episode number.
+ */
+private fun episodeSources(meta: MetaDetail, video: MetaVideo): StreamsRoute {
+    val tag = episodeTag(video)
+    return StreamsRoute(
+        type = meta.type,
+        metaId = meta.id,
+        videoId = video.id,
+        showTitle = meta.name,
+        episodeTag = tag,
+        episodeName = video.displayTitle?.takeIf { it != tag },
+        episodeThumbnail = video.thumbnail,
+        poster = meta.poster,
+    )
+}
 
 /**
  * Switches tabs without stacking them.
  *
  * Popping back to the graph's start destination keeps back from walking the
  * history of visited tabs, while saving and restoring state means a tab returns
- * to where it was left — same scroll position, same filter — rather than
+ * to where it was left, with the same scroll position and filter, rather than
  * rebuilding from scratch on every switch.
  */
 private fun NavHostController.switchTab(route: Any) {
@@ -362,52 +631,5 @@ private fun NavHostController.switchTab(route: Any) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true
-    }
-}
-
-/**
- * Entry into the diagnostics harness. It lives under Settings because that is
- * the one tab a debug affordance can sit in without displacing product content.
- */
-@Composable
-private fun DebugGateRow(onClick: () -> Unit) {
-    Text(
-        text = "Debug gate",
-        style = HaloType.Callout.copy(color = HaloColors.Accent),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(vertical = HaloSpacing.Md),
-    )
-}
-
-/**
- * Stand-in until the real screens land. Deliberately scrollable and taller than
- * the viewport so the bottom-padding contract above is visible rather than
- * theoretical.
- */
-@Composable
-private fun PlaceholderScreen(name: String, header: @Composable () -> Unit = {}) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(horizontal = HaloSpacing.Md),
-    ) {
-        Text(
-            text = name,
-            style = HaloType.LargeTitle,
-            modifier = Modifier.padding(vertical = HaloSpacing.Md),
-        )
-        header()
-        repeat(24) { index ->
-            Text(
-                text = "$name row ${index + 1}",
-                style = HaloType.Body,
-                modifier = Modifier.padding(vertical = HaloSpacing.Sm),
-            )
-        }
-        Spacer(Modifier.height(HaloDimensions.TabBarSpace))
     }
 }

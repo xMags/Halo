@@ -5,6 +5,7 @@ import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlaybackStatus
 import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerPort
+import moe.ditto.halo.player.SubtitleStyle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -17,12 +18,11 @@ class PlaybackHostTest {
         val port = RecordingPlayerPort()
         val host = PlaybackHost(port)
 
-        host.ensurePlayerStarted(current, next)
-        host.ensurePlayerStarted(current, next)
+        host.ensurePlayerStarted(current)
+        host.ensurePlayerStarted(current)
 
         assertEquals(listOf(current), port.loads)
         assertEquals(current, host.playerPresenter.state.current)
-        assertEquals(next, host.playerPresenter.state.queuedNext)
     }
 
     @Test
@@ -57,6 +57,52 @@ class PlaybackHostTest {
     }
 
     @Test
+    fun playbackRatePublishesThePresenterEcho() = runTest {
+        val port = RecordingPlayerPort()
+        val host = PlaybackHost(port)
+        host.play(current)
+
+        host.setPlaybackRate(1.25)
+
+        assertEquals(listOf(1.25), port.playbackRates)
+        assertEquals(1.25, host.state.value.playbackRate)
+    }
+
+    @Test
+    fun storedSubtitleAppearanceReachesTheCoreAsOneStep() = runTest {
+        val port = RecordingPlayerPort()
+        val host = PlaybackHost(port)
+        host.play(current)
+
+        host.applySubtitleStyle(
+            SubtitleStyle(scale = 1.5, font = "JetBrains Mono", outlineWidthPixels = 1.0, shadowOffsetPixels = 2.0),
+        )
+
+        assertEquals(
+            listOf("scale=1.5", "font=JetBrains Mono", "outline=1.0", "shadow=2.0"),
+            port.subtitleCalls,
+        )
+        assertEquals(1.5, host.state.value.subtitleScale)
+        assertEquals("JetBrains Mono", host.state.value.subtitleFont)
+    }
+
+    @Test
+    fun captionLiftIsClampedBeforeItReachesTheCore() = runTest {
+        val port = RecordingPlayerPort()
+        val host = PlaybackHost(port)
+        host.play(current)
+
+        host.setSubtitleLift(12)
+        host.setSubtitleLift(0)
+        // A value written by another client, or a future one: the caption must
+        // not be sent off the top of the frame.
+        host.setSubtitleLift(400)
+        host.setSubtitleLift(-10)
+
+        assertEquals(listOf("lift=12", "lift=0", "lift=50", "lift=0"), port.subtitleCalls)
+    }
+
+    @Test
     fun leavingReleasesTheVideoChainBeforeTheScreenCanGoAway() = runTest {
         val port = RecordingPlayerPort()
         val host = PlaybackHost(port)
@@ -85,6 +131,8 @@ class PlaybackHostTest {
     private class RecordingPlayerPort : PlayerPort {
         val loads = mutableListOf<MediaItem>()
         val pauses = mutableListOf<Boolean>()
+        val playbackRates = mutableListOf<Double>()
+        val subtitleCalls = mutableListOf<String>()
         var teardownCount = 0
             private set
         var videoReleases = 0
@@ -100,9 +148,40 @@ class PlaybackHostTest {
         override suspend fun seekTo(positionSeconds: Double) = Unit
         override suspend fun selectAudioTrack(id: String?) = Unit
         override suspend fun selectSubtitleTrack(id: String?) = Unit
+        override suspend fun setPlaybackRate(rate: Double) {
+            playbackRates += rate
+        }
+        override suspend fun setAudioDelay(seconds: Double) = Unit
+        override suspend fun setVideoFillsScreen(fills: Boolean) = Unit
         override suspend fun setSubtitleDelay(seconds: Double) = Unit
-        override suspend fun setSubtitleScale(scale: Double) = Unit
-        override suspend fun setSubtitleFont(font: String?) = Unit
+
+        // Recorded as an ordered log rather than four lists: applying the
+        // stored appearance is one step whose order is the thing worth
+        // asserting.
+        override suspend fun setSubtitleScale(scale: Double) {
+            subtitleCalls += "scale=$scale"
+        }
+
+        override suspend fun setSubtitleFont(font: String?) {
+            subtitleCalls += "font=$font"
+        }
+
+        override suspend fun setSubtitleTrackStyling(keepScript: Boolean) {
+            subtitleCalls += "trackStyling=$keepScript"
+        }
+
+        override suspend fun setSubtitleOutline(widthPixels: Double) {
+            subtitleCalls += "outline=$widthPixels"
+        }
+
+        override suspend fun setSubtitleShadow(offsetPixels: Double) {
+            subtitleCalls += "shadow=$offsetPixels"
+        }
+
+        override suspend fun setSubtitleLift(percent: Int) {
+            subtitleCalls += "lift=$percent"
+        }
+
         override suspend fun addSubtitle(url: String) = Unit
 
         override suspend fun releaseVideoOutput() {

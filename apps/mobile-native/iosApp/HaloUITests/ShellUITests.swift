@@ -9,11 +9,9 @@ import XCTest
 ///   `LocalAuthUITests` uses:
 ///   `python3 -u fixtures/fixture_server.py --port 18788 --auth-mode local`
 ///
-/// Library and Downloads are still placeholders, so their assertions name the
-/// filler rows. Home is real, and it is asserted on its header rather than on
-/// posters: this fixture serves auth flows and media, not catalogs, so Home's
-/// body here can only be an empty state. What the header proves is the thing
-/// this suite is about — that the tab's screen composed at all.
+/// The fixture serves auth flows and media, not catalogs or downloads. These
+/// assertions therefore use stable headers and the truthful Downloads empty
+/// state instead of content rows that the fixture cannot provide.
 final class ShellUITests: XCTestCase {
     private static let serverUrl = "http://127.0.0.1:18788"
     private static let username = "fixture-user"
@@ -46,10 +44,10 @@ final class ShellUITests: XCTestCase {
         assertText(containing: "Watch")
 
         tapButton("Library")
-        assertText(containing: "Library row 1")
+        assertText(containing: "Library")
 
         tapButton("Downloads")
-        assertText(containing: "Downloads row 1")
+        assertText(containing: "Downloads will live here")
     }
 
     func testDebugGateOpensFromSettingsAndReturns() {

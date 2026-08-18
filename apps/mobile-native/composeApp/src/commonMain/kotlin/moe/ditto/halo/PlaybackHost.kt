@@ -11,6 +11,7 @@ import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerPort
 import moe.ditto.halo.player.PlayerPresenter
 import moe.ditto.halo.player.PlayerState
+import moe.ditto.halo.player.SubtitleStyle
 
 /**
  * The app's single playback owner: one presenter over the one native core the
@@ -67,8 +68,104 @@ internal class PlaybackHost(private val playerPort: PlayerPort) {
      * Stops the picture and the sound without ending the session, which is what
      * leaving a player screen means as long as [play] is the only way back in.
      */
-    suspend fun pause() {
-        playerPresenter.setPaused(true)
+    suspend fun pause() = setPaused(true)
+
+    /**
+     * Transport controls, here rather than on the presenter directly, so that a
+     * screen never reaches past the owner to the engine: the presenter's state
+     * has to be republished after every command, and a caller that drove it
+     * itself would have to remember to.
+     */
+    suspend fun setPaused(paused: Boolean) {
+        playerPresenter.setPaused(paused)
+        publish()
+    }
+
+    suspend fun seekTo(positionSeconds: Double) {
+        playerPresenter.seekTo(positionSeconds)
+        publish()
+    }
+
+    /**
+     * Track selection and subtitle styling. All of these apply to the running
+     * core without reloading it, which is what makes tuning them while watching
+     * possible at all.
+     */
+    suspend fun selectAudioTrack(id: String?) {
+        playerPresenter.selectAudioTrack(id)
+        publish()
+    }
+
+    suspend fun selectSubtitleTrack(id: String?) {
+        playerPresenter.selectSubtitleTrack(id)
+        publish()
+    }
+
+    suspend fun setPlaybackRate(rate: Double) {
+        playerPresenter.setPlaybackRate(rate)
+        publish()
+    }
+
+    suspend fun setVideoFillsScreen(fills: Boolean) {
+        playerPresenter.setVideoFillsScreen(fills)
+        publish()
+    }
+
+    suspend fun setAudioDelay(seconds: Double) {
+        playerPresenter.setAudioDelay(seconds)
+        publish()
+    }
+
+    suspend fun setSubtitleScale(scale: Double) {
+        playerPresenter.setSubtitleScale(scale)
+        publish()
+    }
+
+    suspend fun setSubtitleDelay(seconds: Double) {
+        playerPresenter.setSubtitleDelay(seconds)
+        publish()
+    }
+
+    suspend fun setSubtitleFont(font: String?) {
+        playerPresenter.setSubtitleFont(font)
+        publish()
+    }
+
+    /**
+     * The stored caption appearance, applied as one step. Callers restore this
+     * before starting a source so the first caption is already right, rather
+     * than correcting itself a moment after it appears.
+     */
+    suspend fun applySubtitleStyle(style: SubtitleStyle) {
+        playerPresenter.setSubtitleScale(style.scale)
+        playerPresenter.setSubtitleFont(style.font)
+        playerPresenter.setSubtitleOutline(style.outlineWidthPixels)
+        playerPresenter.setSubtitleShadow(style.shadowOffsetPixels)
+        publish()
+    }
+
+    suspend fun setSubtitleTrackStyling(keepScript: Boolean) {
+        playerPresenter.setSubtitleTrackStyling(keepScript)
+        publish()
+    }
+
+    suspend fun setSubtitleOutline(widthPixels: Double) {
+        playerPresenter.setSubtitleOutline(widthPixels)
+        publish()
+    }
+
+    suspend fun setSubtitleShadow(offsetPixels: Double) {
+        playerPresenter.setSubtitleShadow(offsetPixels)
+        publish()
+    }
+
+    suspend fun setSubtitleLift(percent: Int) {
+        playerPresenter.setSubtitleLift(percent)
+        publish()
+    }
+
+    suspend fun addSubtitle(url: String) {
+        playerPresenter.addSubtitle(url)
         publish()
     }
 
@@ -92,10 +189,10 @@ internal class PlaybackHost(private val playerPort: PlayerPort) {
      * Loads only if nothing is playing yet — the diagnostics harness re-enters
      * its screen repeatedly and must not restart the core each time.
      */
-    suspend fun ensurePlayerStarted(current: MediaItem, next: MediaItem?) {
+    suspend fun ensurePlayerStarted(current: MediaItem) {
         startMutex.withLock {
             if (playerPresenter.state.status != PlaybackStatus.Idle) return
-            playerPresenter.start(current, next)
+            playerPresenter.start(current)
             publish()
         }
     }

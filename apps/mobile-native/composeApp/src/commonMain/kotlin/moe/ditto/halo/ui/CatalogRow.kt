@@ -19,8 +19,6 @@ import androidx.compose.ui.unit.dp
 /** Placeholder tiles shown while a catalog loads — roughly a phone screen's worth. */
 private const val SkeletonTileCount = 5
 
-private val RowGap = 11.dp
-
 /**
  * A horizontally scrolling strip of posters under a heading.
  *
@@ -43,22 +41,27 @@ fun CatalogRow(
      * titles are unfamiliar by definition.
      */
     showLabels: Boolean = false,
+    /** The screen's gutter: where the heading starts and the strip scrolls from. */
+    gutter: Dp = HaloSpacing.Md,
+    /** Space between cards, which grows with them. */
+    gap: Dp = HaloLayout.PhoneCatalogRowGap,
+    bottomPadding: Dp = HaloSpacing.Lg,
 ) {
     if (!isLoading && items.isEmpty()) return
 
-    Column(modifier.padding(bottom = HaloSpacing.Lg)) {
+    Column(modifier.padding(bottom = bottomPadding)) {
         Text(
             text = title,
             style = HaloType.Heading,
             modifier = Modifier.padding(
-                start = HaloSpacing.Md,
-                end = HaloSpacing.Md,
+                start = gutter,
+                end = gutter,
                 bottom = HaloSpacing.Sm + 2.dp,
             ),
         )
         LazyRow(
-            contentPadding = PaddingValues(horizontal = HaloSpacing.Md),
-            horizontalArrangement = Arrangement.spacedBy(RowGap),
+            contentPadding = PaddingValues(horizontal = gutter),
+            horizontalArrangement = Arrangement.spacedBy(gap),
         ) {
             if (isLoading) {
                 // Skeleton tiles rather than a spinner: the row occupies its

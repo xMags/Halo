@@ -5,5 +5,5 @@ plugins {
     id("org.jetbrains.compose") version "1.11.1" apply false
     // The same composeApp module also builds the Android app. AGP 9.x is the
     // line that supports Gradle 9.x (wrapper is 9.5.0).
-    id("com.android.application") version "9.3.0" apply false
+    id("com.android.application") version "9.3.1" apply false
 }

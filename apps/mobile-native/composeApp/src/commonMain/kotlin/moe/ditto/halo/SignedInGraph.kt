@@ -12,9 +12,16 @@ import moe.ditto.halo.auth.TokenProvider
 import moe.ditto.halo.browse.AddonsRepository
 import moe.ditto.halo.browse.BrowseRepository
 import moe.ditto.halo.cache.QueryCache
+import moe.ditto.halo.downloads.AddonDownloadSubtitles
+import moe.ditto.halo.downloads.DeviceDownloadRuntime
+import moe.ditto.halo.downloads.DownloadStoragePort
+import moe.ditto.halo.player.StreamVideoHasher
+import moe.ditto.halo.player.SubtitleFileCache
 import moe.ditto.halo.storage.KeyValueStore
 import moe.ditto.halo.storage.SearchHistoryStore
 import moe.ditto.halo.storage.SubtitleChoiceStore
+import moe.ditto.halo.storage.VideoFitModeStore
+import moe.ditto.halo.sync.AccountRepository
 import moe.ditto.halo.sync.LibraryRepository
 import moe.ditto.halo.sync.SettingsRepository
 import moe.ditto.halo.sync.WatchStateRepository
@@ -38,7 +45,11 @@ import moe.ditto.halo.sync.WatchStateRepository
 internal class SignedInGraph(
     serverUrl: String,
     tokens: TokenProvider,
+    onUnauthorized: suspend () -> Unit,
     keyValueStore: KeyValueStore,
+    subtitleCacheDirectory: String,
+    downloadRuntime: DeviceDownloadRuntime,
+    downloadStorage: DownloadStoragePort,
     clock: EpochClock = SystemEpochClock,
 ) {
     /**
@@ -55,14 +66,32 @@ internal class SignedInGraph(
      */
     private val httpClient = HttpClient()
 
-    val client = HaloClient(serverUrl, tokens, httpClient)
+    val client = HaloClient(serverUrl, tokens, httpClient, onUnauthorized)
     val cache = QueryCache(scope, clock)
 
     val addons = AddonsRepository(client, cache)
+    val account = AccountRepository(client, cache)
     val browse = BrowseRepository(client, cache, addons)
     val library = LibraryRepository(client, cache, clock)
     val watchStates = WatchStateRepository(client, cache, clock)
     val settings = SettingsRepository(client, cache, keyValueStore, clock)
+
+    /**
+     * Hashes a source over range requests so subtitle results match the exact
+     * file. Shares the session's HTTP client: it talks to the source host, not
+     * to Halo, and needs none of the client's auth or base URL.
+     */
+    val videoHasher = StreamVideoHasher(httpClient)
+    val subtitleFiles = SubtitleFileCache(client, subtitleCacheDirectory)
+
+    /**
+     * Device-owned and application-scoped. This graph contributes only its
+     * authenticated subtitle lookup while the session exists.
+     */
+    val downloads = downloadRuntime
+    private val detachDownloadSubtitles = downloads.bindSubtitleSource(
+        AddonDownloadSubtitles(client, videoHasher, settings, downloadStorage),
+    )
 
     /**
      * Device-local, so they are not per-user the way the cache is; they are
@@ -71,6 +100,7 @@ internal class SignedInGraph(
      */
     val searchHistory = SearchHistoryStore(keyValueStore)
     val subtitleChoices = SubtitleChoiceStore(keyValueStore, clock)
+    val videoFitMode = VideoFitModeStore(keyValueStore)
 
     /**
      * Ends the session's work and its connections. Cancelling the scope also
@@ -79,6 +109,7 @@ internal class SignedInGraph(
      * in a cache nobody reads.
      */
     fun close() {
+        detachDownloadSubtitles()
         scope.cancel()
         httpClient.close()
     }

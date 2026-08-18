@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Arrangement
@@ -44,7 +45,6 @@ data class PosterItem(
 private const val MinVisibleProgress = 0.02f
 
 private val PosterShape = RoundedCornerShape(HaloRadius.Md)
-private val PosterGap = 11.dp
 
 /**
  * Poster-forward card: art only unless [showLabel] is set.
@@ -116,6 +116,10 @@ fun PosterGrid(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(horizontal = HaloSpacing.Md),
     showLabels: Boolean = false,
+    /** Cell spacing. Rows sit further apart than columns: a poster is half again
+     *  as tall as it is wide, so equal gaps read as a tighter vertical rhythm. */
+    horizontalGap: Dp = HaloLayout.PhonePosterGridGap,
+    verticalGap: Dp = HaloLayout.PhonePosterGridRowGap,
     /**
      * Screen chrome above the first row, spanning the full width and scrolling
      * with the grid. A title and filter fixed above the grid instead would cost
@@ -128,8 +132,8 @@ fun PosterGrid(
         columns = GridCells.Fixed(columns),
         modifier = modifier,
         contentPadding = contentPadding,
-        horizontalArrangement = Arrangement.spacedBy(PosterGap),
-        verticalArrangement = Arrangement.spacedBy(HaloSpacing.Md),
+        horizontalArrangement = Arrangement.spacedBy(horizontalGap),
+        verticalArrangement = Arrangement.spacedBy(verticalGap),
     ) {
         if (header != null) {
             item(key = "grid-header", span = { GridItemSpan(maxLineSpan) }) { header() }

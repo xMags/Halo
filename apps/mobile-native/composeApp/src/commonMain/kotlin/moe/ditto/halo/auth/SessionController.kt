@@ -4,6 +4,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 enum class SessionKind { Local, Oidc }
 
@@ -43,7 +45,6 @@ class SessionController(
         gateway = gateway,
         clock = clock,
         scope = scope,
-        onSessionInvalidated = { publish(SessionState.SignedOut) },
     )
 
     private val _state = MutableStateFlow<SessionState>(SessionState.Restoring)
@@ -62,6 +63,12 @@ class SessionController(
      * per-session resources must key on this as well.
      */
     val sessionGeneration: StateFlow<Int> = _sessionGeneration
+
+    private val _loginNotice = MutableStateFlow<String?>(null)
+    val loginNotice: StateFlow<String?> = _loginNotice
+
+    /** Concurrent 401s may all arrive together, but only one may end a session. */
+    private val rejectionGuard = Mutex()
 
     /**
      * The one place session state is written. The counter moves first, so a
@@ -100,6 +107,7 @@ class SessionController(
      * persisted session; local is checked first only for determinism.
      */
     fun restore() {
+        _loginNotice.value = null
         val local = localSessions.restore()
         if (local != null) {
             publish(SessionState.SignedIn(SessionKind.Local, local.serverUrl))
@@ -119,6 +127,7 @@ class SessionController(
         localSessions.establish(LocalSessionData(serverUrl = serverUrl, token = issued.token, expiresAt = issued.expiresAt))
         // Survives sign-out on purpose: the login form prefills the last server.
         storage.write(AuthStorageKeys.ServerUrl, serverUrl)
+        _loginNotice.value = null
         publish(SessionState.SignedIn(SessionKind.Local, serverUrl))
     }
 
@@ -133,10 +142,19 @@ class SessionController(
         when (event) {
             is AuthEvent.OidcSucceeded -> {
                 storage.write(AuthStorageKeys.ServerUrl, event.serverUrl)
+                _loginNotice.value = null
                 publish(SessionState.SignedIn(SessionKind.Oidc, event.serverUrl))
             }
             AuthEvent.OidcSessionInvalidated -> {
-                if (currentKind() == SessionKind.Oidc) publish(SessionState.SignedOut)
+                if (currentKind() == SessionKind.Oidc) {
+                    // The native port emits this only after it has cleared its
+                    // persisted session. Publishing synchronously preserves
+                    // event ordering with a later OIDC success on the same
+                    // channel; a concurrent client callback then sees the
+                    // advanced generation and becomes a no-op.
+                    _loginNotice.value = RejectionNotice
+                    publish(SessionState.SignedOut)
+                }
             }
             is AuthEvent.OidcFailed -> Unit
         }
@@ -151,7 +169,33 @@ class SessionController(
     fun signOut() {
         localSessions.clear()
         scope.launch { runCatching { oidcPort.signOut(endIdpSession = true) } }
+        _loginNotice.value = null
         publish(SessionState.SignedOut)
+    }
+
+    /**
+     * Ends only the session that issued a definitively rejected request.
+     *
+     * The graph captures [expectedGeneration] when it is created. A callback
+     * from that graph is stale as soon as sign-out or another sign-in advances
+     * the generation, so it cannot clear the replacement session. The mutex
+     * also folds a burst of concurrent 401s into one persisted clear and one
+     * state transition. Persistence is cleared before SignedOut is published.
+     */
+    suspend fun rejectSession(expectedGeneration: Int) {
+        rejectionGuard.withLock {
+            if (expectedGeneration != _sessionGeneration.value) return
+            val signedIn = _state.value as? SessionState.SignedIn ?: return
+            when (signedIn.kind) {
+                SessionKind.Local -> localSessions.clear()
+                SessionKind.Oidc -> oidcPort.signOut(endIdpSession = false)
+            }
+            // OIDC clearing is suspendable. A newer session may have landed
+            // while it completed, and its state must win.
+            if (expectedGeneration != _sessionGeneration.value) return
+            _loginNotice.value = RejectionNotice
+            publish(SessionState.SignedOut)
+        }
     }
 
     /**
@@ -164,6 +208,7 @@ class SessionController(
     suspend fun resetPersistedSessions() {
         localSessions.clear()
         runCatching { oidcPort.signOut(endIdpSession = false) }
+        _loginNotice.value = null
         publish(SessionState.SignedOut)
     }
 
@@ -171,4 +216,8 @@ class SessionController(
     fun storedServerUrl(): String? = storage.read(AuthStorageKeys.ServerUrl)
 
     private fun currentKind(): SessionKind? = (_state.value as? SessionState.SignedIn)?.kind
+
+    companion object {
+        const val RejectionNotice = "Your session is no longer valid. Sign in again."
+    }
 }

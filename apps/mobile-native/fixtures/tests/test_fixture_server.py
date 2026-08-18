@@ -386,6 +386,60 @@ class FixtureServerTest(unittest.TestCase):
             self.assertEqual("bytes 2-5/36", headers["Content-Range"])
             self.assertEqual("4", headers["Content-Length"])
 
+    def test_generated_media_is_deterministic_and_range_exact(self) -> None:
+        path = "/media/generated.bin?fixture_size=131072&fixture_seed=downloads"
+        with running_server(self.media_dir) as server:
+            status, headers, first = self.request(server, "GET", path)
+            self.assertEqual(200, status)
+            self.assertEqual(131072, len(first))
+            self.assertEqual("bytes", headers["Accept-Ranges"])
+            self.assertIn("ETag", headers)
+
+            status, range_headers, partial = self.request(
+                server,
+                "GET",
+                path,
+                headers={"Range": "bytes=65530-65545", "If-Range": headers["ETag"]},
+            )
+            self.assertEqual(206, status)
+            self.assertEqual(first[65530:65546], partial)
+            self.assertEqual("bytes 65530-65545/131072", range_headers["Content-Range"])
+
+            status, _, restarted = self.request(
+                server,
+                "GET",
+                path,
+                headers={"Range": "bytes=65530-", "If-Range": '"different"'},
+            )
+            self.assertEqual(200, status)
+            self.assertEqual(first, restarted)
+
+    def test_controlled_media_failures_are_counted_then_recover(self) -> None:
+        path = "/media/generated.bin?fixture_size=64&fixture_failures=2&fixture_status=503"
+        with running_server(self.media_dir) as server:
+            self.assertEqual(503, self.request(server, "GET", path)[0])
+            self.assertEqual(503, self.request(server, "GET", path)[0])
+            status, _, body = self.request(server, "GET", path)
+            self.assertEqual(200, status)
+            self.assertEqual(64, len(body))
+
+    def test_media_can_throttle_and_interrupt_after_a_deterministic_prefix(self) -> None:
+        path = "/media/generated.bin?fixture_size=131072&fixture_seed=break&fixture_throttle_ms=5&fixture_interrupt_after=70000"
+        with running_server(self.media_dir) as server:
+            host, port = server.server_address[:2]
+            connection = http.client.HTTPConnection(host, port, timeout=5)
+            started = time.monotonic()
+            try:
+                connection.request("GET", path)
+                response = connection.getresponse()
+                self.assertEqual(200, response.status)
+                with self.assertRaises(http.client.IncompleteRead) as failure:
+                    response.read()
+                self.assertEqual(70000, len(failure.exception.partial))
+                self.assertGreaterEqual(time.monotonic() - started, 0.005)
+            finally:
+                connection.close()
+
     def test_unsatisfiable_and_malformed_ranges_return_416(self) -> None:
         with running_server(self.media_dir) as server:
             for range_value in ("bytes=99-100", "bytes=8-2", "bytes=-0", "bytes=0-1,4-5", "items=0-1"):

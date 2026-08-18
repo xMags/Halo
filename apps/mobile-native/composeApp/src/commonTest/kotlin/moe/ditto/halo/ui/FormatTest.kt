@@ -43,4 +43,18 @@ class FormatTest {
         assertEquals("2 KB", formatBytes(1_500))
         assertEquals("1024 KB", formatBytes((1L shl 20) - 1))
     }
+
+    @Test
+    fun aSpeedIsSpelledLikeASizeExceptWhereThatWouldUnderstateIt() {
+        // Megabytes keep a decimal below 10 MB/s: "1 MB/s" for a link running
+        // at 1.4 understates it by nearly half, and this is the number someone
+        // watches to decide whether to wait.
+        assertEquals("1.4 MB/s", formatSpeed(1_500_000))
+        assertEquals("9.5 MB/s", formatSpeed(10_000_000))
+        assertEquals("12 MB/s", formatSpeed(12_400_000))
+        assertEquals("977 KB/s", formatSpeed(1_000_000))
+        assertEquals("1.0 GB/s", formatSpeed(1_073_741_824))
+        assertEquals(null, formatSpeed(0))
+        assertEquals(null, formatSpeed(-1))
+    }
 }

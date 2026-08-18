@@ -5,6 +5,7 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondError
 import io.ktor.client.request.HttpRequestData
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -51,6 +52,7 @@ class HaloClientTest {
 
     private fun client(
         tokens: TokenProvider = FakeTokens(),
+        onUnauthorized: suspend () -> Unit = {},
         handler: suspend (HttpRequestData) -> Triple<String, HttpStatusCode, io.ktor.http.Headers>,
     ): HaloClient {
         val engine = MockEngine { request ->
@@ -58,7 +60,7 @@ class HaloClientTest {
             val (body, status, headers) = handler(request)
             respond(content = body, status = status, headers = headers)
         }
-        return HaloClient(BaseUrl, tokens, HttpClient(engine))
+        return HaloClient(BaseUrl, tokens, HttpClient(engine), onUnauthorized)
     }
 
     @Test
@@ -70,6 +72,29 @@ class HaloClientTest {
         assertEquals(Me("u1", "kenneth", isAdmin = true, createdAt = 17), me)
         assertEquals("Bearer access-1", recorded.single().headers[HttpHeaders.Authorization])
         assertEquals("$BaseUrl/auth/me", recorded.single().url.toString())
+    }
+
+    @Test
+    fun externalSubtitleUsesTheAuthenticatedAddonProxy() = runTest {
+        val client = client { Triple("caption", HttpStatusCode.OK, io.ktor.http.Headers.Empty) }
+
+        assertEquals("caption", client.getAddonProxyResponse("https://subs.example/a.srt").bodyAsText())
+
+        assertEquals(
+            "$BaseUrl/addon-proxy?url=https%3A%2F%2Fsubs.example%2Fa.srt",
+            recorded.single().url.toString(),
+        )
+        assertEquals("Bearer access-1", recorded.single().headers[HttpHeaders.Authorization])
+    }
+
+    @Test
+    fun anExistingHaloProxyUrlIsNotWrappedAgain() = runTest {
+        val client = client { Triple("caption", HttpStatusCode.OK, io.ktor.http.Headers.Empty) }
+        val proxied = "$BaseUrl/addon-proxy?url=https%3A%2F%2Fsubs%2Eexample%2Fa%2Esrt"
+
+        client.getAddonProxyResponse(proxied).bodyAsText()
+
+        assertEquals(proxied, recorded.single().url.toString())
     }
 
     @Test
@@ -106,14 +131,15 @@ class HaloClientTest {
 
     @Test
     fun deadSessionSurfacesUnauthorizedWithoutASecondAttempt() = runTest {
-        // A null refresh means the auth layer already cleared the session; the
-        // client reports it rather than retrying into a loop.
         val tokens = FakeTokens(refreshed = null)
-        val client = client(tokens) { jsonResponse("""{"error":"nope"}""", HttpStatusCode.Unauthorized) }
+        var unauthorizedCalls = 0
+        val client = client(tokens, onUnauthorized = { unauthorizedCalls += 1 }) {
+            jsonResponse("""{"error":"nope"}""", HttpStatusCode.Unauthorized)
+        }
 
-        val error = assertFailsWith<HaloApiException> { client.getMe() }
+        assertFailsWith<SessionRejectedException> { client.getMe() }
 
-        assertEquals(401, error.status)
+        assertEquals(1, unauthorizedCalls)
         assertEquals(1, tokens.refreshCalls)
         assertEquals(1, recorded.size)
     }
@@ -121,12 +147,15 @@ class HaloClientTest {
     @Test
     fun retriedUnauthorizedStillFailsAsUnauthorized() = runTest {
         val tokens = FakeTokens()
-        val client = client(tokens) { jsonResponse("""{"error":"still no"}""", HttpStatusCode.Unauthorized) }
+        var unauthorizedCalls = 0
+        val client = client(tokens, onUnauthorized = { unauthorizedCalls += 1 }) {
+            jsonResponse("""{"error":"still no"}""", HttpStatusCode.Unauthorized)
+        }
 
-        val error = assertFailsWith<HaloApiException> { client.getMe() }
+        assertFailsWith<SessionRejectedException> { client.getMe() }
 
-        assertEquals(401, error.status)
-        assertEquals("still no", error.message)
+        assertEquals(1, unauthorizedCalls)
+        assertEquals(1, tokens.refreshCalls)
         assertEquals(2, recorded.size)
     }
 
@@ -134,17 +163,23 @@ class HaloClientTest {
     fun transportFailureDuringRefreshPropagatesInsteadOfBecomingUnauthorized() = runTest {
         // A network error must never be reported as a dead session.
         val tokens = FakeTokens().apply { transportFailureOnRefresh = true }
-        val client = client(tokens) { jsonResponse("{}", HttpStatusCode.Unauthorized) }
+        var unauthorizedCalls = 0
+        val client = client(tokens, onUnauthorized = { unauthorizedCalls += 1 }) {
+            jsonResponse("{}", HttpStatusCode.Unauthorized)
+        }
 
         assertFailsWith<IOException> { client.getMe() }
+        assertEquals(0, unauthorizedCalls)
     }
 
     @Test
     fun transportFailureOnTheRequestPropagates() = runTest {
         val engine = MockEngine { throw IOException("connection reset") }
-        val client = HaloClient(BaseUrl, FakeTokens(), HttpClient(engine))
+        var unauthorizedCalls = 0
+        val client = HaloClient(BaseUrl, FakeTokens(), HttpClient(engine)) { unauthorizedCalls += 1 }
 
         assertFailsWith<IOException> { client.getLibrary() }
+        assertEquals(0, unauthorizedCalls)
     }
 
     @Test
@@ -160,12 +195,24 @@ class HaloClientTest {
     @Test
     fun fallsBackToStatusWhenErrorBodyIsNotJson() = runTest {
         val engine = MockEngine { respondError(HttpStatusCode.BadGateway, "<html>gateway</html>") }
-        val client = HaloClient(BaseUrl, FakeTokens(), HttpClient(engine))
+        var unauthorizedCalls = 0
+        val client = HaloClient(BaseUrl, FakeTokens(), HttpClient(engine)) { unauthorizedCalls += 1 }
 
         val error = assertFailsWith<HaloApiException> { client.getSettings() }
 
         assertEquals(502, error.status)
         assertContains(error.message ?: "", "502")
+        assertEquals(0, unauthorizedCalls)
+    }
+
+    @Test
+    fun malformedSuccessDoesNotRejectTheSession() = runTest {
+        var unauthorizedCalls = 0
+        val client = client(onUnauthorized = { unauthorizedCalls += 1 }) { jsonResponse("not-json") }
+
+        assertFailsWith<MalformedResponseException> { client.getStreams("movie", "tt1") }
+
+        assertEquals(0, unauthorizedCalls)
     }
 
     @Test

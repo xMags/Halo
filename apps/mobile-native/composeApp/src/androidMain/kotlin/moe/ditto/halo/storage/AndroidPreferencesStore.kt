@@ -13,10 +13,14 @@ class AndroidPreferencesStore(context: Context) : KeyValueStore {
     override fun read(key: String): String? = prefs.getString(key, null)
 
     override fun write(key: String, value: String) {
-        prefs.edit().putString(key, value).apply()
+        check(prefs.edit().putString(key, value).commit()) {
+            "Could not persist app state."
+        }
     }
 
     override fun delete(key: String) {
-        prefs.edit().remove(key).apply()
+        check(prefs.edit().remove(key).commit()) {
+            "Could not delete app state."
+        }
     }
 }

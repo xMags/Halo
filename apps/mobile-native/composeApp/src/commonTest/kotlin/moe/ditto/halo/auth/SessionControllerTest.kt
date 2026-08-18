@@ -1,5 +1,7 @@
 package moe.ditto.halo.auth
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -69,7 +71,7 @@ class SessionControllerTest {
     }
 
     @Test
-    fun definitiveRefreshRejectionSignsTheDeviceOut() = runTest {
+    fun definitiveRefreshRejectionIsPublishedThroughTheGenerationBoundPath() = runTest {
         val storage = InMemorySecureStorage()
         storage.write(
             AuthStorageKeys.LocalSession,
@@ -78,11 +80,54 @@ class SessionControllerTest {
         val gateway = LoginGateway(refreshFailure = LocalAuthException(401, "session expired"))
         val controller = SessionController(storage, gateway, clock, backgroundScope)
         controller.restore()
+        val rejectedGeneration = controller.sessionGeneration.value
 
         assertNull(controller.tokenProvider.refreshAccessToken())
+        // The token owner clears rejected local credentials immediately, but
+        // only the API client's generation-bound callback may publish logout.
+        assertEquals(SessionState.SignedIn(SessionKind.Local, "https://halo.local"), controller.state.value)
+        controller.rejectSession(rejectedGeneration)
 
         assertEquals(SessionState.SignedOut, controller.state.value)
         assertNull(storage.read(AuthStorageKeys.LocalSession))
+        assertEquals(SessionController.RejectionNotice, controller.loginNotice.value)
+    }
+
+    @Test
+    fun concurrentRejectionsClearAndPublishExactlyOnce() = runTest {
+        val port = FakeOidcPort(persistedServerUrl = "https://halo.ditto.moe")
+        val controller = SessionController(InMemorySecureStorage(), NoNetworkGateway(), clock, backgroundScope, port)
+        controller.restore()
+        val rejectedGeneration = controller.sessionGeneration.value
+
+        List(5) { async { controller.rejectSession(rejectedGeneration) } }.awaitAll()
+
+        assertEquals(1, port.signOutCount)
+        assertEquals(rejectedGeneration + 1, controller.sessionGeneration.value)
+        assertEquals(SessionState.SignedOut, controller.state.value)
+        assertEquals(SessionController.RejectionNotice, controller.loginNotice.value)
+    }
+
+    @Test
+    fun staleGenerationCannotClearANewerSession() = runTest {
+        val storage = InMemorySecureStorage()
+        storage.write(
+            AuthStorageKeys.LocalSession,
+            """{"serverUrl":"https://old.local","token":"old","expiresAt":${now + 1_000_000}}""",
+        )
+        val gateway = LoginGateway(IssuedToken("new-token", now + 2_000_000))
+        val controller = SessionController(storage, gateway, clock, backgroundScope)
+        controller.restore()
+        val staleGeneration = controller.sessionGeneration.value
+        controller.signOut()
+        controller.signIn("https://new.local", "new-user", "hunter22")
+
+        controller.rejectSession(staleGeneration)
+
+        assertEquals(SessionState.SignedIn(SessionKind.Local, "https://new.local"), controller.state.value)
+        assertEquals("new-token", controller.tokenProvider.accessToken())
+        assertNotNull(storage.read(AuthStorageKeys.LocalSession))
+        assertNull(controller.loginNotice.value)
     }
 
     @Test
@@ -186,6 +231,7 @@ class SessionControllerTest {
 
         controller.onAuthEvent(AuthEvent.OidcSessionInvalidated)
         assertEquals(SessionState.SignedOut, controller.state.value)
+        assertEquals(SessionController.RejectionNotice, controller.loginNotice.value)
     }
 
     @Test

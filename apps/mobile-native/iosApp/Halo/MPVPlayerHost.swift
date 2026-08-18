@@ -147,6 +147,15 @@ final class MPVPlayerHost: NSObject, HaloIosPlayerHost {
             sink.onPauseChanged(paused: paused)
         case .tracks(let json):
             sink.onTracks(tracksJson: json)
+        case .buffering(let active, let percent, let bytesPerSecond, let cachedSeconds):
+            sink.onBufferingChanged(
+                active: active,
+                percent: percent,
+                bytesPerSecond: bytesPerSecond,
+                cachedSeconds: cachedSeconds
+            )
+        case .bufferedPosition(let seconds):
+            sink.onBufferedPositionChanged(positionSeconds: seconds)
         case .ended:
             sink.onEnded()
         case .error(let message):
@@ -177,6 +186,18 @@ final class MPVPlayerHost: NSObject, HaloIosPlayerHost {
         core.selectTrack(kind: "sid", id: id)
     }
 
+    func setPlaybackRate(rate: Double) {
+        core.setPlaybackRate(rate)
+    }
+
+    func setAudioDelay(seconds: Double) {
+        core.setAudioDelay(seconds: seconds)
+    }
+
+    func setVideoFillsScreen(fills: Bool) {
+        core.setVideoFillsScreen(fills)
+    }
+
     func setSubtitleDelay(seconds: Double) {
         core.setSubtitleDelay(seconds: seconds)
     }
@@ -187,6 +208,22 @@ final class MPVPlayerHost: NSObject, HaloIosPlayerHost {
 
     func setSubtitleFont(font: String?) {
         core.setSubtitleFont(font)
+    }
+
+    func setSubtitleTrackStyling(keepScript: Bool) {
+        core.setSubtitleTrackStyling(keepScript: keepScript)
+    }
+
+    func setSubtitleOutline(widthPixels: Double) {
+        core.setSubtitleOutline(widthPixels: widthPixels)
+    }
+
+    func setSubtitleShadow(offsetPixels: Double) {
+        core.setSubtitleShadow(offsetPixels: offsetPixels)
+    }
+
+    func setSubtitleLift(percent: Int32) {
+        core.setSubtitleLift(percent: percent)
     }
 
     func addSubtitle(url: String) {

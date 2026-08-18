@@ -35,4 +35,20 @@ object StorageKeys {
 
     /** Remembered subtitle selections, per video and per series. */
     const val SubtitleChoices = "halo.subtitleChoices.v1"
+
+    /** Player framing on this device. It is intentionally not synced. */
+    const val VideoFitMode = "halo.videoFitMode.v1"
+
+    /**
+     * Downloaded videos and their transfer state. Device-local of necessity:
+     * it describes files on this device, so syncing it would tell another
+     * device it holds media it has never seen.
+     */
+    const val Downloads = "halo.downloads.v1"
+
+    /** URL-free download state. Resolved requests live only in a protected vault. */
+    const val DownloadsV2 = "halo.downloads.v2"
+
+    /** URL-free job identities reused if v1 migration is interrupted before v2 is durable. */
+    const val DownloadsMigration = "halo.downloads.migration.v1"
 }

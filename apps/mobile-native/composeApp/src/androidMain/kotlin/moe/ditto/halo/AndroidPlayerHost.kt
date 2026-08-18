@@ -8,15 +8,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
-import kotlinx.coroutines.Dispatchers
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.MpvCore
+import moe.ditto.halo.player.PlayerBuffering
 import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerPort
 import moe.ditto.halo.player.PlayerTracks
@@ -24,31 +26,34 @@ import moe.ditto.halo.player.PlayerTracks
 /**
  * Android-side owner of one libmpv core and one render [SurfaceView], kept above
  * the Compose navigation so screen changes and recomposition attach/detach the
- * surface without resetting playback — the Android mirror of the Swift-owned
- * host on iOS. It satisfies the same platform-neutral boundary the common shell
- * consumes, so `commonMain` needs no Android-specific code.
+ * surface without resetting playback.
+ *
+ * Every synchronous MpvCore call is made by [coreExecutor]. In particular,
+ * SurfaceHolder callbacks only enqueue work and return to Android immediately.
  */
 internal class AndroidMpvPlayerHost(
     private val appContext: Context,
-) : MpvCore.Listener {
+) {
 
-    private var coreSeq = 0
-    private var viewSeq = 0
+    private var coreSequence = 0
+    private var coreGeneration = 0L
+    @Volatile private var surfaceEpoch = 0L
 
-    // Serial executor for the heavy libmpv lifecycle (create/init/terminate).
-    // mpv_terminate_destroy blocks until the render + event threads join, so it
-    // must never run on the UI thread (it ANRs). Surface attach/detach stay on
-    // the main thread — they are fast and must finish inside surfaceDestroyed.
-    private val coreExecutor = Executors.newSingleThreadExecutor()
+    private val acceptingWork = AtomicBoolean(true)
+    private val coreExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "halo-mpv-core").apply { isDaemon = true }
+    }
 
-    @Volatile private var core: MpvCore = newCore()
-    private var surfaceView: SurfaceView? = null
+    @Volatile private var core: MpvCore? = null
+    @Volatile private var activeCoreGeneration = 0L
+    @Volatile private var currentCoreId = "pending"
+    @Volatile private var cachedMutedForTest: Boolean? = null
+    @Volatile private var surfaceView: SurfaceView? = null
     @Volatile private var currentSurface: android.view.Surface? = null
     @Volatile private var surfaceWidth = 0
     @Volatile private var surfaceHeight = 0
 
-    // Diagnostics — same fields the common NativeHostSnapshot renders. @Volatile
-    // because the core lifecycle updates some of them off the main thread.
+    // Diagnostics use volatile values because the core executor updates them.
     @Volatile var coreCreationCount = 0L; private set
     @Volatile var coreDestructionCount = 0L; private set
     @Volatile var playerViewCreationCount = 0L; private set
@@ -58,122 +63,214 @@ internal class AndroidMpvPlayerHost(
     @Volatile var loadCount = 0L; private set
     @Volatile var teardownCount = 0L; private set
 
-    val instanceId: String get() = core.id
-    val viewInstanceId: String get() = surfaceView?.let { "view-$viewSeq" } ?: "none"
+    val instanceId: String get() = currentCoreId
+    val viewInstanceId: String get() = surfaceView?.let { "view-$viewSequence" } ?: "none"
+    val mutedForTest: Boolean? get() = cachedMutedForTest
 
+    private var viewSequence = 0
     private val channel = Channel<PlayerEvent>(Channel.UNLIMITED)
     val playerEvents: Flow<PlayerEvent> = channel.receiveAsFlow()
 
     init {
-        core.setListener(this)
-    }
-
-    private fun newCore(): MpvCore =
-        MpvCore.create(appContext, "core-${++coreSeq}").also { coreCreationCount += 1 }
-
-    // --- MpvCore.Listener: translate to the neutral event stream ---
-    override fun onReady(durationSeconds: Double?) = emit(PlayerEvent.Ready(durationSeconds))
-    override fun onPosition(positionSeconds: Double) = emit(PlayerEvent.PositionChanged(positionSeconds))
-    override fun onPauseChanged(paused: Boolean) = emit(PlayerEvent.PauseChanged(paused))
-    override fun onTracks(tracks: PlayerTracks) = emit(PlayerEvent.TracksChanged(tracks))
-    override fun onEnded() = emit(PlayerEvent.NaturalEnd)
-    override fun onError(message: String) = emit(PlayerEvent.Error(message))
-
-    private fun emit(event: PlayerEvent) {
-        channel.trySend(event)
-    }
-
-    // --- Player control surface (called by AndroidPlayerPort) ---
-    fun load(item: MediaItem) {
-        loadCount += 1
-        // Undoes releaseVideo(): the track selection survives a load, so a
-        // source opened after a previous one was released would play sound
-        // over a black surface.
-        core.setVideoEnabled(true)
-        core.load(item.url)
-    }
-
-    /**
-     * Destroys the video decode chain and waits for it, so the render surface
-     * can be released without the core still decoding into it.
-     *
-     * Runs on [coreExecutor] rather than the caller's thread because mpv
-     * applies the change synchronously, and is bounded because an already-sick
-     * core must not strand the screen that asked. Called while the surface is
-     * still alive — that is the entire point, and doing it from
-     * `surfaceDestroyed` instead is too late by construction.
-     */
-    fun releaseVideoBlocking(timeoutMs: Long = ReleaseTimeoutMs) {
-        val task = coreExecutor.submit { core.setVideoEnabled(false) }
-        try {
-            task.get(timeoutMs, TimeUnit.MILLISECONDS)
-        } catch (_: TimeoutException) {
-            android.util.Log.w("HALO_MPV", "video release timed out after ${timeoutMs}ms")
-            task.cancel(true)
+        coreExecutor.execute {
+            if (acceptingWork.get()) installFreshCore()
         }
     }
 
-    fun setPaused(paused: Boolean) = core.setPaused(paused)
-    fun seekTo(positionSeconds: Double) = core.seekTo(positionSeconds)
-    fun selectAudioTrack(id: String?) = core.selectAudioTrack(id)
-    fun selectSubtitleTrack(id: String?) = core.selectSubtitleTrack(id)
-    fun setSubtitleDelay(seconds: Double) = core.setSubtitleDelay(seconds)
-    fun setSubtitleScale(scale: Double) = core.setSubtitleScale(scale)
-    fun setSubtitleFont(font: String?) = core.setSubtitleFont(font)
-    fun addSubtitle(url: String) = core.addSubtitle(url)
+    private fun installFreshCore(): MpvCore? {
+        if (!acceptingWork.get()) return null
+        val generation = coreGeneration + 1
+        val created = MpvCore.create(appContext, "core-${++coreSequence}", coreExecutor)
+        coreCreationCount += 1
+        core = created
+        activeCoreGeneration = generation
+        coreGeneration = generation
+        currentCoreId = created.id
+        created.setListener(listenerFor(generation))
+        // This property read is deliberately performed on the executor. The
+        // instrumentation seam returns only this cached result on the caller.
+        cachedMutedForTest = created.isMutedForTest()
+        return created
+    }
 
-    fun teardown() {
-        teardownCount += 1
-        core.stop() // stop playback; the core and its view stay alive
+    private fun listenerFor(generation: Long): MpvCore.Listener = object : MpvCore.Listener {
+        override fun onReady(durationSeconds: Double?) =
+            emitFromCore(generation, PlayerEvent.Ready(durationSeconds))
+
+        override fun onPosition(positionSeconds: Double) =
+            emitFromCore(generation, PlayerEvent.PositionChanged(positionSeconds))
+
+        override fun onPauseChanged(paused: Boolean) =
+            emitFromCore(generation, PlayerEvent.PauseChanged(paused))
+
+        override fun onTracks(tracks: PlayerTracks) =
+            emitFromCore(generation, PlayerEvent.TracksChanged(tracks))
+
+        override fun onBuffering(buffering: PlayerBuffering?) = emitFromCore(
+            generation,
+            PlayerEvent.BufferingChanged(
+                active = buffering != null,
+                percent = buffering?.percent,
+                bytesPerSecond = buffering?.bytesPerSecond,
+                cachedSeconds = buffering?.cachedSeconds,
+            ),
+        )
+
+        override fun onBufferedPosition(positionSeconds: Double) =
+            emitFromCore(generation, PlayerEvent.BufferedPositionChanged(positionSeconds))
+
+        override fun onEnded() = emitFromCore(generation, PlayerEvent.NaturalEnd)
+        override fun onError(message: String) = emitFromCore(generation, PlayerEvent.Error(message))
+    }
+
+    private fun emitFromCore(generation: Long, event: PlayerEvent) {
+        if (!acceptingWork.get() || activeCoreGeneration != generation) return
+        channel.trySend(event)
+    }
+
+    private fun enqueueAsync(operation: String, action: (MpvCore) -> Unit) {
+        if (!acceptingWork.get()) return
+        try {
+            coreExecutor.execute {
+                if (!acceptingWork.get()) return@execute
+                val target = core ?: run {
+                    android.util.Log.w(LOG_TAG, "$operation skipped because the core is not ready")
+                    return@execute
+                }
+                runCatching { action(target) }
+                    .onFailure { android.util.Log.w(LOG_TAG, "$operation failed", it) }
+            }
+        } catch (_: RejectedExecutionException) {
+            android.util.Log.w(LOG_TAG, "$operation rejected after player shutdown")
+        }
+    }
+
+    private suspend fun enqueue(operation: String, action: (MpvCore) -> Unit) =
+        suspendCancellableCoroutine<Unit> { continuation ->
+            if (!acceptingWork.get()) {
+                continuation.resume(Unit)
+                return@suspendCancellableCoroutine
+            }
+            try {
+                coreExecutor.execute {
+                    if (!acceptingWork.get()) {
+                        if (continuation.isActive) continuation.resume(Unit)
+                        return@execute
+                    }
+                    val target = core
+                    if (target == null) {
+                        android.util.Log.w(LOG_TAG, "$operation skipped because the core is not ready")
+                    } else {
+                        runCatching { action(target) }
+                            .onFailure { android.util.Log.w(LOG_TAG, "$operation failed", it) }
+                    }
+                    if (continuation.isActive) continuation.resume(Unit)
+                }
+            } catch (_: RejectedExecutionException) {
+                android.util.Log.w(LOG_TAG, "$operation rejected after player shutdown")
+                if (continuation.isActive) continuation.resume(Unit)
+            }
+        }
+
+    // --- Player control surface, all suspendable so callers await queue order ---
+    suspend fun load(item: MediaItem) = enqueue("load") {
+        loadCount += 1
+        it.setVideoEnabled(true)
+        it.load(item.url)
     }
 
     /**
-     * The explicit "recreate core" control: build a fresh core, reattach the SAME
-     * surface, and tear the old core down. The SurfaceView identity (view id) must
-     * stay stable — that is the ownership property under test.
-     *
-     * Ordering is **create-before-destroy**, on [coreExecutor] rather than the
-     * caller's (main) thread, for two reasons:
-     *  1. mpv_terminate_destroy blocks while it joins mpv's render/decode threads.
-     *     On the emulator's software-GL + emulated-codec path it can block
-     *     indefinitely. Running it on the UI thread ANRs; running it *before* the
-     *     swap would gate the whole recreate on a call that may never return.
-     *  2. So the new core is created and swapped in first (the swap is then
-     *     observable immediately), and the old core is torn down on a detached
-     *     daemon thread where a slow/hung join harms nothing. There is never a
-     *     window with zero cores.
-     *
-     * The snapshot updates after the tap returns; the shell's "Refresh counters"
-     * re-reads it.
+     * Releases the video decoder while the surface is still alive. The wait is
+     * bounded so a sick native core cannot strand navigation, and the native
+     * operation itself remains serialized on the executor after a timeout.
+     */
+    suspend fun releaseVideoBlocking(timeoutMs: Long = RELEASE_TIMEOUT_MS) {
+        val completed = withTimeoutOrNull(timeoutMs) {
+            enqueue("release-video") { it.setVideoEnabled(false) }
+            true
+        } ?: false
+        if (!completed) {
+            android.util.Log.w(LOG_TAG, "video release timed out after ${timeoutMs}ms")
+        }
+    }
+
+    suspend fun setPaused(paused: Boolean) = enqueue("pause") { it.setPaused(paused) }
+    suspend fun seekTo(positionSeconds: Double) = enqueue("seek") { it.seekTo(positionSeconds) }
+    suspend fun selectAudioTrack(id: String?) = enqueue("audio-track") { it.selectAudioTrack(id) }
+    suspend fun selectSubtitleTrack(id: String?) = enqueue("subtitle-track") { it.selectSubtitleTrack(id) }
+    suspend fun setPlaybackRate(rate: Double) = enqueue("playback-rate") { it.setPlaybackRate(rate) }
+    suspend fun setAudioDelay(seconds: Double) = enqueue("audio-delay") { it.setAudioDelay(seconds) }
+    suspend fun setVideoFillsScreen(fills: Boolean) = enqueue("video-fill") { it.setVideoFillsScreen(fills) }
+    suspend fun setSubtitleDelay(seconds: Double) = enqueue("subtitle-delay") { it.setSubtitleDelay(seconds) }
+    suspend fun setSubtitleScale(scale: Double) = enqueue("subtitle-scale") { it.setSubtitleScale(scale) }
+    suspend fun setSubtitleFont(font: String?) = enqueue("subtitle-font") { it.setSubtitleFont(font) }
+    suspend fun setSubtitleTrackStyling(keepScript: Boolean) =
+        enqueue("subtitle-style") { it.setSubtitleTrackStyling(keepScript) }
+
+    suspend fun setSubtitleOutline(widthPixels: Double) =
+        enqueue("subtitle-outline") { it.setSubtitleOutline(widthPixels) }
+
+    suspend fun setSubtitleShadow(offsetPixels: Double) =
+        enqueue("subtitle-shadow") { it.setSubtitleShadow(offsetPixels) }
+
+    suspend fun setSubtitleLift(percent: Int) = enqueue("subtitle-lift") { it.setSubtitleLift(percent) }
+    suspend fun addSubtitle(url: String) = enqueue("subtitle-add") { it.addSubtitle(url) }
+
+    suspend fun teardown() = enqueue("teardown") {
+        teardownCount += 1
+        it.stop()
+    }
+
+    /**
+     * Diagnostic-only core replacement. Creation, surface handoff, and old
+     * core destruction stay on the same serialized executor. Listener
+     * generations prevent late events from the old core reaching the shell.
      */
     fun destroyAndRecreateCore() {
         val surface = currentSurface
+        val capturedSurfaceEpoch = surfaceEpoch
         val width = surfaceWidth
         val height = surfaceHeight
-        val old = core
-        android.util.Log.i("HALO_MPV", "recreate: enqueue (old=${old.id})")
-        coreExecutor.execute {
+        enqueueAsync("recreate") { old ->
             old.setListener(null)
             if (surface != null) old.detachSurface()
 
-            val fresh = newCore()
-            fresh.setListener(this)
-            if (surface != null && surface.isValid) {
+            val fresh = installFreshCore() ?: return@enqueueAsync
+            if (
+                surface != null &&
+                surfaceEpoch == capturedSurfaceEpoch &&
+                currentSurface == surface &&
+                surface.isValid
+            ) {
                 fresh.attachSurface(surface, width, height)
                 attachCount += 1
             }
-            core = fresh
-            android.util.Log.i("HALO_MPV", "recreate: swapped to ${fresh.id}, tearing down ${old.id}")
+            old.destroy()
+            coreDestructionCount += 1
+        }
+    }
 
-            // Old-core teardown off the serial executor: a slow/blocked
-            // terminate_destroy must never wedge future core operations. On a real
-            // device this completes promptly (destroy count increments); on the
-            // emulator it may hang here forever — harmless on a leaked daemon.
-            Thread {
-                old.destroy()
-                coreDestructionCount += 1
-                android.util.Log.i("HALO_MPV", "recreate: old core ${old.id} torn down")
-            }.apply { isDaemon = true; name = "mpv-teardown-${old.id}" }.start()
+    /**
+     * Idempotent activity-lifecycle shutdown. It only schedules native work,
+     * so Activity.onDestroy never waits for mpv's render and event threads.
+     */
+    fun close() {
+        if (!acceptingWork.compareAndSet(true, false)) return
+        try {
+            coreExecutor.execute {
+                val target = core
+                if (target != null) {
+                    target.setListener(null)
+                    target.destroy()
+                    core = null
+                    coreDestructionCount += 1
+                }
+                currentCoreId = "closed"
+                cachedMutedForTest = null
+                coreExecutor.shutdown()
+            }
+        } catch (_: RejectedExecutionException) {
+            coreExecutor.shutdownNow()
         }
     }
 
@@ -181,45 +278,55 @@ internal class AndroidMpvPlayerHost(
     fun composeSurface(): SurfaceView {
         surfaceView?.let { return it }
         val view = SurfaceView(appContext)
-        viewSeq += 1
+        viewSequence += 1
         playerViewCreationCount += 1
         view.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
-                currentSurface = holder.surface
+                val epoch = ++surfaceEpoch
+                val surface = holder.surface
+                currentSurface = surface
                 surfaceWidth = view.width
                 surfaceHeight = view.height
-                core.attachSurface(holder.surface, surfaceWidth, surfaceHeight)
-                attachCount += 1
+                enqueueAsync("surface-attach") {
+                    if (surfaceEpoch != epoch || currentSurface != surface || !surface.isValid) return@enqueueAsync
+                    it.attachSurface(surface, surfaceWidth, surfaceHeight)
+                    attachCount += 1
+                }
             }
 
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
                 surfaceWidth = width
                 surfaceHeight = height
-                core.setSurfaceSize(width, height)
-                resizeCount += 1
+                val surface = holder.surface
+                enqueueAsync("surface-resize") {
+                    if (currentSurface != surface) return@enqueueAsync
+                    it.setSurfaceSize(width, height)
+                    resizeCount += 1
+                }
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
-                // Stop the core before the surface is pulled out from under it.
-                // Detaching runs mpv_set_option on the UI thread and blocks until
-                // the video chain acknowledges — with playback live that wait can
-                // never be satisfied, which is an ANR rather than a slow frame.
-                core.setPaused(true)
-                core.detachSurface()
+                ++surfaceEpoch
                 currentSurface = null
                 detachCount += 1
+                // Best effort by design. Android must be allowed to finish the
+                // callback while the serialized native operation drains off UI.
+                enqueueAsync("surface-destroy") {
+                    it.setPaused(true)
+                    it.setVideoEnabled(false)
+                    it.detachSurface()
+                }
             }
         })
         surfaceView = view
         return view
     }
-}
 
-/**
- * Long enough for a healthy core to reinitialise its video chain, short enough
- * that a sick one does not hold the screen that asked to leave.
- */
-private const val ReleaseTimeoutMs = 1_500L
+    companion object {
+        private const val LOG_TAG = "HALO_MPV"
+        private const val RELEASE_TIMEOUT_MS = 1_500L
+    }
+}
 
 internal class AndroidPlayerPort(
     private val host: AndroidMpvPlayerHost,
@@ -229,15 +336,18 @@ internal class AndroidPlayerPort(
     override suspend fun seekTo(positionSeconds: Double) = host.seekTo(positionSeconds)
     override suspend fun selectAudioTrack(id: String?) = host.selectAudioTrack(id)
     override suspend fun selectSubtitleTrack(id: String?) = host.selectSubtitleTrack(id)
+    override suspend fun setPlaybackRate(rate: Double) = host.setPlaybackRate(rate)
+    override suspend fun setAudioDelay(seconds: Double) = host.setAudioDelay(seconds)
+    override suspend fun setVideoFillsScreen(fills: Boolean) = host.setVideoFillsScreen(fills)
     override suspend fun setSubtitleDelay(seconds: Double) = host.setSubtitleDelay(seconds)
     override suspend fun setSubtitleScale(scale: Double) = host.setSubtitleScale(scale)
     override suspend fun setSubtitleFont(font: String?) = host.setSubtitleFont(font)
+    override suspend fun setSubtitleTrackStyling(keepScript: Boolean) = host.setSubtitleTrackStyling(keepScript)
+    override suspend fun setSubtitleOutline(widthPixels: Double) = host.setSubtitleOutline(widthPixels)
+    override suspend fun setSubtitleShadow(offsetPixels: Double) = host.setSubtitleShadow(offsetPixels)
+    override suspend fun setSubtitleLift(percent: Int) = host.setSubtitleLift(percent)
     override suspend fun addSubtitle(url: String) = host.addSubtitle(url)
-
-    override suspend fun releaseVideoOutput() = withContext(Dispatchers.Default) {
-        host.releaseVideoBlocking()
-    }
-
+    override suspend fun releaseVideoOutput() = host.releaseVideoBlocking()
     override suspend fun teardown() = host.teardown()
 }
 
@@ -258,7 +368,7 @@ internal class AndroidNativePlayerSurface(
 }
 
 internal class AndroidNativeHostDiagnostics(
-    private val authHost: AndroidStubAuthHost,
+    private val authHost: AndroidOidcAuthHost,
     private val host: AndroidMpvPlayerHost,
 ) : NativeHostDiagnostics {
     override fun snapshot(): NativeHostSnapshot = NativeHostSnapshot(

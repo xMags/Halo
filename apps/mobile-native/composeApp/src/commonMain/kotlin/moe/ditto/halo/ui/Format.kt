@@ -28,6 +28,23 @@ fun formatBytes(bytes: Long): String {
     return "${ceil(bytes / Kib).toLong()} KB"
 }
 
+/**
+ * `12_400_000` → `"11.8 MB/s"`, or null when nothing has been measured yet.
+ *
+ * Spelled like a size, with one exception: megabytes keep a decimal below
+ * 10 MB/s. A size rounds to whole megabytes because nobody cares whether a file
+ * is 1 GB or 1.02 GB, but a link running at 1.4 MB/s reported as "1 MB/s" is
+ * understating it by nearly half, and this is the number someone watches to
+ * decide whether to wait.
+ */
+fun formatSpeed(bytesPerSecond: Long): String? {
+    if (bytesPerSecond <= 0) return null
+    val mb = bytesPerSecond / Mib
+    if (mb >= 1 && mb < 10) return "${oneDecimal(mb)} MB/s"
+    val size = formatBytes(bytesPerSecond)
+    return if (size.isEmpty()) null else "$size/s"
+}
+
 private fun oneDecimal(value: Double): String {
     val tenths = (value * 10).roundToLong()
     return "${tenths / 10}.${tenths % 10}"

@@ -56,6 +56,7 @@ import kotlinx.coroutines.launch
 import moe.ditto.halo.auth.AuthEvent
 import moe.ditto.halo.auth.KtorLocalAuthGateway
 import moe.ditto.halo.auth.LocalAuthenticator
+import moe.ditto.halo.auth.LoginCredentialsPrefill
 import moe.ditto.halo.auth.LoginPhase
 import moe.ditto.halo.auth.LoginPresenter
 import moe.ditto.halo.auth.SessionController
@@ -71,10 +72,10 @@ import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.HaloSpacing
+import moe.ditto.halo.screens.player.PlayerScenePreviewScreen
 import moe.ditto.halo.ui.HaloTheme
 import moe.ditto.halo.ui.HaloType
 import moe.ditto.halo.ui.haloImageLoader
-import moe.ditto.halo.ui.rememberResponsive
 
 private enum class ShellScreen {
     Login,
@@ -82,7 +83,15 @@ private enum class ShellScreen {
     Shell,
     Gate,
     Player,
+    /** The player's design over fixtures, with every transient state on a tap. */
+    PlayerScenes,
 }
+
+private val DebugLocalCredentials = LoginCredentialsPrefill(
+    serverUrl = "http://127.0.0.1:18790",
+    username = "admin",
+    password = "fixture-pass",
+)
 
 @Composable
 internal fun HaloApp(dependencies: PlatformDependencies) {
@@ -132,6 +141,10 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                     previous is SessionState.SignedIn &&
                     screen != ShellScreen.Login
                 ) {
+                    // A rejected token and the visible sign-out button arrive
+                    // through this same transition. Both durably pause queued
+                    // and OS-owned work before the outgoing graph disappears.
+                    dependencies.downloadRuntime.pauseAllForSignOut()
                     screen = ShellScreen.Login
                 }
                 previous = state
@@ -160,6 +173,7 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
         val playerState by playback.state.collectAsState()
 
         val sessionState by sessionController.state.collectAsState()
+        val loginNotice by sessionController.loginNotice.collectAsState()
 
         // One graph per session. Keyed on the generation as well as the server
         // because session state alone cannot distinguish two users on one
@@ -172,7 +186,11 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                 SignedInGraph(
                     serverUrl = it,
                     tokens = sessionController.tokenProvider,
+                    onUnauthorized = { sessionController.rejectSession(sessionGeneration) },
                     keyValueStore = dependencies.keyValueStore,
+                    subtitleCacheDirectory = dependencies.subtitleCacheDirectory,
+                    downloadRuntime = dependencies.downloadRuntime,
+                    downloadStorage = dependencies.downloadStorage,
                 )
             }
         }
@@ -192,6 +210,11 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                         graph = sessionGraph,
                         playback = playback,
                         playerSurface = dependencies.nativePlayerSurface,
+                        bundledSubtitleFonts = dependencies.bundledSubtitleFonts,
+                        playerSystem = dependencies.playerSystemPort,
+                        videoFrames = dependencies.videoFrameSource,
+                        openDownloadsEvents = dependencies.openDownloadsEvents,
+                        onSignOut = { sessionController.signOut() },
                         // Null in a shipped build, which removes the row entirely
                         // rather than hiding a live one behind a flag.
                         onOpenDebugGate = if (dependencies.diagnosticsEnabled) {
@@ -213,6 +236,7 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                             ?: sessionController.storedServerUrl()
                             ?: PlatformDependencies.DefaultServerUrl
                     },
+                    notice = loginNotice,
                     onOpenGate = {
                         refreshHostSnapshot()
                         screen = ShellScreen.Gate
@@ -230,6 +254,11 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                         refreshHostSnapshot()
                         screen = ShellScreen.Player
                     },
+                    onPlayerScenes = { screen = ShellScreen.PlayerScenes },
+                )
+                // No engine, no host snapshot: this one only draws.
+                ShellScreen.PlayerScenes -> PlayerScenePreviewScreen(
+                    onBack = { screen = ShellScreen.Gate },
                 )
                 ShellScreen.Player -> PlayerShellScreen(
                     playback = playback,
@@ -257,10 +286,19 @@ private fun LoginScreen(
     localAuthenticator: LocalAuthenticator,
     authEvents: Flow<AuthEvent>,
     initialServerUrl: String,
+    notice: String?,
     onOpenGate: () -> Unit,
 ) {
     val presenter = remember {
-        LoginPresenter(dependencies.authConfigSource, dependencies.nativeHostRequests, localAuthenticator).also {
+        LoginPresenter(
+            authConfigSource = dependencies.authConfigSource,
+            nativeHostRequests = dependencies.nativeHostRequests,
+            localAuthenticator = localAuthenticator,
+            // Reset mode belongs to automation, which supplies its own fixture credentials.
+            localCredentialsPrefill = DebugLocalCredentials.takeIf {
+                dependencies.diagnosticsEnabled && !dependencies.resetPersistedSession
+            },
+        ).also {
             it.editServerUrl(initialServerUrl)
         }
     }
@@ -278,7 +316,6 @@ private fun LoginScreen(
         }
     }
 
-    val responsive = rememberResponsive()
     Box(Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -304,10 +341,9 @@ private fun LoginScreen(
                 },
                 style = HaloType.Body.copy(color = HaloColors.TextDim, textAlign = TextAlign.Center),
             )
-            Text(
-                text = "${responsive.deviceClass} · shortest edge ${responsive.shortestEdge.value.toInt()}dp",
-                style = HaloType.Caption,
-            )
+            notice?.let {
+                Text(text = it, color = HaloColors.Danger, style = HaloType.Body, textAlign = TextAlign.Center)
+            }
             HaloTextField(
                 value = state.serverUrl,
                 onValueChange = {
@@ -446,6 +482,7 @@ private fun GateScreen(
     onBackToApp: () -> Unit,
     onLogin: () -> Unit,
     onPlayer: () -> Unit,
+    onPlayerScenes: () -> Unit,
 ) {
     var tokenResult by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -512,6 +549,7 @@ private fun GateScreen(
             HaloButton(label = "Back to app", onClick = onBackToApp)
             HaloButton(label = "Login shell", onClick = onLogin)
             HaloButton(label = "Player shell", onClick = onPlayer)
+            HaloButton(label = "Player design scenes", onClick = onPlayerScenes)
         }
     }
 }
@@ -535,6 +573,7 @@ private fun PlayerShellScreen(
     // surface height forces drawableSize changes without touching the core.
     val surfaceHeights = remember { listOf(180, 320, 120) }
     var surfaceHeightIndex by remember { mutableStateOf(0) }
+    var leavingPlayerShell by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     // The fixture server (fixtures/fixture_server.py) serves these over HTTP
     // with Range support; the local variants read the same files directly.
@@ -550,13 +589,23 @@ private fun PlayerShellScreen(
     val bitmapItem = { base: String ->
         MediaItem("sample-bitmap", "4K bitmap (${transportOf(base)})", "${base.trimEnd('/')}/sample4k-bitmap.mkv")
     }
+    var diagnosticsNext by remember { mutableStateOf<MediaItem?>(null) }
 
     LaunchedEffect(playback) {
-        // The 60s ASS sample with the bitmap sample queued next makes natural
-        // end exercise load-next-on-the-same-core for real.
-        playback.ensurePlayerStarted(assItem(httpBase), bitmapItem(httpBase))
+        // The harness, not the presenter, owns its second fixture. This keeps
+        // NaturalEnd observable while still exercising two loads on one core.
+        diagnosticsNext = bitmapItem(httpBase)
+        playback.ensurePlayerStarted(assItem(httpBase))
         onStateChanged()
         onRefresh()
+    }
+
+    LaunchedEffect(state.status) {
+        if (state.status != PlaybackStatus.Ended) return@LaunchedEffect
+        val next = diagnosticsNext ?: return@LaunchedEffect
+        diagnosticsNext = null
+        presenter.start(next)
+        onStateChanged()
     }
 
     Column(
@@ -573,7 +622,19 @@ private fun PlayerShellScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Player shell", style = HaloType.Title)
-            HaloButton(label = "Gate", onClick = onBack, compact = true)
+            HaloButton(
+                label = "Gate",
+                compact = true,
+                onClick = {
+                    if (!leavingPlayerShell) {
+                        leavingPlayerShell = true
+                        scope.launch {
+                            playback.windDownForExit()
+                            onBack()
+                        }
+                    }
+                },
+            )
         }
         nativePlayerSurface.Content(
             Modifier
@@ -653,7 +714,8 @@ private fun PlayerShellScreen(
                 compact = true,
                 onClick = {
                     scope.launch {
-                        presenter.start(assItem(httpBase), bitmapItem(httpBase))
+                        diagnosticsNext = bitmapItem(httpBase)
+                        presenter.start(assItem(httpBase))
                         onStateChanged()
                     }
                 },
@@ -663,6 +725,7 @@ private fun PlayerShellScreen(
                 compact = true,
                 onClick = {
                     scope.launch {
+                        diagnosticsNext = null
                         presenter.start(bitmapItem(httpBase))
                         onStateChanged()
                     }
@@ -675,7 +738,8 @@ private fun PlayerShellScreen(
                 compact = true,
                 onClick = {
                     scope.launch {
-                        presenter.start(assItem(localBase), bitmapItem(localBase))
+                        diagnosticsNext = bitmapItem(localBase)
+                        presenter.start(assItem(localBase))
                         onStateChanged()
                     }
                 },
@@ -685,6 +749,7 @@ private fun PlayerShellScreen(
                 compact = true,
                 onClick = {
                     scope.launch {
+                        diagnosticsNext = null
                         presenter.start(bitmapItem(localBase))
                         onStateChanged()
                     }

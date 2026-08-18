@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -74,9 +75,12 @@ fun HaloAsyncImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    placeholder: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     if (url.isNullOrBlank()) {
-        Box(modifier.background(HaloColors.Surface))
+        Box(modifier.background(HaloColors.Surface)) {
+            placeholder?.invoke(this)
+        }
         return
     }
 
@@ -100,7 +104,13 @@ fun HaloAsyncImage(
         // succeeds would swap the skeleton out in one frame, with nothing left
         // to animate.
         if (placeholderAlpha > 0f) {
-            HaloSkeleton(Modifier.matchParentSize().alpha(placeholderAlpha))
+            Box(Modifier.matchParentSize().alpha(placeholderAlpha)) {
+                if (placeholder == null) {
+                    HaloSkeleton(Modifier.matchParentSize())
+                } else {
+                    placeholder()
+                }
+            }
         }
     }
 }

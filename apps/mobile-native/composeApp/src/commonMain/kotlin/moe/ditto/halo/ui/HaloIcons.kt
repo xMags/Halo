@@ -70,6 +70,105 @@ object HaloIcons {
 
     val Play: ImageVector by lazy { icon("M8 5v14l11-7z") }
 
+    // --- Player chrome ---------------------------------------------------
+    // Upstream names, where they differ from the property: PictureInPicture is
+    // "picture_in_picture_alt", Brightness is "brightness_5".
+
+    val Pause: ImageVector by lazy { icon("M6 19h4V5H6v14zm8-14v14h4V5h-4z") }
+
+    val PictureInPicture: ImageVector by lazy {
+        icon(
+            "M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 " +
+                "2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z",
+        )
+    }
+
+    /** Toggles the fit mode between contain and cover. */
+    val FitScreen: ImageVector by lazy {
+        icon(
+            "M17 4h3c1.1 0 2 .9 2 2v2h-2V6h-3V4zM4 8V6h3V4H4c-1.1 0-2 .9-2 2v2h2zm16 8v2h-3v2h3c1.1 " +
+                "0 2-.9 2-2v-2h-2zM7 18H4v-2H2v2c0 1.1.9 2 2 2h3v-2zM18 8H6v8h12V8z",
+        )
+    }
+
+    val LockOpen: ImageVector by lazy {
+        icon(
+            "M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 " +
+                "6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 " +
+                "2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z",
+        )
+    }
+
+    val Lock: ImageVector by lazy {
+        icon(
+            "M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 " +
+                "2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0" +
+                "-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z",
+        )
+    }
+
+    /** Labels the brightness half of the vertical drag gesture HUD. */
+    val Brightness: ImageVector by lazy {
+        icon(
+            "M20 15.31L23.31 12 20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 " +
+                "23.31 15.31 20H20v-4.69zM12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z",
+        )
+    }
+
+    val VolumeUp: ImageVector by lazy {
+        icon(
+            "M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 " +
+                "3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86" +
+                "-7-8.77z",
+        )
+    }
+
+    // The two skip glyphs ship as three separate paths upstream (the arc, then
+    // the "1" and the "0"), so they are passed through as three rather than
+    // spliced into one string.
+    val Replay10: ImageVector by lazy {
+        icon(
+            "M11.99,5V1l-5,5l5,5V7c3.31,0,6,2.69,6,6s-2.69,6-6,6s-6-2.69-6-6h-2c0,4.42,3.58,8,8,8s8" +
+                "-3.58,8-8S16.41,5,11.99,5z",
+            "M10.89,16h-0.85v-3.26l-1.01,0.31v-0.69l1.77-0.63h0.09V16z",
+            "M15.17,14.24c0,0.32-0.03,0.6-0.1,0.82s-0.17,0.42-0.29,0.57s-0.28,0.26-0.45,0.33s-0.37,0.1" +
+                "-0.59,0.1 s-0.41-0.03-0.59-0.1s-0.33-0.18-0.46-0.33s-0.23-0.34-0.3-0.57s-0.11-0.5-0.11-0.82" +
+                "V13.5c0-0.32,0.03-0.6,0.1-0.82 s0.17-0.42,0.29-0.57s0.28-0.26,0.45-0.33s0.37-0.1,0.59-0.1s" +
+                "0.41,0.03,0.59,0.1c0.18,0.07,0.33,0.18,0.46,0.33 s0.23,0.34,0.3,0.57s0.11,0.5,0.11,0.82" +
+                "V14.24z M14.32,13.38c0-0.19-0.01-0.35-0.04-0.48s-0.07-0.23-0.12-0.31 s-0.11-0.14-0.19-0.17s" +
+                "-0.16-0.05-0.25-0.05s-0.18,0.02-0.25,0.05s-0.14,0.09-0.19,0.17s-0.09,0.18-0.12,0.31 s-0.04," +
+                "0.29-0.04,0.48v0.97c0,0.19,0.01,0.35,0.04,0.48s0.07,0.24,0.12,0.32s0.11,0.14,0.19,0.17s0.16," +
+                "0.05,0.25,0.05 s0.18-0.02,0.25-0.05s0.14-0.09,0.19-0.17s0.09-0.19,0.11-0.32s0.04-0.29,0.04" +
+                "-0.48V13.38z",
+        )
+    }
+
+    val Forward10: ImageVector by lazy {
+        icon(
+            "M18,13c0,3.31-2.69,6-6,6s-6-2.69-6-6s2.69-6,6-6v4l5-5l-5-5v4c-4.42,0-8,3.58-8,8c0,4.42," +
+                "3.58,8,8,8s8-3.58,8-8H18z",
+            // Upstream draws the "1" as <polygon points="…">; the points are
+            // transcribed unchanged as a closed moveto/lineto run.
+            "M10.86,15.94L10.86,11.67L10.77,11.67L9,12.3L9,12.99L10.01,12.68L10.01,15.94z",
+            "M12.25,13.44v0.74c0,1.9,1.31,1.82,1.44,1.82c0.14,0,1.44,0.09,1.44-1.82v-0.74c0-1.9-1.31" +
+                "-1.82-1.44-1.82 C13.55,11.62,12.25,11.53,12.25,13.44z M14.29,13.32v0.97c0,0.77-0.21,1.03" +
+                "-0.59,1.03c-0.38,0-0.6-0.26-0.6-1.03v-0.97 c0-0.75,0.22-1.01,0.59-1.01C14.07,12.3,14.29," +
+                "12.57,14.29,13.32z",
+        )
+    }
+
+    /**
+     * Opens the episode drawer. Upstream declares `fill-rule="evenodd"`; the
+     * four cut-outs are wound opposite to their tiles, so the default nonzero
+     * rule punches the same holes.
+     */
+    val GridView: ImageVector by lazy {
+        icon(
+            "M3 3v8h8V3H3zm6 6H5V5h4v4zm-6 4v8h8v-8H3zm6 6H5v-4h4v4zm4-16v8h8V3h-8zm6 6h-4V5h4v4zm-6 " +
+                "4v8h8v-8h-8zm6 6h-4v-4h4v4z",
+        )
+    }
+
     /** Marks a past search term. Upstream ships the dial and the hands as two paths. */
     val Clock: ImageVector by lazy {
         icon(
@@ -108,6 +207,20 @@ object HaloIcons {
         icon("M19 9h-4V3H9v6H5l7 7 7-7zm-8 2V5h2v6h1.17L12 13.17 9.83 11H11zm-6 7h14v2H5z")
     }
 
+    val Trash: ImageVector by lazy {
+        icon(
+            "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
+        )
+    }
+
+    val Refresh: ImageVector by lazy {
+        icon(
+            "M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-8 8s3.58 8 8 8c3.73 0 6.84-2.55 " +
+                "7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 " +
+                "4.22 1.78L13 11h7V4l-2.35 2.35z",
+        )
+    }
+
     val Settings: ImageVector by lazy {
         icon(
             "M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14," +
@@ -143,15 +256,22 @@ object HaloIcons {
     }
 }
 
-private fun icon(pathData: String): ImageVector =
+/**
+ * Several sources draw a glyph as more than one `<path>`; those are kept apart
+ * here rather than spliced into one string, so each stays byte-identical to its
+ * source and no two contours can interact through the fill rule.
+ */
+private fun icon(vararg pathData: String): ImageVector =
     ImageVector.Builder(
         defaultWidth = 24.dp,
         defaultHeight = 24.dp,
         viewportWidth = 24f,
         viewportHeight = 24f,
     ).apply {
-        addPath(
-            pathData = PathParser().parsePathString(pathData).toNodes(),
-            fill = SolidColor(Color.White),
-        )
+        pathData.forEach { data ->
+            addPath(
+                pathData = PathParser().parsePathString(data).toNodes(),
+                fill = SolidColor(Color.White),
+            )
+        }
     }.build()

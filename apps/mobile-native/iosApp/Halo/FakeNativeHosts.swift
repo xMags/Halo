@@ -1,10 +1,10 @@
 import ComposeApp
 import UIKit
 
-/// Default host for the ownership/playback suites: canned config, no browser,
+/// Test-only host for the ownership/playback suites: canned config, no browser,
 /// no network — that is what keeps those gates hermetic and their "Continue"
-/// taps instant. The real sign-in lives in `OidcAuthHost`, selected only when
-/// `AppDelegate` sees `HALO_AUTH_HOST=oidc`.
+/// taps instant. Those suites opt in with `HALO_AUTH_HOST=fake`; every other
+/// launch, including a normal one, gets the real `OidcAuthHost`.
 final class FakeAuthHost: NSObject, HaloIosAuthHost {
     let hostId = UUID().uuidString
     private(set) var oidcRequestCount: Int64 = 0

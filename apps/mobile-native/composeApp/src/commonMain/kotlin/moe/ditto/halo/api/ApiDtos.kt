@@ -119,7 +119,12 @@ data class AddonSource(
 @Serializable
 data class AddonError(
     val id: String,
+    /** Legacy compatibility field. New servers guarantee sanitized text. */
     val message: String,
+    /** Optional so this client remains compatible with older Halo servers. */
+    val name: String? = null,
+    val code: String? = null,
+    val status: Int? = null,
 )
 
 @Serializable

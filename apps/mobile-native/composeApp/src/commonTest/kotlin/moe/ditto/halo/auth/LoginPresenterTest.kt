@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class LoginPresenterTest {
     @Test
@@ -31,6 +32,47 @@ class LoginPresenterTest {
         val phase = assertIs<LoginPhase.LocalCredentials>(presenter.state.phase)
         assertEquals("https://halo.local", phase.serverUrl)
         assertEquals("https://halo.local", presenter.state.serverUrl)
+    }
+
+    @Test
+    fun debugCredentialsArePrefilledOnlyAfterLocalModeDiscovery() = runTest {
+        val presenter = presenter(
+            config = AuthConfig.Local,
+            localCredentialsPrefill = LoginCredentialsPrefill(
+                serverUrl = "https://halo.local/",
+                username = "admin",
+                password = "fixture-pass",
+            ),
+        )
+        presenter.editServerUrl("https://halo.local")
+
+        assertEquals("", presenter.state.username)
+        assertEquals("", presenter.state.password)
+
+        presenter.continueFromServer()
+
+        assertEquals("admin", presenter.state.username)
+        assertEquals("fixture-pass", presenter.state.password)
+        assertTrue(presenter.state.canSubmitCredentials)
+    }
+
+    @Test
+    fun debugCredentialsAreNotPrefilledForAnotherLocalServer() = runTest {
+        val presenter = presenter(
+            config = AuthConfig.Local,
+            localCredentialsPrefill = LoginCredentialsPrefill(
+                serverUrl = "http://127.0.0.1:18790",
+                username = "admin",
+                password = "fixture-pass",
+            ),
+        )
+        presenter.editServerUrl("https://second.local")
+
+        presenter.continueFromServer()
+
+        assertEquals("", presenter.state.username)
+        assertEquals("", presenter.state.password)
+        assertTrue(!presenter.state.canSubmitCredentials)
     }
 
     @Test
@@ -229,7 +271,8 @@ class LoginPresenterTest {
         config: AuthConfig,
         host: RecordingNativeHost = RecordingNativeHost(),
         authenticator: LocalAuthenticator = LocalAuthenticator { _, _, _ -> },
-    ): LoginPresenter = LoginPresenter(FakeConfigSource(config), host, authenticator)
+        localCredentialsPrefill: LoginCredentialsPrefill? = null,
+    ): LoginPresenter = LoginPresenter(FakeConfigSource(config), host, authenticator, localCredentialsPrefill)
 
     private class FakeConfigSource(private val config: AuthConfig) : AuthConfigSource {
         override suspend fun fetch(serverUrl: String): AuthConfig = config

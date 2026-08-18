@@ -210,7 +210,7 @@ fun SearchField(
     }
 }
 
-private val MetaTextColor = Color(0xFFC7CDD9)
+private val MetaTextColor = HaloColors.TextMeta
 
 /** Dot-separated metadata (year · runtime · genre), with an optional gold rating. */
 @Composable

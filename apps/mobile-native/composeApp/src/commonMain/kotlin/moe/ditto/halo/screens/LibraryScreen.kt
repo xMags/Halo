@@ -15,12 +15,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import moe.ditto.halo.SignedInGraph
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloColors
-import moe.ditto.halo.ui.HaloDimensions
-import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.PosterGrid
 import moe.ditto.halo.ui.rememberResponsive
 
@@ -55,19 +54,28 @@ internal fun LibraryScreen(
             .map { it.posterItem() }
     }
 
-    Box(modifier.fillMaxSize().background(HaloColors.Background)) {
+    val gutter = responsive.gutter
+
+    // The navigation rail floats over the leading edge, so the grid begins
+    // beside it and its gutter is measured from there.
+    Box(
+        modifier
+            .fillMaxSize()
+            .background(HaloColors.Background)
+            .padding(start = responsive.contentInsetStart),
+    ) {
         when {
             // The three empty-ish states keep the title and search, so the screen
             // still names itself — and can still reach search — while it has
             // nothing of its own to show.
             saved == null && library.error != null ->
-                LibraryPlaceholder(onOpenSearch) { CenterMessage("Could not reach your Halo server.") }
-            saved == null -> LibraryPlaceholder(onOpenSearch) {
+                LibraryPlaceholder(gutter, onOpenSearch) { CenterMessage("Could not reach your Halo server.") }
+            saved == null -> LibraryPlaceholder(gutter, onOpenSearch) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = HaloColors.Accent)
                 }
             }
-            saved.isEmpty() -> LibraryPlaceholder(onOpenSearch) {
+            saved.isEmpty() -> LibraryPlaceholder(gutter, onOpenSearch) {
                 CenterMessage("Nothing saved yet. Open a title and tap “Add to library”.")
             }
             else -> PosterGrid(
@@ -76,12 +84,15 @@ internal fun LibraryScreen(
                 onItemClick = { onOpenDetail(it.metaRef()) },
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
-                    start = HaloSpacing.Md,
-                    end = HaloSpacing.Md,
-                    // The tab bar floats over this screen, so the last row has to
-                    // stop short of it or it sits behind the glass.
-                    bottom = HaloDimensions.TabBarSpace,
+                    start = gutter,
+                    end = gutter,
+                    // Chrome that floats over this screen — the tab bar, where
+                    // there is one — has to be cleared or the last row sits
+                    // behind the glass.
+                    bottom = responsive.bottomContentPadding,
                 ),
+                horizontalGap = responsive.posterGridGap,
+                verticalGap = responsive.posterGridRowGap,
                 header = {
                     ScreenHeader(
                         title = LibraryTitle,
@@ -104,8 +115,8 @@ private const val LibraryTitle = "Library"
  * grid would otherwise supply through its content padding.
  */
 @Composable
-private fun LibraryPlaceholder(onOpenSearch: () -> Unit, body: @Composable () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(horizontal = HaloSpacing.Md)) {
+private fun LibraryPlaceholder(gutter: Dp, onOpenSearch: () -> Unit, body: @Composable () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(start = gutter, end = gutter)) {
         ScreenHeader(title = LibraryTitle, onOpenSearch = onOpenSearch)
         Box(Modifier.weight(1f)) { body() }
     }

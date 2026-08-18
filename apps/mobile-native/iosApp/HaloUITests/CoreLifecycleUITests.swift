@@ -15,6 +15,9 @@ final class CoreLifecycleUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        // This gate never exercises sign-in, so it takes the hermetic fake host
+        // instead of reaching an identity provider.
+        app.launchEnvironment["HALO_AUTH_HOST"] = "fake"
         // These suites drive the harness signed out from the login form; a session
         // persisted by an auth suite or manual run must not auto-restore past it.
         app.launchEnvironment["HALO_RESET_SESSION"] = "1"
