@@ -96,8 +96,17 @@ export interface AddonSource {
 }
 
 /** Per-addon failure surfaced by the fan-out resolution endpoints (no stack). */
+export type AddonErrorCode = 'timeout' | 'upstream_http' | 'blocked_target' | 'invalid_response' | 'unavailable'
+
 export interface AddonError {
   id: string
+  /** Safe display name. Optional so new clients remain compatible with older servers. */
+  name?: string
+  /** Machine-readable safe category. Optional for compatibility with older servers. */
+  code?: AddonErrorCode
+  /** Upstream status only, never a response body. */
+  status?: number
+  /** Legacy compatibility field. New servers populate this with sanitized text only. */
   message: string
 }
 

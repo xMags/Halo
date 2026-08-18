@@ -33,6 +33,9 @@ importers:
       jose:
         specifier: ^6.2.3
         version: 6.2.3
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.0
       undici:
         specifier: ^6.27.0
         version: 6.27.0
@@ -49,9 +52,6 @@ importers:
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
-      tsx:
-        specifier: ^4.19.0
-        version: 4.23.0
       typescript:
         specifier: ^5.8.0
         version: 5.9.3

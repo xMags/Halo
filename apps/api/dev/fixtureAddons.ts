@@ -1,4 +1,4 @@
-import type { Manifest, MetaDetail, MetaPreview, MetaVideo, Stream } from '@halo/core'
+import type { Manifest, MetaDetail, MetaPreview, MetaVideo, Stream, Subtitle } from '@halo/core'
 
 /**
  * Canned Stremio addons for the development server.
@@ -228,6 +228,16 @@ function streamsFor(videoId: string, mediaUrl: string | null): Stream[] {
       },
     },
     {
+      // Deliberately 404s on the fixture server, so the real player error card,
+      // Retry and Pick another source paths can be exercised without taking a
+      // public host down. The origin follows the requesting client just like the
+      // playable media URL does.
+      url: mediaUrl ? `${new URL(mediaUrl).origin}/dev/missing-media` : 'https://cdn.fixture.test/missing.mp4',
+      name: 'Fixture\nBroken source',
+      title: 'Expected to fail, player error-card fixture',
+      behaviorHints: { filename: `${videoId.replace(/:/g, '.')}.broken.mp4` },
+    },
+    {
       // Torrents are never playable in Halo; the server drops this before it
       // reaches a client, which is the point of including it.
       name: 'Fixture\nTorrent',
@@ -248,6 +258,13 @@ export interface FixtureAddon {
   meta?: (type: string, id: string) => MetaDetail | null
   /** [mediaUrl] is the dev server's own media route, or null when it serves none. */
   stream?: (type: string, videoId: string, mediaUrl: string | null) => Stream[] | null
+  /** [subtitleUrl] builds a URL for the dev server's canned subtitle route. */
+  subtitles?: (
+    type: string,
+    videoId: string,
+    extra: URLSearchParams,
+    subtitleUrl: (id: string) => string,
+  ) => Subtitle[] | null
 }
 
 const catalogManifest: Manifest = {
@@ -295,6 +312,40 @@ const cloudManifest: Manifest = {
   catalogs: [{ type: 'movie', id: 'cloud', name: 'My Cloud' }],
 }
 
+/**
+ * A subtitle addon, so the player's FROM ADDONS section and its subtitle memory
+ * can be exercised without reaching a real one.
+ *
+ * Two English results and one Japanese: two of the same language is what makes
+ * the memory's exact-id restore distinguishable from its language fallback.
+ * The id encodes whether a `videoHash` was supplied, because hash matching is
+ * the whole point of the extras and is otherwise invisible from the client.
+ */
+const subtitleManifest: Manifest = {
+  id: 'test.halo.subtitles',
+  version: '1.2.0',
+  name: 'Fixture Subs',
+  description: 'Canned external subtitles for local development.',
+  resources: ['subtitles'],
+  types: ['movie', 'series'],
+  idPrefixes: ['tt'],
+  catalogs: [],
+}
+
+function subtitlesFor(
+  videoId: string,
+  extra: URLSearchParams,
+  subtitleUrl: (id: string) => string,
+): Subtitle[] {
+  const matched = extra.get('videoHash') ? 'hash' : 'name'
+  const slug = videoId.replace(/[^a-zA-Z0-9]/g, '-')
+  return [
+    { id: `${slug}-eng-${matched}-1`, url: subtitleUrl(`${slug}-eng-${matched}-1`), lang: 'eng' },
+    { id: `${slug}-eng-${matched}-2`, url: subtitleUrl(`${slug}-eng-${matched}-2`), lang: 'eng' },
+    { id: `${slug}-jpn-${matched}`, url: subtitleUrl(`${slug}-jpn-${matched}`), lang: 'jpn' },
+  ]
+}
+
 function matchTitles(pool: Title[], type: string, extra: URLSearchParams): MetaPreview[] {
   const search = extra.get('search')?.trim().toLowerCase()
   return pool
@@ -330,6 +381,12 @@ export const FIXTURE_ADDONS: FixtureAddon[] = [
     stream: (_type, videoId, mediaUrl) => streamsFor(videoId, mediaUrl),
   },
   {
+    base: 'https://subs.fixture.test',
+    entryId: 'fixture-subs',
+    manifest: subtitleManifest,
+    subtitles: (_type, videoId, extra, subtitleUrl) => subtitlesFor(videoId, extra, subtitleUrl),
+  },
+  {
     base: 'https://cloud.fixture.test',
     entryId: 'fixture-cloud',
     manifest: cloudManifest,
@@ -358,6 +415,7 @@ export const FIXTURE_TITLES = { movies: MOVIES, series: SERIES, poster: POSTER }
 export function fixtureAddonFetch(
   addons: FixtureAddon[] = FIXTURE_ADDONS,
   resolveMediaUrl: () => string | null = () => null,
+  resolveSubtitleUrl: (id: string) => string = (id) => `http://127.0.0.1/dev/subtitle/${id}.srt`,
 ): typeof fetch {
   return async (input) => {
     const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
@@ -386,6 +444,10 @@ export function fixtureAddonFetch(
     if (resource === 'stream') {
       const streams = addon.stream?.(type!, id!, resolveMediaUrl())
       return streams ? json({ streams }) : json({ error: 'no such stream' }, 404)
+    }
+    if (resource === 'subtitles') {
+      const subtitles = addon.subtitles?.(type!, id!, params, resolveSubtitleUrl)
+      return subtitles ? json({ subtitles }) : json({ error: 'no such subtitles' }, 404)
     }
     return json({ error: `unsupported resource ${resource}` }, 404)
   }

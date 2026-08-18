@@ -8,14 +8,15 @@ import {
   getMeta,
   getStreams,
   getSubtitles,
-  isPlayableStream,
   nextVideo,
   transportBase,
   type AddonEntry,
+  type AddonError,
   type LibraryItem,
   type Manifest,
   type MetaResponse,
   type Stream,
+  type Subtitle,
   type WatchState,
 } from '@halo/core'
 import { randomUUID } from 'node:crypto'
@@ -33,6 +34,14 @@ import {
 } from './auth'
 import type { Db } from './db'
 import { globalAddons, libraryItems, userAddons, users, userSettings, watchStates } from './schema'
+import {
+  addonError,
+  logAddonFailure,
+  normalizeStreamsResponse,
+  normalizeSubtitlesResponse,
+  safeAddonName,
+  type AddonFailureLogger,
+} from './addonResolution'
 import { ProxyTargetError } from './proxyGuard'
 import { safeFetch } from './safeFetch'
 
@@ -46,6 +55,8 @@ export interface AppConfig {
    * fake responses without real network or DNS. Defaults to the module `safeFetch`.
    */
   safeFetch?: typeof fetch
+  /** Structured failure sink. Events are constructed from a fixed safe field allowlist. */
+  addonFailureLogger?: AddonFailureLogger
 }
 
 // Constant scrypt work on unknown usernames too, so a missing user can't be
@@ -143,6 +154,7 @@ const addonPatchSchema = z.object({ hideCatalogs: z.boolean() })
 export function createApp(config: AppConfig) {
   const { db } = config
   const doSafeFetch = config.safeFetch ?? safeFetch
+  const writeAddonFailure: AddonFailureLogger = config.addonFailureLogger ?? ((event) => console.warn('[addon-resolution]', event))
   const app = new Hono()
 
   app.use(
@@ -486,7 +498,7 @@ export function createApp(config: AppConfig) {
     const target = c.req.query('url')
     if (!target) return c.json({ error: 'url query param required' }, 400)
     try {
-      return await safeFetch(target)
+      return await doSafeFetch(target)
     } catch (err) {
       if (err instanceof ProxyTargetError) return c.json({ error: err.message }, 400)
       return c.json({ error: 'upstream fetch failed' }, 502)
@@ -575,10 +587,13 @@ export function createApp(config: AppConfig) {
     const entry = addonId ? addons.find((a) => a.id === addonId) : undefined
     let stream: Stream | null = null
     if (entry && bingeGroup && addonSupportsResource(entry.manifest, 'stream', type, next.id)) {
+      const startedAt = Date.now()
       try {
         const res = await getStreams(entry.transportUrl, type, next.id, { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) })
-        stream = res.streams.filter(isPlayableStream).find((s) => s.behaviorHints?.bingeGroup === bingeGroup) ?? null
-      } catch {
+        stream = normalizeStreamsResponse(res).find((s) => s.behaviorHints?.bingeGroup === bingeGroup) ?? null
+      } catch (reason) {
+        const error = addonError(entry.id, entry.manifest.name, reason)
+        logAddonFailure(writeAddonFailure, '/next-episode', error, Date.now() - startedAt)
         // Best-effort: an unreachable addon degrades to the picker, not a 5xx.
       }
     }
@@ -590,20 +605,23 @@ export function createApp(config: AppConfig) {
     const videoId = c.req.query('videoId')
     if (!type || !videoId) return c.json({ error: 'type and videoId are required' }, 400)
     const capable = effectiveAddons(c.get('user').id).filter((a) => addonSupportsResource(a.manifest, 'stream', type, videoId))
+    const startedAt = capable.map(() => Date.now())
     const settled = await Promise.allSettled(
       capable.map(async (a) => {
         const res = await getStreams(a.transportUrl, type, videoId, { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) })
-        return res.streams.filter(isPlayableStream)
+        return normalizeStreamsResponse(res)
       }),
     )
-    const results: Array<{ addon: { id: string; name: string }; streams: unknown[] }> = []
-    const errors: Array<{ id: string; message: string }> = []
+    const results: Array<{ addon: { id: string; name: string }; streams: Stream[] }> = []
+    const errors: AddonError[] = []
     settled.forEach((r, i) => {
       const a = capable[i]!
       if (r.status === 'fulfilled') {
-        if (r.value.length > 0) results.push({ addon: { id: a.id, name: a.manifest.name }, streams: r.value })
+        if (r.value.length > 0) results.push({ addon: { id: a.id, name: safeAddonName(a.manifest.name) }, streams: r.value })
       } else {
-        errors.push({ id: a.id, message: errorMessage(r.reason) })
+        const error = addonError(a.id, a.manifest.name, r.reason)
+        errors.push(error)
+        logAddonFailure(writeAddonFailure, '/streams', error, Date.now() - startedAt[i]!)
       }
     })
     return c.json({ results, errors })
@@ -625,7 +643,9 @@ export function createApp(config: AppConfig) {
       videoSize = n
     }
     const filename = c.req.query('filename')
+    if (filename !== undefined && filename.length > 1_024) return c.json({ error: 'filename too long' }, 400)
     const capable = effectiveAddons(c.get('user').id).filter((a) => addonSupportsResource(a.manifest, 'subtitles', type, videoId))
+    const startedAt = capable.map(() => Date.now())
     const settled = await Promise.allSettled(
       capable.map(async (a) => {
         const res = await getSubtitles(
@@ -635,17 +655,19 @@ export function createApp(config: AppConfig) {
           { videoHash, videoSize, filename },
           { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) },
         )
-        return res.subtitles
+        return normalizeSubtitlesResponse(res)
       }),
     )
-    const results: Array<{ addon: { id: string; name: string }; subtitles: unknown[] }> = []
-    const errors: Array<{ id: string; message: string }> = []
+    const results: Array<{ addon: { id: string; name: string }; subtitles: Subtitle[] }> = []
+    const errors: AddonError[] = []
     settled.forEach((r, i) => {
       const a = capable[i]!
       if (r.status === 'fulfilled') {
-        results.push({ addon: { id: a.id, name: a.manifest.name }, subtitles: r.value })
+        results.push({ addon: { id: a.id, name: safeAddonName(a.manifest.name) }, subtitles: r.value })
       } else {
-        errors.push({ id: a.id, message: errorMessage(r.reason) })
+        const error = addonError(a.id, a.manifest.name, r.reason)
+        errors.push(error)
+        logAddonFailure(writeAddonFailure, '/subtitles', error, Date.now() - startedAt[i]!)
       }
     })
     return c.json({ results, errors, hashMatched: videoHash !== undefined })
@@ -656,10 +678,6 @@ export function createApp(config: AppConfig) {
 }
 
 const RESOLVE_TIMEOUT_MS = 10_000
-
-function errorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : String(reason)
-}
 
 function rowToLibraryItem(r: typeof libraryItems.$inferSelect): LibraryItem {
   return {

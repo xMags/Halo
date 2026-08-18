@@ -88,6 +88,25 @@ describe('auth', () => {
     expect(asUser.status).toBe(200)
     expect(await asUser.json()).toMatchObject({ id: 'bob-sub', username: 'bob', isAdmin: false })
   })
+
+  it('streams addon proxy responses through the configured safe fetch', async () => {
+    const calls: string[] = []
+    const safeFetch: typeof fetch = async (input) => {
+      calls.push(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+      return new Response('fixture caption', { headers: { 'content-type': 'application/x-subrip' } })
+    }
+    const configured = makeApp({ safeFetch }).app
+    const target = 'http://127.0.0.1:18790/dev/subtitle/fixture.srt'
+
+    const response = await configured.request(
+      `/addon-proxy?url=${encodeURIComponent(target)}`,
+      authed(await adminToken()),
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe('fixture caption')
+    expect(calls).toEqual([target])
+  })
 })
 
 describe('watch-state LWW (per user)', () => {

@@ -1,4 +1,4 @@
-import type { Stream } from '@halo/core'
+import type { AddonError, Stream } from '@halo/core'
 import { useNav, type StreamsParams } from '../nav'
 import { useStreams } from '../queries'
 
@@ -77,9 +77,28 @@ export function Streams(params: StreamsParams) {
 
       {data && data.errors.length > 0 && (
         <div className="t-caption" style={{ marginTop: 24 }}>
-          {data.errors.map((e) => `${e.id}: ${e.message}`).join(' · ')}
+          {data.errors.map(formatAddonFailure).join(' · ')}
         </div>
       )}
     </div>
   )
+}
+
+/** Formats only the server's safe compatibility fields, never opaque ids or legacy raw messages. */
+function formatAddonFailure(error: AddonError): string {
+  const candidate = error.name?.replace(/[\u0000-\u001f\u007f]/g, ' ').trim()
+  const name = candidate && !/https?:\/\/|[/\\]|[A-Za-z0-9_-]{32,}/i.test(candidate) ? candidate.slice(0, 80) : 'An addon'
+  switch (error.code) {
+    case 'timeout':
+      return `${name} timed out.`
+    case 'upstream_http':
+      return error.status ? `${name} returned HTTP ${error.status}.` : `${name} returned an HTTP error.`
+    case 'blocked_target':
+      return `${name} was blocked for safety.`
+    case 'invalid_response':
+      return `${name} returned invalid data.`
+    case 'unavailable':
+    default:
+      return `${name} is unavailable.`
+  }
 }

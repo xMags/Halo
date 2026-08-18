@@ -43,6 +43,7 @@ export type { AuthConfig, HaloClientOptions, LocalAuthConfig, LocalSessionToken,
 export type {
   AddonEntry,
   AddonError,
+  AddonErrorCode,
   AddonsResponse,
   AddonSource,
   LibraryItem,

@@ -22,6 +22,7 @@ import { FIXTURE_ADDONS, FIXTURE_TITLES, fixtureAddonFetch } from './fixtureAddo
  *
  *   pnpm --filter @halo/api dev:fixtures [--port 18790] [--db ./data/dev.sqlite]
  *                                        [--media ./some-video.mp4]
+ *                                        [--media-url http://127.0.0.1:18787/media/generated.bin?...]
  *
  * Sign in as `admin` / `fixture-pass` in local mode. Storage is in memory by
  * default, so every restart is an identical clean slate — which is what makes
@@ -37,6 +38,25 @@ import { FIXTURE_ADDONS, FIXTURE_TITLES, fixtureAddonFetch } from './fixtureAddo
 const DEFAULT_PORT = 18790
 const ADMIN_PASSWORD = 'fixture-pass'
 const MEDIA_PATH = '/dev/media'
+const SUBTITLE_PATH = '/dev/subtitle'
+
+/**
+ * A canned subtitle track, generated rather than stored: it exists so the
+ * player's addon-subtitle path can be exercised, and a caption that names its
+ * own language is the quickest way to see which result was applied. Served
+ * beside the API for the same reason the media route is, since the engine
+ * fetches it with no Authorization header.
+ */
+function subtitleBody(label: string): string {
+  const lines: string[] = []
+  for (let index = 0; index < 30; index += 1) {
+    const start = index * 2
+    const stamp = (seconds: number) =>
+      `00:00:${String(seconds).padStart(2, '0')},000`
+    lines.push(String(index + 1), `${stamp(start)} --> ${stamp(start + 2)}`, `${label} line ${index + 1}`, '')
+  }
+  return lines.join('\n')
+}
 
 // Never a real secret: this server holds no real data and its tokens are only
 // ever accepted by itself.
@@ -57,9 +77,24 @@ function main(): void {
   if (mediaFile && !existsSync(mediaFile)) throw new Error(`--media file not found: ${mediaFile}`)
 
   const db = createDb(options.dbPath)
+  const origin = (): string => requestOrigin.getStore() ?? `http://127.0.0.1:${options.port}`
   const mediaUrl = (): string | null => {
+    if (options.mediaUrl) return options.mediaUrl
     if (!mediaFile) return null
-    return `${requestOrigin.getStore() ?? `http://127.0.0.1:${options.port}`}${MEDIA_PATH}`
+    return `${origin()}${MEDIA_PATH}`
+  }
+  const subtitleUrl = (id: string): string => `${origin()}${SUBTITLE_PATH}/${id}.srt`
+  const addonFetch = fixtureAddonFetch(FIXTURE_ADDONS, mediaUrl, subtitleUrl)
+  const localFixtureFetch: typeof fetch = async (input, init) => {
+    const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    const url = new URL(href)
+    if (url.origin === origin() && url.pathname.startsWith(`${SUBTITLE_PATH}/`)) {
+      const id = url.pathname.slice(SUBTITLE_PATH.length + 1).replace(/\.srt$/, '')
+      return new Response(subtitleBody(id), {
+        headers: { 'content-type': 'application/x-subrip; charset=utf-8' },
+      })
+    }
+    return addonFetch(input, init)
   }
   const app = createApp({
     db,
@@ -68,7 +103,7 @@ function main(): void {
     // Passthrough reaches real addons over the network for manual work; the
     // guard is the real one either way, which is why a fixture addon cannot
     // simply be hosted on this machine.
-    safeFetch: options.passthrough ? safeFetch : fixtureAddonFetch(FIXTURE_ADDONS, mediaUrl),
+    safeFetch: options.passthrough ? safeFetch : localFixtureFetch,
   })
 
   ensureAdminUser(db, ADMIN_PASSWORD)
@@ -80,6 +115,12 @@ function main(): void {
   const handler = (request: Request): Response | Promise<Response> => {
     const url = new URL(request.url)
     if (mediaFile && url.pathname === MEDIA_PATH) return mediaResponse(request, mediaFile)
+    if (url.pathname.startsWith(`${SUBTITLE_PATH}/`)) {
+      const id = url.pathname.slice(SUBTITLE_PATH.length + 1).replace(/\.srt$/, '')
+      return new Response(subtitleBody(id), {
+        headers: { 'content-type': 'application/x-subrip; charset=utf-8' },
+      })
+    }
     return requestOrigin.run(url.origin, () => app.fetch(request))
   }
 
@@ -88,7 +129,12 @@ function main(): void {
     console.log(`  sign in     admin / ${ADMIN_PASSWORD}`)
     console.log(`  storage     ${options.dbPath === ':memory:' ? 'in memory (resets on restart)' : options.dbPath}`)
     console.log(`  addons      ${options.passthrough ? 'real, over the network' : 'canned'}`)
-    console.log(`  media       ${mediaFile ? `${mediaFile} at ${MEDIA_PATH}` : 'none (stream URLs are unreachable)'}`)
+    const mediaDescription = options.mediaUrl
+      ? 'external fixture URL enabled'
+      : mediaFile
+        ? `${mediaFile} at ${MEDIA_PATH}`
+        : 'none (stream URLs are unreachable)'
+    console.log(`  media       ${mediaDescription}`)
     console.log(`  android     adb reverse tcp:${info.port} tcp:${info.port}`)
   })
 }
@@ -99,20 +145,39 @@ interface Options {
   passthrough: boolean
   /** Video file every canned stream points at; null leaves them unreachable. */
   mediaPath: string | null
+  /** External fixture source. Never printed because a real source may contain credentials. */
+  mediaUrl: string | null
 }
 
 function parseArgs(argv: string[]): Options {
-  const options: Options = { port: DEFAULT_PORT, dbPath: ':memory:', passthrough: false, mediaPath: null }
+  const options: Options = {
+    port: DEFAULT_PORT,
+    dbPath: ':memory:',
+    passthrough: false,
+    mediaPath: null,
+    mediaUrl: null,
+  }
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index]
     if (flag === '--port') options.port = Number(argv[++index])
     else if (flag === '--db') options.dbPath = argv[++index] ?? ':memory:'
     else if (flag === '--passthrough') options.passthrough = true
     else if (flag === '--media') options.mediaPath = argv[++index] ?? null
-    else throw new Error(`unknown argument ${flag} (expected --port, --db, --passthrough or --media)`)
+    else if (flag === '--media-url') options.mediaUrl = argv[++index] ?? null
+    else throw new Error(
+      `unknown argument ${flag} (expected --port, --db, --passthrough, --media or --media-url)`,
+    )
   }
   if (!Number.isInteger(options.port) || options.port <= 0) throw new Error('--port must be a positive integer')
   if (options.mediaPath === null && argv.includes('--media')) throw new Error('--media needs a file path')
+  if (options.mediaUrl === null && argv.includes('--media-url')) throw new Error('--media-url needs a URL')
+  if (options.mediaPath && options.mediaUrl) throw new Error('--media and --media-url are mutually exclusive')
+  if (options.mediaUrl) {
+    const url = new URL(options.mediaUrl)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new Error('--media-url must use HTTP or HTTPS')
+    }
+  }
   return options
 }
 
@@ -188,7 +253,7 @@ function mediaType(file: string): string {
  */
 function seedAddons(db: Db, userId: string): void {
   const now = Date.now()
-  const [catalogs, streams, cloud] = FIXTURE_ADDONS
+  const [catalogs, streams, subs, cloud] = FIXTURE_ADDONS
   db.insert(globalAddons)
     .values({
       transportUrl: `${catalogs!.base}/manifest.json`,
@@ -213,10 +278,19 @@ function seedAddons(db: Db, userId: string): void {
       },
       {
         userId,
+        transportUrl: `${subs!.base}/manifest.json`,
+        id: subs!.entryId,
+        manifest: subs!.manifest,
+        position: 1,
+        hideCatalogs: false,
+        addedAt: now,
+      },
+      {
+        userId,
         transportUrl: `${cloud!.base}/manifest.json`,
         id: cloud!.entryId,
         manifest: cloud!.manifest,
-        position: 1,
+        position: 2,
         // Installed already hidden: its catalogs must reach clients stripped.
         hideCatalogs: true,
         addedAt: now,

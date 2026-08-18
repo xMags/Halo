@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose'
 import type { Manifest } from '@halo/core'
+import type { AddonFailureLogger } from '../src/addonResolution'
 import { createApp } from '../src/app'
 import { hashPassword } from '../src/auth'
 import { ensureAdminUser } from '../src/bootstrap'
@@ -19,13 +20,14 @@ const localJwks = createLocalJWKSet({ keys: [{ ...(await exportJWK(publicKey)), 
 export type App = ReturnType<typeof createApp>
 
 /** Fresh in-memory DB and a wired-up OIDC-mode app verifying against the test JWKS. */
-export function makeApp(opts: { safeFetch?: typeof fetch } = {}): { app: App; db: Db } {
+export function makeApp(opts: { safeFetch?: typeof fetch; addonFailureLogger?: AddonFailureLogger } = {}): { app: App; db: Db } {
   const db = createDb(':memory:')
   const app = createApp({
     db,
     auth: { mode: 'oidc', issuer: ISSUER, clientId: CLIENT_ID, adminGroupId: ADMIN_GROUP, getKey: localJwks },
     corsOrigins: ['http://localhost:5173'],
     safeFetch: opts.safeFetch,
+    addonFailureLogger: opts.addonFailureLogger ?? (() => {}),
   })
   return { app, db }
 }
@@ -34,13 +36,14 @@ export const LOCAL_JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long'
 export const ADMIN_PASSWORD = 'admin-test-password'
 
 /** Fresh in-memory DB and a local-mode app, admin user already seeded. */
-export function makeLocalApp(opts: { safeFetch?: typeof fetch } = {}): { app: App; db: Db } {
+export function makeLocalApp(opts: { safeFetch?: typeof fetch; addonFailureLogger?: AddonFailureLogger } = {}): { app: App; db: Db } {
   const db = createDb(':memory:')
   const app = createApp({
     db,
     auth: { mode: 'local', jwtSecret: LOCAL_JWT_SECRET },
     corsOrigins: ['http://localhost:5173'],
     safeFetch: opts.safeFetch,
+    addonFailureLogger: opts.addonFailureLogger ?? (() => {}),
   })
   ensureAdminUser(db, ADMIN_PASSWORD)
   return { app, db }
