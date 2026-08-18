@@ -7,8 +7,10 @@ import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlinx.coroutines.channels.Channel
@@ -142,6 +144,51 @@ internal class AndroidMpvPlayerHost(
             }
         } catch (_: RejectedExecutionException) {
             android.util.Log.w(LOG_TAG, "$operation rejected after player shutdown")
+        }
+    }
+
+    /**
+     * Runs [action] on the core executor and waits up to [timeoutMs] for it.
+     *
+     * Only surface teardown needs this. Android takes the buffer queue away as
+     * soon as `surfaceDestroyed` returns, and a producer still drawing into an
+     * abandoned queue is outside the platform contract, so the detach has to
+     * have happened by then. Doing it on the caller's thread instead is the
+     * deadlock this host already learned about: mpv's teardown blocks until the
+     * video chain acknowledges, and a hardware decoder stuck in the middle of a
+     * buffer never will.
+     *
+     * Hence the bound: a sick core costs one stalled callback and a dropped
+     * surface rather than a frozen UI thread. It is a ceiling, not a target —
+     * with the decoder already released by the exit path the wait is normally
+     * over in microseconds.
+     */
+    private fun enqueueAwaiting(operation: String, timeoutMs: Long, action: (MpvCore) -> Unit) {
+        if (!acceptingWork.get()) return
+        val finished = CountDownLatch(1)
+        try {
+            coreExecutor.execute {
+                try {
+                    if (!acceptingWork.get()) return@execute
+                    val target = core ?: run {
+                        android.util.Log.w(LOG_TAG, "$operation skipped because the core is not ready")
+                        return@execute
+                    }
+                    runCatching { action(target) }
+                        .onFailure { android.util.Log.w(LOG_TAG, "$operation failed", it) }
+                } finally {
+                    // Every early return above still has to release the caller,
+                    // or a shutdown race spends the whole timeout waiting for
+                    // work that was never going to run.
+                    finished.countDown()
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            android.util.Log.w(LOG_TAG, "$operation rejected after player shutdown")
+            return
+        }
+        if (!finished.await(timeoutMs, TimeUnit.MILLISECONDS)) {
+            android.util.Log.w(LOG_TAG, "$operation did not finish within ${timeoutMs}ms")
         }
     }
 
@@ -290,6 +337,12 @@ internal class AndroidMpvPlayerHost(
                 enqueueAsync("surface-attach") {
                     if (surfaceEpoch != epoch || currentSurface != surface || !surface.isValid) return@enqueueAsync
                     it.attachSurface(surface, surfaceWidth, surfaceHeight)
+                    // The counterpart to the detach dropping the video track:
+                    // without it the picture never comes back after the surface
+                    // does, and playback continues as sound over a black screen.
+                    // Only [load] used to turn video on, which is why returning
+                    // to a still-playing episode used to lose it.
+                    it.setVideoEnabled(true)
                     attachCount += 1
                 }
             }
@@ -309,9 +362,12 @@ internal class AndroidMpvPlayerHost(
                 ++surfaceEpoch
                 currentSurface = null
                 detachCount += 1
-                // Best effort by design. Android must be allowed to finish the
-                // callback while the serialized native operation drains off UI.
-                enqueueAsync("surface-destroy") {
+                // Awaited rather than fire-and-forget: the buffer queue behind
+                // this surface is abandoned the moment we return, so the detach
+                // has to be done by then. The order is mpv's own and must not
+                // be rearranged — force-window keeps a video output alive with
+                // no video, so dropping the track alone does not free anything.
+                enqueueAwaiting("surface-destroy", DETACH_TIMEOUT_MS) {
                     it.setPaused(true)
                     it.setVideoEnabled(false)
                     it.detachSurface()
@@ -325,6 +381,14 @@ internal class AndroidMpvPlayerHost(
     companion object {
         private const val LOG_TAG = "HALO_MPV"
         private const val RELEASE_TIMEOUT_MS = 1_500L
+
+        /**
+         * Emergency ceiling for the surface detach, not an expected cost: half a
+         * second is roughly thirty frames, and a wait that routinely gets near
+         * it means the decoder is not being released before the screen leaves.
+         * Raise or lower it from measured teardown latency, not by feel.
+         */
+        private const val DETACH_TIMEOUT_MS = 500L
     }
 }
 
