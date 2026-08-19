@@ -17,11 +17,6 @@ interface Source {
 /** Pseudo-quality filter for "plays immediately", which cuts across resolutions. */
 const INSTANT = 'instant'
 
-/** Sub-second resolutions read as "0.0 s" in seconds; show those in ms. */
-function formatElapsed(ms: number): string {
-  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`
-}
-
 /**
  * Stream picker: one recommended source up top, then everything else grouped
  * by the addon that offered it. The server has already filtered to playable
@@ -111,8 +106,6 @@ export function Streams(params: StreamsParams) {
     })
   }
 
-  const addonCount = data?.groups.filter((g) => g.streams.length > 0).length ?? 0
-
   return (
     <div className="view no-bar">
       <div className="src-head">
@@ -126,11 +119,11 @@ export function Streams(params: StreamsParams) {
             </div>
           )}
           <div className="src-title ellipsis">{params.showName ?? params.title}</div>
-          <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--text-muted)' }}>
-            {isLoading
-              ? 'Asking your addons…'
-              : `${sources.length} source${sources.length === 1 ? '' : 's'} from ${addonCount} addon${addonCount === 1 ? '' : 's'} · resolved in ${formatElapsed(data?.elapsedMs ?? 0)}`}
-          </div>
+          {isLoading && (
+            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--text-muted)' }}>
+              Asking your addons…
+            </div>
+          )}
         </div>
         <div className="spacer" />
         {sources.length > 0 && (
@@ -196,9 +189,6 @@ export function Streams(params: StreamsParams) {
               <div className="src-group-head">
                 <div className="kicker">{group[0]!.addonName.toUpperCase()}</div>
                 <div className="src-rule" />
-                <div className="meta-mono" style={{ fontSize: 9.5 }}>
-                  {group.length}
-                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {group.map((source, index) => (

@@ -54,7 +54,7 @@ export function Home() {
   // regardless of which browse filter is showing.
   const continueItems = buildContinueWatching(watchStates, library).slice(0, CONTINUE_LIMIT)
 
-  usePublishScreenTitle('Home', `${allShelves.length} CATALOGS · ${addons?.length ?? 0} ADDONS`)
+  usePublishScreenTitle('Home', '')
 
   return (
     <div className="view no-bar">
@@ -77,7 +77,7 @@ export function Home() {
       {shelves.length > 0 && <FeaturedHero lead={shelves[0]!} watchStates={watchStates} />}
 
       {continueItems.length > 0 && (
-        <Shelf title="Continue watching" source={`${continueItems.length} ITEMS`}>
+        <Shelf title="Continue watching">
           {continueItems.map((item) => (
             <ContinueCard key={item.itemId} item={item} watchStates={watchStates} />
           ))}
@@ -274,6 +274,17 @@ function FeaturedHero({
   )
 }
 
+/**
+ * Addons publish the same catalog name for both types — Cinemeta has a
+ * "Popular" and a "Featured" for each — so the type joins the title, or two
+ * shelves read identically. Names that already say it are left alone.
+ */
+function shelfTitle(name: string, type: string): string {
+  const label = type === 'movie' ? 'Movies' : type === 'series' ? 'Series' : null
+  if (!label || name.toLowerCase().includes(type)) return name
+  return `${name} ${label}`
+}
+
 function CatalogShelf({ shelf }: { shelf: BrowsableCatalog }) {
   const { setRoot } = useNav()
   const { data: metas, isLoading } = useCatalog(shelf.addonId, shelf.catalog.type, shelf.catalog.id)
@@ -283,10 +294,7 @@ function CatalogShelf({ shelf }: { shelf: BrowsableCatalog }) {
 
   return (
     <Shelf
-      title={shelf.catalog.name ?? shelf.addonName}
-      // Cinemeta publishes the same catalog name for both types ("Popular"),
-      // so the type has to ride along or two shelves read identically.
-      source={`${shelf.addonName} · ${shelf.catalog.type}`.toUpperCase()}
+      title={shelfTitle(shelf.catalog.name ?? shelf.addonName, shelf.catalog.type)}
       action={
         <button type="button" className="btn-link" onClick={() => setRoot('library')}>
           See all

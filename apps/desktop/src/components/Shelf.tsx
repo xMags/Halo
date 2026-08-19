@@ -3,8 +3,6 @@ import { Icon } from './Icon'
 
 interface Props {
   title: string
-  /** Mono line beside the title — the catalog's addon, or an item count. */
-  source?: string
   /** Right-aligned header action ("See all"). */
   action?: ReactNode
   children: ReactNode
@@ -16,7 +14,7 @@ interface Props {
  * wheel is deliberately left alone — hijacking it to scroll rows sideways
  * makes the whole page feel broken.
  */
-export function Shelf({ title, source, action, children }: Props) {
+export function Shelf({ title, action, children }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const [canLeft, setCanLeft] = useState(false)
   const [canRight, setCanRight] = useState(false)
@@ -49,7 +47,6 @@ export function Shelf({ title, source, action, children }: Props) {
     <section className="shelf">
       <div className="shelf-head">
         <div className="section-title ellipsis">{title}</div>
-        {source && <div className="shelf-source">{source}</div>}
         <div className="spacer" />
         {action}
       </div>

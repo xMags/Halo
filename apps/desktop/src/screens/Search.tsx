@@ -87,13 +87,7 @@ export function Search() {
               }
             }}
           />
-          {active && (
-            <div className="search-timing">
-              {isFetching || !data
-                ? 'SEARCHING…'
-                : `${data.catalogsQueried} CATALOGS · ${data.elapsedMs} ms`}
-            </div>
-          )}
+          {active && (isFetching || !data) && <div className="search-timing">SEARCHING…</div>}
           {term && (
             <button type="button" className="search-clear" title="Clear" onClick={() => setTerm('')}>
               <Icon name="x" size={12} />
@@ -199,7 +193,7 @@ export function Search() {
       )}
 
       {shown.map((group) => (
-        <Shelf key={group.key} title={group.title} source={group.addonName.toUpperCase()}>
+        <Shelf key={group.key} title={group.title}>
           {group.metas.map((meta) => (
             <PosterCard
               key={`${meta.type}:${meta.id}`}

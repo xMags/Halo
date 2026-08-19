@@ -48,7 +48,7 @@ export function Library() {
     return rows // buildLibraryRow already orders by newest addition
   }, [items, filter, sort, lastWatched])
 
-  usePublishScreenTitle('Library', `${counts.all} TITLES`)
+  usePublishScreenTitle('Library', '')
 
   return (
     <div className="view no-bar">

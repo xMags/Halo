@@ -130,10 +130,6 @@ export function Detail({ type, id }: { type: string; id: string }) {
       ? 'Play first episode'
       : 'Play'
 
-  const seasonWatched = episodes.filter((v) =>
-    statesForItem.some((s) => s.videoId === v.id && s.watched),
-  ).length
-
   /** What the availability card and the header button resolve sources for. */
   const targetVideo = resumeVideo ?? (type === 'series' ? episodes[0] : undefined)
 
@@ -209,9 +205,6 @@ export function Detail({ type, id }: { type: string; id: string }) {
                   onChange={(value) => setSeason(Number(value))}
                 />
               )}
-              <div className="meta-mono">
-                {episodes.length} EPISODES · {seasonWatched} WATCHED
-              </div>
             </div>
 
             <div className="ep-list">

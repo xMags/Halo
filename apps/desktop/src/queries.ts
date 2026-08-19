@@ -153,24 +153,18 @@ export interface AddonStreams {
   streams: Stream[]
 }
 
-/**
- * Playable streams per addon, fanned out server-side. The elapsed time is
- * measured because the sources screen reports it: source resolution is the
- * slowest thing the app does, and a number makes a lagging addon visible
- * instead of leaving the wait unexplained.
- */
+/** Playable streams per addon, fanned out server-side. */
 export function useStreams(type: string, videoId: string) {
   return useQuery({
     queryKey: ['streams', type, videoId],
     queryFn: async () => {
-      const started = performance.now()
       const { results, errors } = await getClient().getStreams(type, videoId)
       const groups: AddonStreams[] = results.map((r) => ({
         addonId: r.addon.id,
         addonName: r.addon.name,
         streams: r.streams,
       }))
-      return { groups, errors, elapsedMs: Math.round(performance.now() - started) }
+      return { groups, errors }
     },
   })
 }
@@ -242,10 +236,6 @@ export interface SearchResultGroup {
 
 export interface SearchOutcome {
   groups: SearchResultGroup[]
-  /** Catalogs queried — the "N ADDONS" half of the live timing readout. */
-  catalogsQueried: number
-  /** Wall-clock milliseconds for the whole fan-out. */
-  elapsedMs: number
 }
 
 /**
@@ -282,11 +272,9 @@ export function useSearch(term: string) {
             title: `${c.name ?? addon.manifest.name} – ${typeLabel(c.type)}`,
           })),
       )
-      const started = performance.now()
       const results = await Promise.allSettled(
         targets.map((t) => getClient().getCatalog(t.addonId, t.type, t.id, { search: trimmed })),
       )
-      const elapsedMs = Math.round(performance.now() - started)
       const groups = targets.flatMap((t, i): SearchResultGroup[] => {
         const r = results[i]!
         if (r.status !== 'fulfilled') return []
@@ -308,7 +296,7 @@ export function useSearch(term: string) {
           },
         ]
       })
-      return { groups, catalogsQueried: targets.length, elapsedMs }
+      return { groups }
     },
   })
 }
