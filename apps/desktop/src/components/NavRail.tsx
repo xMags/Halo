@@ -1,8 +1,7 @@
 import { buildContinueWatching } from '../homeRows'
-import { formatTimeLeft } from '../format'
+import { formatTimeLeft, initials } from '../format'
 import { useNav, type Section } from '../nav'
-import { useLibrary, useWatchStates } from '../queries'
-import { describeStatus, useServerStatus } from '../serverStatus'
+import { useLibrary, useMe, useWatchStates } from '../queries'
 import { Icon, type IconName } from './Icon'
 
 const ITEMS: Array<{ section: Section; label: string; icon: IconName }> = [
@@ -17,24 +16,17 @@ const JUMP_BACK_LIMIT = 3
 
 /**
  * Persistent left rail: sections, a jump-back-in shortcut list, and the
- * server's reachability pinned to the bottom. Detail and Sources are pushed
- * on top of Home, so the stack root — not the visible screen — decides which
- * row is lit.
+ * signed-in account pinned to the bottom. Detail and Sources are pushed on
+ * top of Home, so the stack root — not the visible screen — decides which row
+ * is lit.
  */
 export function NavRail() {
   const { section, setRoot, push } = useNav()
   const { data: watchStates } = useWatchStates()
   const { data: library } = useLibrary()
-  const status = useServerStatus()
+  const { data: me } = useMe()
 
   const jumpBack = buildContinueWatching(watchStates, library).slice(0, JUMP_BACK_LIMIT)
-
-  const dotClass =
-    status.state === 'connected'
-      ? 'status-dot'
-      : status.state === 'probing'
-        ? 'status-dot status-dot-warn'
-        : 'status-dot status-dot-down'
 
   return (
     <nav className="rail">
@@ -87,12 +79,16 @@ export function NavRail() {
         </>
       )}
 
-      <div className="rail-status" title={status.host}>
-        <span className={dotClass} />
-        <div style={{ minWidth: 0 }}>
-          <div className="rail-host ellipsis">{status.host}</div>
-          <div className="rail-status-line">{describeStatus(status)}</div>
-        </div>
+      <div className="rail-account">
+        <button
+          type="button"
+          className="account-pill account-pill-rail"
+          title="Server & account"
+          onClick={() => setRoot('settings')}
+        >
+          <span className="avatar">{me ? initials(me.username) : '··'}</span>
+          <span className="ellipsis">{me?.username ?? 'account'}</span>
+        </button>
       </div>
     </nav>
   )

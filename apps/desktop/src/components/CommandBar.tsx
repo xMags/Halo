@@ -1,18 +1,15 @@
-import { initials } from '../format'
 import { useNav } from '../nav'
-import { useMe } from '../queries'
 import { useScreenTitle } from '../screenTitle'
 import { Icon } from './Icon'
 
 /**
- * The bar under the title bar: where you are, how to go back, and the two
- * destinations that are reachable from anywhere — search and the account.
+ * The bar under the title bar: where you are, how to go back, and search,
+ * which is reachable from anywhere. The account lives in the rail's footer.
  * It never scrolls; the view below it does.
  */
 export function CommandBar() {
   const { canPop, pop, setRoot } = useNav()
   const { title, crumb } = useScreenTitle()
-  const { data: me } = useMe()
 
   return (
     <div className="cmdbar">
@@ -33,16 +30,6 @@ export function CommandBar() {
         <Icon name="search" size={14} />
         <span className="spacer">Search titles, addons…</span>
         <span className="kbd">CTRL K</span>
-      </button>
-
-      <button
-        type="button"
-        className="account-pill"
-        title="Server & account"
-        onClick={() => setRoot('settings')}
-      >
-        <span className="avatar">{me ? initials(me.username) : '··'}</span>
-        <span className="ellipsis">{me?.username ?? 'account'}</span>
       </button>
     </div>
   )

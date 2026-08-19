@@ -837,38 +837,11 @@ button.row-card:hover {
   white-space: nowrap;
 }
 
-.rail-status {
+/* Account sits where the rail ends, pinned below the scrolling sections. */
+.rail-account {
   margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 12px 0 22px;
+  padding: 12px 10px 0 16px;
   border-top: 1px solid var(--hairline);
-  min-width: 0;
-}
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--r-pill);
-  background: var(--success);
-  box-shadow: 0 0 0 3px rgba(93, 211, 158, 0.14);
-  flex: 0 0 auto;
-}
-.status-dot-warn {
-  background: var(--warning);
-  box-shadow: 0 0 0 3px rgba(255, 212, 121, 0.14);
-}
-.status-dot-down {
-  background: var(--danger);
-  box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.14);
-}
-.rail-host {
-  font: 400 10.5px/1.3 var(--mono);
-  color: var(--text-muted);
-}
-.rail-status-line {
-  font: 400 9.5px/1.3 var(--mono);
-  color: var(--text-dimmer);
 }
 
 /* ── Command bar ───────────────────────────────────────────────────────── */
@@ -951,6 +924,10 @@ button.row-card:hover {
 }
 .account-pill:hover {
   background: var(--hover-fill);
+}
+.account-pill-rail {
+  width: 100%;
+  max-width: none;
 }
 .avatar {
   width: 22px;
