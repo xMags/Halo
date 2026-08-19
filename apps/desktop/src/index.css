@@ -699,11 +699,11 @@ button.row-card:hover {
   pointer-events: none;
 }
 .brand-mark {
-  width: 13px;
-  height: 13px;
-  border-radius: 4px;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.14);
+  /* The mark is cropped to its glyph, so the box is the glyph: no safe-zone
+     padding to size around, and no glow ring - the artwork carries its own. */
+  width: 16px;
+  height: 16px;
+  background: url('./assets/halo-mark.png') center / contain no-repeat;
   flex: 0 0 auto;
 }
 .brand-word {
@@ -2379,11 +2379,10 @@ button.row-card:hover {
   gap: 10px;
 }
 .logo-mark {
-  width: 18px;
-  height: 18px;
-  border-radius: 6px;
-  background: var(--accent);
-  box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.16);
+  width: 22px;
+  height: 22px;
+  background: url('./assets/halo-mark.png') center / contain no-repeat;
+  flex: 0 0 auto;
 }
 .logo-word {
   font-size: 12px;
