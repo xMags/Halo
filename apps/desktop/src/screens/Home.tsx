@@ -18,7 +18,7 @@ import {
   useWatchStates,
   type BrowsableCatalog,
 } from '../queries'
-import { usePublishScreenTitle } from '../screenTitle'
+import { CommandBarActions, usePublishScreenTitle } from '../screenTitle'
 
 /** How many catalog shelves Home renders (each is one server round-trip). */
 const MAX_SHELVES = 8
@@ -54,10 +54,14 @@ export function Home() {
   // regardless of which browse filter is showing.
   const continueItems = buildContinueWatching(watchStates, library).slice(0, CONTINUE_LIMIT)
 
-  usePublishScreenTitle('Home', `${allShelves.length} CATALOGS`)
+  usePublishScreenTitle('Home', `${allShelves.length} CATALOGS · ${addons?.length ?? 0} ADDONS`)
 
   return (
     <div className="view no-bar">
+      <CommandBarActions>
+        <Segmented options={FILTERS} value={filter} onChange={setFilter} />
+      </CommandBarActions>
+
       {error && <div className="state-note error-text">Could not reach your Halo server: {String(error)}</div>}
       {isLoading && (
         <div className="state-note">
@@ -71,14 +75,6 @@ export function Home() {
       )}
 
       {shelves.length > 0 && <FeaturedHero lead={shelves[0]!} watchStates={watchStates} />}
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '26px var(--g) 0' }}>
-        <Segmented options={FILTERS} value={filter} onChange={setFilter} />
-        <div className="spacer" />
-        <div className="meta-mono">
-          {shelves.length} CATALOGS · {addons?.length ?? 0} ADDONS
-        </div>
-      </div>
 
       {continueItems.length > 0 && (
         <Shelf title="Continue watching" source={`${continueItems.length} ITEMS`}>

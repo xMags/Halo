@@ -883,6 +883,16 @@ button.row-card:hover {
   color: var(--text-dimmer);
   padding-top: 2px;
 }
+/* Screens portal their own controls here. Most publish none, so the slot has
+   to collapse: an empty flex child still earns the bar's gap on both sides. */
+.cmd-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.cmd-actions:empty {
+  display: none;
+}
 .cmd-search {
   display: flex;
   align-items: center;
