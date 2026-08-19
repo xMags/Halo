@@ -95,6 +95,7 @@
   --g: 28px;
   --gs: 24px;
   --rail-w: 212px;
+  --rail-compact-w: 48px;
   --bar: 54px;
   --hero: 322px;
   --hero-title: 40px;
@@ -737,39 +738,77 @@ button.row-card:hover {
 }
 
 /* ── Navigation rail ───────────────────────────────────────────────────── */
+/* Segoe Fluent Icons is a system font on Windows 11; MDL2 is the 10 fallback. */
+.icon {
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets', sans-serif;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  user-select: none;
+}
+
 .rail {
   width: var(--rail-w);
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  padding: 14px 10px 14px 0;
+  padding: 6px 8px 14px;
   border-right: 1px solid var(--hairline);
   background: var(--rail);
+  transition: width 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+.rail-collapsed {
+  width: var(--rail-compact-w);
+}
+.rail-toggle {
+  width: 36px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.rail-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
 }
 .rail-kicker {
   font: 700 10px/1 var(--mono);
   letter-spacing: 0.18em;
   color: var(--text-dimmer);
-  padding: 6px 0 12px 22px;
+  padding: 12px 0 10px 12px;
+}
+.rail-collapsed .rail-kicker {
+  visibility: hidden;
 }
 .rail-items {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 .rail-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 9px 12px 9px 22px;
+  gap: 12px;
+  height: 36px;
+  padding: 0 10px 0 12px;
   border: none;
-  border-radius: 0 10px 10px 0;
+  border-radius: var(--r-control);
   background: transparent;
   color: var(--text-muted);
   font-size: 13.5px;
   font-weight: 600;
   text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
   cursor: pointer;
 }
 .rail-item:hover {
@@ -780,16 +819,33 @@ button.row-card:hover {
   background: var(--hover-fill);
   color: var(--text);
 }
-/* 2 px accent bar pinned to the window edge, inset 9 px top and bottom. */
+/* WinUI's selection indicator: a short accent pill centred on the row. */
 .rail-item-active::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 9px;
-  bottom: 9px;
-  width: 2px;
-  border-radius: 0 2px 2px 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 3px;
   background: var(--accent);
+}
+/* Compact pane: the same rows, narrowed to their icons. */
+.rail-collapsed .rail-item {
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+}
+.rail-collapsed .rail-label {
+  display: none;
+}
+.rail-collapsed .rail-account {
+  padding: 12px 0 0;
+}
+.rail-collapsed .account-pill-rail {
+  padding: 4px;
+  justify-content: center;
 }
 .rail-count {
   margin-left: auto;
