@@ -797,46 +797,6 @@ button.row-card:hover {
   color: var(--accent);
 }
 
-.jump-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 0 6px 0 16px;
-}
-.jump-row {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 7px 8px;
-  border: none;
-  border-radius: var(--r-control);
-  background: transparent;
-  color: var(--text-muted);
-  text-align: left;
-  cursor: pointer;
-  min-width: 0;
-}
-.jump-row:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-.jump-thumb {
-  width: 26px;
-  height: 38px;
-  flex: 0 0 auto;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-}
-.jump-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-bright);
-}
-.jump-meta {
-  font: 400 10px/1.4 var(--mono);
-  color: var(--text-faint);
-  white-space: nowrap;
-}
-
 /* Account sits where the rail ends, pinned below the scrolling sections. */
 .rail-account {
   margin-top: auto;
