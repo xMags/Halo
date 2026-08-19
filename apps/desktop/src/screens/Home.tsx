@@ -81,17 +81,11 @@ export function Home() {
       </div>
 
       {continueItems.length > 0 && (
-        <section style={{ marginTop: 22 }}>
-          <div className="shelf-head">
-            <div className="section-title">Continue watching</div>
-            <div className="shelf-source">{continueItems.length} ITEMS</div>
-          </div>
-          <div className="shelf-scroll no-bar" style={{ gap: 12 }}>
-            {continueItems.map((item) => (
-              <ContinueCard key={item.itemId} item={item} watchStates={watchStates} />
-            ))}
-          </div>
-        </section>
+        <Shelf title="Continue watching" source={`${continueItems.length} ITEMS`}>
+          {continueItems.map((item) => (
+            <ContinueCard key={item.itemId} item={item} watchStates={watchStates} />
+          ))}
+        </Shelf>
       )}
 
       {shelves.map((shelf) => (
