@@ -16,6 +16,7 @@ apps/mobile/android/
 
 # design exploration artifacts (HTML mockups; implementation is the source of truth)
 apps/mobile/design/
+/Desktop UI redesign/
 
 # env & data
 .env
