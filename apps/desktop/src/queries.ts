@@ -153,18 +153,24 @@ export interface AddonStreams {
   streams: Stream[]
 }
 
-/** Playable streams per addon, fanned out server-side. */
+/**
+ * Playable streams per addon, fanned out server-side. The elapsed time is
+ * measured because the sources screen reports it: source resolution is the
+ * slowest thing the app does, and a number makes a lagging addon visible
+ * instead of leaving the wait unexplained.
+ */
 export function useStreams(type: string, videoId: string) {
   return useQuery({
     queryKey: ['streams', type, videoId],
     queryFn: async () => {
+      const started = performance.now()
       const { results, errors } = await getClient().getStreams(type, videoId)
       const groups: AddonStreams[] = results.map((r) => ({
         addonId: r.addon.id,
         addonName: r.addon.name,
         streams: r.streams,
       }))
-      return { groups, errors }
+      return { groups, errors, elapsedMs: Math.round(performance.now() - started) }
     },
   })
 }
@@ -228,7 +234,18 @@ export function useAddonSubtitles(opts: SubtitleOptions) {
 export interface SearchResultGroup {
   key: string
   title: string
+  /** Owning addon, shown as the shelf's mono source line. */
+  addonName: string
+  type: string
   metas: MetaPreview[]
+}
+
+export interface SearchOutcome {
+  groups: SearchResultGroup[]
+  /** Catalogs queried — the "N ADDONS" half of the live timing readout. */
+  catalogsQueried: number
+  /** Wall-clock milliseconds for the whole fan-out. */
+  elapsedMs: number
 }
 
 /**
@@ -237,6 +254,10 @@ export interface SearchResultGroup {
  * order; groups that error or come back empty are dropped. Duplicates are
  * possible across groups (two addons can know the same title) — that mirrors
  * Stremio, where every catalog owns its row.
+ *
+ * The fan-out is timed because the search screen reports it: a slow addon is
+ * the usual reason results feel late, and the number makes that visible
+ * instead of leaving the user guessing.
  */
 export function useSearch(term: string) {
   const { data: addons } = useEffectiveAddons()
@@ -245,7 +266,7 @@ export function useSearch(term: string) {
     queryKey: ['search', trimmed],
     enabled: !!addons && trimmed.length >= 2,
     staleTime: 60_000,
-    queryFn: async (): Promise<SearchResultGroup[]> => {
+    queryFn: async (): Promise<SearchOutcome> => {
       const targets = (addons ?? []).flatMap((addon) =>
         addon.manifest.catalogs
           .filter(
@@ -255,15 +276,18 @@ export function useSearch(term: string) {
           )
           .map((c) => ({
             addonId: addon.id,
+            addonName: addon.manifest.name,
             type: c.type,
             id: c.id,
             title: `${c.name ?? addon.manifest.name} – ${typeLabel(c.type)}`,
           })),
       )
+      const started = performance.now()
       const results = await Promise.allSettled(
         targets.map((t) => getClient().getCatalog(t.addonId, t.type, t.id, { search: trimmed })),
       )
-      return targets.flatMap((t, i) => {
+      const elapsedMs = Math.round(performance.now() - started)
+      const groups = targets.flatMap((t, i): SearchResultGroup[] => {
         const r = results[i]!
         if (r.status !== 'fulfilled') return []
         const seen = new Set<string>()
@@ -273,8 +297,18 @@ export function useSearch(term: string) {
           seen.add(key)
           return true
         })
-        return metas.length > 0 ? [{ key: `${t.addonId}/${t.type}/${t.id}`, title: t.title, metas }] : []
+        if (metas.length === 0) return []
+        return [
+          {
+            key: `${t.addonId}/${t.type}/${t.id}`,
+            title: t.title,
+            addonName: t.addonName,
+            type: t.type,
+            metas,
+          },
+        ]
       })
+      return { groups, catalogsQueried: targets.length, elapsedMs }
     },
   })
 }

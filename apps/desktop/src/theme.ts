@@ -1,49 +1,105 @@
 /**
- * Halo "glassy-dark" design system — desktop port of apps/mobile/src/theme.ts.
- * Identity: near-black canvas, frosted translucent chrome, iOS-blue system
- * accent, white hero CTAs, gradient scrims over real poster art.
+ * Halo desktop design system. Near-black window, monochrome chrome, one iOS
+ * blue for interaction and one white button per screen for the hero action.
  *
  * Colour roles:
- *   accent   — system/interactive (tabs, links, small buttons, selection)
- *   primary  — the hero call-to-action (Play/Sources): white on black text,
- *              always the single most prominent action on a screen.
+ *   accent      — interaction (selection bar, progress, focused field)
+ *   accentText  — the readable-on-dark tint of the accent: kickers, links,
+ *                 active pills. Never use `accent` for text on the canvas.
+ *   primary     — the single hero call-to-action (Play/Resume/Sign in):
+ *                 white fill, black label, at most one per screen.
  *
- * These constants mirror the CSS variables in index.css; use the variables in
- * stylesheets and these exports where a value is needed in TS.
+ * These constants mirror the custom properties in index.css. Stylesheets use
+ * the variables; these exports exist for the handful of places a value has to
+ * reach JS (canvas-free gradients, inline widths, chart-like fills).
  */
 export const colors = {
-  background: '#0a0c11',
-  surface: '#14161d',
-  surfaceHigh: '#1c202a',
-  border: '#252a35',
-  text: '#f4f6fb',
-  textDim: '#8b93a5',
-  accent: '#0a84ff',
-  danger: '#ff6b6b',
-  success: '#5dd39e',
+  /** App background and title bar. */
+  window: '#07080b',
+  /** Left navigation rail — half a step darker than the canvas. */
+  rail: '#090a0f',
+  /** List rows and flat cards. */
+  surface: '#0c0e13',
+  /** Hero cards, aside panels — one step above `surface`. */
+  surfaceRaised: '#0e1015',
+  /** Fill behind poster/still/backdrop art while it loads or is missing. */
+  placeholder: '#14161d',
+  /** Row hover fill. */
+  surfaceHover: '#12151b',
 
-  // Hero call-to-action (white button, black label).
+  /** Structural dividers: title bar, rail, command bar. */
+  hairline: 'rgba(255,255,255,0.055)',
+  /** Card and row borders. */
+  border: 'rgba(255,255,255,0.08)',
+  /** Borders that need to read as interactive (hover, focus, hero buttons). */
+  borderStrong: 'rgba(255,255,255,0.13)',
+
+  text: '#f4f6fb',
+  /** Button labels and values. */
+  textSecondary: '#c7cdd9',
+  /** Body copy and inactive navigation. */
+  textMuted: '#8b93a5',
+  /** Mono metadata. */
+  textDim: '#6b7383',
+  /** Kickers and the quietest labels. */
+  textDimmer: '#4e5666',
+
+  accent: '#0a84ff',
+  accentText: '#7ec0ff',
+  success: '#5dd39e',
+  warning: '#ffd479',
+  danger: '#ff6b6b',
+  /** Window close button hover — the one red that is not `danger`. */
+  closeHover: '#c6273a',
+
   primary: '#ffffff',
   onPrimary: '#000000',
   onAccent: '#ffffff',
-
-  // Translucent surfaces — pair with backdrop-filter blur.
-  glass: 'rgba(255,255,255,0.07)',
-  glassBorder: 'rgba(255,255,255,0.11)',
-  hairline: 'rgba(255,255,255,0.11)',
-  fieldFill: 'rgba(255,255,255,0.09)',
-  sheetTint: 'rgba(20,22,30,0.72)',
-  /** Near-black fill for floating pills/HUDs over video (notices, gesture HUD). */
-  overlayPill: 'rgba(5,7,12,0.82)',
-
-  // Muted brights for metadata (ratings, etc.).
-  gold: '#ffd479',
 } as const
 
-export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 } as const
+export const radius = {
+  /** Controls: window buttons, small icon squares, sort/ghost buttons. */
+  control: 8,
+  /** Rows and buttons. */
+  row: 11,
+  /** Cards. */
+  card: 14,
+  /** Hero blocks and floating overlays. */
+  overlay: 17,
+  pill: 999,
+} as const
 
-export const radius = { sm: 8, md: 12, lg: 16, xl: 20, pill: 999 } as const
+/**
+ * The two window tiers. Everything responsive is driven by these, applied as
+ * one size class (a `min-width` media query in index.css) rather than
+ * per-screen breakpoints — a view must never disagree with its chrome about
+ * which tier it is in.
+ */
+export const sizeClass = {
+  /** Windowed, 1280 × 800 — also the minimum supported window. */
+  compact: {
+    gutter: 28,
+    navRail: 212,
+    commandBar: 54,
+    heroHeight: 322,
+    posterWidth: 132,
+    wideCard: 268,
+    libraryColumns: 7,
+  },
+  /** Maximised, 1920 × 1080. */
+  wide: {
+    gutter: 44,
+    navRail: 248,
+    commandBar: 62,
+    heroHeight: 460,
+    posterWidth: 168,
+    wideCard: 336,
+    libraryColumns: 9,
+  },
+} as const
 
-export const POSTER_WIDTH = 112
-export const POSTER_HEIGHT = 168
-export const POSTER_RATIO = 1.5
+/** Viewport width at which the wide tier takes over (see index.css). */
+export const WIDE_TIER_MIN_WIDTH = 1600
+
+/** Title bar height, fixed in both tiers. */
+export const TITLE_BAR_HEIGHT = 36

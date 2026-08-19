@@ -3,43 +3,45 @@ import { useNav } from '../nav'
 
 interface Props {
   meta: MetaPreview
-  /** 0..1 fills the thin bar at the poster's foot (Continue Watching). */
-  progress?: number
-  /** Fixed card width for shelf rows; omit inside grids (cell-sized). */
-  width?: number
+  /** `MOVIE` / `SERIES` chip in the poster's top-left (library grid). */
+  showKind?: boolean
+  /** Mono line under the title; defaults to the release year. */
+  metaLine?: string
+  /** Fill the grid cell instead of the fixed shelf width. */
+  inGrid?: boolean
   /** Runs before navigation — e.g. recording the search term that led here. */
   onBeforePress?: () => void
 }
 
-export function PosterCard({ meta, progress, width, onBeforePress }: Props) {
+/**
+ * The 2:3 poster used by every shelf and the library grid. Art that is missing
+ * or still loading falls back to the hatched placeholder with the title
+ * printed on it, so a slow image never reads as a broken card.
+ */
+export function PosterCard({ meta, showKind, metaLine, inGrid, onBeforePress }: Props) {
   const { push } = useNav()
+  const sub = metaLine ?? meta.releaseInfo ?? ''
 
   return (
     <button
       type="button"
-      className="poster-card"
-      // Fixed width in shelves; unset in grids, where the cell sizes the card
-      // and .poster-frame's aspect-ratio keeps 2:3.
-      style={width !== undefined ? { width } : undefined}
+      className={`poster ${inGrid ? 'poster-grid-cell' : ''}`}
       title={meta.name}
       onClick={() => {
         onBeforePress?.()
         push({ name: 'detail', type: meta.type, id: meta.id })
       }}
     >
-      <div className="poster-frame">
+      <div className="art poster-frame">
         {meta.poster ? (
           <img src={meta.poster} alt="" loading="lazy" draggable={false} />
         ) : (
-          <div className="poster-fallback">{meta.name}</div>
+          <div className="art-label">{meta.name}</div>
         )}
-        {progress !== undefined && (
-          <div className="poster-progress">
-            <div style={{ width: `${Math.round(progress * 100)}%` }} />
-          </div>
-        )}
+        {showKind && <div className="poster-badge">{meta.type.toUpperCase()}</div>}
       </div>
-      <div className="poster-name">{meta.name}</div>
+      <div className="poster-name ellipsis">{meta.name}</div>
+      {sub && <div className="poster-meta ellipsis">{sub}</div>}
     </button>
   )
 }

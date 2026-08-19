@@ -1,13 +1,13 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 
 /**
- * Minimal screen stack with sidebar sections — a handful of screens doesn't
+ * Minimal screen stack with rail sections — a handful of screens doesn't
  * justify a router dependency. Params mirror mobile's route params so flows
  * stay comparable; the section roots are the desktop-only part (mobile uses
  * bottom tabs instead).
  */
 
-/** Top-level sidebar destinations. Selecting one resets the stack to it. */
+/** Top-level rail destinations. Selecting one resets the stack to it. */
 export type Section = 'home' | 'search' | 'library' | 'settings'
 
 export interface PlayerParams {
@@ -49,13 +49,15 @@ export type Screen =
 
 interface NavContextValue {
   screen: Screen
-  /** The stack's root — drives the sidebar's active highlight. */
+  /** The stack's root — drives the rail's active highlight. */
   section: Section
+  /** False on a section root, where the command bar's back button is inert. */
+  canPop: boolean
   push: (screen: Screen) => void
   pop: () => void
   /** Swaps the current screen without growing the stack (autoplay handoff). */
   replace: (screen: Screen) => void
-  /** Jumps to a sidebar section, clearing any pushed detail/streams screens. */
+  /** Jumps to a rail section, clearing any pushed detail/streams screens. */
   setRoot: (section: Section) => void
   reset: () => void
 }
@@ -67,10 +69,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
 
   const push = useCallback((screen: Screen) => setStack((s) => [...s, screen]), [])
   const pop = useCallback(() => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)), [])
-  const replace = useCallback(
-    (screen: Screen) => setStack((s) => [...s.slice(0, -1), screen]),
-    [],
-  )
+  const replace = useCallback((screen: Screen) => setStack((s) => [...s.slice(0, -1), screen]), [])
   const setRoot = useCallback((section: Section) => setStack([{ name: section }]), [])
   const reset = useCallback(() => setStack([{ name: 'home' }]), [])
 
@@ -78,6 +77,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
     () => ({
       screen: stack[stack.length - 1]!,
       section: stack[0]!.name as Section,
+      canPop: stack.length > 1,
       push,
       pop,
       replace,

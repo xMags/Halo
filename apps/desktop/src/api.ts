@@ -11,6 +11,9 @@ import { clearOidcSession, getOidcAccessToken, loadOidcSession, refreshOidcToken
  */
 const SERVER_KEY = 'halo.serverUrl'
 
+/** Production server prefilled for first-run setup, matching the native mobile app. */
+export const DEFAULT_SERVER_URL = 'https://halo.ditto.moe'
+
 /** Which auth flavor the active session uses; drives token providers and sign-out. */
 export type SessionKind = 'oidc' | 'local'
 

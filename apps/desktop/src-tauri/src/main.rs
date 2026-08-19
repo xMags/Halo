@@ -22,9 +22,14 @@ struct DwmBlurBehind {
     transition_on_maximized: i32,
 }
 
+/// `DWMWA_WINDOW_CORNER_PREFERENCE` / `DWMWCP_ROUND` (Windows 11 22000+).
+const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
+const DWMWCP_ROUND: u32 = 2;
+
 #[link(name = "dwmapi")]
 extern "system" {
     fn DwmEnableBlurBehindWindow(hwnd: isize, bb: *const DwmBlurBehind) -> i32;
+    fn DwmSetWindowAttribute(hwnd: isize, attribute: u32, value: *const u32, size: u32) -> i32;
 }
 
 /// The dll ships beside the exe in packaged builds; in dev it lives in the
@@ -131,6 +136,21 @@ fn main() {
             // the window; the webview keeps its own transparency. (Spike trap #2.)
             let bb = DwmBlurBehind { flags: 0x1, enable: 0, blur_region: 0, transition_on_maximized: 0 };
             unsafe { DwmEnableBlurBehindWindow(hwnd, &bb) };
+
+            // The window is undecorated (the UI draws its own title bar), so
+            // Windows does not round its corners for us. Ask DWM to, which
+            // clips mpv's child surface along with everything else. Older
+            // Windows rejects the attribute and keeps square corners — that is
+            // a cosmetic difference, so the result is deliberately ignored.
+            let corner = DWMWCP_ROUND;
+            unsafe {
+                DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                    &corner,
+                    std::mem::size_of::<u32>() as u32,
+                )
+            };
 
             // Spike trap #1: wid must be this top-level HWND. mpv creates its
             // own child inside it and tracks the window size natively — no

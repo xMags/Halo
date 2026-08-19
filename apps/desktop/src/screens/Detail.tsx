@@ -1,22 +1,26 @@
-import type { MetaVideo, WatchState } from '@halo/core'
+import type { MetaDetail, MetaVideo, WatchState } from '@halo/core'
 import { useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
+import { Segmented } from '../components/Segmented'
+import { episodeTag, formatAirDate, formatTimeLeft } from '../format'
 import { useNav } from '../nav'
 import {
   libraryItemFromMeta,
   useLibrary,
   useMeta,
+  useStreams,
   useUpsertLibrary,
   useWatchStates,
 } from '../queries'
+import { usePublishScreenTitle } from '../screenTitle'
 
 /**
- * Title page: hero art + description, then the playback entry point — a
- * Sources button for movies, a season/episode list for series. `videoId` for
- * episodes is the addon-defined video id (e.g. "tt0944947:1:2").
+ * Title page: art and the playback entry point up top, then the episode list
+ * beside a column of facts and per-addon availability. Movies have no episode
+ * list, so their two cards take the full width instead.
  */
 export function Detail({ type, id }: { type: string; id: string }) {
-  const { pop, push } = useNav()
+  const { push } = useNav()
   const { data: meta, isLoading, error } = useMeta(type, id)
   const { data: library } = useLibrary()
   const { data: watchStates } = useWatchStates()
@@ -31,15 +35,32 @@ export function Detail({ type, id }: { type: string; id: string }) {
     return nums.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b))
   }, [meta])
 
+  const statesForItem = useMemo(
+    () => (watchStates ?? []).filter((s) => s.itemId === itemId),
+    [watchStates, itemId],
+  )
+
+  // The episode the user is actually mid-way through: what Resume targets and
+  // which row the list highlights.
+  const resumeState = useMemo(() => {
+    const videoIds = new Set((meta?.videos ?? []).map((v) => v.id))
+    return (
+      statesForItem
+        .filter((s) => !s.watched && s.durationSec > 0 && (videoIds.size === 0 || videoIds.has(s.videoId)))
+        .sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null
+    )
+  }, [statesForItem, meta])
+  const resumeVideo = (meta?.videos ?? []).find((v) => v.id === resumeState?.videoId)
+
   // Open on the season of the most recently watched episode, not season 1 —
   // mid-binge, "the season I'm in" is almost always where the next click goes.
   const lastWatchedSeason = useMemo(() => {
     const videosById = new Map((meta?.videos ?? []).map((video) => [video.id, video]))
-    const latest = (watchStates ?? [])
-      .filter((s) => s.itemId === itemId && videosById.has(s.videoId))
+    const latest = statesForItem
+      .filter((s) => videosById.has(s.videoId))
       .sort((a, b) => b.updatedAt - a.updatedAt)[0]
     return latest ? (videosById.get(latest.videoId)!.season ?? null) : null
-  }, [watchStates, itemId, meta])
+  }, [statesForItem, meta])
 
   const [season, setSeason] = useState<number | null>(null)
   const activeSeason = season ?? lastWatchedSeason ?? seasons[0] ?? null
@@ -51,9 +72,45 @@ export function Detail({ type, id }: { type: string; id: string }) {
     [meta, activeSeason],
   )
 
-  if (isLoading) return <Shell onBack={pop}>Loading…</Shell>
-  if (error || !meta)
-    return <Shell onBack={pop}>Could not load this title: {String(error ?? 'not found')}</Shell>
+  usePublishScreenTitle(
+    meta?.name ?? 'Loading…',
+    [type, meta?.releaseInfo].filter(Boolean).join(' · ').toUpperCase(),
+  )
+
+  const openStreams = (video?: MetaVideo) => {
+    if (!meta) return
+    const tag = video ? episodeTag(video.season, video.episode) : null
+    push({
+      name: 'streams',
+      type,
+      videoId: video?.id ?? id,
+      itemId,
+      metaId: id,
+      title: video ? (video.title ?? video.name ?? meta.name) : meta.name,
+      showName: meta.name,
+      ...(tag ? { episodeLabel: tag } : {}),
+      ...(meta.poster ? { poster: meta.poster } : {}),
+    })
+  }
+
+  if (isLoading) {
+    return (
+      <div className="view no-bar">
+        <div className="state-note">
+          <span className="spinner" /> Loading title…
+        </div>
+      </div>
+    )
+  }
+  if (error || !meta) {
+    return (
+      <div className="view no-bar">
+        <div className="state-note error-text">
+          Could not load this title: {String(error ?? 'not found')}
+        </div>
+      </div>
+    )
+  }
 
   const toggleLibrary = () => {
     const now = Date.now()
@@ -66,147 +123,301 @@ export function Detail({ type, id }: { type: string; id: string }) {
     }
   }
 
-  const progressFor = (videoId: string): WatchState | null => {
-    const state = (watchStates ?? []).find((s) => s.videoId === videoId)
-    if (!state || state.durationSec === 0) return null
-    return state
-  }
+  const resumeTag = resumeVideo ? episodeTag(resumeVideo.season, resumeVideo.episode) : null
+  const resumeLabel = resumeState
+    ? `Resume${resumeTag ? ` ${resumeTag}` : ''} · ${formatTimeLeft(resumeState.positionSec, resumeState.durationSec)}`
+    : type === 'series'
+      ? 'Play first episode'
+      : 'Play'
 
-  const openStreams = (video?: MetaVideo) =>
-    push({
-      name: 'streams',
-      type,
-      videoId: video?.id ?? id,
-      itemId,
-      metaId: id,
-      title: video ? (video.title ?? video.name ?? meta.name) : meta.name,
-      showName: meta.name,
-      ...(video && video.season != null && video.episode != null
-        ? { episodeLabel: `S${video.season}E${video.episode}` }
-        : {}),
-      ...(meta.poster ? { poster: meta.poster } : {}),
-    })
+  const seasonWatched = episodes.filter((v) =>
+    statesForItem.some((s) => s.videoId === v.id && s.watched),
+  ).length
 
-  const inLibrary = !!libraryEntry
+  /** What the availability card and the header button resolve sources for. */
+  const targetVideo = resumeVideo ?? (type === 'series' ? episodes[0] : undefined)
 
   return (
-    <div className="screen-scroll">
-      <div
-        style={{
-          position: 'relative',
-          minHeight: 300,
-          padding: '24px 32px',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'flex-end',
-          backgroundImage: meta.background ? `url(${meta.background})` : undefined,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background:
-              'linear-gradient(rgba(10,12,17,0.55), rgba(10,12,17,0.85) 75%, var(--background))',
-          }}
-        />
-        <div style={{ position: 'relative' }}>
-          <button className="btn btn-glass" type="button" onClick={pop} style={{ marginBottom: 16 }}>
-            ← Back
-          </button>
-          <div className="t-large-title">{meta.name}</div>
-          <div className="t-caption" style={{ marginTop: 4 }}>
-            {[meta.releaseInfo, meta.runtime, meta.imdbRating && `★ ${meta.imdbRating}`]
-              .filter(Boolean)
-              .join(' · ')}
-          </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-            {(type !== 'series' || !meta.videos?.length) && (
-              <button className="btn btn-primary btn-row" type="button" onClick={() => openStreams()}>
-                <Icon name="play" size={15} />
-                Sources
-              </button>
+    <div className="view no-bar">
+      <div className="detail-backdrop">
+        {(meta.background ?? meta.poster) && (
+          <div
+            className="detail-backdrop-art"
+            style={{ backgroundImage: `url(${meta.background ?? meta.poster})` }}
+          />
+        )}
+        <div className="detail-scrim" />
+        <div className="detail-head">
+          <div className="art detail-poster">
+            {meta.poster ? (
+              <img src={meta.poster} alt="" draggable={false} />
+            ) : (
+              <div className="art-label">{meta.name}</div>
             )}
-            <button
-              className="btn btn-glass btn-row"
-              type="button"
-              onClick={toggleLibrary}
-              style={inLibrary ? { color: 'var(--accent)' } : undefined}
-            >
-              <Icon name="bookmark" size={16} />
-              {inLibrary ? 'In Library' : 'Add to Library'}
-            </button>
+          </div>
+          <div style={{ minWidth: 0, paddingBottom: 4 }}>
+            <div className="kicker kicker-accent">{type.toUpperCase()}</div>
+            <div className="detail-title ellipsis">{meta.name}</div>
+            <div className="detail-facts">
+              {meta.imdbRating && <span className="rating">★ {meta.imdbRating}</span>}
+              {meta.releaseInfo && <span>{meta.releaseInfo}</span>}
+              {seasons.length > 0 && (
+                <>
+                  <span className="dot-sep">/</span>
+                  <span>
+                    {seasons.length} season{seasons.length === 1 ? '' : 's'} ·{' '}
+                    {(meta.videos ?? []).length} episodes
+                  </span>
+                </>
+              )}
+              {meta.runtime && (
+                <>
+                  <span className="dot-sep">/</span>
+                  <span>{meta.runtime}</span>
+                </>
+              )}
+            </div>
+            <div className="detail-actions">
+              <button type="button" className="btn-primary" onClick={() => openStreams(targetVideo)}>
+                <Icon name="play" size={13} />
+                {resumeLabel}
+              </button>
+              <button
+                type="button"
+                className={libraryEntry ? 'btn-accent' : 'btn-glass'}
+                onClick={toggleLibrary}
+              >
+                <Icon name="bookmark" size={15} />
+                {libraryEntry ? 'In library' : 'Add to library'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      <div style={{ padding: '20px 32px 48px', maxWidth: 760 }}>
-        {meta.description && (
-          <p style={{ color: 'var(--text-dim)', lineHeight: 1.55, marginTop: 0 }}>
-            {meta.description}
-          </p>
-        )}
+      {episodes.length > 0 ? (
+        <div className="detail-split">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {seasons.length > 1 && (
+                <Segmented
+                  options={seasons.map((s) => ({
+                    value: String(s),
+                    label: s === 0 ? 'Specials' : `Season ${s}`,
+                  }))}
+                  value={String(activeSeason)}
+                  onChange={(value) => setSeason(Number(value))}
+                />
+              )}
+              <div className="meta-mono">
+                {episodes.length} EPISODES · {seasonWatched} WATCHED
+              </div>
+            </div>
 
-        {type === 'series' && !!meta.videos?.length && (
-          <>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '8px 0 16px' }}>
-              {seasons.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  className="btn btn-glass"
-                  onClick={() => setSeason(s)}
-                  style={
-                    s === activeSeason
-                      ? { background: 'var(--accent)', borderColor: 'var(--accent)' }
-                      : undefined
-                  }
-                >
-                  {s === 0 ? 'Specials' : `Season ${s}`}
-                </button>
+            <div className="ep-list">
+              {episodes.map((video) => (
+                <EpisodeRow
+                  key={video.id}
+                  video={video}
+                  state={statesForItem.find((s) => s.videoId === video.id) ?? null}
+                  current={video.id === resumeState?.videoId}
+                  onOpen={() => openStreams(video)}
+                />
               ))}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {episodes.map((v) => {
-                const state = progressFor(v.id)
-                const fraction = state
-                  ? state.watched
-                    ? 1
-                    : state.positionSec / state.durationSec
-                  : null
-                return (
-                  <button key={v.id} type="button" onClick={() => openStreams(v)} className="episode-row">
-                    <div>
-                      <span className="t-callout" style={{ marginRight: 10 }}>
-                        E{v.episode ?? '?'}
-                      </span>
-                      <span>{v.title ?? v.name ?? v.id}</span>
-                    </div>
-                    {fraction !== null && (
-                      <div className="episode-progress">
-                        <div style={{ width: `${Math.round(fraction * 100)}%` }} />
-                      </div>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </>
-        )}
-      </div>
+          </div>
+          <aside className="detail-aside">
+            <SynopsisCard meta={meta} />
+            <AvailabilityCard
+              type={type}
+              videoId={targetVideo?.id ?? id}
+              onBrowse={() => openStreams(targetVideo)}
+            />
+          </aside>
+        </div>
+      ) : (
+        <div
+          className="detail-split"
+          style={{ maxWidth: 'var(--wide-max)', alignItems: 'stretch' }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <SynopsisCard meta={meta} />
+          </div>
+          <div className="detail-aside">
+            <AvailabilityCard type={type} videoId={id} onBrowse={() => openStreams()} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function Shell({ children, onBack }: { children: React.ReactNode; onBack: () => void }) {
+function EpisodeRow({
+  video,
+  state,
+  current,
+  onOpen,
+}: {
+  video: MetaVideo
+  state: WatchState | null
+  current: boolean
+  onOpen: () => void
+}) {
+  const fraction =
+    state && state.durationSec > 0
+      ? state.watched
+        ? 1
+        : state.positionSec / state.durationSec
+      : 0
+  const tag = episodeTag(video.season, video.episode) ?? `E${video.episode ?? '?'}`
+
   return (
-    <div style={{ padding: 32 }}>
-      <button className="btn btn-glass" type="button" onClick={onBack} style={{ marginBottom: 16 }}>
-        ← Back
+    <button type="button" className={`ep-row ${current ? 'ep-row-current' : ''}`} onClick={onOpen}>
+      <div className="art art-wide ep-still">
+        {video.thumbnail ? (
+          <img src={video.thumbnail} alt="" loading="lazy" draggable={false} />
+        ) : (
+          <div className="art-label">STILL</div>
+        )}
+        {fraction > 0 && (
+          <div className="art-progress">
+            <div style={{ width: `${Math.round(fraction * 100)}%` }} />
+          </div>
+        )}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <div className={`ep-tag ${current ? 'ep-tag-current' : ''}`}>{tag}</div>
+          <div className="ep-title ellipsis">{video.title ?? video.name ?? video.id}</div>
+          {state?.watched && <div className="badge badge-success">WATCHED</div>}
+        </div>
+        {video.overview && <div className="ep-blurb ellipsis">{video.overview}</div>}
+      </div>
+      <div className="ep-right">
+        {state && state.durationSec > 0 && !state.watched && (
+          <div className="ep-runtime">{formatTimeLeft(state.positionSec, state.durationSec)}</div>
+        )}
+        {formatAirDate(video.released) && (
+          <div className="ep-aired">{formatAirDate(video.released)}</div>
+        )}
+      </div>
+    </button>
+  )
+}
+
+/** Description plus whatever key/value facts the meta actually carries. */
+function SynopsisCard({ meta }: { meta: MetaDetail }) {
+  const facts: Array<{ key: string; value: string }> = []
+  const add = (key: string, value: string | undefined | string[]) => {
+    const text = Array.isArray(value) ? value.slice(0, 3).join(', ') : value
+    if (text) facts.push({ key, value: text })
+  }
+  add('CREATED BY', meta.director ?? meta.writer)
+  add('CAST', meta.cast)
+  add('GENRES', meta.genres)
+  add('COUNTRY', meta.country)
+  add('RUNTIME', meta.runtime)
+  add('AWARDS', meta.awards)
+
+  return (
+    <div className="card">
+      <div className="kicker">SYNOPSIS</div>
+      {meta.description ? (
+        <div className="body-copy" style={{ marginTop: 10, color: '#a7aebd' }}>
+          {meta.description}
+        </div>
+      ) : (
+        <div className="body-copy" style={{ marginTop: 10 }}>
+          No description from this addon.
+        </div>
+      )}
+      {facts.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 9,
+            marginTop: 15,
+            paddingTop: 14,
+            borderTop: '1px solid rgba(255,255,255,.07)',
+          }}
+        >
+          {facts.slice(0, 5).map((fact) => (
+            <div key={fact.key} className="fact-row">
+              <div className="fact-key">{fact.key}</div>
+              <div className="fact-value">{fact.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * How many playable sources each addon has for the video the header would
+ * play. This resolves streams up front, which is the same request the Sources
+ * screen makes — sharing the query key means clicking through is instant, and
+ * the count is the only honest way to show availability before you commit.
+ */
+function AvailabilityCard({
+  type,
+  videoId,
+  onBrowse,
+}: {
+  type: string
+  videoId: string
+  onBrowse: () => void
+}) {
+  const { data, isLoading } = useStreams(type, videoId)
+
+  const rows = (data?.groups ?? []).map((group) => ({
+    id: group.addonId,
+    name: group.addonName,
+    count: group.streams.length,
+  }))
+  const failed = data?.errors ?? []
+
+  return (
+    <div className="card">
+      <div className="kicker">AVAILABILITY</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+        {isLoading && (
+          <div className="body-copy" style={{ fontSize: 12 }}>
+            <span className="spinner" /> Asking your addons…
+          </div>
+        )}
+        {rows.map((row) => (
+          <div key={row.id} className="avail-row">
+            <span
+              className="avail-dot"
+              style={{ background: row.count > 0 ? 'var(--success)' : 'var(--text-dimmer)' }}
+            />
+            <span className="avail-name ellipsis">{row.name}</span>
+            <span className="avail-count">{row.count}</span>
+          </div>
+        ))}
+        {failed.map((failure) => (
+          <div key={failure.id} className="avail-row">
+            <span className="avail-dot" style={{ background: 'var(--danger)' }} />
+            <span className="avail-name ellipsis">{failure.name ?? 'An addon'}</span>
+            <span className="avail-count">—</span>
+          </div>
+        ))}
+        {!isLoading && rows.length === 0 && failed.length === 0 && (
+          <div className="body-copy" style={{ fontSize: 12 }}>
+            No addon offers streams for this title.
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        className="btn-glass"
+        style={{ width: '100%', justifyContent: 'center', marginTop: 14, padding: 9, fontSize: 12.5 }}
+        onClick={onBrowse}
+      >
+        Browse all sources
       </button>
-      <div className="t-caption">{children}</div>
     </div>
   )
 }

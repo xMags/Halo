@@ -17,8 +17,9 @@
         "title": "Halo",
         "width": 1280,
         "height": 800,
-        "minWidth": 960,
-        "minHeight": 600,
+        "minWidth": 1280,
+        "minHeight": 800,
+        "decorations": false,
         "transparent": true
       }
     ]

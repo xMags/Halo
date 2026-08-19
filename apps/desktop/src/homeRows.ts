@@ -51,35 +51,6 @@ export function buildContinueWatching(
     })
 }
 
-const RECENTLY_WATCHED_LIMIT = 15
-
-/**
- * Playback history: last distinct items by recency, any progress — finished
- * shows included as a rewatch entry point. Items already in Continue Watching
- * are excluded so the two rows never duplicate.
- */
-export function buildRecentlyWatched(
-  watchStates: WatchState[] | undefined,
-  library: LibraryItem[] | undefined,
-  continueItems: { itemId: string }[],
-  typeFilter: string | null,
-): MetaPreview[] {
-  const libById = activeLibraryById(library)
-  const exclude = new Set(continueItems.map((c) => c.itemId))
-  const seenItems = new Set<string>()
-  return (watchStates ?? [])
-    .filter((s) => !exclude.has(s.itemId))
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .flatMap((s) => {
-      if (seenItems.has(s.itemId)) return []
-      seenItems.add(s.itemId)
-      const meta = watchStateMeta(s, libById)
-      if (!meta || (typeFilter && meta.type !== typeFilter)) return []
-      return [meta]
-    })
-    .slice(0, RECENTLY_WATCHED_LIMIT)
-}
-
 /** Active library entries as poster previews, newest addition first. */
 export function buildLibraryRow(
   library: LibraryItem[] | undefined,
