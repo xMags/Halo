@@ -13,12 +13,16 @@ const ITEMS: Array<{ section: Section; label: string; icon: IconName }> = [
 
 const COLLAPSED_KEY = 'halo.railCollapsed'
 
-/** Device-local, like the other shell preferences; a blocked store just means expanded. */
+/**
+ * Device-local, like the other shell preferences. The rail starts collapsed
+ * and only stays open for someone who opened it, so the absent key and a
+ * blocked store both mean collapsed; only an explicit '0' expands it.
+ */
 function readCollapsed(): boolean {
   try {
-    return localStorage.getItem(COLLAPSED_KEY) === '1'
+    return localStorage.getItem(COLLAPSED_KEY) !== '0'
   } catch {
-    return false
+    return true
   }
 }
 
@@ -37,6 +41,8 @@ function writeCollapsed(collapsed: boolean): void {
  *
  * Collapsing follows WinUI's nav pane: the same rows narrowed to icons behind
  * the hamburger, with the labels becoming tooltips rather than disappearing.
+ * It starts collapsed and remembers being expanded, so the shelves get the
+ * width by default and the labels are one click away.
  */
 export function NavRail() {
   const { section, setRoot } = useNav()
