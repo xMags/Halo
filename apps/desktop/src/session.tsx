@@ -5,7 +5,6 @@ import {
   activateSession,
   clearServerUrl,
   deactivateSession,
-  getClient,
   getServerUrl,
   getSessionKind,
   onUnauthorized,
