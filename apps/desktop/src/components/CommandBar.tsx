@@ -3,9 +3,13 @@ import { useCommandBarSlotRef, useScreenTitle } from '../screenTitle'
 import { Icon } from './Icon'
 
 /**
- * The bar under the title bar: where you are, how to go back, the current
- * screen's own controls, and search, which is reachable from anywhere. The
- * account lives in the rail's footer. It never scrolls; the view below does.
+ * The bar under the title bar: where you are, the current screen's own
+ * controls, and search, which is reachable from anywhere. The account lives in
+ * the rail's footer. It never scrolls; the view below does.
+ *
+ * Back appears only where there is somewhere to go: a section root has an
+ * empty stack behind it, and a permanently dead button reads as broken chrome
+ * rather than as a disabled control.
  */
 export function CommandBar() {
   const { canPop, pop, setRoot } = useNav()
@@ -14,15 +18,11 @@ export function CommandBar() {
 
   return (
     <div className="cmdbar">
-      <button
-        type="button"
-        className="cmd-back"
-        title="Back"
-        disabled={!canPop}
-        onClick={pop}
-      >
-        <Icon name="chevronLeft" size={15} />
-      </button>
+      {canPop && (
+        <button type="button" className="cmd-back" title="Back" onClick={pop}>
+          <Icon name="chevronLeft" size={15} />
+        </button>
+      )}
       <div className="cmd-title ellipsis">{title}</div>
       {crumb && <div className="cmd-crumb ellipsis">{crumb}</div>}
       <div className="cmd-actions" ref={slotRef} />
