@@ -986,7 +986,6 @@ button.row-card:hover {
 .shelf-body {
   position: relative;
   --shelf-edge-size: 20px;
-  --shelf-edge-softness: 2px;
 }
 .shelf-body::before,
 .shelf-body::after {
@@ -998,15 +997,15 @@ button.row-card:hover {
   width: var(--shelf-edge-size);
   pointer-events: none;
   opacity: 0;
-  filter: blur(var(--shelf-edge-softness));
   transition: opacity 160ms ease;
 }
 .shelf-body::before {
   left: 0;
   background: linear-gradient(
     90deg,
-    var(--window) 0 34%,
-    rgba(7, 8, 11, 0.78) 56%,
+    var(--window) 0 35%,
+    rgba(7, 8, 11, 0.9) 50%,
+    rgba(7, 8, 11, 0.42) 74%,
     rgba(7, 8, 11, 0) 100%
   );
 }
@@ -1014,8 +1013,9 @@ button.row-card:hover {
   right: 0;
   background: linear-gradient(
     270deg,
-    var(--window) 0 34%,
-    rgba(7, 8, 11, 0.78) 56%,
+    var(--window) 0 35%,
+    rgba(7, 8, 11, 0.9) 50%,
+    rgba(7, 8, 11, 0.42) 74%,
     rgba(7, 8, 11, 0) 100%
   );
 }
