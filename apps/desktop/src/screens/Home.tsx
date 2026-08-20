@@ -1,5 +1,5 @@
 import type { MetaDetail, MetaPreview, WatchState } from '@halo/core'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { PosterCard } from '../components/PosterCard'
 import { Segmented } from '../components/Segmented'
@@ -30,6 +30,9 @@ const SHELF_LIMIT = 30
  * addon round-trips; the cards past this point are a scroll away anyway.
  */
 const CONTINUE_LIMIT = 8
+/** Keep desktop's featured rotation aligned with the mobile client. */
+const FEATURED_COUNT = 5
+const FEATURED_DWELL_MS = 5_000
 
 const FILTERS = [
   { value: 'all', label: 'All' },
@@ -148,9 +151,10 @@ function ContinueCard({
 }
 
 /**
- * Featured = the first title of the first visible catalog; its full meta
- * brings the wide background art, rating and synopsis the block needs. A prior
- * watch state turns the hero button into Resume.
+ * Featured = the first five titles of the first visible catalog. Full meta is
+ * resolved only for the title on screen, so rotating the hero does not turn
+ * Home into five eager addon requests. A prior watch state turns Play into
+ * Resume.
  */
 function FeaturedHero({
   lead,
@@ -163,9 +167,34 @@ function FeaturedHero({
   const { data: library } = useLibrary()
   const upsertLibrary = useUpsertLibrary()
   const { data: metas } = useCatalog(lead.addonId, lead.catalog.type, lead.catalog.id)
-  const preview = metas?.[0]
+  const previews = (metas ?? []).slice(0, FEATURED_COUNT)
+  const previewsKey = previews.map((meta) => `${meta.type}:${meta.id}`).join('|')
+  const [featuredIndex, setFeaturedIndex] = useState(0)
+  const [autoAdvance, setAutoAdvance] = useState(true)
+  const safeIndex = featuredIndex < previews.length ? featuredIndex : 0
+  const preview = previews[safeIndex]
+
+  // A filter or catalog refresh can replace the carousel underneath its
+  // current index. Start the new list from its first title, just as mobile does.
+  useEffect(() => {
+    setFeaturedIndex(0)
+    setAutoAdvance(true)
+  }, [previewsKey])
+
+  useEffect(() => {
+    if (!autoAdvance || previews.length <= 1) return
+
+    const timer = window.setTimeout(() => {
+      setFeaturedIndex((current) => (current + 1) % previews.length)
+    }, FEATURED_DWELL_MS)
+    return () => window.clearTimeout(timer)
+  }, [autoAdvance, previews.length, previewsKey, safeIndex])
+
   const { data: fullMeta } = useMeta(preview?.type ?? '', preview?.id ?? '', { enabled: !!preview })
-  const featured: MetaDetail | MetaPreview | undefined = fullMeta ?? preview
+  let featured: MetaDetail | MetaPreview | undefined = preview
+  if (fullMeta && preview && fullMeta.type === preview.type && fullMeta.id === preview.id) {
+    featured = fullMeta
+  }
   if (!featured) return null
 
   const itemId = `${featured.type}:${featured.id}`
@@ -211,12 +240,21 @@ function FeaturedHero({
 
   return (
     <div className="hero">
-      {(fullMeta?.background ?? featured.poster) && (
-        <div
-          className="hero-art"
-          style={{ backgroundImage: `url(${fullMeta?.background ?? featured.poster})` }}
-        />
-      )}
+      <div className="hero-art-stack" aria-hidden="true">
+        {previews.map((item, index) => {
+          const resolved = index === safeIndex ? featured : item
+          const artwork = resolved.background ?? resolved.poster
+          if (!artwork) return null
+
+          return (
+            <div
+              key={`${item.type}:${item.id}:${index}`}
+              className={`hero-art ${index === safeIndex ? 'hero-art-active' : ''}`}
+              style={{ backgroundImage: `url(${artwork})` }}
+            />
+          )
+        })}
+      </div>
       <div className="hero-scrim" />
       <div className="hero-body">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -270,6 +308,30 @@ function FeaturedHero({
           </button>
         </div>
       </div>
+      {previews.length > 1 && (
+        <div className="hero-dots" role="tablist" aria-label="Featured titles">
+          {previews.map((item, index) => {
+            const active = index === safeIndex
+            return (
+              <button
+                key={`${item.type}:${item.id}:${index}`}
+                type="button"
+                className={`hero-dot ${active ? 'hero-dot-active' : ''}`}
+                role="tab"
+                aria-selected={active}
+                aria-label={`Show ${item.name}`}
+                title={item.name}
+                onClick={() => {
+                  setFeaturedIndex(index)
+                  setAutoAdvance(false)
+                }}
+              >
+                <span className="hero-dot-mark" />
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

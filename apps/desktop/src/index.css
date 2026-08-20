@@ -1105,22 +1105,30 @@ button.row-card:hover {
 }
 
 /* ── Home ──────────────────────────────────────────────────────────────── */
-/* The hero bleeds off the right edge — gutter and rounding on the left only. */
+/* The hero follows the content width at every supported window size. */
 .hero {
   position: relative;
   height: var(--hero);
-  margin: 18px 0 0 var(--g);
-  border-radius: 18px 0 0 18px;
+  margin: 18px var(--g) 0;
+  border-radius: 18px;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-right: none;
   background: #101318;
+}
+.hero-art-stack {
+  position: absolute;
+  inset: 0;
 }
 .hero-art {
   position: absolute;
   inset: 0;
   background-size: cover;
   background-position: center 20%;
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
+.hero-art-active {
+  opacity: 1;
 }
 .hero-scrim {
   position: absolute;
@@ -1166,9 +1174,53 @@ button.row-card:hover {
   gap: 9px;
   margin-top: 20px;
 }
+.hero-dots {
+  position: absolute;
+  right: 28px;
+  bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.hero-dot {
+  width: 32px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.hero-dot-mark {
+  width: 8px;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.32);
+  transition:
+    width 200ms ease,
+    background-color 200ms ease;
+}
+.hero-dot:hover .hero-dot-mark {
+  background: rgba(255, 255, 255, 0.62);
+}
+.hero-dot-active .hero-dot-mark {
+  width: 22px;
+  background: var(--text);
+}
+.hero-dot:focus-visible {
+  outline-offset: -3px;
+}
 .rating {
   font: 500 11px/1 var(--mono);
   color: var(--warning);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-art,
+  .hero-dot-mark {
+    transition: none;
+  }
 }
 .dot-sep {
   color: var(--rule);
