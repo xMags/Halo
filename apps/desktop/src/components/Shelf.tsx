@@ -50,7 +50,7 @@ export function Shelf({ title, action, children }: Props) {
         <div className="spacer" />
         {action}
       </div>
-      <div className="shelf-body">
+      <div className={`shelf-body ${canLeft ? 'shelf-edge-left' : ''} ${canRight ? 'shelf-edge-right' : ''}`}>
         <div className="shelf-scroll no-bar" ref={scroller} onScroll={recompute}>
           {children}
         </div>

@@ -51,6 +51,7 @@ const GLYPHS = {
   globe: '',
   clock: '',
   lock: '',
+  warning: '',
 } satisfies Record<string, string>
 
 export type IconName = keyof typeof GLYPHS

@@ -48,6 +48,27 @@ struct MpvEventLogMessage {
     log_level: c_int,
 }
 
+#[repr(C)]
+struct MpvEventEndFile {
+    reason: c_int,
+    error: c_int,
+    playlist_entry_id: i64,
+    playlist_insert_id: i64,
+    playlist_insert_num_entries: c_int,
+}
+
+fn end_file_reason(reason: c_int) -> &'static str {
+    match reason {
+        0 => "eof",
+        1 => "restarted",
+        2 => "aborted",
+        3 => "quit",
+        4 => "error",
+        5 => "redirect",
+        _ => "unknown",
+    }
+}
+
 pub struct Mpv {
     _lib: libloading::Library,
     handle: MpvHandle,
@@ -68,7 +89,14 @@ unsafe impl Sync for Mpv {}
 /// A lifecycle or property event surfaced to the UI layer.
 pub enum Event {
     Lifecycle(&'static str),
-    Prop { name: String, value: serde_json::Value },
+    EndFile {
+        reason: &'static str,
+        error: Option<String>,
+    },
+    Prop {
+        name: String,
+        value: serde_json::Value,
+    },
     Log(String),
     Shutdown,
 }
@@ -95,10 +123,17 @@ impl Mpv {
             }
             let create: unsafe extern "C" fn() -> MpvHandle = sym!(b"mpv_create");
             let initialize: unsafe extern "C" fn(MpvHandle) -> c_int = sym!(b"mpv_initialize");
-            let set_option: unsafe extern "C" fn(MpvHandle, *const c_char, c_int, *mut c_void) -> c_int =
-                sym!(b"mpv_set_option");
-            let set_option_string: unsafe extern "C" fn(MpvHandle, *const c_char, *const c_char) -> c_int =
-                sym!(b"mpv_set_option_string");
+            let set_option: unsafe extern "C" fn(
+                MpvHandle,
+                *const c_char,
+                c_int,
+                *mut c_void,
+            ) -> c_int = sym!(b"mpv_set_option");
+            let set_option_string: unsafe extern "C" fn(
+                MpvHandle,
+                *const c_char,
+                *const c_char,
+            ) -> c_int = sym!(b"mpv_set_option_string");
             let request_log: unsafe extern "C" fn(MpvHandle, *const c_char) -> c_int =
                 sym!(b"mpv_request_log_messages");
             let command = sym!(b"mpv_command");
@@ -123,7 +158,12 @@ impl Mpv {
             // wid must be set before mpv_initialize.
             let wid_key = CString::new("wid").unwrap();
             let mut wid_val: i64 = wid as i64;
-            let rc = set_option(handle, wid_key.as_ptr(), MPV_FORMAT_INT64, &mut wid_val as *mut i64 as *mut c_void);
+            let rc = set_option(
+                handle,
+                wid_key.as_ptr(),
+                MPV_FORMAT_INT64,
+                &mut wid_val as *mut i64 as *mut c_void,
+            );
             if rc < 0 {
                 return Err(format!("set wid failed rc={rc}"));
             }
@@ -166,7 +206,11 @@ impl Mpv {
     }
 
     fn err(&self, rc: c_int) -> String {
-        unsafe { CStr::from_ptr((self.error_string)(rc)).to_string_lossy().into_owned() }
+        unsafe {
+            CStr::from_ptr((self.error_string)(rc))
+                .to_string_lossy()
+                .into_owned()
+        }
     }
 
     pub fn cmd(&self, args: &[String]) -> Result<(), String> {
@@ -260,12 +304,39 @@ impl Mpv {
                     on_event(Event::Log(format!("[{prefix}] {}", text.trim_end())));
                 }
                 MPV_EVENT_START_FILE => on_event(Event::Lifecycle("start-file")),
-                MPV_EVENT_END_FILE => on_event(Event::Lifecycle("end-file")),
+                MPV_EVENT_END_FILE => {
+                    let data = if ev.data.is_null() {
+                        None
+                    } else {
+                        Some(unsafe { &*(ev.data as *const MpvEventEndFile) })
+                    };
+                    let reason = data.map_or("unknown", |end| end_file_reason(end.reason));
+                    let error = data
+                        .filter(|end| end.error < 0)
+                        .map(|end| self.err(end.error));
+                    on_event(Event::EndFile { reason, error });
+                }
                 MPV_EVENT_FILE_LOADED => on_event(Event::Lifecycle("file-loaded")),
                 MPV_EVENT_SEEK => on_event(Event::Lifecycle("seek")),
                 MPV_EVENT_PLAYBACK_RESTART => on_event(Event::Lifecycle("playback-restart")),
                 _ => {}
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::end_file_reason;
+
+    #[test]
+    fn maps_every_documented_end_file_reason() {
+        assert_eq!(end_file_reason(0), "eof");
+        assert_eq!(end_file_reason(1), "restarted");
+        assert_eq!(end_file_reason(2), "aborted");
+        assert_eq!(end_file_reason(3), "quit");
+        assert_eq!(end_file_reason(4), "error");
+        assert_eq!(end_file_reason(5), "redirect");
+        assert_eq!(end_file_reason(99), "unknown");
     }
 }

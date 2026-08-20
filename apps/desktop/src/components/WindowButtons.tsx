@@ -2,8 +2,8 @@ import { closeWindow, minimizeWindow, toggleMaximizeWindow, useIsMaximized } fro
 
 /**
  * The three caption buttons: 44 × 36 hit areas, close turning red on hover.
- * Used by the title bar, by the auth screens (which drop everything else from
- * the bar) and by the windowed player's top row.
+ * Used by the shared title bar and by auth screens, which drop everything else
+ * from the bar. Windowed playback now reuses the shared title bar as well.
  *
  * They must sit outside any `data-tauri-drag-region` element — a drag region
  * swallows the press before the button sees it.

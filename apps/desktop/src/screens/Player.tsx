@@ -6,13 +6,12 @@ import {
   type Subtitle,
   type WatchState,
 } from '@halo/core'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getClient } from '../api'
 import { Icon } from '../components/Icon'
 import { Slider } from '../components/Slider'
-import { WindowButtons } from '../components/WindowButtons'
+import { TitleBar } from '../components/TitleBar'
 import { formatClock } from '../format'
 import {
   mpvCmd,
@@ -20,10 +19,17 @@ import {
   mpvObserve,
   mpvSet,
   mpvUnobserveAll,
+  onMpvEndFile,
   onMpvEvent,
   onMpvProp,
 } from '../mpv'
 import { useNav, type PlayerParams } from '../nav'
+import {
+  resolvePlayerShortcut,
+  shouldRunUpNextCountdown,
+  upNextCancelAction,
+  videoTopMarginRatio,
+} from '../playerLogic'
 import { useAddonSubtitles, useReportWatchState } from '../queries'
 import { useSettings, useSettingsLoaded, useUpdateSettings } from '../settings'
 import { getSubtitleChoice, rememberSubtitleChoice } from '../subtitleMemory'
@@ -36,6 +42,7 @@ import {
   SUBTITLE_SCALE_MIN,
   SUBTITLE_SCALE_STEP,
 } from '../subtitleStyle'
+import type { WindowFullscreenController } from '../window'
 
 /** Watch-state cadence and thresholds — identical to mobile's player. */
 const REPORT_INTERVAL_MS = 15_000
@@ -43,11 +50,18 @@ const WATCHED_THRESHOLD = 0.9
 const CONTROLS_HIDE_DELAY_MS = 3_000
 const NEXT_EPISODE_TIMEOUT_MS = 15_000
 const UP_NEXT_COUNTDOWN_SEC = 8
+const TITLE_BAR_HEIGHT_PX = 36
+const VIDEO_CLICK_DELAY_MS = 220
 
 const SUB_DELAY_STEP_MS = 50
 const SUB_DELAY_LIMIT_MS = 5_000
 const AUDIO_DELAY_STEP_MS = 50
 const AUDIO_DELAY_LIMIT_MS = 5_000
+
+// A new keyed Player waits for the previous mount's native teardown. This
+// keeps autoplay replacement from interleaving stop/unobserve with the next
+// observe/load sequence on the one shared mpv handle.
+let previousPlayerTeardown: Promise<void> = Promise.resolve()
 
 /** Rates offered by the speed tab; mpv corrects pitch up to 2×. */
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2] as const
@@ -60,6 +74,12 @@ interface SubtitleLanguageGroup {
   lang: string
   label: string
   variants: Subtitle[]
+}
+
+function isInteractivePlayerTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  if (target instanceof HTMLElement && target.isContentEditable) return true
+  return target.closest('button, input, select, textarea, a, [role="slider"]') !== null
 }
 
 /**
@@ -140,7 +160,11 @@ function trackDetail(track: MpvTrack): string {
     .join(' · ')
 }
 
-export function Player(params: PlayerParams) {
+interface PlayerProps extends PlayerParams {
+  windowFullscreen: WindowFullscreenController
+}
+
+export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const { pop, replace } = useNav()
   const queryClient = useQueryClient()
   const report = useReportWatchState()
@@ -161,8 +185,10 @@ export function Player(params: PlayerParams) {
   const [fileLoaded, setFileLoaded] = useState(false)
   const [railTab, setRailTab] = useState<RailTab | null>(null)
   const [controlsVisible, setControlsVisible] = useState(true)
-  const [fullscreen, setFullscreen] = useState(false)
+  const { fullscreen, setFullscreen, toggleFullscreen: toggleNativeFullscreen } = windowFullscreen
   const [playerError, setPlayerError] = useState<string | null>(null)
+  const [controlNotice, setControlNotice] = useState<string | null>(null)
+  const [endReached, setEndReached] = useState(false)
   /** Non-null while the user drags the scrubber; committed as one seek on release. */
   const [dragValue, setDragValue] = useState<number | null>(null)
   /** Session-only subtitle sync offset (mobile parity: never synced). */
@@ -187,6 +213,7 @@ export function Player(params: PlayerParams) {
 
   // Live values in refs so the report interval never resets on ticks.
   const progressRef = useRef({ positionSec: 0, durationSec: 0 })
+  const videoClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reportNow = useCallback(() => {
     const { positionSec, durationSec: total } = progressRef.current
     // Too short / barely started — not worth a history row (mobile parity).
@@ -227,68 +254,109 @@ export function Player(params: PlayerParams) {
     document.body.classList.add('player-active')
     let disposed = false
     const unlisteners: Array<() => void> = []
+    const priorTeardown = previousPlayerTeardown
 
-    ;(async () => {
-      await mpvObserve('time-pos', 'double')
-      await mpvObserve('duration', 'double')
-      await mpvObserve('pause', 'flag')
-      await mpvObserve('paused-for-cache', 'flag')
-      await mpvObserve('volume', 'double')
-      await mpvObserve('mute', 'flag')
-      await mpvObserve('speed', 'double')
-      // End of the demuxer's cached range, in absolute time — what the
-      // scrubber's buffered fill is drawn from.
-      await mpvObserve('demuxer-cache-time', 'double')
-      await mpvObserve('eof-reached', 'flag')
+    const keepListener = async (listener: Promise<() => void>): Promise<boolean> => {
+      const unlisten = await listener
+      if (disposed) {
+        unlisten()
+        return false
+      }
+      unlisteners.push(unlisten)
+      return true
+    }
 
-      unlisteners.push(
-        await onMpvProp(({ name, value }) => {
-          if (name === 'time-pos' && typeof value === 'number') {
-            progressRef.current.positionSec = value
-            setPosition(value)
-          } else if (name === 'duration' && typeof value === 'number') {
-            progressRef.current.durationSec = value
-            setDuration(value)
-          } else if (name === 'demuxer-cache-time' && typeof value === 'number') {
-            setBufferedTo(value)
-          } else if (name === 'pause' && typeof value === 'boolean') {
-            setPaused(value)
-          } else if (name === 'paused-for-cache' && typeof value === 'boolean') {
-            setBuffering(value)
-          } else if (name === 'volume' && typeof value === 'number') {
-            setVolume(value)
-          } else if (name === 'mute' && typeof value === 'boolean') {
-            setMuted(value)
-          } else if (name === 'speed' && typeof value === 'number') {
-            setSpeed(value)
-          } else if (name === 'eof-reached' && value === true) {
-            // Ref, not closure — the autoplay decision needs the prefetched
-            // next-episode state, which lands long after these observers mount.
-            onEndRef.current()
-          }
-        }),
-        await onMpvEvent((kind) => {
-          if (kind === 'file-loaded') {
-            setFileLoaded(true)
-            void refreshTracks()
-            void readVideoTags().then(setVideoTags).catch(() => undefined)
-            // Resume once per mount: prior unfinished position wins (mobile
-            // parity). Duration comes from mpv directly — the observed
-            // `duration` prop event can land after file-loaded.
-            if (!resumeAppliedRef.current) {
-              resumeAppliedRef.current = true
-              void (async () => {
-                const prior = priorStateRef.current
-                if (!prior || prior.watched || prior.positionSec <= 30) return
-                const total = Number((await mpvGet('duration').catch(() => null)) ?? 0)
-                if (total > 0 && prior.positionSec / total < 0.95) {
-                  await mpvCmd('seek', prior.positionSec, 'absolute')
-                }
-              })()
+    const setup = async () => {
+      await priorTeardown
+      if (disposed) return
+
+      if (
+        !(await keepListener(
+          onMpvProp(({ name, value }) => {
+            if (name === 'time-pos' && typeof value === 'number') {
+              progressRef.current.positionSec = value
+              setPosition(value)
+            } else if (name === 'duration' && typeof value === 'number') {
+              progressRef.current.durationSec = value
+              setDuration(value)
+            } else if (name === 'demuxer-cache-time' && typeof value === 'number') {
+              setBufferedTo(value)
+            } else if (name === 'pause' && typeof value === 'boolean') {
+              setPaused(value)
+            } else if (name === 'paused-for-cache' && typeof value === 'boolean') {
+              setBuffering(value)
+            } else if (name === 'volume' && typeof value === 'number') {
+              setVolume(value)
+            } else if (name === 'mute' && typeof value === 'boolean') {
+              setMuted(value)
+            } else if (name === 'speed' && typeof value === 'number') {
+              setSpeed(value)
             }
-          }
-        }),
-      )
+          }),
+        ))
+      ) {
+        return
+      }
+      if (
+        !(await keepListener(
+          onMpvEvent((kind) => {
+            if (kind === 'file-loaded') {
+              setFileLoaded(true)
+              setPlayerError(null)
+              void refreshTracks()
+              void readVideoTags().then(setVideoTags).catch(() => undefined)
+              // Resume once per mount: prior unfinished position wins (mobile
+              // parity). Duration comes from mpv directly — the observed
+              // `duration` prop event can land after file-loaded.
+              if (!resumeAppliedRef.current) {
+                resumeAppliedRef.current = true
+                void (async () => {
+                  const prior = priorStateRef.current
+                  if (!prior || prior.watched || prior.positionSec <= 30) return
+                  const total = Number((await mpvGet('duration').catch(() => null)) ?? 0)
+                  if (total > 0 && prior.positionSec / total < 0.95) {
+                    await mpvCmd('seek', prior.positionSec, 'absolute')
+                  }
+                })()
+              }
+            }
+          }),
+        ))
+      ) {
+        return
+      }
+      if (
+        !(await keepListener(
+          onMpvEndFile(({ reason, error }) => {
+            if (reason === 'eof') {
+              onEndRef.current()
+              return
+            }
+            if (reason === 'error') {
+              setBuffering(false)
+              setPlayerError(error ? `Playback failed: ${error}.` : 'Playback failed for this source.')
+            }
+          }),
+        ))
+      ) {
+        return
+      }
+
+      const observations = [
+        ['time-pos', 'double'],
+        ['duration', 'double'],
+        ['pause', 'flag'],
+        ['paused-for-cache', 'flag'],
+        ['volume', 'double'],
+        ['mute', 'flag'],
+        ['speed', 'double'],
+        // End of the demuxer's cached range, in absolute time.
+        ['demuxer-cache-time', 'double'],
+      ] as const
+      for (const [name, format] of observations) {
+        await mpvObserve(name, format)
+        if (disposed) return
+      }
 
       // Best-effort: an unreachable server must not block playback.
       const states = await queryClient
@@ -311,8 +379,12 @@ export function Player(params: PlayerParams) {
         }
       }
       await mpvSet('pause', 'no')
-      await mpvCmd('loadfile', params.url).catch((e) => setPlayerError(String(e)))
-    })()
+      if (disposed) return
+      await mpvCmd('loadfile', params.url)
+    }
+    void setup().catch(() => {
+      if (!disposed) setPlayerError('The player could not start this source.')
+    })
 
     const interval = setInterval(reportNow, REPORT_INTERVAL_MS)
 
@@ -321,12 +393,24 @@ export function Player(params: PlayerParams) {
       clearInterval(interval)
       reportNow()
       for (const unlisten of unlisteners) unlisten()
-      void mpvUnobserveAll()
-      void mpvCmd('stop')
+      previousPlayerTeardown = (async () => {
+        await mpvUnobserveAll().catch(() => undefined)
+        await mpvCmd('stop').catch(() => undefined)
+      })()
       document.body.classList.remove('player-active')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.url, params.videoId])
+
+  useEffect(() => {
+    const syncVideoMargin = () => {
+      const ratio = videoTopMarginRatio(fullscreen, window.innerHeight, TITLE_BAR_HEIGHT_PX)
+      void mpvSet('video-margin-ratio-top', String(ratio))
+    }
+    syncVideoMargin()
+    window.addEventListener('resize', syncVideoMargin)
+    return () => window.removeEventListener('resize', syncVideoMargin)
+  }, [fullscreen])
 
   // Controls auto-hide while playing. An open rail, a pause, or a scrub in
   // progress pins them: all three are states the user is acting inside.
@@ -341,6 +425,7 @@ export function Player(params: PlayerParams) {
     poke()
     return () => {
       if (hideTimer.current) clearTimeout(hideTimer.current)
+      if (videoClickTimer.current) clearTimeout(videoClickTimer.current)
     }
   }, [poke])
   const chromeVisible = controlsVisible || pinned
@@ -348,15 +433,19 @@ export function Player(params: PlayerParams) {
   const togglePause = useCallback(() => void mpvCmd('cycle', 'pause'), [])
   const seekBy = useCallback((secs: number) => void mpvCmd('seek', secs, 'relative'), [])
   const seekTo = useCallback((secs: number) => void mpvCmd('seek', secs, 'absolute'), [])
-  const back = useCallback(() => {
-    if (fullscreen) void getCurrentWindow().setFullscreen(false)
-    pop()
-  }, [pop, fullscreen])
-  const toggleFullscreen = useCallback(async () => {
-    const next = !fullscreen
-    setFullscreen(next)
-    await getCurrentWindow().setFullscreen(next)
-  }, [fullscreen])
+  const leaveFullscreenThen = useCallback(
+    (navigate: () => void) => {
+      void (async () => {
+        if (fullscreen) await setFullscreen(false)
+        navigate()
+      })()
+    },
+    [fullscreen, setFullscreen],
+  )
+  const back = useCallback(() => leaveFullscreenThen(pop), [leaveFullscreenThen, pop])
+  const toggleFullscreen = useCallback(() => {
+    void toggleNativeFullscreen()
+  }, [toggleNativeFullscreen])
 
   // ── Autoplay next episode ────────────────────────────────────────────────
   const autoplayEnabled = settings.autoplayNextEpisode ?? true
@@ -438,35 +527,41 @@ export function Player(params: PlayerParams) {
   const openNextEpisodePicker = (video: MetaVideo) => {
     const tag = tagFor(video)
     advanceOnce(() => {
-      if (fullscreen) void getCurrentWindow().setFullscreen(false)
-      replace({
-        name: 'streams',
-        type: params.type,
-        videoId: video.id,
-        itemId: params.itemId,
-        title: nextEpisodeTitle(video),
-        ...(params.metaId ? { metaId: params.metaId } : {}),
-        ...(params.showName ? { showName: params.showName } : {}),
-        ...(tag ? { episodeLabel: tag } : {}),
-        ...(params.poster ? { poster: params.poster } : {}),
-      })
+      leaveFullscreenThen(() =>
+        replace({
+          name: 'streams',
+          type: params.type,
+          videoId: video.id,
+          itemId: params.itemId,
+          title: nextEpisodeTitle(video),
+          ...(params.metaId ? { metaId: params.metaId } : {}),
+          ...(params.showName ? { showName: params.showName } : {}),
+          ...(tag ? { episodeLabel: tag } : {}),
+          ...(params.poster ? { poster: params.poster } : {}),
+        }),
+      )
     })
   }
 
   useEffect(() => {
-    if (!upNextVisible) return
+    if (!shouldRunUpNextCountdown(upNextVisible, endReached)) return
     const interval = setInterval(() => setUpNextSeconds((s) => s - 1), 1_000)
     return () => clearInterval(interval)
-  }, [upNextVisible])
+  }, [upNextVisible, endReached])
 
   useEffect(() => {
-    if (upNextVisible && upNextSeconds <= 0) playNextEpisode()
+    if (shouldRunUpNextCountdown(upNextVisible, endReached) && upNextSeconds <= 0) {
+      playNextEpisode()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [upNextVisible, upNextSeconds])
+  }, [upNextVisible, endReached, upNextSeconds])
 
   onEndRef.current = () => {
     reportNow()
     if (autoplayEnabled && nextEpisode?.video && nextEpisode.stream?.url) {
+      setEndReached(true)
+      setRailTab(null)
+      setUpNextSeconds(UP_NEXT_COUNTDOWN_SEC)
       setUpNextVisible(true)
       return
     }
@@ -480,17 +575,27 @@ export function Player(params: PlayerParams) {
   // Desktop staples: space, arrows, F, Esc — the set the on-screen hints name.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return
+      const shortcut = resolvePlayerShortcut({
+        code: e.code,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        shiftKey: e.shiftKey,
+        metaKey: e.metaKey,
+        repeat: e.repeat,
+        interactiveTarget: isInteractivePlayerTarget(e.target),
+      })
+      if (shortcut === null) return
+      e.preventDefault()
       poke()
-      if (e.code === 'Space') togglePause()
-      else if (e.code === 'ArrowLeft') seekBy(-10)
-      else if (e.code === 'ArrowRight') seekBy(10)
-      else if (e.code === 'KeyF') void toggleFullscreen()
-      else if (e.code === 'Escape') {
+      if (shortcut === 'toggle-pause') togglePause()
+      else if (shortcut === 'seek-back') seekBy(-10)
+      else if (shortcut === 'seek-forward') seekBy(10)
+      else if (shortcut === 'toggle-fullscreen') toggleFullscreen()
+      else if (shortcut === 'escape') {
         // Peel one layer at a time: the rail covers the chrome, and full
         // screen is the state the badge tells you Esc will leave.
         if (railTab !== null) setRailTab(null)
-        else if (fullscreen) void toggleFullscreen()
+        else if (fullscreen) toggleFullscreen()
         else back()
       }
     }
@@ -498,14 +603,22 @@ export function Player(params: PlayerParams) {
     return () => window.removeEventListener('keydown', onKey)
   }, [togglePause, seekBy, toggleFullscreen, back, poke, railTab, fullscreen])
 
-  const selectEmbeddedSub = (id: number | 'no') => {
-    void mpvSet('sid', String(id)).then(refreshTracks)
+  const selectEmbeddedSub = async (id: number | 'no'): Promise<boolean> => {
+    setControlNotice(null)
+    try {
+      await mpvSet('sid', String(id))
+      await refreshTracks()
+      return true
+    } catch {
+      setControlNotice('Could not change the subtitle track. Please try again.')
+      return false
+    }
   }
   /** Sub ids already handed to `sub-add` this mount — covers the window where
    *  a re-click lands before the track list refresh reports the new track. */
   const addedExternalIdsRef = useRef(new Set<string>())
-  const addExternalSub = (sub: Subtitle) => {
-    setActiveExternalId(sub.id)
+  const addExternalSub = async (sub: Subtitle, remember: boolean = false): Promise<boolean> => {
+    setControlNotice(null)
     // `sub-add` creates a NEW track every call — re-selecting an already-added
     // sub must switch `sid` to the existing track instead. Identity is the
     // addon's sub id carried in the track title (external tracks aren't shown
@@ -514,39 +627,68 @@ export function Player(params: PlayerParams) {
     const key = String(sub.id)
     const existing = tracks.find((t) => t.type === 'sub' && t.external && t.title === key)
     if (existing) {
-      void mpvSet('sid', String(existing.id)).then(refreshTracks)
-      return
+      try {
+        await mpvSet('sid', String(existing.id))
+        setActiveExternalId(sub.id)
+        if (remember) {
+          rememberSubtitleChoice(params.videoId, params.itemId, {
+            kind: 'external',
+            lang: sub.lang,
+            subId: sub.id,
+          })
+        }
+        await refreshTracks()
+        return true
+      } catch {
+        setControlNotice('Could not activate this subtitle. Please try another variant.')
+        return false
+      }
     }
-    if (addedExternalIdsRef.current.has(key)) return
+    if (addedExternalIdsRef.current.has(key)) return true
     addedExternalIdsRef.current.add(key)
     // sub-add with `select` loads and activates in one step; only valid after
     // file-loaded (rc=-12 before), which holds — the rail opens during playback.
-    void mpvCmd('sub-add', sub.url, 'select', key, sub.lang).then(refreshTracks)
+    try {
+      await mpvCmd('sub-add', sub.url, 'select', key, sub.lang)
+      setActiveExternalId(sub.id)
+      if (remember) {
+        rememberSubtitleChoice(params.videoId, params.itemId, {
+          kind: 'external',
+          lang: sub.lang,
+          subId: sub.id,
+        })
+      }
+      await refreshTracks()
+      return true
+    } catch {
+      addedExternalIdsRef.current.delete(key)
+      setControlNotice('Could not load this subtitle. You can retry it or choose another variant.')
+      return false
+    }
   }
 
   // Rail click handlers — these record the choice for restore next time; the
   // auto-apply cascade below deliberately never writes to memory.
   const chooseOff = () => {
-    rememberSubtitleChoice(params.videoId, params.itemId, { kind: 'off' })
-    setActiveExternalId(null)
-    selectEmbeddedSub('no')
+    void selectEmbeddedSub('no').then((selected) => {
+      if (!selected) return
+      rememberSubtitleChoice(params.videoId, params.itemId, { kind: 'off' })
+      setActiveExternalId(null)
+    })
   }
   const chooseEmbedded = (track: MpvTrack) => {
-    rememberSubtitleChoice(params.videoId, params.itemId, {
-      kind: 'embedded',
-      lang: track.lang,
-      trackName: track.title,
+    void selectEmbeddedSub(track.id).then((selected) => {
+      if (!selected) return
+      rememberSubtitleChoice(params.videoId, params.itemId, {
+        kind: 'embedded',
+        lang: track.lang,
+        trackName: track.title,
+      })
+      if (!track.external) setActiveExternalId(null)
     })
-    if (!track.external) setActiveExternalId(null)
-    selectEmbeddedSub(track.id)
   }
   const chooseExternal = (sub: Subtitle) => {
-    rememberSubtitleChoice(params.videoId, params.itemId, {
-      kind: 'external',
-      lang: sub.lang,
-      subId: sub.id,
-    })
-    addExternalSub(sub)
+    void addExternalSub(sub, true)
   }
 
   // ── Preferred-language defaults (applied once per mount) ─────────────────
@@ -574,11 +716,15 @@ export function Player(params: PlayerParams) {
     const externals = subs.data?.groups.flatMap((g) => g.subtitles) ?? []
     const applyEmbedded = (track: MpvTrack) => {
       subDefaultAppliedRef.current = true
-      void mpvSet('sid', String(track.id)).then(refreshTracks)
+      void selectEmbeddedSub(track.id).then((selected) => {
+        if (!selected) subDefaultAppliedRef.current = false
+      })
     }
     const applyExternal = (sub: Subtitle) => {
       subDefaultAppliedRef.current = true
-      addExternalSub(sub)
+      void addExternalSub(sub).then((selected) => {
+        if (!selected) subDefaultAppliedRef.current = false
+      })
     }
     const embeddedByLang = (lang: string) =>
       subTracks.find((t) => !t.external && t.lang && languageMatches(t.lang, lang))
@@ -587,7 +733,9 @@ export function Player(params: PlayerParams) {
     const remembered = getSubtitleChoice(params.videoId, params.itemId)
     if (remembered?.kind === 'off') {
       subDefaultAppliedRef.current = true
-      void mpvSet('sid', 'no')
+      void selectEmbeddedSub('no').then((selected) => {
+        if (!selected) subDefaultAppliedRef.current = false
+      })
       return
     }
     if (remembered?.kind === 'embedded') {
@@ -676,30 +824,63 @@ export function Player(params: PlayerParams) {
       : 'Off'
 
   return (
-    <div
-      className="player-root"
-      style={{ cursor: chromeVisible ? 'default' : 'none' }}
-      onMouseMove={poke}
-      onDoubleClick={() => void toggleFullscreen()}
-      onClick={(e) => {
-        if (e.target !== e.currentTarget) return
-        // A video-area click while the rail is open dismisses it — pausing
-        // would read as a misclick.
-        if (railTab !== null) setRailTab(null)
-        else togglePause()
-      }}
-    >
+    <>
+      {!fullscreen && <TitleBar />}
+      <div
+        className={`player-root ${fullscreen ? '' : 'player-root-windowed'}`}
+        style={{ cursor: chromeVisible ? 'default' : 'none' }}
+        onMouseMove={poke}
+        onDoubleClick={(e) => {
+          if (e.target !== e.currentTarget) return
+          if (videoClickTimer.current) clearTimeout(videoClickTimer.current)
+          videoClickTimer.current = null
+          toggleFullscreen()
+        }}
+        onClick={(e) => {
+          if (e.target !== e.currentTarget) return
+          // A video-area click while the rail is open dismisses it — pausing
+          // would read as a misclick.
+          if (railTab !== null) {
+            setRailTab(null)
+            return
+          }
+          if (videoClickTimer.current) clearTimeout(videoClickTimer.current)
+          videoClickTimer.current = setTimeout(() => {
+            videoClickTimer.current = null
+            togglePause()
+          }, VIDEO_CLICK_DELAY_MS)
+        }}
+      >
       <div className={`player-scrim-top player-chrome ${chromeVisible ? '' : 'player-hidden'}`} />
       <div className={`player-scrim-bottom player-chrome ${chromeVisible ? '' : 'player-hidden'}`} />
 
-      {playerError && <div className="player-notice error-text">{playerError}</div>}
+      {playerError && (
+        <div className="player-error-card" role="alert">
+          <Icon name="warning" size={22} />
+          <div>
+            <div className="player-error-title">Playback stopped</div>
+            <div className="player-error-copy">{playerError}</div>
+          </div>
+          <button type="button" className="btn-primary" onClick={back}>
+            Choose another source
+          </button>
+        </div>
+      )}
+      {controlNotice && (
+        <div className="player-notice player-control-notice" role="status">
+          <span>{controlNotice}</span>
+          <button type="button" onClick={() => setControlNotice(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
       {buffering && !playerError && (
         <div className="player-notice">
           <span className="spinner" /> Buffering…
         </div>
       )}
 
-      {paused && !buffering && (
+      {paused && !buffering && !playerError && (
         <div className="paused-badge">
           <Icon name="pause" size={22} />
           <div>
@@ -718,7 +899,7 @@ export function Player(params: PlayerParams) {
         <button type="button" className="player-back" title="Back" onClick={back}>
           <Icon name="chevronLeft" size={20} />
         </button>
-        <div style={{ minWidth: 0 }}>
+        <div className="player-title-block" style={{ minWidth: 0 }}>
           <div className="player-title ellipsis">{params.showName ?? params.title}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
             {params.episodeLabel && <span className="player-ep">{params.episodeLabel}</span>}
@@ -737,7 +918,7 @@ export function Player(params: PlayerParams) {
           </div>
         )}
         <div className="spacer" />
-        {fullscreen ? (
+        {fullscreen && (
           <div className="fs-badge">
             <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--accent)' }} />
             <span style={{ font: '700 9.5px/1 var(--mono)', letterSpacing: '0.12em', color: 'var(--text-2)' }}>
@@ -745,8 +926,6 @@ export function Player(params: PlayerParams) {
             </span>
             <span style={{ font: '400 9.5px/1 var(--mono)', color: '#565e70' }}>ESC TO EXIT</span>
           </div>
-        ) : (
-          <WindowButtons />
         )}
       </div>
 
@@ -851,7 +1030,7 @@ export function Player(params: PlayerParams) {
               UP NEXT
             </div>
             <div className="meta-mono" style={{ color: 'var(--text-muted)' }}>
-              in {Math.max(upNextSeconds, 0)} s
+              {endReached ? `in ${Math.max(upNextSeconds, 0)} s` : 'ready'}
             </div>
             <div className="spacer" />
             <button
@@ -859,7 +1038,10 @@ export function Player(params: PlayerParams) {
               className="icon-btn"
               style={{ width: 22, height: 22 }}
               title="Dismiss"
-              onClick={() => setUpNextVisible(false)}
+              onClick={() => {
+                if (upNextCancelAction(endReached) === 'exit') advanceOnce(back)
+                else setUpNextVisible(false)
+              }}
             >
               <Icon name="x" size={11} />
             </button>
@@ -894,15 +1076,22 @@ export function Player(params: PlayerParams) {
               type="button"
               className="btn-glass"
               onClick={() => {
-                setUpNextVisible(false)
-                advanceOnce(back)
+                if (upNextCancelAction(endReached) === 'exit') advanceOnce(back)
+                else setUpNextVisible(false)
               }}
             >
-              Cancel
+              {endReached ? 'Exit' : 'Close'}
             </button>
-            <button type="button" className="btn-primary" onClick={playNextEpisode}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                if (nextEpisode.stream?.url) playNextEpisode()
+                else openNextEpisodePicker(nextEpisode.video!)
+              }}
+            >
               <Icon name="play" size={12} />
-              Play now
+              {nextEpisode.stream?.url ? 'Play now' : 'Choose source'}
             </button>
           </div>
         </div>
@@ -1140,7 +1329,8 @@ export function Player(params: PlayerParams) {
           </div>
         </>
       )}
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -1199,7 +1389,15 @@ function Scrubber({
     <div
       className="scrub"
       ref={track}
+      role="slider"
+      tabIndex={0}
+      aria-label="Playback position"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(duration)}
+      aria-valuenow={Math.round(position)}
+      aria-valuetext={`${formatClock(position)} of ${formatClock(duration)}`}
       onPointerDown={(e) => {
+        if (e.button !== 0) return
         const value = valueAt(e.clientX)
         if (value === null) return
         dragging.current = true
@@ -1216,6 +1414,27 @@ function Scrubber({
         dragging.current = false
         e.currentTarget.releasePointerCapture(e.pointerId)
         if (value !== null) onCommit(value)
+      }}
+      onPointerCancel={() => {
+        dragging.current = false
+        setHoverAt(null)
+        onPreview(null)
+      }}
+      onLostPointerCapture={() => {
+        if (!dragging.current) return
+        dragging.current = false
+        setHoverAt(null)
+        onPreview(null)
+      }}
+      onKeyDown={(e) => {
+        let next: number | null = null
+        if (e.key === 'ArrowLeft') next = Math.max(0, position - 10)
+        else if (e.key === 'ArrowRight') next = Math.min(duration, position + 10)
+        else if (e.key === 'Home') next = 0
+        else if (e.key === 'End') next = duration
+        if (next === null) return
+        e.preventDefault()
+        onCommit(next)
       }}
       onPointerLeave={() => setHoverAt(null)}
     >
@@ -1249,7 +1468,14 @@ function VolumeBar({ value, onChange }: { value: number; onChange: (value: numbe
     <div
       className="vol-track"
       ref={track}
+      role="slider"
+      tabIndex={0}
+      aria-label="Volume"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(value)}
       onPointerDown={(e) => {
+        if (e.button !== 0) return
         dragging.current = true
         e.currentTarget.setPointerCapture(e.pointerId)
         apply(e.clientX)
@@ -1260,6 +1486,22 @@ function VolumeBar({ value, onChange }: { value: number; onChange: (value: numbe
       onPointerUp={(e) => {
         dragging.current = false
         e.currentTarget.releasePointerCapture(e.pointerId)
+      }}
+      onPointerCancel={() => {
+        dragging.current = false
+      }}
+      onLostPointerCapture={() => {
+        dragging.current = false
+      }}
+      onKeyDown={(e) => {
+        let next: number | null = null
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = Math.max(0, value - 5)
+        else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = Math.min(100, value + 5)
+        else if (e.key === 'Home') next = 0
+        else if (e.key === 'End') next = 100
+        if (next === null) return
+        e.preventDefault()
+        onChange(next)
       }}
     >
       <div className="vol-fill" style={{ width: `${value}%` }} />

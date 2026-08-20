@@ -22,9 +22,12 @@ struct DwmBlurBehind {
     transition_on_maximized: i32,
 }
 
-/// `DWMWA_WINDOW_CORNER_PREFERENCE` / `DWMWCP_ROUND` (Windows 11 22000+).
+/// Windows 11 DWM attributes used by Halo's app-drawn frame.
 const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
+const DWMWA_BORDER_COLOR: u32 = 34;
+const DWMWCP_DONOTROUND: u32 = 1;
 const DWMWCP_ROUND: u32 = 2;
+const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
 
 #[link(name = "dwmapi")]
 extern "system" {
@@ -71,6 +74,32 @@ struct PlayerState {
     mpv: Arc<Mpv>,
 }
 
+fn corner_preference(fullscreen: bool) -> u32 {
+    if fullscreen {
+        DWMWCP_DONOTROUND
+    } else {
+        DWMWCP_ROUND
+    }
+}
+
+fn set_corner_preference(hwnd: isize, fullscreen: bool) -> Result<(), String> {
+    let corner = corner_preference(fullscreen);
+    let result = unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &corner,
+            std::mem::size_of::<u32>() as u32,
+        )
+    };
+    if result < 0 {
+        return Err(format!(
+            "DWM corner preference failed (HRESULT {result:#x})"
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn mpv_cmd(state: tauri::State<PlayerState>, args: Vec<String>) -> Result<(), String> {
     state.mpv.cmd(&args)
@@ -87,7 +116,11 @@ fn mpv_get(state: tauri::State<PlayerState>, name: String) -> Result<Option<Stri
 }
 
 #[tauri::command]
-fn mpv_observe(state: tauri::State<PlayerState>, name: String, format: String) -> Result<(), String> {
+fn mpv_observe(
+    state: tauri::State<PlayerState>,
+    name: String,
+    format: String,
+) -> Result<(), String> {
     let format = match format.as_str() {
         "double" => MPV_FORMAT_DOUBLE,
         "flag" => MPV_FORMAT_FLAG,
@@ -100,6 +133,15 @@ fn mpv_observe(state: tauri::State<PlayerState>, name: String, format: String) -
 #[tauri::command]
 fn mpv_unobserve_all(state: tauri::State<PlayerState>) {
     state.mpv.unobserve_all()
+}
+
+#[tauri::command]
+fn window_set_fullscreen_style(app: tauri::AppHandle, fullscreen: bool) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window is unavailable".to_string())?;
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as isize;
+    set_corner_preference(hwnd, fullscreen)
 }
 
 /// Async + spawn_blocking: a plain (non-async) command would run ON the main
@@ -123,6 +165,7 @@ fn main() {
             mpv_get,
             mpv_observe,
             mpv_unobserve_all,
+            window_set_fullscreen_style,
             oauth_wait_callback
         ])
         .setup(|app| {
@@ -134,7 +177,12 @@ fn main() {
             // the top-level window, which makes DWM alpha-composite the
             // redirection surface and drop mpv's (alpha-less) pixels. Re-opaque
             // the window; the webview keeps its own transparency. (Spike trap #2.)
-            let bb = DwmBlurBehind { flags: 0x1, enable: 0, blur_region: 0, transition_on_maximized: 0 };
+            let bb = DwmBlurBehind {
+                flags: 0x1,
+                enable: 0,
+                blur_region: 0,
+                transition_on_maximized: 0,
+            };
             unsafe { DwmEnableBlurBehindWindow(hwnd, &bb) };
 
             // The window is undecorated (the UI draws its own title bar), so
@@ -142,12 +190,19 @@ fn main() {
             // clips mpv's child surface along with everything else. Older
             // Windows rejects the attribute and keeps square corners — that is
             // a cosmetic difference, so the result is deliberately ignored.
-            let corner = DWMWCP_ROUND;
+            let _ = set_corner_preference(hwnd, false);
+
+            // Tauri's undecorated-window shadow asks DWM for a one-pixel
+            // frame. That frame becomes a bright focus-colour line at the
+            // monitor edge in fullscreen. Suppress only the border: DWM can
+            // keep the windowed shadow and the rounded clipping requested
+            // above. Windows versions before 11 reject this cosmetic hint.
+            let border = DWMWA_COLOR_NONE;
             unsafe {
                 DwmSetWindowAttribute(
                     hwnd,
-                    DWMWA_WINDOW_CORNER_PREFERENCE,
-                    &corner,
+                    DWMWA_BORDER_COLOR,
+                    &border,
                     std::mem::size_of::<u32>() as u32,
                 )
             };
@@ -166,10 +221,19 @@ fn main() {
             std::thread::spawn(move || {
                 pump.run_event_loop(|event| match event {
                     Event::Prop { name, value } => {
-                        let _ = events.emit("mpv-prop", serde_json::json!({ "name": name, "value": value }));
+                        let _ = events.emit(
+                            "mpv-prop",
+                            serde_json::json!({ "name": name, "value": value }),
+                        );
                     }
                     Event::Lifecycle(kind) => {
                         let _ = events.emit("mpv-event", kind);
+                    }
+                    Event::EndFile { reason, error } => {
+                        let _ = events.emit(
+                            "mpv-end-file",
+                            serde_json::json!({ "reason": reason, "error": error }),
+                        );
                     }
                     Event::Log(line) => {
                         let _ = events.emit("mpv-log", line);
@@ -183,4 +247,15 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("tauri run");
+}
+
+#[cfg(test)]
+mod window_style_tests {
+    use super::{corner_preference, DWMWCP_DONOTROUND, DWMWCP_ROUND};
+
+    #[test]
+    fn fullscreen_corners_are_square_and_windowed_corners_are_round() {
+        assert_eq!(corner_preference(true), DWMWCP_DONOTROUND);
+        assert_eq!(corner_preference(false), DWMWCP_ROUND);
+    }
 }

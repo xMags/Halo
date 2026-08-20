@@ -15,6 +15,7 @@ import { Player } from './screens/Player'
 import { Search } from './screens/Search'
 import { Settings } from './screens/Settings'
 import { Streams } from './screens/Streams'
+import { useWindowFullscreen } from './window'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,6 +38,13 @@ function Routes() {
 
 function Shell() {
   const { screen, setRoot } = useNav()
+  const windowFullscreen = useWindowFullscreen()
+
+  useEffect(() => {
+    if (screen.name !== 'player' && windowFullscreen.fullscreen) {
+      void windowFullscreen.setFullscreen(false)
+    }
+  }, [screen.name, windowFullscreen.fullscreen, windowFullscreen.setFullscreen])
 
   // Desktop staple: "/" or Ctrl+K jumps to search from any browse screen.
   useEffect(() => {
@@ -58,12 +66,13 @@ function Shell() {
     return () => window.removeEventListener('keydown', onKey)
   }, [screen.name, setRoot])
 
-  // The player owns the whole window — mpv paints behind the webview and any
-  // opaque chrome would cover it, including the title bar (the player draws
-  // its own caption buttons instead). Keyed by video so an autoplay replace()
-  // remounts it clean: resume, prefetch and overlay state must not leak into
-  // the next episode.
-  if (screen.name === 'player') return <Player key={screen.videoId} {...screen} />
+  // The player owns the media surface and adds the shared title bar only in
+  // windowed mode. Fullscreen state lives here, above the video key, so an
+  // autoplay replace can remount media state without desynchronizing the
+  // native window. Resume, prefetch and overlays still reset per video.
+  if (screen.name === 'player') {
+    return <Player key={screen.videoId} {...screen} windowFullscreen={windowFullscreen} />
+  }
 
   return (
     <div className="shell">

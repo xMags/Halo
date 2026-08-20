@@ -8,7 +8,13 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
  */
 
 /** Playback lifecycle events forwarded from mpv's event loop. */
-export type MpvLifecycleEvent = 'start-file' | 'end-file' | 'file-loaded' | 'seek' | 'playback-restart'
+export type MpvLifecycleEvent = 'start-file' | 'file-loaded' | 'seek' | 'playback-restart'
+
+export interface MpvEndFileEvent {
+  reason: 'eof' | 'restarted' | 'aborted' | 'quit' | 'error' | 'redirect' | 'unknown'
+  /** mpv's sanitized static error description, never a source URL. */
+  error: string | null
+}
 
 export type MpvPropValue = number | boolean | string | null
 
@@ -58,6 +64,10 @@ export function onMpvProp(handler: (change: MpvPropChange) => void): Promise<Unl
 
 export function onMpvEvent(handler: (kind: MpvLifecycleEvent) => void): Promise<UnlistenFn> {
   return listen<MpvLifecycleEvent>('mpv-event', (event) => handler(event.payload))
+}
+
+export function onMpvEndFile(handler: (end: MpvEndFileEvent) => void): Promise<UnlistenFn> {
+  return listen<MpvEndFileEvent>('mpv-end-file', (event) => handler(event.payload))
 }
 
 export function onMpvLog(handler: (line: string) => void): Promise<UnlistenFn> {
