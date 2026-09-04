@@ -155,5 +155,9 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
 - Never push without explicit permission. Linear history, no merge commits.
 - Explicit imports only; early returns; zod-validate every API request body —
   client input is untrusted even from our own app.
-- UI matches `src/theme.ts` tokens (glassy-dark system, accent vs primary
-  roles documented in that file).
+- Mobile UI matches `apps/mobile/src/theme.ts` tokens. Desktop UI matches the
+  design handoff's token set, applied in `apps/desktop/src/index.css` (both
+  palettes there, stamped by `data-theme`; `src/theme.ts` documents what the
+  short token names mean and holds only the values that must reach JS).
+  Responsive metrics are container queries on the content surface, never
+  window media queries — the design measures the content column.

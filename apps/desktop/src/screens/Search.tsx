@@ -1,11 +1,14 @@
 import type { MetaPreview } from '@halo/core'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArtImage } from '../components/ArtImage'
 import { Icon } from '../components/Icon'
 import { PosterCard } from '../components/PosterCard'
+import { SectionHeader } from '../components/SectionHeader'
 import { Shelf } from '../components/Shelf'
 import { formatRelative } from '../format'
 import { useNav } from '../nav'
 import { useLibrary, useSearch } from '../queries'
+import { setSearchQuery, useSearchQuery } from '../searchQuery'
 import {
   addSearchTerm,
   clearSearchHistory,
@@ -13,14 +16,13 @@ import {
   removeSearchTerm,
   type SearchHistoryEntry,
 } from '../searchHistory'
-import { usePublishScreenTitle } from '../screenTitle'
 
 const DEBOUNCE_MS = 350
 const MIN_QUERY = 2
 
 export function Search() {
-  const [term, setTerm] = useState('')
-  const [debounced, setDebounced] = useState('')
+  const term = useSearchQuery()
+  const [debounced, setDebounced] = useState(term)
   const [history, setHistory] = useState<SearchHistoryEntry[]>(() => getSearchHistory())
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -41,7 +43,7 @@ export function Search() {
 
   /** Clicked history entry: search immediately, no debounce wait. */
   const searchAgain = (value: string) => {
-    setTerm(value)
+    setSearchQuery(value)
     setDebounced(value)
     recordTerm(value)
     inputRef.current?.focus()
@@ -62,165 +64,173 @@ export function Search() {
   const shown = typeFilter ? groups.filter((g) => g.type === typeFilter) : groups
   const topMatch = groups[0]?.metas[0]
 
-  usePublishScreenTitle('Search', query.toUpperCase())
-
   return (
-    <div className="view no-bar">
-      <div style={{ padding: '26px var(--g) 0', maxWidth: 720 }}>
-        <div className="search-field">
-          <span style={{ color: 'var(--accent-text)', display: 'grid' }}>
-            <Icon name="search" size={17} />
-          </span>
+    <div className="view">
+      <SectionHeader title="Search" />
+      <div style={{ display: 'flex', flexDirection: 'column', padding: '8px var(--gu) 40px' }}>
+        <div className="search-box search-box-lg">
           <input
             ref={inputRef}
-            className="search-input"
-            placeholder="Search every installed addon…"
+            placeholder="Search movies and series"
             value={term}
             autoFocus
             spellCheck={false}
-            onChange={(e) => setTerm(e.target.value)}
+            onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && term.trim().length >= MIN_QUERY) recordTerm(term)
-              else if (e.key === 'Escape' && term) {
+              if (e.key === 'Enter' && term.trim().length >= MIN_QUERY) {
+                setDebounced(term)
+                recordTerm(term)
+              } else if (e.key === 'Escape' && term) {
                 e.stopPropagation()
-                setTerm('')
+                setSearchQuery('')
               }
             }}
           />
-          {active && (isFetching || !data) && <div className="search-timing">SEARCHING…</div>}
-          {term && (
-            <button type="button" className="search-clear" title="Clear" onClick={() => setTerm('')}>
-              <Icon name="x" size={12} />
-            </button>
+          {active && (isFetching || !data) ? (
+            <span className="spinner" />
+          ) : (
+            <span style={{ color: 'var(--t3)', display: 'flex' }}>
+              <Icon name="search" size={15} />
+            </span>
           )}
         </div>
 
         {active && counts.total > 0 && (
-          <div style={{ display: 'flex', gap: 7, marginTop: 13, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
             <button
               type="button"
-              className={`filter-pill ${typeFilter === null ? 'filter-pill-active' : ''}`}
+              className={`chip ${typeFilter === null ? 'chip-active' : ''}`}
               onClick={() => setTypeFilter(null)}
             >
-              All results · {counts.total}
+              All {counts.total}
             </button>
             {counts.byType.map(([type, count]) => (
               <button
                 key={type}
                 type="button"
-                className={`filter-pill ${typeFilter === type ? 'filter-pill-active' : ''}`}
+                className={`chip ${typeFilter === type ? 'chip-active' : ''}`}
                 onClick={() => setTypeFilter(type)}
               >
-                {type.charAt(0).toUpperCase() + type.slice(1)} · {count}
+                {type.charAt(0).toUpperCase() + type.slice(1)} {count}
               </button>
             ))}
           </div>
         )}
-      </div>
 
-      {(topMatch || history.length > 0) && (
-        <div className="search-split">
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {topMatch && (
-              <>
-                <div className="kicker" style={{ paddingBottom: 12 }}>
-                  TOP MATCH · {groups[0]!.addonName.toUpperCase()}
+        {(topMatch || history.length > 0) && (
+          <div className="search-cols">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+              {topMatch && (
+                <>
+                  <div className="kicker">TOP MATCH · {groups[0]!.addonName.toUpperCase()}</div>
+                  <TopMatchCard meta={topMatch} onOpen={() => recordTerm(query)} />
+                </>
+              )}
+            </div>
+            {history.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <div className="kicker">RECENT</div>
+                  <div className="spacer" />
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => setHistory(clearSearchHistory())}
+                  >
+                    Clear
+                  </button>
                 </div>
-                <TopMatchCard meta={topMatch} onOpen={() => recordTerm(query)} />
-              </>
+                <div className="list-card">
+                  {history.map((entry) => (
+                    <div key={entry.term} style={{ display: 'flex', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="recent-row"
+                        onClick={() => searchAgain(entry.term)}
+                      >
+                        <span style={{ color: 'var(--t3)', display: 'flex', flex: '0 0 15px' }}>
+                          <Icon name="clock" size={15} />
+                        </span>
+                        <span className="recent-term ellipsis">{entry.term}</span>
+                        <span className="mono" style={{ color: 'var(--t4)' }}>
+                          {entry.at ? formatRelative(entry.at).toUpperCase() : ''}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn icon-btn-bare"
+                        style={{ width: 24, height: 24, marginRight: 8 }}
+                        title="Remove from history"
+                        onClick={() => setHistory(removeSearchTerm(entry.term))}
+                      >
+                        <Icon name="x" size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
-          {history.length > 0 && (
-            <div className="recent-col">
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'baseline',
-                  justifyContent: 'space-between',
-                  paddingBottom: 12,
-                }}
-              >
-                <div className="kicker">RECENT</div>
-                <button
-                  type="button"
-                  className="btn-link"
-                  onClick={() => setHistory(clearSearchHistory())}
-                >
-                  Clear
-                </button>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {history.map((entry) => (
-                  <div key={entry.term} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <button
-                      type="button"
-                      className="recent-row"
-                      onClick={() => searchAgain(entry.term)}
-                    >
-                      <span style={{ color: 'var(--text-dimmer)', display: 'grid' }}>
-                        <Icon name="clock" size={14} />
-                      </span>
-                      <span className="spacer ellipsis">{entry.term}</span>
-                      <span className="recent-when">{entry.at ? formatRelative(entry.at) : ''}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      style={{ width: 22, height: 22, background: 'transparent' }}
-                      title="Remove from history"
-                      onClick={() => setHistory(removeSearchTerm(entry.term))}
-                    >
-                      <Icon name="x" size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+        )}
 
-      {!active && history.length === 0 && (
-        <div className="state-note">Search every installed addon — titles, series, anything.</div>
-      )}
-      {active && isFetching && groups.length === 0 && (
-        <div className="state-note">
-          <span className="spinner" /> Searching…
-        </div>
-      )}
-      {active && !isFetching && groups.length === 0 && (
-        <div className="state-note">No results for “{query}”.</div>
-      )}
+        {!active && history.length === 0 && (
+          <div className="state-note" style={{ paddingLeft: 0 }}>
+            Search every installed addon — titles, series, anything.
+          </div>
+        )}
+        {active && isFetching && groups.length === 0 && (
+          <div className="state-note" style={{ paddingLeft: 0 }}>
+            <span className="spinner" /> Searching…
+          </div>
+        )}
+        {active && !isFetching && groups.length === 0 && (
+          <div className="state-note" style={{ paddingLeft: 0 }}>
+            No results for “{query}”.
+          </div>
+        )}
 
-      {shown.map((group) => (
-        <Shelf key={group.key} title={group.title}>
-          {group.metas.map((meta) => (
-            <PosterCard
-              key={`${meta.type}:${meta.id}`}
-              meta={meta}
-              onBeforePress={() => recordTerm(query)}
-            />
-          ))}
-        </Shelf>
-      ))}
+      </div>
+
+      {/* The result shelves sit outside the padded block: a shelf carries its
+          own gutter, and nesting it inside one would double it. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 26, padding: '0 0 40px' }}>
+        {shown.map((group) => (
+          <Shelf
+            key={group.key}
+            title={group.title}
+            source={`${group.addonName.toUpperCase()} · ${group.metas.length} RESULTS`}
+          >
+            {group.metas.map((meta) => (
+              <PosterCard
+                key={`${meta.type}:${meta.id}`}
+                meta={meta}
+                onBeforePress={() => recordTerm(query)}
+              />
+            ))}
+          </Shelf>
+        ))}
+      </div>
     </div>
   )
 }
 
 /**
  * The single best guess for the query, given the room to justify itself: art,
- * rating, a blurb, and whether it is already in the library.
+ * a mono fact line and a blurb.
  */
-function TopMatchCard({
-  meta,
-  onOpen,
-}: {
-  meta: MetaPreview
-  onOpen: () => void
-}) {
+function TopMatchCard({ meta, onOpen }: { meta: MetaPreview; onOpen: () => void }) {
   const { push } = useNav()
   const { data: library } = useLibrary()
   const inLibrary = (library ?? []).some((i) => i.id === `${meta.type}:${meta.id}` && !i.removedAt)
+
+  const facts = [
+    meta.releaseInfo,
+    meta.type.toUpperCase(),
+    meta.imdbRating ? `★ ${meta.imdbRating}` : null,
+    inLibrary ? 'IN LIBRARY' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
   return (
     <button
@@ -231,37 +241,13 @@ function TopMatchCard({
         push({ name: 'detail', type: meta.type, id: meta.id })
       }}
     >
-      <div className="art" style={{ width: 92, flex: '0 0 auto', aspectRatio: '2 / 3', borderRadius: 8, border: '1px solid var(--border)' }}>
-        {meta.poster && <img src={meta.poster} alt="" draggable={false} />}
+      <div className="art top-match-art">
+        <ArtImage src={meta.poster} label={meta.name} />
       </div>
-      <div style={{ minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, paddingTop: 2, minWidth: 0 }}>
         <div className="top-match-title ellipsis">{meta.name}</div>
-        <div style={{ display: 'flex', gap: 10, marginTop: 5, fontSize: 12, color: 'var(--text-muted)' }}>
-          {meta.imdbRating && <span className="rating">★ {meta.imdbRating}</span>}
-          {meta.releaseInfo && <span>{meta.releaseInfo}</span>}
-          <span className="dot-sep">/</span>
-          <span>{meta.type.charAt(0).toUpperCase() + meta.type.slice(1)}</span>
-        </div>
-        {meta.description && (
-          <div
-            className="body-copy"
-            style={{
-              marginTop: 9,
-              fontSize: 12,
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}
-          >
-            {meta.description}
-          </div>
-        )}
-        {inLibrary && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 11 }}>
-            <div className="badge badge-outline">IN LIBRARY</div>
-          </div>
-        )}
+        <div className="mono">{facts}</div>
+        {meta.description && <div className="top-match-blurb">{meta.description}</div>}
       </div>
     </button>
   )

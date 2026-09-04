@@ -25,12 +25,15 @@ test('player shortcuts ignore modifiers, controls, and repeated toggles', () => 
   assert.equal(resolvePlayerShortcut(shortcut({ code: 'Escape', interactiveTarget: true })), 'escape')
   assert.equal(resolvePlayerShortcut(shortcut({ code: 'KeyF', repeat: true })), null)
   assert.equal(resolvePlayerShortcut(shortcut({ code: 'ArrowRight', repeat: true })), 'seek-forward')
+  assert.equal(resolvePlayerShortcut(shortcut({ code: 'KeyZ' })), 'toggle-fill')
+  assert.equal(resolvePlayerShortcut(shortcut({ code: 'KeyZ', repeat: true })), null)
+  assert.equal(resolvePlayerShortcut(shortcut({ code: 'KeyZ', ctrlKey: true })), null)
 })
 
 test('windowed video reserves only the title bar', () => {
-  assert.equal(videoTopMarginRatio(true, 800, 36), 0)
-  assert.equal(videoTopMarginRatio(false, 800, 36), 0.045)
-  assert.equal(videoTopMarginRatio(false, 0, 36), 0)
+  assert.equal(videoTopMarginRatio(true, 800, 32), 0)
+  assert.equal(videoTopMarginRatio(false, 800, 32), 0.04)
+  assert.equal(videoTopMarginRatio(false, 0, 32), 0)
 })
 
 test('up-next countdown and cancel semantics depend on actual end-of-file', () => {

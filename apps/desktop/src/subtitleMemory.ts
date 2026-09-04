@@ -4,10 +4,11 @@
  * recorded — auto-applied defaults never write, so preference-based selection
  * can't reinforce itself into looking like a choice. Local-only; not synced
  * across devices (mobile keeps the same store shape in AsyncStorage).
- * Desktop has no downloads, so mobile's 'downloaded' kind doesn't exist here.
+ * Downloaded files use the same local choice store so a saved subtitle can be
+ * restored without asking the server again.
  */
 export interface SubtitleChoice {
-  kind: 'off' | 'embedded' | 'external'
+  kind: 'off' | 'embedded' | 'external' | 'downloaded'
   /** Language of the choice — the addon's code for external subs, the track's tag for embedded. */
   lang?: string
   /** Embedded: exact track name, for same-file restore before language fallback. */

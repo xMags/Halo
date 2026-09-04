@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
-import { WindowButtons } from '../components/WindowButtons'
+import mark from '../assets/halo-mark.png'
+import { TitleBar } from '../components/TitleBar'
 import { signInWithPassword } from '../localAuth'
 import { signInWithOidc } from '../oidc'
 import { useSession } from '../session'
@@ -8,7 +9,7 @@ import { useSession } from '../session'
  * Sign-in, branched by the server's declared auth mode — the two modes are
  * deployment-exclusive, so exactly one of them is ever drawn. Local mode posts
  * the password form; OIDC opens the system browser for the PKCE exchange and
- * waits for the loopback redirect.
+ * waits for the loopback redirect. Both use the same 404px lockup.
  */
 export function Login() {
   const { serverUrl, authConfig, signedIn, disconnect } = useSession()
@@ -19,8 +20,8 @@ export function Login() {
 
   const host = serverUrl?.replace(/^https?:\/\//, '') ?? ''
 
-  async function submitLocal(e: FormEvent) {
-    e.preventDefault()
+  async function submitLocal(event: FormEvent) {
+    event.preventDefault()
     if (!serverUrl) return
     setBusy(true)
     setError(null)
@@ -50,54 +51,57 @@ export function Login() {
 
   return (
     <div className="auth-screen">
-      <div className="auth-titlebar" data-tauri-drag-region>
-        <WindowButtons />
-      </div>
+      <div className="glow glow-a" />
+      <div className="glow glow-b" />
+      <TitleBar />
       <div className="auth-stage">
-        <div className="auth-glow" />
-        <div className="auth-form">
+        <div className="auth-col">
           <div className="logo-lockup">
-            <span className="logo-mark" />
-            <span className="logo-word">HALO</span>
+            <img className="logo-mark" src={mark} alt="" />
+            <div className="logo-word">HALO</div>
           </div>
-          <div className="auth-title">Sign in</div>
+          <div className="auth-title">Sign in to Halo</div>
           <div className="auth-host">{host}</div>
 
           {!authConfig && (
-            <div className="auth-status" style={{ color: 'var(--text-dim)' }}>
-              <span className="auth-status-dot" />
-              <span>CONTACTING SERVER…</span>
+            <div className="auth-sub">
+              <span className="spinner" /> Contacting the server…
             </div>
           )}
 
           {authConfig?.mode === 'local' && (
             <form onSubmit={submitLocal}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 22 }}>
+              <div className="auth-sub">Use the account created on your Halo server.</div>
+              <div className="field-block" style={{ marginTop: 22 }}>
+                <label className="field-label" htmlFor="halo-username">
+                  Username
+                </label>
                 <input
+                  id="halo-username"
                   className="field"
-                  placeholder="Username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoFocus
                   spellCheck={false}
                 />
+              </div>
+              <div className="field-block">
+                <label className="field-label" htmlFor="halo-password">
+                  Password
+                </label>
                 <input
+                  id="halo-password"
                   className="field"
-                  placeholder="Password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
-              {error && (
-                <div className="error-text" style={{ marginTop: 11 }}>
-                  {error}
-                </div>
-              )}
+              {error && <div className="auth-error">{error}</div>}
               <button
                 type="submit"
-                className="btn-primary auth-submit"
-                style={{ marginTop: 16 }}
+                className="btn-accent h36 btn-block"
+                style={{ marginTop: 20 }}
                 disabled={busy || !username || !password}
               >
                 {busy ? 'Signing in…' : 'Sign in'}
@@ -107,18 +111,15 @@ export function Login() {
 
           {authConfig?.mode === 'oidc' && (
             <>
-              <div className="auth-sub" style={{ marginTop: 20 }}>
+              <div className="auth-sub">
                 This server signs in through {new URL(authConfig.issuer).host}. Your browser will
                 open; come back here once you have signed in.
               </div>
-              {error && (
-                <div className="error-text" style={{ marginTop: 11 }}>
-                  {error}
-                </div>
-              )}
+              {error && <div className="auth-error">{error}</div>}
               <button
                 type="button"
-                className="btn-primary auth-submit"
+                className="btn-accent h36 btn-block"
+                style={{ marginTop: 20 }}
                 disabled={busy}
                 onClick={() => void submitOidc()}
               >
@@ -127,12 +128,15 @@ export function Login() {
             </>
           )}
 
-          <div className="or-divider">
-            <span />
-            <em>OR</em>
-            <span />
-          </div>
-          <button type="button" className="btn-glass auth-alt" onClick={disconnect}>
+          <button type="button" className="auth-help soon" title="Coming soon">
+            Having trouble signing in?
+          </button>
+          <button
+            type="button"
+            className="btn-link"
+            style={{ alignSelf: 'center', marginTop: 2 }}
+            onClick={disconnect}
+          >
             Use a different server
           </button>
         </div>

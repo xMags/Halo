@@ -1,4 +1,11 @@
-export type PlayerShortcut = 'toggle-pause' | 'seek-back' | 'seek-forward' | 'toggle-fullscreen' | 'escape'
+export type PlayerShortcut =
+  | 'toggle-pause'
+  | 'seek-back'
+  | 'seek-forward'
+  | 'toggle-fullscreen'
+  /** Crop the picture to fill the window (mpv panscan). */
+  | 'toggle-fill'
+  | 'escape'
 
 export interface PlayerShortcutInput {
   code: string
@@ -32,6 +39,8 @@ export function resolvePlayerShortcut(input: PlayerShortcutInput): PlayerShortcu
       return 'seek-forward'
     case 'KeyF':
       return 'toggle-fullscreen'
+    case 'KeyZ':
+      return 'toggle-fill'
     default:
       return null
   }

@@ -1,105 +1,61 @@
 /**
- * Halo desktop design system. Near-black window, monochrome chrome, one iOS
- * blue for interaction and one white button per screen for the hero action.
+ * Halo desktop design system — the token reference.
  *
- * Colour roles:
- *   accent      — interaction (selection bar, progress, focused field)
- *   accentText  — the readable-on-dark tint of the accent: kickers, links,
- *                 active pills. Never use `accent` for text on the canvas.
- *   primary     — the single hero call-to-action (Play/Resume/Sign in):
- *                 white fill, black label, at most one per screen.
+ * The applied values live in `index.css`: both palettes are declared there so
+ * the first paint is already correct (a JS-applied palette would flash the
+ * wrong theme). This file documents what the names mean and exports the
+ * handful of numbers that have to reach JS.
  *
- * These constants mirror the custom properties in index.css. Stylesheets use
- * the variables; these exports exist for the handful of places a value has to
- * reach JS (canvas-free gradients, inline widths, chart-like fills).
+ * Token names match the design handoff, which in turn matches the WinUI
+ * `Styles/Tokens.xaml` the design was derived from — so a value here can be
+ * checked against the handoff table by name:
+ *
+ *   --m    window (Mica)          --t1..--t4  text, brightest to faintest
+ *   --ly   content layer          --ac        accent (text-safe)
+ *   --cd   card fill              --aa        accent fill (buttons)
+ *   --cs   card stroke            --oa        on-accent label
+ *   --ct   control fill           --at        accent tint
+ *   --cts  control stroke         --ns        nav selection
+ *   --cth  control hover          --su/--ca/--cr  success / caution / critical
+ *   --sb   subtle hover           --df/--dh   danger fill / hover
+ *   --tt   tile, --tb secondary   --dv        divider
+ *   --p1/--p2  placeholder art    --pt        placeholder caption
+ *   --ds   sheet + menu surface   --ib/--is   info fill / stroke
+ *   --chd  chart dim              --hs1/--hs2 hero scrim stops
+ *
+ * The player overlay is pinned to dark in both themes and uses literal
+ * colours, not these tokens — see the Player section at the end of index.css.
  */
-export const colors = {
-  /** App background and title bar. */
-  window: '#07080b',
-  /** Left navigation rail — half a step darker than the canvas. */
-  rail: '#090a0f',
-  /** List rows and flat cards. */
-  surface: '#0c0e13',
-  /** Hero cards, aside panels — one step above `surface`. */
-  surfaceRaised: '#0e1015',
-  /** Fill behind poster/still/backdrop art while it loads or is missing. */
-  placeholder: '#14161d',
-  /** Row hover fill. */
-  surfaceHover: '#12151b',
 
-  /** Structural dividers: title bar, rail, command bar. */
-  hairline: 'rgba(255,255,255,0.055)',
-  /** Card and row borders. */
-  border: 'rgba(255,255,255,0.08)',
-  /** Borders that need to read as interactive (hover, focus, hero buttons). */
-  borderStrong: 'rgba(255,255,255,0.13)',
-
-  text: '#f4f6fb',
-  /** Button labels and values. */
-  textSecondary: '#c7cdd9',
-  /** Body copy and inactive navigation. */
-  textMuted: '#8b93a5',
-  /** Mono metadata. */
-  textDim: '#6b7383',
-  /** Kickers and the quietest labels. */
-  textDimmer: '#4e5666',
-
-  accent: '#0a84ff',
-  accentText: '#7ec0ff',
-  success: '#5dd39e',
-  warning: '#ffd479',
-  danger: '#ff6b6b',
-  /** Window close button hover — the one red that is not `danger`. */
-  closeHover: '#c6273a',
-
-  primary: '#ffffff',
-  onPrimary: '#000000',
-  onAccent: '#ffffff',
-} as const
-
-export const radius = {
-  /** Controls: window buttons, small icon squares, sort/ghost buttons. */
-  control: 8,
-  /** Rows and buttons. */
-  row: 11,
-  /** Cards. */
-  card: 14,
-  /** Hero blocks and floating overlays. */
-  overlay: 17,
-  pill: 999,
-} as const
+/** Theme the user picked. `system` follows the OS setting live. */
+export type ThemeChoice = 'light' | 'dark' | 'system'
 
 /**
- * The two window tiers. Everything responsive is driven by these, applied as
- * one size class (a `min-width` media query in index.css) rather than
- * per-screen breakpoints — a view must never disagree with its chrome about
- * which tier it is in.
+ * Title bar height. Load-bearing beyond layout: windowed playback reserves it
+ * with mpv's `video-margin-ratio-top`, so the player must use this same value
+ * or the picture sits under the bar.
  */
-export const sizeClass = {
-  /** Windowed, 1280 × 800 — also the minimum supported window. */
-  compact: {
-    gutter: 28,
-    navRail: 212,
-    commandBar: 54,
-    heroHeight: 322,
-    posterWidth: 132,
-    wideCard: 268,
-    libraryColumns: 7,
-  },
-  /** Maximised, 1920 × 1080. */
-  wide: {
-    gutter: 44,
-    navRail: 248,
-    commandBar: 62,
-    heroHeight: 460,
-    posterWidth: 168,
-    wideCard: 336,
-    libraryColumns: 9,
-  },
+export const TITLE_BAR_HEIGHT = 32
+
+/** Width reserved for the caption buttons at the end of the title bar. */
+export const CAPTION_SLOT_WIDTH = 138
+
+/** Navigation pane width — fixed in every tier. */
+export const NAV_PANE_WIDTH = 224
+
+/**
+ * Content-column widths at which the poster/card/gutter/hero metrics step up.
+ * Applied as container queries on the content surface (`index.css`), listed
+ * here because the values are part of the design contract.
+ */
+export const CONTENT_BREAKPOINTS = {
+  /** Poster 148, continue card 300, gutter 30, hero 360. */
+  medium: 1100,
+  /** The downloads detail pane appears. */
+  downloadsPane: 1200,
+  /** Poster 168, continue card 336, gutter 36, hero 420. */
+  wide: 1500,
 } as const
 
-/** Viewport width at which the wide tier takes over (see index.css). */
-export const WIDE_TIER_MIN_WIDTH = 1600
-
-/** Title bar height, fixed in both tiers. */
-export const TITLE_BAR_HEIGHT = 36
+/** Hero rotation dwell, paused on hover (handoff: 6s). */
+export const HERO_DWELL_MS = 6_000

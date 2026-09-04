@@ -1,7 +1,8 @@
 import { HaloClient, type AuthConfig } from '@halo/core'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { useEffect, useState, type FormEvent } from 'react'
-import { WindowButtons } from '../components/WindowButtons'
+import mark from '../assets/halo-mark.png'
+import { TitleBar } from '../components/TitleBar'
 import { DEFAULT_SERVER_URL } from '../api'
 import { useSession } from '../session'
 
@@ -23,7 +24,7 @@ type Probe =
  * First-run screen: point the app at a Halo server. The address is probed as
  * it is typed — `/auth/config` is public and doubles as auth-mode discovery,
  * so a reachable server can say which sign-in it will ask for before the user
- * commits to it.
+ * commits to it. It shares Login's lockup and 404px column.
  */
 export function Connect() {
   const { connect } = useSession()
@@ -61,23 +62,22 @@ export function Connect() {
     }
   }, [url])
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
     if (probe.state !== 'reached') return
     connect(probe.url, probe.config)
   }
 
   return (
     <div className="auth-screen">
-      <div className="auth-titlebar" data-tauri-drag-region>
-        <WindowButtons />
-      </div>
+      <div className="glow glow-a" />
+      <div className="glow glow-b" />
+      <TitleBar />
       <div className="auth-stage">
-        <div className="auth-glow" />
-        <form className="auth-form" onSubmit={submit}>
+        <form className="auth-col" onSubmit={submit}>
           <div className="logo-lockup">
-            <span className="logo-mark" />
-            <span className="logo-word">HALO</span>
+            <img className="logo-mark" src={mark} alt="" />
+            <div className="logo-word">HALO</div>
           </div>
           <div className="auth-title">Point Halo at your server.</div>
           <div className="auth-sub">
@@ -85,27 +85,32 @@ export function Connect() {
             address to begin.
           </div>
 
-          <input
-            className="field field-mono"
-            style={{ marginTop: 24, fontSize: 13 }}
-            placeholder="https://halo.example.com"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            autoFocus
-            spellCheck={false}
-          />
+          <div className="field-block" style={{ marginTop: 22 }}>
+            <label className="field-label" htmlFor="halo-server">
+              Server address
+            </label>
+            <input
+              id="halo-server"
+              className="field field-mono"
+              placeholder="https://halo.example.com"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              autoFocus
+              spellCheck={false}
+            />
+          </div>
 
           <ProbeLine probe={probe} />
 
           <button
             type="submit"
-            className="btn-primary auth-submit"
+            className="btn-accent h36 btn-block"
             disabled={probe.state !== 'reached'}
           >
             Continue
           </button>
 
-          <div style={{ marginTop: 18, fontSize: 11.5, color: 'var(--text-dim)' }}>
+          <div className="auth-sub" style={{ fontSize: 14, color: 'var(--t3)' }}>
             Need a server? Halo is self-hosted — run the API from the project&apos;s repository and
             point this at it.
           </div>
@@ -116,27 +121,24 @@ export function Connect() {
 }
 
 function ProbeLine({ probe }: { probe: Probe }) {
-  if (probe.state === 'idle') return <div style={{ height: 27 }} />
+  if (probe.state === 'idle') return <div style={{ height: 30 }} />
   if (probe.state === 'checking') {
     return (
-      <div className="auth-status" style={{ color: 'var(--text-dim)' }}>
-        <span className="auth-status-dot" />
-        <span>CHECKING…</span>
+      <div className="auth-host" style={{ color: 'var(--t3)' }}>
+        <span className="spinner" /> CHECKING…
       </div>
     )
   }
   if (probe.state === 'failed') {
     return (
-      <div className="auth-status" style={{ color: 'var(--danger)' }}>
-        <span className="auth-status-dot" />
-        <span className="ellipsis">NOT REACHED · {probe.message.toUpperCase()}</span>
+      <div className="auth-host ellipsis" style={{ color: 'var(--cr)' }}>
+        NOT REACHED · {probe.message.toUpperCase()}
       </div>
     )
   }
   return (
-    <div className="auth-status" style={{ color: 'var(--success)' }}>
-      <span className="auth-status-dot" />
-      <span>REACHED · {probe.config.mode.toUpperCase()} AUTH</span>
+    <div className="auth-host" style={{ color: 'var(--su)' }}>
+      REACHED · {probe.config.mode.toUpperCase()} AUTH
     </div>
   )
 }

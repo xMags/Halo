@@ -1,10 +1,12 @@
 import type { MetaDetail, MetaPreview, WatchState } from '@halo/core'
 import { useEffect, useState } from 'react'
+import { ArtImage } from '../components/ArtImage'
 import { Icon } from '../components/Icon'
 import { PosterCard } from '../components/PosterCard'
+import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { Shelf } from '../components/Shelf'
-import { episodeTag, formatTimeLeft } from '../format'
+import { episodeTag, formatTimeLeft, runtimeMinutes } from '../format'
 import { buildContinueWatching, type ContinueWatchingItem } from '../homeRows'
 import { useNav } from '../nav'
 import {
@@ -18,7 +20,8 @@ import {
   useWatchStates,
   type BrowsableCatalog,
 } from '../queries'
-import { CommandBarActions, usePublishScreenTitle } from '../screenTitle'
+import { setSearchQuery, useSearchQuery } from '../searchQuery'
+import { HERO_DWELL_MS } from '../theme'
 
 /** How many catalog shelves Home renders (each is one server round-trip). */
 const MAX_SHELVES = 8
@@ -31,8 +34,7 @@ const SHELF_LIMIT = 30
  */
 const CONTINUE_LIMIT = 8
 /** Keep desktop's featured rotation aligned with the mobile client. */
-const FEATURED_COUNT = 5
-const FEATURED_DWELL_MS = 5_000
+const FEATURED_COUNT = 3
 
 const FILTERS = [
   { value: 'all', label: 'All' },
@@ -43,6 +45,8 @@ type Filter = (typeof FILTERS)[number]['value']
 
 export function Home() {
   const [filter, setFilter] = useState<Filter>('all')
+  const { setRoot } = useNav()
+  const query = useSearchQuery()
   const { data: addons, isLoading, error } = useEffectiveAddons()
   const { data: watchStates } = useWatchStates()
   const { data: library } = useLibrary()
@@ -57,39 +61,69 @@ export function Home() {
   // regardless of which browse filter is showing.
   const continueItems = buildContinueWatching(watchStates, library).slice(0, CONTINUE_LIMIT)
 
-  usePublishScreenTitle('Home', '')
-
   return (
-    <div className="view no-bar">
-      <CommandBarActions>
-        <Segmented options={FILTERS} value={filter} onChange={setFilter} />
-      </CommandBarActions>
+    <div className="view">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 28, paddingBottom: 48 }}>
+        <SectionHeader title="Home">
+          <div className="search-box">
+            <input
+              placeholder="Search movies and series"
+              value={query}
+              spellCheck={false}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') setRoot('search')
+              }}
+            />
+            <span style={{ color: 'var(--t3)', display: 'flex' }}>
+              <Icon name="search" size={14} />
+            </span>
+          </div>
+          <Segmented options={FILTERS} value={filter} onChange={setFilter} />
+        </SectionHeader>
 
-      {error && <div className="state-note error-text">Could not reach your Halo server: {String(error)}</div>}
-      {isLoading && (
-        <div className="state-note">
-          <span className="spinner" /> Loading addons…
-        </div>
-      )}
-      {addons && allShelves.length === 0 && (
-        <div className="state-note">
-          No browsable catalogs. Add an addon that publishes them (Cinemeta) under Settings → Addons.
-        </div>
-      )}
+        {error && (
+          <div className="state-note error-text">
+            Could not reach your Halo server: {String(error)}
+          </div>
+        )}
+        {isLoading && (
+          <div className="state-note">
+            <span className="spinner" /> Loading addons…
+          </div>
+        )}
+        {addons && allShelves.length === 0 && (
+          <div className="state-note">
+            No browsable catalogs. Add an addon that publishes them (Cinemeta) under Settings →
+            Addons.
+          </div>
+        )}
 
-      {shelves.length > 0 && <FeaturedHero lead={shelves[0]!} watchStates={watchStates} />}
+        {shelves.length > 0 && <FeaturedHero lead={shelves[0]!} watchStates={watchStates} />}
 
-      {continueItems.length > 0 && (
-        <Shelf title="Continue watching">
-          {continueItems.map((item) => (
-            <ContinueCard key={item.itemId} item={item} watchStates={watchStates} />
-          ))}
-        </Shelf>
-      )}
+        {continueItems.length > 0 && (
+          <Shelf
+            title="Continue watching"
+            source={`${continueItems.length} IN PROGRESS`}
+            action={
+              <span className="btn-link soon" title="Coming soon">
+                See all
+              </span>
+            }
+          >
+            {continueItems.map((item) => (
+              <ContinueCard key={item.itemId} item={item} watchStates={watchStates} />
+            ))}
+          </Shelf>
+        )}
 
-      {shelves.map((shelf) => (
-        <CatalogShelf key={`${shelf.addonId}/${shelf.catalog.type}/${shelf.catalog.id}`} shelf={shelf} />
-      ))}
+        {shelves.map((shelf) => (
+          <CatalogShelf
+            key={`${shelf.addonId}/${shelf.catalog.type}/${shelf.catalog.id}`}
+            shelf={shelf}
+          />
+        ))}
+      </div>
     </div>
   )
 }
@@ -99,6 +133,10 @@ export function Home() {
  * title — none of which live in the watch state, so the card resolves full
  * meta for its title. The query is shared with Detail (same key), so opening
  * the card afterwards costs nothing.
+ *
+ * Clicking it opens the sources sheet for the episode in progress rather than
+ * the title page: the card exists to resume, and its progress bar promises
+ * exactly that.
  */
 function ContinueCard({
   item,
@@ -107,54 +145,56 @@ function ContinueCard({
   item: ContinueWatchingItem
   watchStates: WatchState[] | undefined
 }) {
-  const { push } = useNav()
+  const { openSheet } = useNav()
   const { data: meta } = useMeta(item.meta.type, item.meta.id)
 
   const state = (watchStates ?? []).find((s) => s.itemId === item.itemId)
   const video = meta?.videos?.find((v) => v.id === state?.videoId)
   const tag = video ? episodeTag(video.season, video.episode) : null
   const still = video?.thumbnail ?? meta?.background ?? item.meta.poster
+  const episodeName = video?.title ?? video?.name ?? null
+  const left = state ? formatTimeLeft(state.positionSec, state.durationSec).toUpperCase() : ''
 
   const open = () =>
-    push({
-      name: 'streams',
+    openSheet({
       type: item.meta.type,
       videoId: state?.videoId ?? item.meta.id,
       itemId: item.itemId,
       metaId: item.meta.id,
-      title: video?.title ?? video?.name ?? item.meta.name,
+      title: episodeName ?? item.meta.name,
       showName: item.meta.name,
       ...(tag ? { episodeLabel: tag } : {}),
       ...(item.meta.poster ? { poster: item.meta.poster } : {}),
+      ...(runtimeMinutes(meta?.runtime) != null
+        ? { runtimeMinutes: runtimeMinutes(meta?.runtime)! }
+        : {}),
     })
 
   return (
     <button type="button" className="cw-card" onClick={open} title={item.meta.name}>
-      <div className="art art-wide cw-still">
-        {still ? <img src={still} alt="" loading="lazy" draggable={false} /> : <div className="art-label">EPISODE STILL</div>}
-        {tag && <div className="cw-tag">{tag}</div>}
-        {state && (
-          <div className="cw-left">{formatTimeLeft(state.positionSec, state.durationSec)}</div>
-        )}
+      <div className="art cw-art">
+        <ArtImage src={still} label="EPISODE STILL" lazy />
+        {tag && <div className="tag-chip cw-tag">{tag}</div>}
+        {left && <div className="tag-chip cw-left">{left.replace(' LEFT', '')}</div>}
         <div className="art-progress">
           <div style={{ width: `${Math.round(item.progress * 100)}%` }} />
         </div>
       </div>
-      <div className="cw-body">
-        <div className="cw-title ellipsis">{item.meta.name}</div>
-        <div className="cw-sub ellipsis">
-          {video?.title ?? video?.name ?? (item.meta.type === 'movie' ? 'Movie' : 'Episode')}
-        </div>
+      <div className="card-title ellipsis">{item.meta.name}</div>
+      <div className="card-meta ellipsis">
+        {[episodeName?.toUpperCase() ?? (item.meta.type === 'movie' ? 'MOVIE' : 'EPISODE'), left]
+          .filter(Boolean)
+          .join(' · ')}
       </div>
     </button>
   )
 }
 
 /**
- * Featured = the first five titles of the first visible catalog. Full meta is
- * resolved only for the title on screen, so rotating the hero does not turn
- * Home into five eager addon requests. A prior watch state turns Play into
- * Resume.
+ * Featured = the first titles of the first visible catalog, rotating every 6s
+ * and pausing while the pointer is over it. Full meta is resolved only for the
+ * title on screen, so rotating the hero does not turn Home into a burst of
+ * eager addon requests. A prior watch state turns Play into Resume.
  */
 function FeaturedHero({
   lead,
@@ -163,7 +203,7 @@ function FeaturedHero({
   lead: BrowsableCatalog
   watchStates: WatchState[] | undefined
 }) {
-  const { push } = useNav()
+  const { push, openSheet } = useNav()
   const { data: library } = useLibrary()
   const upsertLibrary = useUpsertLibrary()
   const { data: metas } = useCatalog(lead.addonId, lead.catalog.type, lead.catalog.id)
@@ -171,6 +211,7 @@ function FeaturedHero({
   const previewsKey = previews.map((meta) => `${meta.type}:${meta.id}`).join('|')
   const [featuredIndex, setFeaturedIndex] = useState(0)
   const [autoAdvance, setAutoAdvance] = useState(true)
+  const [hovered, setHovered] = useState(false)
   const safeIndex = featuredIndex < previews.length ? featuredIndex : 0
   const preview = previews[safeIndex]
 
@@ -182,13 +223,12 @@ function FeaturedHero({
   }, [previewsKey])
 
   useEffect(() => {
-    if (!autoAdvance || previews.length <= 1) return
-
+    if (!autoAdvance || hovered || previews.length <= 1) return
     const timer = window.setTimeout(() => {
       setFeaturedIndex((current) => (current + 1) % previews.length)
-    }, FEATURED_DWELL_MS)
+    }, HERO_DWELL_MS)
     return () => window.clearTimeout(timer)
-  }, [autoAdvance, previews.length, previewsKey, safeIndex])
+  }, [autoAdvance, hovered, previews.length, previewsKey, safeIndex])
 
   const { data: fullMeta } = useMeta(preview?.type ?? '', preview?.id ?? '', { enabled: !!preview })
   let featured: MetaDetail | MetaPreview | undefined = preview
@@ -210,8 +250,7 @@ function FeaturedHero({
     // A series with no resume point needs an episode choice first, and Detail
     // is the picker; anything else goes straight to its sources.
     if (featured.type === 'series' && !state) return openDetail()
-    push({
-      name: 'streams',
+    openSheet({
       type: featured.type,
       videoId: state?.videoId ?? featured.id,
       itemId,
@@ -220,6 +259,9 @@ function FeaturedHero({
       showName: featured.name,
       ...(resumeTag ? { episodeLabel: resumeTag } : {}),
       ...(featured.poster ? { poster: featured.poster } : {}),
+      ...(runtimeMinutes(fullMeta?.runtime) != null
+        ? { runtimeMinutes: runtimeMinutes(fullMeta?.runtime)! }
+        : {}),
     })
   }
 
@@ -233,90 +275,77 @@ function FeaturedHero({
     }
   }
 
-  const episodeCount = videos.length
-  const kickerRight = state
-    ? `${resumeTag ?? 'IN PROGRESS'} · ${formatTimeLeft(state.positionSec, state.durationSec).toUpperCase()}`
-    : (featured.releaseInfo ?? '').toUpperCase()
+  const facts = [
+    featured.releaseInfo,
+    featured.type.toUpperCase(),
+    videos.length > 0 ? `${new Set(videos.map((v) => v.season ?? 0)).size} SEASONS` : null,
+    (featured.genres ?? []).slice(0, 2).join(', ').toUpperCase() || null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
   return (
-    <div className="hero">
-      <div className="hero-art-stack" aria-hidden="true">
-        {previews.map((item, index) => {
-          const resolved = index === safeIndex ? featured : item
-          const artwork = resolved.background ?? resolved.poster
-          if (!artwork) return null
-
-          return (
-            <div
-              key={`${item.type}:${item.id}:${index}`}
-              className={`hero-art ${index === safeIndex ? 'hero-art-active' : ''}`}
-              style={{ backgroundImage: `url(${artwork})` }}
-            />
-          )
-        })}
+    <div
+      className="hero"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div className="art" style={{ position: 'absolute', inset: 0 }} aria-hidden>
+        <div className="art-label">BACKDROP</div>
       </div>
+      {previews.map((item, index) => {
+        const resolved = index === safeIndex ? featured : item
+        const artwork = resolved.background ?? resolved.poster
+        if (!artwork) return null
+        return (
+          <div
+            key={`${item.type}:${item.id}:${index}`}
+            className={`hero-art ${index === safeIndex ? 'hero-art-active' : ''}`}
+            style={{ backgroundImage: `url(${artwork})` }}
+            aria-hidden
+          />
+        )
+      })}
       <div className="hero-scrim" />
       <div className="hero-body">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <div className="kicker kicker-accent">FEATURED · {lead.addonName.toUpperCase()}</div>
-          {kickerRight && (
-            <>
-              <span
-                style={{ width: 3, height: 3, borderRadius: 999, background: 'var(--rule)' }}
-              />
-              <div style={{ font: "400 10px/1 var(--mono)", color: 'var(--text-dim)' }}>
-                {kickerRight}
-              </div>
-            </>
-          )}
-        </div>
+        <div className="kicker kicker-accent">FEATURED</div>
         <div className="hero-title">{featured.name}</div>
         <div className="hero-facts">
-          {featured.imdbRating && <span className="rating">★ {featured.imdbRating}</span>}
-          {featured.releaseInfo && <span>{featured.releaseInfo}</span>}
-          {(featured.genres ?? []).length > 0 && (
-            <>
-              <span className="dot-sep">/</span>
-              <span>{(featured.genres ?? []).slice(0, 2).join(' · ')}</span>
-            </>
-          )}
-          {episodeCount > 0 && (
-            <>
-              <span className="dot-sep">/</span>
-              <span>{episodeCount} episodes</span>
-            </>
-          )}
+          {featured.imdbRating && <span className="hero-rating">★ {featured.imdbRating}</span>}
+          {featured.imdbRating && facts && <span className="dot-sep">·</span>}
+          {facts && <span className="ellipsis">{facts}</span>}
         </div>
-        {featured.description && (
-          <div className="body-copy hero-synopsis">{featured.description}</div>
-        )}
+        {featured.description && <div className="hero-synopsis">{featured.description}</div>}
         <div className="hero-actions">
-          <button type="button" className="btn-primary" onClick={play}>
-            <Icon name="play" size={13} />
-            {state ? `Resume${resumeTag ? ` ${resumeTag}` : ''}` : 'Play'}
+          <button type="button" className="btn-accent h36" onClick={play}>
+            <Icon name="play" size={14} />
+            <span>{state ? `Resume${resumeTag ? ` ${resumeTag}` : ''}` : 'Play'}</span>
           </button>
-          <button type="button" className="btn-glass" onClick={openDetail}>
+          <button type="button" className="btn h36" onClick={openDetail}>
             Details
           </button>
           <button
             type="button"
-            className={`btn-square ${libraryEntry ? 'btn-square-active' : ''}`}
-            title={libraryEntry ? 'Remove from library' : 'Add to library'}
+            className="btn h36"
+            style={{ padding: '0 14px', gap: 8 }}
             onClick={toggleLibrary}
           >
-            <Icon name="bookmark" size={16} />
+            <span style={{ display: 'flex', color: libraryEntry ? 'var(--ca)' : undefined }}>
+              <Icon name={libraryEntry ? 'starFilled' : 'star'} size={16} />
+            </span>
+            <span>{libraryEntry ? 'In library' : 'Add to library'}</span>
           </button>
         </div>
       </div>
       {previews.length > 1 && (
-        <div className="hero-dots" role="tablist" aria-label="Featured titles">
+        <div className="hero-pips" role="tablist" aria-label="Featured titles">
           {previews.map((item, index) => {
             const active = index === safeIndex
             return (
               <button
                 key={`${item.type}:${item.id}:${index}`}
                 type="button"
-                className={`hero-dot ${active ? 'hero-dot-active' : ''}`}
+                className={`pip ${active ? 'pip-active' : ''}`}
                 role="tab"
                 aria-selected={active}
                 aria-label={`Show ${item.name}`}
@@ -325,9 +354,7 @@ function FeaturedHero({
                   setFeaturedIndex(index)
                   setAutoAdvance(false)
                 }}
-              >
-                <span className="hero-dot-mark" />
-              </button>
+              />
             )
           })}
         </div>
@@ -357,6 +384,7 @@ function CatalogShelf({ shelf }: { shelf: BrowsableCatalog }) {
   return (
     <Shelf
       title={shelfTitle(shelf.catalog.name ?? shelf.addonName, shelf.catalog.type)}
+      source={shelf.addonName.toUpperCase()}
       action={
         <button type="button" className="btn-link" onClick={() => setRoot('library')}>
           See all

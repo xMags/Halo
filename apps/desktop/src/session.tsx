@@ -15,6 +15,7 @@ import {
 } from './api'
 import { signOutLocal } from './localAuth'
 import { signOutOidc } from './oidc'
+import { clearDownloadsAccount } from './downloads'
 
 /**
  * App-level auth state machine, mirroring mobile's session provider:
@@ -52,7 +53,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   // A 401 that survives the refresh retry means the session is dead.
   useEffect(() => {
-    onUnauthorized(() => setState('unauthenticated'))
+    onUnauthorized(() => {
+      void clearDownloadsAccount().catch(() => undefined)
+      setState('unauthenticated')
+    })
   }, [])
 
   // Re-discover the auth mode for an already-configured server (needed by the
@@ -81,6 +85,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signOut = useCallback(() => {
+    void clearDownloadsAccount().catch(() => undefined)
     if (getSessionKind() === 'oidc') void signOutOidc()
     else signOutLocal()
     deactivateSession()
@@ -88,6 +93,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const disconnect = useCallback(() => {
+    void clearDownloadsAccount().catch(() => undefined)
     signOutLocal()
     void signOutOidc()
     clearServerUrl()
