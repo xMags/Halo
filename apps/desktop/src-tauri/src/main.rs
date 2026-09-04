@@ -6,11 +6,13 @@
 // player screen, so mpv's surface only shows where the UI opens a hole.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod downloads;
 mod mpv;
 mod oauth;
 
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 use mpv::{Event, Mpv, MPV_FORMAT_DOUBLE, MPV_FORMAT_FLAG, MPV_FORMAT_STRING};
 
@@ -155,10 +157,149 @@ async fn oauth_wait_callback() -> Result<String, String> {
         .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn downloads_set_account(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    account_key: String,
+) -> Result<Vec<downloads::DownloadView>, String> {
+    state.set_account(account_key).await
+}
+
+#[tauri::command]
+async fn downloads_clear_account(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+) -> Result<(), String> {
+    state.clear_account().await
+}
+
+#[tauri::command]
+async fn downloads_list(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+) -> Result<Vec<downloads::DownloadView>, String> {
+    Ok(state.list().await)
+}
+
+#[tauri::command]
+async fn downloads_start(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    request: downloads::DownloadStartRequest,
+) -> Result<downloads::DownloadView, String> {
+    state.start(request).await
+}
+
+#[tauri::command]
+async fn downloads_pause(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    job_id: String,
+) -> Result<(), String> {
+    state.pause(&job_id).await
+}
+
+#[tauri::command]
+async fn downloads_resume(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    job_id: String,
+) -> Result<(), String> {
+    state.resume(&job_id).await
+}
+
+#[tauri::command]
+async fn downloads_remove(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    job_id: String,
+) -> Result<(), String> {
+    state.remove(&job_id).await
+}
+
+#[tauri::command]
+async fn downloads_attach_subtitle(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    job_id: String,
+    subtitle: downloads::DownloadSubtitleRequest,
+) -> Result<(), String> {
+    state.attach_subtitle(&job_id, subtitle).await
+}
+
+#[tauri::command]
+async fn downloads_set_directory(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    directory: String,
+) -> Result<String, String> {
+    state.set_directory(directory).await
+}
+
+#[tauri::command]
+async fn downloads_choose_directory(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose Halo download folder")
+        .pick_folder(move |selection| {
+            let path = selection
+                .map(std::path::PathBuf::try_from)
+                .transpose()
+                .map(|path| path.map(|value| value.to_string_lossy().into_owned()))
+                .map_err(|error| error.to_string());
+            let _ = sender.send(path);
+        });
+    receiver
+        .await
+        .map_err(|_| "The folder picker closed unexpectedly.".to_string())?
+}
+
+#[tauri::command]
+async fn downloads_directory_info(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+) -> Result<downloads::DirectoryInfo, String> {
+    state.directory_info().await
+}
+
+/// Shows a saved download in Explorer, or the download folder itself when no
+/// job is named. Driven from Rust rather than the frontend's opener plugin
+/// because the folder is user-chosen at runtime, so no static capability scope
+/// could cover it; the manager still owns which paths are legitimate.
+#[tauri::command]
+async fn downloads_open_folder(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    job_id: Option<String>,
+) -> Result<(), String> {
+    match job_id {
+        Some(id) => {
+            let path = state.playback_path(&id).await?;
+            tauri_plugin_opener::reveal_item_in_dir(path).map_err(|error| error.to_string())
+        }
+        None => {
+            let info = state.directory_info().await?;
+            if !info.exists {
+                return Err("The download folder is unavailable.".to_string());
+            }
+            tauri_plugin_opener::open_path(info.path, None::<&str>)
+                .map_err(|error| error.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+async fn downloads_playback_path(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    job_id: String,
+) -> Result<String, String> {
+    state.playback_path(&job_id).await
+}
+
+#[tauri::command]
+async fn downloads_playback_files(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    job_id: String,
+) -> Result<downloads::PlaybackFiles, String> {
+    state.playback_files(&job_id).await
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             mpv_cmd,
             mpv_set,
@@ -166,7 +307,21 @@ fn main() {
             mpv_observe,
             mpv_unobserve_all,
             window_set_fullscreen_style,
-            oauth_wait_callback
+            oauth_wait_callback,
+            downloads_set_account,
+            downloads_clear_account,
+            downloads_list,
+            downloads_start,
+            downloads_pause,
+            downloads_resume,
+            downloads_remove,
+            downloads_attach_subtitle,
+            downloads_set_directory,
+            downloads_choose_directory,
+            downloads_directory_info,
+            downloads_open_folder,
+            downloads_playback_path,
+            downloads_playback_files
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("main window");
@@ -215,6 +370,9 @@ fn main() {
             let mpv = Arc::new(
                 Mpv::load(&dll, hwnd, fonts.as_deref()).map_err(|e| format!("mpv init: {e}"))?,
             );
+
+            let download_manager = Arc::new(downloads::load_manager(&app.handle())?);
+            app.manage(download_manager);
 
             let pump = mpv.clone();
             let events = app.handle().clone();

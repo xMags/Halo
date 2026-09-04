@@ -48,6 +48,25 @@ export function episodeTag(season: number | undefined, episode: number | undefin
   return `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
 }
 
+/**
+ * Minutes from an addon's free-text runtime. Cinemeta writes `48 min`, others
+ * `2 h 46 min`, `2h46`, or a bare number of minutes. Anything that doesn't
+ * parse returns null rather than a guess — the value feeds a bitrate estimate,
+ * and a wrong runtime would print a confidently wrong number.
+ */
+export function runtimeMinutes(runtime: string | undefined): number | null {
+  if (!runtime) return null
+  const text = runtime.toLowerCase()
+  const hours = /(\d+)\s*(?:h|hr|hour)/.exec(text)
+  const mins = /(\d+)\s*(?:m|min)/.exec(text)
+  if (hours || mins) {
+    const total = Number(hours?.[1] ?? 0) * 60 + Number(mins?.[1] ?? 0)
+    return total > 0 ? total : null
+  }
+  const bare = /^\s*(\d{2,3})\s*$/.exec(text)
+  return bare ? Number(bare[1]) : null
+}
+
 /** Up to two letters for an avatar or addon tile. */
 export function initials(name: string): string {
   const words = name.trim().split(/[\s._-]+/).filter(Boolean)
@@ -56,12 +75,18 @@ export function initials(name: string): string {
   return (words[0]![0]! + words[1]![0]!).toUpperCase()
 }
 
-/** `12 JAN` — episode air dates, which arrive as ISO strings from addons. */
+/** `FEB 07 2026` — episode air dates, which arrive as ISO strings from addons. */
 export function formatAirDate(released: string | undefined): string {
   if (!released) return ''
   const date = new Date(released)
   if (Number.isNaN(date.getTime())) return ''
-  return `${String(date.getUTCDate()).padStart(2, '0')} ${date
-    .toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
-    .toUpperCase()}`
+  const month = date.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }).toUpperCase()
+  return `${month} ${String(date.getUTCDate()).padStart(2, '0')} ${date.getUTCFullYear()}`
+}
+
+/** Four-digit year of an ISO date, for a season's mono summary line. */
+export function airYear(released: string | undefined): string {
+  if (!released) return ''
+  const date = new Date(released)
+  return Number.isNaN(date.getTime()) ? '' : String(date.getUTCFullYear())
 }

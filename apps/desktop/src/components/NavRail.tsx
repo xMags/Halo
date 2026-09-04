@@ -1,101 +1,110 @@
-import { useState } from 'react'
-import { initials } from '../format'
+import { useDownloads } from '../downloads'
+import { formatTimeLeft, initials } from '../format'
+import { buildContinueWatching } from '../homeRows'
 import { useNav, type Section } from '../nav'
-import { useMe } from '../queries'
+import { useLibrary, useMe, useWatchStates } from '../queries'
+import { ArtImage } from './ArtImage'
 import { Icon, type IconName } from './Icon'
 
 const ITEMS: Array<{ section: Section; label: string; icon: IconName }> = [
   { section: 'home', label: 'Home', icon: 'home' },
   { section: 'search', label: 'Search', icon: 'search' },
   { section: 'library', label: 'Library', icon: 'library' },
+  { section: 'downloads', label: 'Downloads', icon: 'downloads' },
   { section: 'settings', label: 'Settings', icon: 'settings' },
 ]
 
-const COLLAPSED_KEY = 'halo.railCollapsed'
+/** How many in-progress titles the pane's shortcut list carries. */
+const JUMP_LIMIT = 3
 
 /**
- * Device-local, like the other shell preferences. The rail starts collapsed
- * and only stays open for someone who opened it, so the absent key and a
- * blocked store both mean collapsed; only an explicit '0' expands it.
- */
-function readCollapsed(): boolean {
-  try {
-    return localStorage.getItem(COLLAPSED_KEY) !== '0'
-  } catch {
-    return true
-  }
-}
-
-function writeCollapsed(collapsed: boolean): void {
-  try {
-    localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0')
-  } catch {
-    // Losing the preference is not worth failing a click over.
-  }
-}
-
-/**
- * Persistent left rail: the sections, and the signed-in account pinned to the
- * bottom. Detail and Sources are pushed on top of Home, so the stack root —
- * not the visible screen — decides which row is lit.
+ * The 224px navigation pane: the five sections, three shortcuts back into
+ * whatever is half-watched, and the account pinned to the bottom.
  *
- * Collapsing follows WinUI's nav pane: the same rows narrowed to icons behind
- * the hamburger, with the labels becoming tooltips rather than disappearing.
- * It starts collapsed and remembers being expanded, so the shelves get the
- * width by default and the labels are one click away.
+ * Detail and the sources sheet open on top of a section, so the stack *root* —
+ * not the visible screen — decides which row is lit: opening a poster from
+ * Home leaves Home lit, which is where Back goes.
+ *
+ * The shortcut rows deliberately print only the time left, not `S02E04 · …`:
+ * the episode tag lives in the title's meta, and resolving it here would make
+ * a permanently-mounted pane issue addon round-trips on every screen.
  */
 export function NavRail() {
-  const { section, setRoot } = useNav()
+  const { section, push, setRoot } = useNav()
   const { data: me } = useMe()
-  const [collapsed, setCollapsed] = useState(readCollapsed)
+  const { data: watchStates } = useWatchStates()
+  const { data: library } = useLibrary()
+  const { downloads } = useDownloads()
 
-  const toggle = () => {
-    const next = !collapsed
-    setCollapsed(next)
-    writeCollapsed(next)
-  }
+  const activeTransfers = downloads.filter(
+    (item) => item.status === 'downloading' || item.status === 'queued',
+  ).length
 
+  const jump = buildContinueWatching(watchStates, library).slice(0, JUMP_LIMIT)
   const name = me?.username ?? 'account'
 
   return (
-    <nav className={`rail ${collapsed ? 'rail-collapsed' : ''}`}>
+    <nav className="nav">
+      <div className="nav-kicker">MENU</div>
+      {ITEMS.map((item) => (
+        <button
+          key={item.section}
+          type="button"
+          className={`nav-item ${section === item.section ? 'nav-item-active' : ''}`}
+          onClick={() => setRoot(item.section)}
+        >
+          <Icon name={item.icon} />
+          <span className="spacer ellipsis">{item.label}</span>
+          {item.section === 'downloads' && activeTransfers > 0 && (
+            <span className="nav-badge">{activeTransfers}</span>
+          )}
+        </button>
+      ))}
+
+      {jump.length > 0 && (
+        <>
+          <div className="nav-kicker nav-kicker-jump">JUMP BACK IN</div>
+          {jump.map((item) => {
+            const state = (watchStates ?? []).find((s) => s.itemId === item.itemId)
+            return (
+              <button
+                key={item.itemId}
+                type="button"
+                className="jump-row"
+                title={item.meta.name}
+                onClick={() => push({ name: 'detail', type: item.meta.type, id: item.meta.id })}
+              >
+                <span className="art jump-art">
+                  <ArtImage src={item.meta.poster} />
+                </span>
+                <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <span className="jump-title ellipsis">{item.meta.name}</span>
+                  <span className="jump-meta ellipsis">
+                    {state
+                      ? formatTimeLeft(state.positionSec, state.durationSec).toUpperCase()
+                      : 'IN PROGRESS'}
+                  </span>
+                </span>
+              </button>
+            )
+          })}
+        </>
+      )}
+
+      <div className="spacer" />
+
       <button
         type="button"
-        className="rail-toggle"
-        onClick={toggle}
-        title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-        aria-expanded={!collapsed}
+        className="account-row"
+        title="Server & account"
+        onClick={() => setRoot('settings')}
       >
-        <Icon name="menu" size={16} />
+        <span className="avatar">{me ? initials(me.username) : '··'}</span>
+        <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span className="account-name ellipsis">{name}</span>
+          <span className="account-kicker">HALO ACCOUNT</span>
+        </span>
       </button>
-
-      <div className="rail-kicker">BROWSE</div>
-      <div className="rail-items">
-        {ITEMS.map((item) => (
-          <button
-            key={item.section}
-            type="button"
-            className={`rail-item ${section === item.section ? 'rail-item-active' : ''}`}
-            onClick={() => setRoot(item.section)}
-            title={collapsed ? item.label : undefined}
-          >
-            <Icon name={item.icon} />
-            <span className="rail-label">{item.label}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="rail-account">
-        <button
-          type="button"
-          className="account-pill account-pill-rail"
-          title={collapsed ? `${name} · server & account` : 'Server & account'}
-          onClick={() => setRoot('settings')}
-        >
-          <span className="avatar">{me ? initials(me.username) : '··'}</span>
-          <span className="rail-label ellipsis">{name}</span>
-        </button>
-      </div>
     </nav>
   )
 }

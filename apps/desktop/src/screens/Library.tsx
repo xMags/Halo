@@ -1,15 +1,17 @@
 import type { MetaPreview } from '@halo/core'
 import { useMemo, useState } from 'react'
+import { Icon } from '../components/Icon'
+import { Menu, MenuAnchor, MenuItem } from '../components/Menu'
 import { PosterCard } from '../components/PosterCard'
+import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { buildLibraryRow } from '../homeRows'
 import { useLibrary, useWatchStates } from '../queries'
-import { usePublishScreenTitle } from '../screenTitle'
 
 const SORTS = [
   { value: 'added', label: 'Recently added' },
+  { value: 'name', label: 'Title A–Z' },
   { value: 'watched', label: 'Recently watched' },
-  { value: 'name', label: 'Name A–Z' },
 ] as const
 type Sort = (typeof SORTS)[number]['value']
 
@@ -20,6 +22,7 @@ export function Library() {
   const { data: watchStates } = useWatchStates()
   const [filter, setFilter] = useState<Filter>('all')
   const [sort, setSort] = useState<Sort>('added')
+  const [sortOpen, setSortOpen] = useState(false)
 
   const active = useMemo(() => (items ?? []).filter((item) => !item.removedAt), [items])
   const counts = {
@@ -48,11 +51,10 @@ export function Library() {
     return rows // buildLibraryRow already orders by newest addition
   }, [items, filter, sort, lastWatched])
 
-  usePublishScreenTitle('Library', '')
-
   return (
-    <div className="view no-bar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '24px var(--g) 0' }}>
+    <div className="view view-col">
+      <SectionHeader title="Library" />
+      <div className="lib-bar">
         <Segmented
           options={[
             { value: 'all', label: 'All', count: counts.all },
@@ -63,43 +65,56 @@ export function Library() {
           onChange={setFilter}
         />
         <div className="spacer" />
-        <div className="meta-mono">SORT</div>
-        <select
-          className="select-chip"
-          style={{ fontSize: 12, padding: '6px 9px' }}
-          value={sort}
-          onChange={(e) => setSort(e.target.value as Sort)}
-        >
-          {SORTS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <div style={{ fontSize: 14, color: 'var(--t3)' }}>Sort by</div>
+        <MenuAnchor>
+          <button type="button" className="btn" onClick={() => setSortOpen((open) => !open)}>
+            <span>{SORTS.find((option) => option.value === sort)!.label}</span>
+            <span style={{ color: 'var(--t2)', display: 'flex' }}>
+              <Icon name="chevronDown" size={13} />
+            </span>
+          </button>
+          <Menu open={sortOpen} onClose={() => setSortOpen(false)}>
+            {SORTS.map((option) => (
+              <MenuItem
+                key={option.value}
+                label={option.label}
+                checked={sort === option.value}
+                onClick={() => {
+                  setSort(option.value)
+                  setSortOpen(false)
+                }}
+              />
+            ))}
+          </Menu>
+        </MenuAnchor>
       </div>
 
-      {error && <div className="state-note error-text">{String(error)}</div>}
-      {isLoading && (
-        <div className="state-note">
-          <span className="spinner" /> Loading…
-        </div>
-      )}
-      {!isLoading && active.length === 0 && (
-        <div className="state-note">
-          Nothing saved yet. Open a title and use the bookmark button to keep it here.
-        </div>
-      )}
-      {!isLoading && active.length > 0 && shown.length === 0 && (
-        <div className="state-note">No {filter === 'movie' ? 'movies' : 'series'} in your library.</div>
-      )}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
+        {error && <div className="state-note error-text">{String(error)}</div>}
+        {isLoading && (
+          <div className="state-note">
+            <span className="spinner" /> Loading…
+          </div>
+        )}
+        {!isLoading && active.length === 0 && (
+          <div className="state-note">
+            Nothing saved yet. Open a title and use its star button to keep it here.
+          </div>
+        )}
+        {!isLoading && active.length > 0 && shown.length === 0 && (
+          <div className="state-note">
+            No {filter === 'movie' ? 'movies' : 'series'} in your library.
+          </div>
+        )}
 
-      {shown.length > 0 && (
-        <div className="library-grid">
-          {shown.map((meta) => (
-            <PosterCard key={`${meta.type}:${meta.id}`} meta={meta} inGrid showKind />
-          ))}
-        </div>
-      )}
+        {shown.length > 0 && (
+          <div className="lib-grid">
+            {shown.map((meta) => (
+              <PosterCard key={`${meta.type}:${meta.id}`} meta={meta} showKind />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

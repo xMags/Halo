@@ -165,6 +165,41 @@ export function parseStreamInfo(stream: Stream): StreamInfo {
   }
 }
 
+/**
+ * The marketing tier a resolution belongs to — what the design badges a source
+ * with (`4K`, `FULL HD`, `HD`) rather than the raw line count.
+ */
+const TIERS: Record<Quality, string> = {
+  '2160p': '4K',
+  '1440p': '2K',
+  '1080p': 'FULL HD',
+  '720p': 'HD',
+  '480p': 'SD',
+  SD: 'SD',
+}
+
+export function qualityTier(quality: Quality | null): string {
+  return quality ? TIERS[quality] : '—'
+}
+
+/** Pixel dimensions for a known tier; null when the quality is unknown. */
+export function qualityResolution(quality: Quality | null): string | null {
+  switch (quality) {
+    case '2160p':
+      return '3840 × 2160'
+    case '1440p':
+      return '2560 × 1440'
+    case '1080p':
+      return '1920 × 1080'
+    case '720p':
+      return '1280 × 720'
+    case '480p':
+      return '854 × 480'
+    default:
+      return null
+  }
+}
+
 /** Rank weight for a quality; unknown sorts below everything recognised. */
 export function qualityRank(quality: Quality | null): number {
   const index = quality ? QUALITY_ORDER.indexOf(quality) : -1

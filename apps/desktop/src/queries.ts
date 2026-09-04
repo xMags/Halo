@@ -176,6 +176,7 @@ export interface SubtitleOptions {
   streamUrl?: string
   filename?: string
   videoSize?: number
+  enabled?: boolean
 }
 
 export interface AddonSubtitles {
@@ -194,6 +195,7 @@ export interface AddonSubtitles {
 export function useAddonSubtitles(opts: SubtitleOptions) {
   return useQuery({
     queryKey: ['subtitles', opts.type, opts.videoId, opts.streamUrl ?? null],
+    enabled: opts.enabled ?? true,
     staleTime: Infinity,
     queryFn: async (): Promise<{ groups: AddonSubtitles[]; hashMatched: boolean }> => {
       let videoHash: string | undefined

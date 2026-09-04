@@ -23,6 +23,8 @@ interface LocalSession {
   token: string
   /** Epoch ms when the token expires. */
   expiresAt: number
+  /** Opaque local partition for device-owned downloads. Not an auth claim. */
+  downloadOwner?: string
 }
 
 let session: LocalSession | null = null
@@ -42,6 +44,16 @@ export function loadLocalSession(): boolean {
 export function clearLocalSession(): void {
   session = null
   localStorage.removeItem(LOCAL_KEY)
+}
+
+export function getLocalDownloadOwner(): string | null {
+  return session?.downloadOwner ?? null
+}
+
+export function setLocalDownloadOwner(downloadOwner: string): void {
+  if (!session || session.downloadOwner === downloadOwner) return
+  session = { ...session, downloadOwner }
+  persist()
 }
 
 /** Auth error from the server (as opposed to a network failure). */
@@ -115,7 +127,12 @@ async function doRefresh(): Promise<string | null> {
   const current = session!
   try {
     const tokens = await postJson(`${current.serverUrl}/auth/refresh`, {}, current.token)
-    session = { serverUrl: current.serverUrl, token: tokens.token, expiresAt: tokens.expiresAt }
+    session = {
+      serverUrl: current.serverUrl,
+      token: tokens.token,
+      expiresAt: tokens.expiresAt,
+      downloadOwner: current.downloadOwner,
+    }
     persist()
     return session.token
   } catch (err) {

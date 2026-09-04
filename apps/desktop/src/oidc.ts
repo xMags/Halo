@@ -33,6 +33,8 @@ interface OidcSession {
   idToken?: string
   /** Epoch ms when accessToken expires. */
   expiresAt: number
+  /** Opaque local partition for device-owned downloads. Not an auth claim. */
+  downloadOwner?: string
 }
 
 let session: OidcSession | null = null
@@ -52,6 +54,16 @@ export function loadOidcSession(): boolean {
 export function clearOidcSession(): void {
   session = null
   localStorage.removeItem(OIDC_KEY)
+}
+
+export function getOidcDownloadOwner(): string | null {
+  return session?.downloadOwner ?? null
+}
+
+export function setOidcDownloadOwner(downloadOwner: string): void {
+  if (!session || session.downloadOwner === downloadOwner) return
+  session = { ...session, downloadOwner }
+  persist()
 }
 
 /** OAuth error response from the IdP's token endpoint (as opposed to a network failure). */
@@ -108,6 +120,7 @@ function applyTokens(
     // A missing expires_in counts as already stale, so the next request
     // refreshes instead of trusting an unknown TTL.
     expiresAt: tokens.expires_in ? Date.now() + tokens.expires_in * 1000 : 0,
+    downloadOwner: current.downloadOwner,
   }
 }
 

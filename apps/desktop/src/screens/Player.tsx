@@ -9,9 +9,11 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getClient } from '../api'
+import { ArtImage } from '../components/ArtImage'
 import { Icon } from '../components/Icon'
-import { Slider } from '../components/Slider'
 import { TitleBar } from '../components/TitleBar'
+import { Toggle } from '../components/Toggle'
+import { getPlaybackFiles, nextDownloadedEpisode, useDownloads } from '../downloads'
 import { formatClock } from '../format'
 import {
   mpvCmd,
@@ -30,6 +32,7 @@ import {
   upNextCancelAction,
   videoTopMarginRatio,
 } from '../playerLogic'
+import { setLocalPrefs, useLocalPrefs } from '../localPrefs'
 import { useAddonSubtitles, useReportWatchState } from '../queries'
 import { useSettings, useSettingsLoaded, useUpdateSettings } from '../settings'
 import { getSubtitleChoice, rememberSubtitleChoice } from '../subtitleMemory'
@@ -37,11 +40,13 @@ import {
   MPV_DEFAULT_SUB_FONT,
   OUTLINE_BORDER,
   SUBTITLE_FONTS,
+  SUBTITLE_OUTLINES,
   SUBTITLE_SCALE_DEFAULT,
   SUBTITLE_SCALE_MAX,
   SUBTITLE_SCALE_MIN,
   SUBTITLE_SCALE_STEP,
 } from '../subtitleStyle'
+import { TITLE_BAR_HEIGHT } from '../theme'
 import type { WindowFullscreenController } from '../window'
 
 /** Watch-state cadence and thresholds — identical to mobile's player. */
@@ -50,7 +55,6 @@ const WATCHED_THRESHOLD = 0.9
 const CONTROLS_HIDE_DELAY_MS = 3_000
 const NEXT_EPISODE_TIMEOUT_MS = 15_000
 const UP_NEXT_COUNTDOWN_SEC = 8
-const TITLE_BAR_HEIGHT_PX = 36
 const VIDEO_CLICK_DELAY_MS = 220
 
 const SUB_DELAY_STEP_MS = 50
@@ -64,11 +68,20 @@ const AUDIO_DELAY_LIMIT_MS = 5_000
 let previousPlayerTeardown: Promise<void> = Promise.resolve()
 
 /** Rates offered by the speed tab; mpv corrects pitch up to 2×. */
-const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2] as const
+const SPEEDS: ReadonlyArray<{ rate: number; note: string }> = [
+  { rate: 0.5, note: 'half speed' },
+  { rate: 0.75, note: 'slower' },
+  { rate: 1, note: 'normal' },
+  { rate: 1.25, note: 'faster' },
+  { rate: 1.5, note: 'brisk' },
+  { rate: 2, note: 'double' },
+]
 
-const KEY_HINTS = 'SPACE PLAY · ←/→ 10 S · F FULL SCREEN · ESC EXIT'
+const KEY_HINTS = 'SPACE PLAY · ←/→ 10 S · F FULL SCREEN · Z FILL · ESC EXIT'
 
 type RailTab = 'audio' | 'subtitles' | 'speed'
+/** The two halves of the subtitles tab: which track, and how it looks. */
+type SubTab = 'tracks' | 'appearance'
 
 interface SubtitleLanguageGroup {
   lang: string
@@ -150,10 +163,14 @@ function trackLabel(track: MpvTrack): string {
   return track.title ?? (track.lang ? languageLabel(track.lang) : `Track ${track.id}`)
 }
 
+/**
+ * The note under a track's name. The codec is deliberately absent: it is shown
+ * as the row's right-hand badge, and printing it in both places spelt the same
+ * fact twice on every row.
+ */
 function trackDetail(track: MpvTrack): string {
   return [
     track.lang && track.title ? languageLabel(track.lang) : null,
-    track.codec?.toUpperCase(),
     track['demux-channel-count'] ? `${track['demux-channel-count']} ch` : null,
   ]
     .filter(Boolean)
@@ -165,12 +182,14 @@ interface PlayerProps extends PlayerParams {
 }
 
 export function Player({ windowFullscreen, ...params }: PlayerProps) {
-  const { pop, replace } = useNav()
+  const { pop, replace, openSheet } = useNav()
   const queryClient = useQueryClient()
   const report = useReportWatchState()
   const settings = useSettings()
   const settingsLoaded = useSettingsLoaded()
   const updateSettings = useUpdateSettings()
+  const { downloads } = useDownloads()
+  const prefs = useLocalPrefs()
 
   const [position, setPosition] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -184,6 +203,9 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const [videoTags, setVideoTags] = useState<string[]>([])
   const [fileLoaded, setFileLoaded] = useState(false)
   const [railTab, setRailTab] = useState<RailTab | null>(null)
+  const [subTab, setSubTab] = useState<SubTab>('tracks')
+  /** mpv `panscan`: 1 crops the picture to fill the window, 0 letterboxes. */
+  const [fill, setFill] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
   const { fullscreen, setFullscreen, toggleFullscreen: toggleNativeFullscreen } = windowFullscreen
   const [playerError, setPlayerError] = useState<string | null>(null)
@@ -209,6 +231,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     streamUrl: params.url,
     filename: params.filename,
     videoSize: params.videoSize,
+    enabled: params.sourceKind !== 'download',
   })
 
   // Live values in refs so the report interval never resets on ticks.
@@ -234,6 +257,9 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   }, [params.videoId, params.itemId])
 
   const resumeAppliedRef = useRef(false)
+  /** Read inside the file-loaded handler, which must not depend on prefs. */
+  const resumeRef = useRef(prefs.resumePlayback)
+  resumeRef.current = prefs.resumePlayback
   /** Prior progress for this video, resolved BEFORE loadfile so the file-loaded handler can't race the fetch. */
   const priorStateRef = useRef<WatchState | null>(null)
   /** End-of-file behavior; a ref because the observers mount before the next-episode prefetch resolves. */
@@ -253,6 +279,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   useEffect(() => {
     document.body.classList.add('player-active')
     let disposed = false
+    let localSubtitlePath: string | undefined
     const unlisteners: Array<() => void> = []
     const priorTeardown = previousPlayerTeardown
 
@@ -303,8 +330,22 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
             if (kind === 'file-loaded') {
               setFileLoaded(true)
               setPlayerError(null)
-              void refreshTracks()
               void readVideoTags().then(setVideoTags).catch(() => undefined)
+              if (localSubtitlePath) {
+                void mpvCmd('sub-add', localSubtitlePath)
+                  .then(() => {
+                    if (params.subtitleLang) {
+                      rememberSubtitleChoice(params.videoId, params.itemId, {
+                        kind: 'downloaded',
+                        lang: params.subtitleLang,
+                      })
+                    }
+                    return refreshTracks()
+                  })
+                  .catch(() => undefined)
+              } else {
+                void refreshTracks()
+              }
               // Resume once per mount: prior unfinished position wins (mobile
               // parity). Duration comes from mpv directly — the observed
               // `duration` prop event can land after file-loaded.
@@ -312,6 +353,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
                 resumeAppliedRef.current = true
                 void (async () => {
                   const prior = priorStateRef.current
+                  if (!resumeRef.current) return
                   if (!prior || prior.watched || prior.positionSec <= 30) return
                   const total = Number((await mpvGet('duration').catch(() => null)) ?? 0)
                   if (total > 0 && prior.positionSec / total < 0.95) {
@@ -378,9 +420,15 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
           // Unparseable list — loadfile resets most state anyway.
         }
       }
+      let sourceUrl = params.url
+      if (params.sourceKind === 'download' && params.downloadId) {
+        const files = await getPlaybackFiles(params.downloadId)
+        sourceUrl = files.video_path
+        localSubtitlePath = files.subtitle_path
+      }
       await mpvSet('pause', 'no')
       if (disposed) return
-      await mpvCmd('loadfile', params.url)
+      await mpvCmd('loadfile', sourceUrl)
     }
     void setup().catch(() => {
       if (!disposed) setPlayerError('The player could not start this source.')
@@ -400,11 +448,11 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       document.body.classList.remove('player-active')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.url, params.videoId])
+  }, [params.url, params.videoId, params.sourceKind, params.downloadId])
 
   useEffect(() => {
     const syncVideoMargin = () => {
-      const ratio = videoTopMarginRatio(fullscreen, window.innerHeight, TITLE_BAR_HEIGHT_PX)
+      const ratio = videoTopMarginRatio(fullscreen, window.innerHeight, TITLE_BAR_HEIGHT)
       void mpvSet('video-margin-ratio-top', String(ratio))
     }
     syncVideoMargin()
@@ -467,6 +515,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   // autoplay-off is honored before any request goes out.
   useEffect(() => {
     if (!settingsLoaded || !autoplayEnabled || params.type !== 'series' || !params.metaId) return
+    if (params.sourceKind === 'download') return
     let cancelled = false
     getClient()
       .getNextEpisode(
@@ -499,6 +548,39 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     return tag ? `${show} — ${tag}` : (video.title ?? video.name ?? show)
   }
 
+  const nextOfflineDownload = nextDownloadedEpisode(
+    params.videoId,
+    downloads.map((entry) => ({
+      entry,
+      videoId: entry.media.video_id,
+      itemId: entry.media.item_id,
+      episodeLabel: entry.media.episode_label,
+      status: entry.status,
+    })),
+  )?.entry
+
+  const playNextOfflineEpisode = () => {
+    const entry = nextOfflineDownload
+    if (!entry) return
+    advanceOnce(() =>
+      replace({
+        name: 'player',
+        sourceKind: 'download',
+        downloadId: entry.job_id,
+        ...(entry.subtitle_lang ? { subtitleLang: entry.subtitle_lang } : {}),
+        url: '',
+        videoId: entry.media.video_id,
+        itemId: entry.media.item_id,
+        type: entry.media.media_type,
+        title: entry.media.title,
+        ...(entry.media.meta_id ? { metaId: entry.media.meta_id } : {}),
+        ...(entry.media.show_name ? { showName: entry.media.show_name } : {}),
+        ...(entry.media.episode_label ? { episodeLabel: entry.media.episode_label } : {}),
+        ...(entry.media.poster ? { poster: entry.media.poster } : {}),
+      }),
+    )
+  }
+
   const playNextEpisode = () => {
     const video = nextEpisode?.video
     const stream = nextEpisode?.stream
@@ -523,13 +605,17 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     )
   }
 
-  /** No binge match: land on the next episode's stream picker instead. */
+  /**
+   * No binge match: leave the player and raise the sources sheet for the next
+   * episode over whatever screen sent us here, so closing it lands somewhere
+   * sensible instead of on a dead player.
+   */
   const openNextEpisodePicker = (video: MetaVideo) => {
     const tag = tagFor(video)
     advanceOnce(() => {
-      leaveFullscreenThen(() =>
-        replace({
-          name: 'streams',
+      leaveFullscreenThen(() => {
+        pop()
+        openSheet({
           type: params.type,
           videoId: video.id,
           itemId: params.itemId,
@@ -538,8 +624,8 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
           ...(params.showName ? { showName: params.showName } : {}),
           ...(tag ? { episodeLabel: tag } : {}),
           ...(params.poster ? { poster: params.poster } : {}),
-        }),
-      )
+        })
+      })
     })
   }
 
@@ -558,6 +644,10 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
 
   onEndRef.current = () => {
     reportNow()
+    if (autoplayEnabled && params.sourceKind === 'download' && nextOfflineDownload) {
+      playNextOfflineEpisode()
+      return
+    }
     if (autoplayEnabled && nextEpisode?.video && nextEpisode.stream?.url) {
       setEndReached(true)
       setRailTab(null)
@@ -591,6 +681,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       else if (shortcut === 'seek-back') seekBy(-10)
       else if (shortcut === 'seek-forward') seekBy(10)
       else if (shortcut === 'toggle-fullscreen') toggleFullscreen()
+      else if (shortcut === 'toggle-fill') setFill((value) => !value)
       else if (shortcut === 'escape') {
         // Peel one layer at a time: the rail covers the chrome, and full
         // screen is the state the badge tells you Esc will leave.
@@ -738,6 +829,10 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       })
       return
     }
+    if (remembered?.kind === 'downloaded' && params.sourceKind === 'download') {
+      subDefaultAppliedRef.current = true
+      return
+    }
     if (remembered?.kind === 'embedded') {
       const track =
         (remembered.trackName &&
@@ -785,6 +880,23 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     settings.subtitleShadow,
   ])
 
+  // Device-local, so they live outside the synced settings blob: hardware
+  // decoding depends on this machine's GPU, and track styling is a libass
+  // rendering choice this client makes on its own.
+  useEffect(() => {
+    void mpvSet('hwdec', prefs.hardwareDecoding ? 'auto-safe' : 'no')
+  }, [prefs.hardwareDecoding])
+
+  // `no` leaves an ASS track's authored styling alone; `force` makes the
+  // settings above win over it. Plain-text tracks follow the settings either way.
+  useEffect(() => {
+    void mpvSet('sub-ass-override', prefs.subtitleTrackStyling ? 'no' : 'force')
+  }, [prefs.subtitleTrackStyling])
+
+  useEffect(() => {
+    void mpvSet('panscan', fill ? '1' : '0')
+  }, [fill])
+
   useEffect(() => {
     void mpvSet('sub-delay', String(subtitleDelayMs / 1000))
   }, [subtitleDelayMs])
@@ -823,6 +935,19 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       ? trackLabel(activeSub)
       : 'Off'
 
+  const titleLine = [
+    params.showName ?? params.title,
+    params.showName && params.episodeLabel ? `${params.episodeLabel} ${params.title}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  const sourceLine =
+    params.sourceKind === 'download'
+      ? ['ON DISK', ...videoTags].join(' · ')
+      : videoTags.join(' · ')
+  const speedLabel = `${speed % 1 === 0 ? speed : speed.toFixed(2).replace(/0$/, '')}×`
+  const hashLabel = subs.data?.hashMatched ? 'HASH MATCH' : 'NAME MATCH'
+
   return (
     <>
       {!fullscreen && <TitleBar />}
@@ -838,7 +963,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
         }}
         onClick={(e) => {
           if (e.target !== e.currentTarget) return
-          // A video-area click while the rail is open dismisses it — pausing
+          // A video-area click while the panel is open dismisses it — pausing
           // would read as a misclick.
           if (railTab !== null) {
             setRailTab(null)
@@ -851,512 +976,590 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
           }, VIDEO_CLICK_DELAY_MS)
         }}
       >
-      <div className={`player-scrim-top player-chrome ${chromeVisible ? '' : 'player-hidden'}`} />
-      <div className={`player-scrim-bottom player-chrome ${chromeVisible ? '' : 'player-hidden'}`} />
-
-      {playerError && (
-        <div className="player-error-card" role="alert">
-          <Icon name="warning" size={22} />
-          <div>
-            <div className="player-error-title">Playback stopped</div>
-            <div className="player-error-copy">{playerError}</div>
-          </div>
-          <button type="button" className="btn-primary" onClick={back}>
-            Choose another source
-          </button>
-        </div>
-      )}
-      {controlNotice && (
-        <div className="player-notice player-control-notice" role="status">
-          <span>{controlNotice}</span>
-          <button type="button" onClick={() => setControlNotice(null)}>
-            Dismiss
-          </button>
-        </div>
-      )}
-      {buffering && !playerError && (
-        <div className="player-notice">
-          <span className="spinner" /> Buffering…
-        </div>
-      )}
-
-      {paused && !buffering && !playerError && (
-        <div className="paused-badge">
-          <Icon name="pause" size={22} />
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>Paused</div>
-            <div style={{ font: '400 10px/1 var(--mono)', color: 'var(--text-muted)', marginTop: 2 }}>
-              SPACE TO RESUME
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Top bar ─────────────────────────────────────────────────────── */}
-      <div
-        className={`player-top player-chrome ${fullscreen ? 'player-top-fs' : ''} ${chromeVisible ? '' : 'player-hidden'}`}
-      >
-        <button type="button" className="player-back" title="Back" onClick={back}>
-          <Icon name="chevronLeft" size={20} />
-        </button>
-        <div className="player-title-block" style={{ minWidth: 0 }}>
-          <div className="player-title ellipsis">{params.showName ?? params.title}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
-            {params.episodeLabel && <span className="player-ep">{params.episodeLabel}</span>}
-            <span className="ellipsis" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              {params.title}
-            </span>
-          </div>
-        </div>
-        {videoTags.length > 0 && (
-          <div className="player-tags">
-            {videoTags.map((tag) => (
-              <div key={tag} className="player-tag">
-                {tag}
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="spacer" />
-        {fullscreen && (
-          <div className="fs-badge">
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--accent)' }} />
-            <span style={{ font: '700 9.5px/1 var(--mono)', letterSpacing: '0.12em', color: 'var(--text-2)' }}>
-              FULL SCREEN
-            </span>
-            <span style={{ font: '400 9.5px/1 var(--mono)', color: '#565e70' }}>ESC TO EXIT</span>
-          </div>
-        )}
-      </div>
-
-      {/* ── Bottom chrome ───────────────────────────────────────────────── */}
-      <div
-        className={`player-bottom player-chrome ${fullscreen ? 'player-bottom-fs' : ''} ${chromeVisible ? '' : 'player-hidden'}`}
-      >
-        <div className="state-chips">
-          <StateChip
-            kicker="SUBTITLES"
-            value={subtitleChipValue}
-            open={railTab === 'subtitles'}
-            onClick={() => setRailTab(railTab === 'subtitles' ? null : 'subtitles')}
-          />
-          <StateChip
-            kicker="AUDIO"
-            value={activeAudio ? trackLabel(activeAudio) : 'Default'}
-            open={railTab === 'audio'}
-            onClick={() => setRailTab(railTab === 'audio' ? null : 'audio')}
-          />
-          <StateChip
-            kicker="SPEED"
-            value={`${speed % 1 === 0 ? speed : speed.toFixed(2).replace(/0$/, '')}×`}
-            open={railTab === 'speed'}
-            onClick={() => setRailTab(railTab === 'speed' ? null : 'speed')}
-          />
-          {nextEpisode?.video && (
-            <StateChip
-              kicker="UP NEXT"
-              value={tagFor(nextEpisode.video) ?? 'Next episode'}
-              open={upNextVisible}
-              onClick={() => setUpNextVisible((v) => !v)}
-            />
-          )}
-          <div className="spacer" />
-          <div className="key-hints">{KEY_HINTS}</div>
-        </div>
-
-        <Scrubber
-          position={shown}
-          duration={total}
-          bufferedTo={bufferedTo}
-          onPreview={setDragValue}
-          onCommit={(value) => {
-            seekTo(value)
-            setPosition(value)
-            setDragValue(null)
-          }}
+        <div className={`player-scrim-top player-chrome ${chromeVisible ? '' : 'player-hidden'}`} />
+        <div
+          className={`player-scrim-bottom player-chrome ${chromeVisible ? '' : 'player-hidden'}`}
         />
 
-        <div className="transport">
-          <button type="button" className="pbtn pbtn-play" title="Play / pause" onClick={togglePause}>
-            <Icon name={paused ? 'play' : 'pause'} size={18} />
-          </button>
-          <button type="button" className="pbtn" title="Back 10 s" onClick={() => seekBy(-10)}>
-            <Icon name="replay" size={17} />
-          </button>
-          <button type="button" className="pbtn" title="Forward 10 s" onClick={() => seekBy(10)}>
-            <Icon name="forward" size={17} />
-          </button>
-          <div className="ptime">{formatClock(shown)}</div>
-          <div className="ptotal">/ {formatClock(duration)}</div>
+        {playerError && (
+          <div className="player-error-card" role="alert">
+            <Icon name="warning" size={22} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="player-error-title">Playback stopped</div>
+              <div className="player-error-copy">{playerError}</div>
+            </div>
+            <button type="button" className="btn-accent h36" onClick={back}>
+              Choose another source
+            </button>
+          </div>
+        )}
+        {controlNotice && (
+          <div className="player-notice" role="status">
+            <span>{controlNotice}</span>
+            <button type="button" className="btn h30" onClick={() => setControlNotice(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
+        {buffering && !playerError && (
+          <div className="player-notice">
+            <span className="spinner" /> Buffering…
+          </div>
+        )}
+        {paused && !buffering && !playerError && <div className="paused-chip">Paused</div>}
 
+        {/* ── Top bar ───────────────────────────────────────────────────── */}
+        <div className={`player-top player-chrome ${chromeVisible ? '' : 'player-hidden'}`}>
+          <button type="button" className="player-back" title="Back" onClick={back}>
+            <Icon name="back" size={16} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <div className="player-title ellipsis">{titleLine}</div>
+            {sourceLine && <div className="player-source ellipsis">{sourceLine}</div>}
+          </div>
           <div className="spacer" />
-
-          <div className="vol-group">
-            <button
-              type="button"
-              className="pbtn"
-              style={{ border: 'none', background: 'transparent', width: 24, height: 24 }}
-              title={muted ? 'Unmute' : 'Mute'}
-              onClick={() => void mpvCmd('cycle', 'mute')}
-            >
-              <Icon name={muted || volume === 0 ? 'volumeOff' : 'volume'} size={17} />
-            </button>
-            <VolumeBar
-              value={muted ? 0 : volume}
-              onChange={(next) => {
-                if (muted && next > 0) void mpvSet('mute', 'no')
-                void mpvSet('volume', String(next))
-              }}
-            />
-            <div className="vol-value">{muted ? 0 : Math.round(volume)}</div>
-          </div>
-
-          <button
-            type="button"
-            className="pbtn pbtn-square"
-            title={fullscreen ? 'Leave full screen' : 'Full screen'}
-            onClick={() => void toggleFullscreen()}
-          >
-            <Icon name={fullscreen ? 'exitFullscreen' : 'enterFullscreen'} size={16} />
-          </button>
+          {fullscreen && <div className="player-tag">FULL SCREEN · ESC TO EXIT</div>}
         </div>
-      </div>
 
-      {/* ── Up next ─────────────────────────────────────────────────────── */}
-      {upNextVisible && nextEpisode?.video && (
-        <div className="upnext-card">
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <div className="kicker kicker-accent" style={{ fontSize: 10 }}>
-              UP NEXT
-            </div>
-            <div className="meta-mono" style={{ color: 'var(--text-muted)' }}>
-              {endReached ? `in ${Math.max(upNextSeconds, 0)} s` : 'ready'}
-            </div>
+        {/* ── Bottom chrome ─────────────────────────────────────────────── */}
+        <div className={`player-bottom player-chrome ${chromeVisible ? '' : 'player-hidden'}`}>
+          <div className="pchips">
+            <PlayerChip
+              kicker="SUBTITLES"
+              value={subtitleChipValue}
+              on={railTab === 'subtitles'}
+              onClick={() => setRailTab(railTab === 'subtitles' ? null : 'subtitles')}
+            />
+            <PlayerChip
+              kicker="AUDIO"
+              value={activeAudio ? trackLabel(activeAudio) : 'Default'}
+              on={railTab === 'audio'}
+              onClick={() => setRailTab(railTab === 'audio' ? null : 'audio')}
+            />
+            <PlayerChip
+              kicker="SPEED"
+              value={speedLabel}
+              on={railTab === 'speed'}
+              onClick={() => setRailTab(railTab === 'speed' ? null : 'speed')}
+            />
+            {nextEpisode?.video && (
+              <PlayerChip
+                kicker="UP NEXT"
+                value={
+                  tagFor(nextEpisode.video)
+                    ? `${tagFor(nextEpisode.video)} ${nextEpisode.video.title ?? ''}`.trim()
+                    : 'Next episode'
+                }
+                on={upNextVisible}
+                onClick={() => setUpNextVisible((visible) => !visible)}
+              />
+            )}
             <div className="spacer" />
-            <button
-              type="button"
-              className="icon-btn"
-              style={{ width: 22, height: 22 }}
-              title="Dismiss"
-              onClick={() => {
-                if (upNextCancelAction(endReached) === 'exit') advanceOnce(back)
-                else setUpNextVisible(false)
-              }}
-            >
-              <Icon name="x" size={11} />
-            </button>
+            <div className="pkeys">{KEY_HINTS}</div>
           </div>
-          <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-            <div
-              className="art art-wide"
-              style={{ width: 104, height: 59, flex: '0 0 auto', borderRadius: 8, border: '1px solid rgba(255,255,255,.1)' }}
-            >
-              {nextEpisode.video.thumbnail && (
-                <img src={nextEpisode.video.thumbnail} alt="" draggable={false} />
-              )}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>
-                {tagFor(nextEpisode.video) ?? 'Next'}
-              </div>
-              <div className="ellipsis" style={{ marginTop: 3, fontSize: 12, color: 'var(--text-muted)' }}>
-                {nextEpisode.video.title ?? nextEpisode.video.name ?? ''}
-              </div>
-            </div>
-          </div>
-          <div className="upnext-progress">
-            <div
-              style={{
-                width: `${Math.max(0, 100 - (upNextSeconds / UP_NEXT_COUNTDOWN_SEC) * 100)}%`,
-              }}
-            />
-          </div>
-          <div className="upnext-actions">
-            <button
-              type="button"
-              className="btn-glass"
-              onClick={() => {
-                if (upNextCancelAction(endReached) === 'exit') advanceOnce(back)
-                else setUpNextVisible(false)
-              }}
-            >
-              {endReached ? 'Exit' : 'Close'}
+
+          <Scrubber
+            position={shown}
+            duration={total}
+            bufferedTo={bufferedTo}
+            onPreview={setDragValue}
+            onCommit={(value) => {
+              seekTo(value)
+              setPosition(value)
+              setDragValue(null)
+            }}
+          />
+
+          <div className="transport">
+            <button type="button" className="pplay" title="Play or pause" onClick={togglePause}>
+              <Icon name={paused ? 'play' : 'pause'} size={16} />
             </button>
             <button
               type="button"
-              className="btn-primary"
-              onClick={() => {
-                if (nextEpisode.stream?.url) playNextEpisode()
-                else openNextEpisodePicker(nextEpisode.video!)
-              }}
+              className="pround"
+              style={{ marginLeft: 14 }}
+              title="Back 10 seconds"
+              onClick={() => seekBy(-10)}
             >
-              <Icon name="play" size={12} />
-              {nextEpisode.stream?.url ? 'Play now' : 'Choose source'}
+              <Icon name="replay10" size={16} />
+            </button>
+            <button
+              type="button"
+              className="pround"
+              style={{ marginLeft: 10 }}
+              title="Forward 10 seconds"
+              onClick={() => seekBy(10)}
+            >
+              <Icon name="forward10" size={16} />
+            </button>
+            <div className="ptime">
+              <span className="ptime-now">{formatClock(shown)}</span>
+              <span className="ptime-total">/</span>
+              <span className="ptime-total">{formatClock(duration)}</span>
+            </div>
+
+            <div className="spacer" />
+
+            <div className="pvol">
+              <button
+                type="button"
+                style={{ display: 'flex', color: 'inherit' }}
+                title={muted ? 'Unmute' : 'Mute'}
+                onClick={() => void mpvCmd('cycle', 'mute')}
+              >
+                <Icon name={muted || volume === 0 ? 'volumeOff' : 'volume'} size={16} />
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={muted ? 0 : Math.round(volume)}
+                aria-label="Volume"
+                onChange={(event) => {
+                  const next = Number(event.target.value)
+                  if (muted && next > 0) void mpvSet('mute', 'no')
+                  void mpvSet('volume', String(next))
+                }}
+              />
+              <span className="pvol-value">{muted ? 0 : Math.round(volume)}%</span>
+            </div>
+            <button
+              type="button"
+              className="psquare"
+              style={{ marginLeft: 10 }}
+              title={fill ? 'Fit the whole picture' : 'Crop to fill the window'}
+              onClick={() => setFill((value) => !value)}
+            >
+              <Icon name={fill ? 'fitFill' : 'fitContain'} size={15} />
+            </button>
+            <button
+              type="button"
+              className="psquare"
+              style={{ marginLeft: 10 }}
+              title={fullscreen ? 'Leave full screen' : 'Full screen'}
+              onClick={() => void toggleFullscreen()}
+            >
+              <Icon name={fullscreen ? 'exitFullscreen' : 'enterFullscreen'} size={15} />
             </button>
           </div>
         </div>
-      )}
 
-      {/* ── Right rail ──────────────────────────────────────────────────── */}
-      {railTab !== null && (
-        <>
-          <div className="prail-scrim" onClick={() => setRailTab(null)} />
-          <div className="prail" onMouseMove={poke}>
-            <div className="prail-head">
-              <div style={{ flex: 1 }}>
-                <div className="pane-title">Playback</div>
-                <div style={{ marginTop: 3, fontSize: 11.5, color: 'var(--text-muted)' }}>
-                  Applies live — nothing reloads
-                </div>
+        {/* ── Up next ───────────────────────────────────────────────────── */}
+        {upNextVisible && nextEpisode?.video && (
+          <div className="upnext-card">
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <div className="prail-kicker">UP NEXT</div>
+              <div className="mono" style={{ color: 'rgba(255,255,255,.5)' }}>
+                {endReached ? `IN ${Math.max(upNextSeconds, 0)} S` : 'READY'}
               </div>
-              <button type="button" className="prail-close" title="Close" onClick={() => setRailTab(null)}>
-                <Icon name="x" size={14} />
+              <div className="spacer" />
+              <button
+                type="button"
+                className="prail-close"
+                style={{ width: 22, height: 22 }}
+                title="Dismiss"
+                onClick={() => {
+                  if (upNextCancelAction(endReached) === 'exit') advanceOnce(back)
+                  else setUpNextVisible(false)
+                }}
+              >
+                <Icon name="x" size={11} />
               </button>
             </div>
-            <div className="prail-tabs">
-              {(['audio', 'subtitles', 'speed'] as const).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  className={`prail-tab ${railTab === tab ? 'prail-tab-active' : ''}`}
-                  onClick={() => setRailTab(tab)}
+            <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+              <div
+                className="art"
+                style={{
+                  width: 104,
+                  height: 59,
+                  flex: '0 0 auto',
+                  borderRadius: 6,
+                  border: '1px solid rgba(255,255,255,.1)',
+                }}
+              >
+                <ArtImage src={nextEpisode.video.thumbnail} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>
+                  {tagFor(nextEpisode.video) ?? 'Next'}
+                </div>
+                <div
+                  className="ellipsis"
+                  style={{ marginTop: 3, fontSize: 13, color: 'rgba(255,255,255,.5)' }}
                 >
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </button>
-              ))}
+                  {nextEpisode.video.title ?? nextEpisode.video.name ?? ''}
+                </div>
+              </div>
             </div>
+            <div className="upnext-progress">
+              <div
+                style={{
+                  width: `${Math.max(0, 100 - (upNextSeconds / UP_NEXT_COUNTDOWN_SEC) * 100)}%`,
+                }}
+              />
+            </div>
+            <div className="upnext-actions">
+              <button
+                type="button"
+                className="psquare"
+                style={{ width: 'auto', padding: '0 14px', height: 34, fontSize: 15 }}
+                onClick={() => {
+                  if (upNextCancelAction(endReached) === 'exit') advanceOnce(back)
+                  else setUpNextVisible(false)
+                }}
+              >
+                {endReached ? 'Exit' : 'Close'}
+              </button>
+              <button
+                type="button"
+                className="btn-accent h34"
+                onClick={() => {
+                  if (nextEpisode.stream?.url) playNextEpisode()
+                  else openNextEpisodePicker(nextEpisode.video!)
+                }}
+              >
+                <Icon name="play" size={13} />
+                <span>{nextEpisode.stream?.url ? 'Play now' : 'Choose source'}</span>
+              </button>
+            </div>
+          </div>
+        )}
 
-            <div className="prail-body no-bar">
-              {railTab === 'audio' && (
-                <>
-                  <div className="kicker">TRACKS</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 10 }}>
+        {/* ── Playback panel ────────────────────────────────────────────── */}
+        {railTab !== null && (
+          <div style={{ position: 'absolute', inset: 0 }}>
+            <div className="prail-scrim" onClick={() => setRailTab(null)} />
+            <div className="prail" onMouseMove={poke}>
+              <div className="prail-head">
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <div className="prail-title">Playback</div>
+                  <div className="prail-hint">Applies live: nothing reloads</div>
+                </div>
+                <button
+                  type="button"
+                  className="prail-close"
+                  title="Close panel"
+                  onClick={() => setRailTab(null)}
+                >
+                  <Icon name="x" size={13} />
+                </button>
+              </div>
+
+              <div className="ptray ptray-3">
+                {(['audio', 'subtitles', 'speed'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    className={`ptray-btn ${railTab === tab ? 'ptray-btn-active' : ''}`}
+                    onClick={() => setRailTab(tab)}
+                  >
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="prail-body">
+                {railTab === 'audio' && (
+                  <>
+                    <div className="prail-kicker" style={{ marginBottom: 10 }}>
+                      IN THIS FILE
+                    </div>
                     {audioTracks.length === 0 && (
-                      <div className="body-copy" style={{ fontSize: 12 }}>
-                        This file reports no audio tracks yet.
-                      </div>
+                      <div className="prail-hint">This file reports no audio tracks yet.</div>
                     )}
                     {audioTracks.map((track) => (
-                      <TrackRow
+                      <PlayerTrackRow
                         key={track.id}
-                        label={trackLabel(track)}
-                        detail={trackDetail(track)}
+                        title={trackLabel(track)}
+                        note={trackDetail(track)}
+                        badge={track.codec?.toUpperCase()}
                         active={!!track.selected}
                         onClick={() => void mpvSet('aid', String(track.id)).then(refreshTracks)}
                       />
                     ))}
-                  </div>
-                  <div className="prail-divider" />
-                  <Stepper
-                    title="Audio delay"
-                    hint={`${AUDIO_DELAY_STEP_MS} ms steps · tap to reset`}
-                    valueMs={audioDelayMs}
-                    onChange={setAudioDelayMs}
-                    step={AUDIO_DELAY_STEP_MS}
-                    limit={AUDIO_DELAY_LIMIT_MS}
-                  />
-                </>
-              )}
+                    <div style={{ marginTop: 14 }}>
+                      <PlayerStepper
+                        title="Audio delay"
+                        note={`${AUDIO_DELAY_STEP_MS} ms steps · tap the value to reset`}
+                        valueMs={audioDelayMs}
+                        onChange={setAudioDelayMs}
+                        step={AUDIO_DELAY_STEP_MS}
+                        limit={AUDIO_DELAY_LIMIT_MS}
+                      />
+                    </div>
+                  </>
+                )}
 
-              {railTab === 'subtitles' && (
-                <>
-                  {subs.data && !subs.data.hashMatched && (
-                    <div className="body-copy" style={{ color: 'var(--warning)', fontSize: 11.5, marginBottom: 10 }}>
-                      Couldn&apos;t fingerprint this stream — addon results may be off-sync.
-                    </div>
-                  )}
-
-                  <div className="kicker">IN THIS FILE</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 10 }}>
-                    <TrackRow
-                      label="Off"
-                      detail="No subtitles"
-                      active={!activeSub}
-                      onClick={chooseOff}
-                    />
-                    {/* Embedded tracks only — external subs live in the addon
-                        list below, which knows their variant identity.
-                        Rendering mpv's external tracks here too showed
-                        anonymous duplicate rows. */}
-                    {subTracks
-                      .filter((t) => !t.external)
-                      .map((track) => (
-                        <TrackRow
-                          key={track.id}
-                          label={trackLabel(track)}
-                          detail={trackDetail(track)}
-                          badge={track.codec?.toUpperCase()}
-                          active={!!track.selected}
-                          onClick={() => chooseEmbedded(track)}
-                        />
-                      ))}
-                  </div>
-
-                  <div className="kicker" style={{ margin: '18px 0 10px' }}>
-                    FROM ADDONS
-                  </div>
-                  {subs.isLoading && (
-                    <div className="body-copy" style={{ fontSize: 12 }}>
-                      <span className="spinner" /> Searching addons…
-                    </div>
-                  )}
-                  {subs.data && subGroups.length === 0 && !subs.isLoading && (
-                    <div className="body-copy" style={{ fontSize: 12 }}>
-                      No external subtitles found.
-                    </div>
-                  )}
-                  {subGroups.map((group) => (
-                    <div key={group.addonId} style={{ marginBottom: 8 }}>
-                      <div className="track-detail" style={{ padding: '6px 10px 2px' }}>
-                        {group.addonName}
-                      </div>
-                      {group.languages.map(({ lang, label, variants }) => {
-                        const rowKey = `${group.addonId}:${lang}`
-                        const activeIndex = variants.findIndex((v) => v.id === activeExternalId)
-                        return (
-                          <div key={rowKey}>
-                            <TrackRow
-                              label={label}
-                              detail={
-                                activeIndex >= 0 && variants.length > 1
-                                  ? `Variant ${activeIndex + 1} of ${variants.length}`
-                                  : variants.length > 1
-                                    ? `${variants.length} variants`
-                                    : 'Addon subtitle'
-                              }
-                              badge={variants.length > 1 ? String(variants.length) : undefined}
-                              // The count badge expands the rest for
-                              // out-of-sync cases; the row itself takes the
-                              // addon's own best pick.
-                              onBadgeClick={
-                                variants.length > 1
-                                  ? () => setExpandedLang(expandedLang === rowKey ? null : rowKey)
-                                  : undefined
-                              }
-                              active={activeIndex >= 0}
-                              onClick={() => chooseExternal(variants[0]!)}
-                            />
-                            {expandedLang === rowKey &&
-                              variants.map((sub, index) => (
-                                <TrackRow
-                                  key={sub.id}
-                                  label={`Variant ${index + 1}`}
-                                  detail={sub.id}
-                                  active={sub.id === activeExternalId}
-                                  indent
-                                  onClick={() => chooseExternal(sub)}
-                                />
-                              ))}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))}
-
-                  <div className="prail-divider" />
-                  <div className="kicker">APPEARANCE</div>
-                  <div className="prail-card">
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>Size</div>
-                      <div className="spacer" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        mpv sub-scale, live
-                      </div>
-                      <div style={{ font: '700 12.5px/1 var(--mono)' }}>
-                        {settings.subtitleScalePercent ?? SUBTITLE_SCALE_DEFAULT}%
-                      </div>
-                    </div>
-                    <Slider
-                      label="Subtitle size"
-                      value={settings.subtitleScalePercent ?? SUBTITLE_SCALE_DEFAULT}
-                      min={SUBTITLE_SCALE_MIN}
-                      max={SUBTITLE_SCALE_MAX}
-                      step={SUBTITLE_SCALE_STEP}
-                      onChange={(value) => updateSettings.mutate({ subtitleScalePercent: value })}
-                    />
-                  </div>
-                  <Stepper
-                    title="Delay"
-                    hint={`${SUB_DELAY_STEP_MS} ms steps · tap to reset`}
-                    valueMs={subtitleDelayMs}
-                    onChange={setSubtitleDelayMs}
-                    step={SUB_DELAY_STEP_MS}
-                    limit={SUB_DELAY_LIMIT_MS}
-                  />
-                  <div className="prail-card">
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>Font</div>
-                    <div style={{ display: 'flex', gap: 5, marginTop: 10 }}>
-                      {SUBTITLE_FONTS.map((font) => (
+                {railTab === 'subtitles' && (
+                  <>
+                    <div className="ptray ptray-2">
+                      {(['tracks', 'appearance'] as const).map((tab) => (
                         <button
-                          key={font.label}
+                          key={tab}
                           type="button"
-                          className={`pill-sm ${
-                            (settings.subtitleFontFamily ?? '') === (font.family ?? '')
-                              ? 'pill-sm-active'
-                              : ''
-                          }`}
-                          onClick={() => updateSettings.mutate({ subtitleFontFamily: font.family })}
+                          className={`ptray-btn ${subTab === tab ? 'ptray-btn-active' : ''}`}
+                          onClick={() => setSubTab(tab)}
                         >
-                          {font.label}
+                          {tab === 'tracks' ? 'Tracks' : 'Appearance'}
                         </button>
                       ))}
                     </div>
-                  </div>
-                </>
-              )}
 
-              {railTab === 'speed' && (
-                <>
-                  <div className="kicker">SPEED</div>
-                  <div className="speed-grid">
-                    {SPEEDS.map((rate) => (
+                    {subTab === 'tracks' && (
+                      <>
+                        {subs.data && !subs.data.hashMatched && (
+                          <div className="prail-warn">
+                            Couldn&apos;t fingerprint this stream — addon results may be off-sync.
+                          </div>
+                        )}
+                        <div className="prail-kicker" style={{ marginBottom: 10 }}>
+                          IN THIS FILE
+                        </div>
+                        <PlayerTrackRow
+                          title="Off"
+                          note="No subtitles"
+                          active={!activeSub}
+                          onClick={chooseOff}
+                        />
+                        {/* Embedded tracks only — external subs live in the
+                            addon list below, which knows their variant
+                            identity. Rendering mpv's external tracks here too
+                            showed anonymous duplicate rows. */}
+                        {subTracks
+                          .filter((track) => !track.external)
+                          .map((track) => (
+                            <PlayerTrackRow
+                              key={track.id}
+                              title={trackLabel(track)}
+                              note={trackDetail(track)}
+                              badge={track.codec?.toUpperCase()}
+                              active={!!track.selected}
+                              onClick={() => chooseEmbedded(track)}
+                            />
+                          ))}
+
+                        <div className="prail-kicker" style={{ margin: '15px 0 10px' }}>
+                          FROM ADDONS
+                        </div>
+                        {subs.isLoading && (
+                          <div className="prail-hint">
+                            <span className="spinner" /> Searching addons…
+                          </div>
+                        )}
+                        {subs.data && subGroups.length === 0 && !subs.isLoading && (
+                          <div className="prail-hint">No external subtitles found.</div>
+                        )}
+                        {subGroups.map((group) => (
+                          <div key={group.addonId}>
+                            {group.languages.map(({ lang, label, variants }) => {
+                              const rowKey = `${group.addonId}:${lang}`
+                              const activeIndex = variants.findIndex((v) => v.id === activeExternalId)
+                              return (
+                                <div key={rowKey}>
+                                  <PlayerTrackRow
+                                    title={label}
+                                    note={`${group.addonName}${
+                                      variants.length > 1
+                                        ? activeIndex >= 0
+                                          ? ` · variant ${activeIndex + 1} of ${variants.length}`
+                                          : ` · ${variants.length} variants`
+                                        : ''
+                                    }`}
+                                    badge={hashLabel}
+                                    badgeGood={subs.data?.hashMatched}
+                                    active={activeIndex >= 0}
+                                    // The count expands the rest for
+                                    // out-of-sync cases; the row itself takes
+                                    // the addon's own best pick.
+                                    onBadgeClick={
+                                      variants.length > 1
+                                        ? () =>
+                                            setExpandedLang(expandedLang === rowKey ? null : rowKey)
+                                        : undefined
+                                    }
+                                    onClick={() => chooseExternal(variants[0]!)}
+                                  />
+                                  {expandedLang === rowKey &&
+                                    variants.map((sub, index) => (
+                                      <PlayerTrackRow
+                                        key={sub.id}
+                                        title={`Variant ${index + 1}`}
+                                        note={sub.id}
+                                        active={sub.id === activeExternalId}
+                                        indent
+                                        onClick={() => chooseExternal(sub)}
+                                      />
+                                    ))}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {subTab === 'appearance' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div className="pcard">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <span className="spacer pcard-title">Size</span>
+                            <span className="mono mono-b" style={{ color: '#fff', fontSize: 14 }}>
+                              {settings.subtitleScalePercent ?? SUBTITLE_SCALE_DEFAULT}%
+                            </span>
+                          </div>
+                          <div className="pcard-note" style={{ marginTop: 3 }}>
+                            mpv sub-scale, live
+                          </div>
+                          <input
+                            type="range"
+                            style={{ marginTop: 8, accentColor: '#60CDFF' }}
+                            min={SUBTITLE_SCALE_MIN}
+                            max={SUBTITLE_SCALE_MAX}
+                            step={SUBTITLE_SCALE_STEP}
+                            aria-label="Subtitle size"
+                            value={settings.subtitleScalePercent ?? SUBTITLE_SCALE_DEFAULT}
+                            onChange={(event) =>
+                              updateSettings.mutate({
+                                subtitleScalePercent: Number(event.target.value),
+                              })
+                            }
+                          />
+                          <div className="prail-ticks">
+                            <span>{SUBTITLE_SCALE_MIN}</span>
+                            <span>100</span>
+                            <span>{SUBTITLE_SCALE_MAX}</span>
+                          </div>
+                        </div>
+
+                        <PlayerStepper
+                          title="Delay"
+                          note="Shifts the track against the picture"
+                          valueMs={subtitleDelayMs}
+                          onChange={setSubtitleDelayMs}
+                          step={SUB_DELAY_STEP_MS}
+                          limit={SUB_DELAY_LIMIT_MS}
+                        />
+
+                        <div className="pcard">
+                          <div className="pcard-title">Outline</div>
+                          <div className="ptray ptray-4" style={{ marginTop: 8 }}>
+                            {SUBTITLE_OUTLINES.map((option) => (
+                              <button
+                                key={option.key}
+                                type="button"
+                                className={`ptray-btn ${
+                                  (settings.subtitleOutline ?? 'normal') === option.key
+                                    ? 'ptray-btn-active'
+                                    : ''
+                                }`}
+                                style={{ fontSize: 14 }}
+                                onClick={() =>
+                                  updateSettings.mutate({ subtitleOutline: option.key })
+                                }
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                          <div
+                            style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}
+                          >
+                            <span className="spacer pcard-title">Shadow</span>
+                            <Toggle
+                              label="Subtitle shadow"
+                              on={settings.subtitleShadow ?? true}
+                              onChange={(next) => updateSettings.mutate({ subtitleShadow: next })}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="pcard">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <span className="spacer pcard-title">Track styling</span>
+                            <Toggle
+                              label="Keep a styled track's own look"
+                              on={prefs.subtitleTrackStyling}
+                              onChange={(next) => setLocalPrefs({ subtitleTrackStyling: next })}
+                            />
+                          </div>
+                          <div className="pcard-note" style={{ marginTop: 3 }}>
+                            On, a styled track keeps its own look. A plain text track always follows
+                            the settings here.
+                          </div>
+                          <div className="ptray ptray-4" style={{ marginTop: 12 }}>
+                            {SUBTITLE_FONTS.map((font) => (
+                              <button
+                                key={font.label}
+                                type="button"
+                                className={`ptray-btn ${
+                                  (settings.subtitleFontFamily ?? '') === (font.family ?? '')
+                                    ? 'ptray-btn-active'
+                                    : ''
+                                }`}
+                                style={{ fontSize: 14 }}
+                                onClick={() =>
+                                  updateSettings.mutate({ subtitleFontFamily: font.family })
+                                }
+                              >
+                                {font.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {railTab === 'speed' && (
+                  <div className="pspeed-grid">
+                    {SPEEDS.map((entry) => (
                       <button
-                        key={rate}
+                        key={entry.rate}
                         type="button"
-                        className={`speed-cell ${Math.abs(speed - rate) < 0.01 ? 'speed-cell-active' : ''}`}
-                        onClick={() => void mpvSet('speed', String(rate))}
+                        className={`pspeed ${
+                          Math.abs(speed - entry.rate) < 0.01 ? 'pspeed-active' : ''
+                        }`}
+                        onClick={() => void mpvSet('speed', String(entry.rate))}
                       >
-                        <div className="speed-rate">{rate}×</div>
-                        <div className="speed-detail">{rate === 1 ? 'Normal' : `${rate * 100}%`}</div>
+                        <span className="pspeed-rate">{entry.rate}×</span>
+                        <span className="pspeed-note">{entry.note}</span>
                       </button>
                     ))}
                   </div>
-                  <div className="prail-note">
-                    Pitch is corrected up to 2×. Subtitle timing follows the rate automatically.
-                  </div>
-                </>
-              )}
+                )}
+              </div>
             </div>
           </div>
-        </>
-      )}
+        )}
       </div>
     </>
   )
 }
 
-function StateChip({
+/** One of the four state chips above the seek bar. */
+function PlayerChip({
   kicker,
   value,
-  open,
+  on,
   onClick,
 }: {
   kicker: string
   value: string
-  open: boolean
+  on: boolean
   onClick: () => void
 }) {
   return (
-    <button type="button" className={`state-chip ${open ? 'state-chip-open' : ''}`} onClick={onClick}>
-      <span className="chip-kicker">{kicker}</span>
-      <span className="chip-value ellipsis">{value}</span>
+    <button type="button" className={`pchip ${on ? 'pchip-on' : ''}`} onClick={onClick}>
+      <span className="pchip-kicker">{kicker}</span>
+      <span className="pchip-value ellipsis">{value}</span>
     </button>
   )
 }
 
 /**
- * The 6 px transport bar: buffered fill from mpv's demuxer cache, played fill,
- * and a knob that previews a position while dragging and commits one seek on
- * release — scrubbing live would issue a seek per pixel.
+ * The seek bar. Dragging previews without seeking and commits once on release,
+ * so a scrub across a remote stream issues one seek rather than dozens.
  */
 function Scrubber({
   position,
@@ -1373,155 +1576,80 @@ function Scrubber({
 }) {
   const track = useRef<HTMLDivElement>(null)
   const [hoverAt, setHoverAt] = useState<number | null>(null)
-  const dragging = useRef(false)
 
-  const valueAt = (clientX: number): number | null => {
+  const valueAt = (clientX: number): number => {
     const el = track.current
-    if (!el) return null
+    if (!el) return position
     const rect = el.getBoundingClientRect()
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
     return ratio * duration
   }
-
   const percent = (value: number) => `${Math.min(100, Math.max(0, (value / duration) * 100))}%`
 
   return (
     <div
-      className="scrub"
-      ref={track}
+      className="seek"
       role="slider"
       tabIndex={0}
-      aria-label="Playback position"
+      aria-label="Seek"
+      aria-valuenow={Math.round(position)}
       aria-valuemin={0}
       aria-valuemax={Math.round(duration)}
-      aria-valuenow={Math.round(position)}
-      aria-valuetext={`${formatClock(position)} of ${formatClock(duration)}`}
-      onPointerDown={(e) => {
-        if (e.button !== 0) return
-        const value = valueAt(e.clientX)
-        if (value === null) return
-        dragging.current = true
-        e.currentTarget.setPointerCapture(e.pointerId)
-        onPreview(value)
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowLeft') onCommit(Math.max(0, position - 10))
+        else if (event.key === 'ArrowRight') onCommit(Math.min(duration, position + 10))
+        else return
+        event.preventDefault()
       }}
-      onPointerMove={(e) => {
-        const value = valueAt(e.clientX)
-        setHoverAt(value)
-        if (dragging.current && value !== null) onPreview(value)
-      }}
-      onPointerUp={(e) => {
-        const value = valueAt(e.clientX)
-        dragging.current = false
-        e.currentTarget.releasePointerCapture(e.pointerId)
-        if (value !== null) onCommit(value)
-      }}
-      onPointerCancel={() => {
-        dragging.current = false
-        setHoverAt(null)
-        onPreview(null)
-      }}
-      onLostPointerCapture={() => {
-        if (!dragging.current) return
-        dragging.current = false
-        setHoverAt(null)
-        onPreview(null)
-      }}
-      onKeyDown={(e) => {
-        let next: number | null = null
-        if (e.key === 'ArrowLeft') next = Math.max(0, position - 10)
-        else if (e.key === 'ArrowRight') next = Math.min(duration, position + 10)
-        else if (e.key === 'Home') next = 0
-        else if (e.key === 'End') next = duration
-        if (next === null) return
-        e.preventDefault()
-        onCommit(next)
-      }}
-      onPointerLeave={() => setHoverAt(null)}
     >
-      {hoverAt !== null && (
-        <div className="scrub-bubble" style={{ left: percent(hoverAt) }}>
-          {formatClock(hoverAt)}
-        </div>
-      )}
-      <div className="scrub-track">
-        <div className="scrub-buffered" style={{ width: percent(bufferedTo) }} />
-        <div className="scrub-played" style={{ width: percent(position) }} />
-        <div className="scrub-knob" style={{ left: percent(position) }} />
+      <div
+        className="seek-track"
+        ref={track}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId)
+          onPreview(valueAt(event.clientX))
+        }}
+        onPointerMove={(event) => {
+          setHoverAt(valueAt(event.clientX))
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            onPreview(valueAt(event.clientX))
+          }
+        }}
+        onPointerUp={(event) => {
+          event.currentTarget.releasePointerCapture(event.pointerId)
+          onCommit(valueAt(event.clientX))
+        }}
+        onPointerLeave={() => setHoverAt(null)}
+      >
+        {hoverAt !== null && (
+          <div className="seek-bubble" style={{ left: percent(hoverAt) }}>
+            {formatClock(hoverAt)}
+          </div>
+        )}
+        <div className="seek-buffered" style={{ width: percent(bufferedTo) }} />
+        <div className="seek-fill" style={{ width: percent(position) }} />
+        <div className="seek-knob" style={{ left: percent(position) }} />
       </div>
     </div>
   )
 }
 
-function VolumeBar({ value, onChange }: { value: number; onChange: (value: number) => void }) {
-  const track = useRef<HTMLDivElement>(null)
-  const dragging = useRef(false)
-
-  const apply = (clientX: number) => {
-    const el = track.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
-    onChange(Math.round(ratio * 100))
-  }
-
-  return (
-    <div
-      className="vol-track"
-      ref={track}
-      role="slider"
-      tabIndex={0}
-      aria-label="Volume"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(value)}
-      onPointerDown={(e) => {
-        if (e.button !== 0) return
-        dragging.current = true
-        e.currentTarget.setPointerCapture(e.pointerId)
-        apply(e.clientX)
-      }}
-      onPointerMove={(e) => {
-        if (dragging.current) apply(e.clientX)
-      }}
-      onPointerUp={(e) => {
-        dragging.current = false
-        e.currentTarget.releasePointerCapture(e.pointerId)
-      }}
-      onPointerCancel={() => {
-        dragging.current = false
-      }}
-      onLostPointerCapture={() => {
-        dragging.current = false
-      }}
-      onKeyDown={(e) => {
-        let next: number | null = null
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = Math.max(0, value - 5)
-        else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = Math.min(100, value + 5)
-        else if (e.key === 'Home') next = 0
-        else if (e.key === 'End') next = 100
-        if (next === null) return
-        e.preventDefault()
-        onChange(next)
-      }}
-    >
-      <div className="vol-fill" style={{ width: `${value}%` }} />
-      <div className="vol-knob" style={{ left: `${value}%` }} />
-    </div>
-  )
-}
-
-function TrackRow({
-  label,
-  detail,
+/** A track row in the panel: selection dot, title, note, codec or match badge. */
+function PlayerTrackRow({
+  title,
+  note,
   badge,
+  badgeGood,
   active,
   indent,
   onClick,
   onBadgeClick,
 }: {
-  label: string
-  detail?: string
+  title: string
+  note?: string
   badge?: string
+  /** Green badge: this subtitle was matched by file hash, not by name. */
+  badgeGood?: boolean
   active: boolean
   indent?: boolean
   onClick: () => void
@@ -1531,76 +1659,86 @@ function TrackRow({
     <div style={{ display: 'flex', alignItems: 'center' }}>
       <button
         type="button"
-        className={`track-row ${active ? 'track-row-active' : ''}`}
-        style={indent ? { paddingLeft: 24 } : undefined}
+        className={`ptrack ${active ? 'ptrack-active' : ''}`}
+        style={indent ? { paddingLeft: 28 } : undefined}
         onClick={onClick}
       >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="track-label ellipsis">{label}</div>
-          {detail && <div className="track-detail ellipsis">{detail}</div>}
-        </div>
-        {badge && !onBadgeClick && <div className="badge badge-outline">{badge}</div>}
-        <div className={`track-dot ${active ? 'track-dot-on' : ''}`} />
+        <span className="ptrack-dot" />
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <span className="ptrack-title ellipsis">{title}</span>
+          {note && <span className="ptrack-note ellipsis">{note}</span>}
+        </span>
+        {badge && (
+          <span className={`ptrack-codec ${badgeGood ? 'ptrack-match-hash' : ''}`}>{badge}</span>
+        )}
       </button>
-      {badge && onBadgeClick && (
+      {/* Variants sit behind their own control: the row takes the addon's best
+          pick, and this only matters when that pick is out of sync. */}
+      {onBadgeClick && (
         <button
           type="button"
-          className="icon-btn"
-          style={{ width: 26, height: 26, marginLeft: -34, marginRight: 8 }}
-          title="Other variants"
+          className="prail-close"
+          style={{ width: 26, height: 26, flex: '0 0 26px' }}
+          title="Show every variant"
           onClick={onBadgeClick}
         >
-          <span style={{ font: '700 10px/1 var(--mono)' }}>{badge}</span>
+          <Icon name="chevronDown" size={12} />
         </button>
       )}
     </div>
   )
 }
 
-/** ±step millisecond offset control; clicking the value resets it to zero. */
-function Stepper({
+/** The ± delay control: a hairline frame around a mono readout. */
+function PlayerStepper({
   title,
-  hint,
+  note,
   valueMs,
   onChange,
   step,
   limit,
 }: {
   title: string
-  hint: string
+  note: string
   valueMs: number
   onChange: (value: number) => void
   step: number
   limit: number
 }) {
+  const clamp = (value: number) => Math.max(-limit, Math.min(limit, value))
+  const seconds = valueMs / 1000
   return (
-    <div className="prail-card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>{title}</div>
-        <div style={{ marginTop: 2, fontSize: 11, color: 'var(--text-muted)' }}>{hint}</div>
-      </div>
-      <div className="stepper">
+    <div className="pcard" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <span className="pcard-title">{title}</span>
+        <span className="pcard-note">{note}</span>
+      </span>
+      <span className="pstepper">
         <button
           type="button"
-          className="stepper-btn"
-          aria-label={`${title} earlier`}
-          onClick={() => onChange(Math.max(-limit, valueMs - step))}
+          className="pstepper-btn"
+          title={`Minus ${step} ms`}
+          onClick={() => onChange(clamp(valueMs - step))}
         >
           −
         </button>
-        <button type="button" className="stepper-value" title="Reset" onClick={() => onChange(0)}>
-          {valueMs > 0 ? '+' : ''}
-          {valueMs} ms
+        <button
+          type="button"
+          className="pstepper-value"
+          title="Reset"
+          onClick={() => onChange(0)}
+        >
+          {`${seconds > 0 ? '+' : ''}${seconds.toFixed(2)} s`}
         </button>
         <button
           type="button"
-          className="stepper-btn"
-          aria-label={`${title} later`}
-          onClick={() => onChange(Math.min(limit, valueMs + step))}
+          className="pstepper-btn"
+          title={`Plus ${step} ms`}
+          onClick={() => onChange(clamp(valueMs + step))}
         >
           +
         </button>
-      </div>
+      </span>
     </div>
   )
 }
