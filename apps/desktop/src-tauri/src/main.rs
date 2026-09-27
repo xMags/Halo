@@ -186,7 +186,7 @@ async fn downloads_list(
 async fn downloads_start(
     state: State<'_, Arc<downloads::DownloadManager>>,
     request: downloads::DownloadStartRequest,
-) -> Result<downloads::DownloadView, String> {
+) -> Result<downloads::StartOutcome, String> {
     state.start(request).await
 }
 
@@ -221,6 +221,15 @@ async fn downloads_attach_subtitle(
     subtitle: downloads::DownloadSubtitleRequest,
 ) -> Result<(), String> {
     state.attach_subtitle(&job_id, subtitle).await
+}
+
+#[tauri::command]
+async fn downloads_set_landscape_artwork(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    job_id: String,
+    artwork: String,
+) -> Result<(), String> {
+    state.set_landscape_artwork(&job_id, artwork).await
 }
 
 #[tauri::command]
@@ -366,6 +375,7 @@ fn main() {
             downloads_resume,
             downloads_remove,
             downloads_attach_subtitle,
+            downloads_set_landscape_artwork,
             downloads_set_directory,
             downloads_choose_directory,
             downloads_directory_info,

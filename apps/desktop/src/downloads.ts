@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useCallback, useEffect, useState } from 'react'
-import { downloadEtaSeconds, downloadFailureMessage, downloadProgress, downloadStatusLabel, formatDownloadBytes, formatDownloadEta, nextDownloadedEpisode, opaqueDownloadOwner, type DownloadFailureCode, type DownloadStatus } from './downloadsLogic'
+import { downloadEtaSeconds, downloadFailureMessage, downloadProgress, downloadStatusLabel, formatDownloadBytes, formatDownloadEta, nextDownloadedEpisode, opaqueDownloadOwner, requiresNewSource, type DownloadFailureCode, type DownloadStatus } from './downloadsLogic'
 export type { DownloadFailureCode, DownloadStatus } from './downloadsLogic'
 
 export interface DownloadMedia {
@@ -13,6 +13,8 @@ export interface DownloadMedia {
   show_name?: string
   episode_label?: string
   poster?: string
+  /** Episode still or title backdrop for the row thumbnail; set by the engine, never by a start request. */
+  landscape_artwork?: string
   addon_id?: string
   binge_group?: string
   filename?: string
@@ -54,6 +56,12 @@ export interface DownloadView {
   updated_at: number
 }
 
+/** What asking for a download did; swapping a video's saved source is never implicit. */
+export type StartOutcome =
+  | { outcome: 'started'; download: DownloadView }
+  | { outcome: 'already_exists'; download: DownloadView }
+  | { outcome: 'replacement_required' }
+
 export interface DirectoryInfo {
   path: string
   exists: boolean
@@ -80,8 +88,8 @@ export function clearDownloadsAccount(): Promise<void> {
   return invoke('downloads_clear_account')
 }
 
-export function startDownload(request: DownloadStartRequest): Promise<DownloadView> {
-  return invoke<DownloadView>('downloads_start', {
+export function startDownload(request: DownloadStartRequest): Promise<StartOutcome> {
+  return invoke<StartOutcome>('downloads_start', {
     request: {
       ...request,
       headers: request.headers ?? {},
@@ -163,7 +171,11 @@ export function useDownloads(): {
     const onAccount = () => { void refresh() }
     window.addEventListener('halo-download-account', onAccount)
     let disposed = false
-    let unlisten: (() => void) | undefined
+    const unlisteners: Array<() => void> = []
+    const keep = (stop: () => void) => {
+      if (disposed) stop()
+      else unlisteners.push(stop)
+    }
     void listen<DownloadView>('download-changed', (event) => {
       if (disposed) return
       setDownloads((current) => {
@@ -174,18 +186,19 @@ export function useDownloads(): {
         )
         return [...next, event.payload].sort((a, b) => a.created_at - b.created_at)
       })
-    }).then((stop) => {
-      if (disposed) stop()
-      else unlisten = stop
-    })
+    }).then(keep)
+    void listen<{ job_id: string }>('download-removed', (event) => {
+      if (disposed) return
+      setDownloads((current) => current.filter((item) => item.job_id !== event.payload.job_id))
+    }).then(keep)
     return () => {
       disposed = true
       window.removeEventListener('halo-download-account', onAccount)
-      unlisten?.()
+      for (const stop of unlisteners) stop()
     }
   }, [refresh])
 
   return { downloads, loading, error, refresh }
 }
 
-export { downloadEtaSeconds, downloadFailureMessage, downloadProgress, downloadStatusLabel, formatDownloadBytes, formatDownloadEta, nextDownloadedEpisode, opaqueDownloadOwner }
+export { downloadEtaSeconds, downloadFailureMessage, downloadProgress, downloadStatusLabel, formatDownloadBytes, formatDownloadEta, nextDownloadedEpisode, opaqueDownloadOwner, requiresNewSource }

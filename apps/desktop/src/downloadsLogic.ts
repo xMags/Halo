@@ -55,6 +55,16 @@ export function nextDownloadedEpisode<T extends DownloadedEpisodeSummary>(
     .sort((left, right) => left.ordinal - right.ordinal)[0]?.entry ?? null
 }
 
+/** Failures a retry of the same request cannot fix; mirrors the engine's rule. */
+export function requiresNewSource(failure?: DownloadFailureCode): boolean {
+  return (
+    failure === 'source_expired' ||
+    failure === 'invalid_range' ||
+    failure === 'protected_request_corrupt' ||
+    failure === 'missing_file'
+  )
+}
+
 export function downloadProgress(item: DownloadSummary): number | null {
   if (item.total_bytes <= 0) return null
   return Math.max(0, Math.min(1, item.downloaded_bytes / item.total_bytes))
@@ -66,7 +76,7 @@ export function downloadStatusLabel(item: Pick<DownloadSummary, 'status' | 'fail
     case 'downloading': return 'Downloading'
     case 'paused': return 'Paused'
     case 'done': return 'Ready offline'
-    case 'failed': return item.failure === 'source_expired' ? 'Choose source again' : 'Failed'
+    case 'failed': return requiresNewSource(item.failure) ? 'Choose source again' : 'Failed'
   }
 }
 
