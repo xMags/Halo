@@ -340,7 +340,7 @@ describe('addons: server-fetched manifests', () => {
     expect(adminView.global[0]!.transportUrl).toBe(CINEMETA_URL)
   })
 
-  it('flags a personal copy of a global addon and strips its catalogs on the wire', async () => {
+  it('flags a personal copy of a global addon without stripping its catalogs', async () => {
     const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
     const admin = await adminToken()
     const bobToken = await userToken('bob')
@@ -352,8 +352,8 @@ describe('addons: server-fetched manifests', () => {
 
     const view = (await (await app.request('/addons', authed(bobToken))).json()) as { global: Entry[]; user: Entry[] }
     expect(view.user[0]!.providedGlobally).toBe(true)
-    // Home would otherwise list the global entry's catalogs a second time.
-    expect(view.user[0]!.manifest.catalogs).toEqual([])
+    // Catalogs are kept so native clients that deduplicate by picking the user row still have catalogs.
+    expect(view.user[0]!.manifest.catalogs).toHaveLength(1)
     expect(view.global[0]!.providedGlobally).toBeUndefined()
     expect(view.global[0]!.manifest.catalogs).toHaveLength(1)
   })
