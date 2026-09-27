@@ -53,9 +53,9 @@ export function useServerStatus(): ServerStatus {
   return { state: 'connected', latencyMs: data, host }
 }
 
-/** The rail's second line: `connected · 12 ms`, or why not. */
+/** Settings' status line, in the native app's words: `CONNECTED · 12 MS`, or why not. */
 export function describeStatus(status: ServerStatus): string {
-  if (status.state === 'probing') return 'connecting…'
-  if (status.state === 'unreachable') return 'unreachable'
-  return `connected · ${status.latencyMs} ms`
+  if (status.state === 'probing') return 'CHECKING…'
+  if (status.state === 'unreachable') return 'UNREACHABLE'
+  return `CONNECTED · ${status.latencyMs} MS`
 }

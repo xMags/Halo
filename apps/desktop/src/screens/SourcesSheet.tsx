@@ -16,7 +16,7 @@ import {
 import { useNav, type StreamsParams } from '../nav'
 import { useStreams, useWatchStates } from '../queries'
 import { useSettings } from '../settings'
-import { setSettingsSection, type SettingsSection } from '../settingsSection'
+import { revealSettingsSection, type SettingsSection } from '../settingsSection'
 import { languageName, watchNote, type DeviceContext } from '../sourcePresentation'
 import {
   SORTS,
@@ -173,7 +173,7 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
   const beginClose = useCallback(() => setClosing(true), [])
 
   const openSettings = (section: SettingsSection) => {
-    setSettingsSection(section)
+    revealSettingsSection(section)
     setRoot('settings')
   }
 

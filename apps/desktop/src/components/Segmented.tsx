@@ -9,14 +9,14 @@ interface Props<T extends string> {
   options: ReadonlyArray<Option<T>>
   value: T
   onChange: (value: T) => void
-  /** Equal-width cells — the font, outline and tab trays. */
-  even?: boolean
+  /** The smaller cells Settings' font and outline pickers use. */
+  compact?: boolean
 }
 
 /** The segmented tray: browse filters, download filters, font/outline pickers. */
-export function Segmented<T extends string>({ options, value, onChange, even }: Props<T>) {
+export function Segmented<T extends string>({ options, value, onChange, compact }: Props<T>) {
   return (
-    <div className={`tray ${even ? 'tray-even' : ''}`} role="tablist">
+    <div className={`tray ${compact ? 'tray-compact' : ''}`} role="tablist">
       {options.map((option) => (
         <button
           key={option.value}

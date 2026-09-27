@@ -14,6 +14,26 @@ const OUTLINE_DIRECTIONS: ReadonlyArray<[number, number]> = [
 ]
 
 /**
+ * The caption's outline and shadow as one `text-shadow`: eight copies ringing
+ * the glyphs, then the drop shadow, listed last so it paints under the
+ * outline as the native shadow copy does. Shared by the player panel and
+ * Settings, which preview the same synced appearance.
+ */
+export function subtitleCaptionShadow(
+  metrics: { outlineWidth: number; shadowOffset: number },
+  shadow: boolean,
+): string | undefined {
+  const layers =
+    metrics.outlineWidth > 0
+      ? OUTLINE_DIRECTIONS.map(
+          ([x, y]) => `${x * metrics.outlineWidth}px ${y * metrics.outlineWidth}px 0 rgba(0, 0, 0, 0.94)`,
+        )
+      : []
+  if (shadow) layers.push(`${metrics.shadowOffset}px ${metrics.shadowOffset}px 0 rgba(0, 0, 0, 0.65)`)
+  return layers.length > 0 ? layers.join(', ') : undefined
+}
+
+/**
  * A caption drawn the way the current appearance settings will draw it: size
  * scaled like mpv's sub-scale, eight outline copies ringing the glyphs, and a
  * drop shadow under them. The stage is pinned dark whatever the theme, since
@@ -34,14 +54,6 @@ export function SubtitlePreview({
   fontFamily: string | undefined
 }) {
   const metrics = subtitlePreviewMetrics(scalePercent, outline)
-  const layers =
-    metrics.outlineWidth > 0
-      ? OUTLINE_DIRECTIONS.map(
-          ([x, y]) => `${x * metrics.outlineWidth}px ${y * metrics.outlineWidth}px 0 rgba(0, 0, 0, 0.94)`,
-        )
-      : []
-  // Listed last so it paints under the outline, as the native shadow copy does.
-  if (shadow) layers.push(`${metrics.shadowOffset}px ${metrics.shadowOffset}px 0 rgba(0, 0, 0, 0.65)`)
   return (
     <div className="pcard">
       <div className="prail-kicker">PREVIEW</div>
@@ -51,7 +63,7 @@ export function SubtitlePreview({
           style={{
             fontSize: metrics.fontSize,
             fontFamily: fontFamily ? `'${fontFamily}', sans-serif` : 'sans-serif',
-            textShadow: layers.length > 0 ? layers.join(', ') : undefined,
+            textShadow: subtitleCaptionShadow(metrics, shadow),
           }}
         >
           {text}
