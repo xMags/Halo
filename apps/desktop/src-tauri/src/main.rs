@@ -6,9 +6,11 @@
 // player screen, so mpv's surface only shows where the UI opens a hole.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod audio_session;
 mod downloads;
 mod mpv;
 mod oauth;
+mod scrub_preview;
 
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
@@ -295,6 +297,53 @@ async fn downloads_playback_files(
     state.playback_files(&job_id).await
 }
 
+/// Halo's level in the Windows Volume Mixer; None until mpv has opened audio.
+#[tauri::command]
+async fn audio_session_read() -> Result<Option<audio_session::SessionVolume>, String> {
+    tauri::async_runtime::spawn_blocking(audio_session::read)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Sets that level (0 to 1). False when there is no session yet, so the UI
+/// falls back to mpv's own volume.
+#[tauri::command]
+async fn audio_session_set_volume(volume: f64, unmute: bool) -> Result<bool, String> {
+    if !volume.is_finite() {
+        return Err("volume must be a number".to_string());
+    }
+    let level = volume.clamp(0.0, 1.0) as f32;
+    tauri::async_runtime::spawn_blocking(move || audio_session::set_volume(level, unmute))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Records the file seek-bar previews decode from; opens nothing yet.
+#[tauri::command]
+fn scrub_preview_open(state: State<'_, scrub_preview::ScrubPreview>, source: String) -> Result<(), String> {
+    if source.is_empty() || source.len() > 8192 {
+        return Err("invalid preview source".to_string());
+    }
+    state.open(source);
+    Ok(())
+}
+
+#[tauri::command]
+fn scrub_preview_close(state: State<'_, scrub_preview::ScrubPreview>) {
+    state.close();
+}
+
+/// A preview frame at `seconds` as raw bytes (see scrub_preview::encode);
+/// empty when superseded by a newer request or when decoding failed.
+#[tauri::command]
+async fn scrub_preview_request(
+    state: State<'_, scrub_preview::ScrubPreview>,
+    seconds: f64,
+) -> Result<tauri::ipc::Response, String> {
+    let frame = state.request(seconds).await.unwrap_or(None);
+    Ok(tauri::ipc::Response::new(scrub_preview::encode(frame)))
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
@@ -321,7 +370,12 @@ fn main() {
             downloads_directory_info,
             downloads_open_folder,
             downloads_playback_path,
-            downloads_playback_files
+            downloads_playback_files,
+            audio_session_read,
+            audio_session_set_volume,
+            scrub_preview_open,
+            scrub_preview_close,
+            scrub_preview_request
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("main window");
@@ -370,6 +424,8 @@ fn main() {
             let mpv = Arc::new(
                 Mpv::load(&dll, hwnd, fonts.as_deref()).map_err(|e| format!("mpv init: {e}"))?,
             );
+            // A second, hidden instance for seek-bar thumbnails, created lazily.
+            app.manage(scrub_preview::ScrubPreview::new(dll.clone()));
 
             let download_manager = Arc::new(downloads::load_manager(&app.handle())?);
             app.manage(download_manager);

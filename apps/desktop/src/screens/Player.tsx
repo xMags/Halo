@@ -11,6 +11,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { getClient } from '../api'
 import { ArtImage } from '../components/ArtImage'
 import { Icon } from '../components/Icon'
+import { QualityBadge } from '../components/QualityBadge'
 import { TitleBar } from '../components/TitleBar'
 import { Toggle } from '../components/Toggle'
 import { getPlaybackFiles, nextDownloadedEpisode, useDownloads } from '../downloads'
@@ -27,11 +28,17 @@ import {
 } from '../mpv'
 import { useNav, type PlayerParams } from '../nav'
 import {
+  classifyVideoQuality,
   resolvePlayerShortcut,
   shouldRunUpNextCountdown,
   upNextCancelAction,
   videoTopMarginRatio,
 } from '../playerLogic'
+import { closeScrubPreview, openScrubPreview } from '../scrubPreview'
+import { LoadingIndicator, useLoadingIndicator } from './player/LoadingIndicator'
+import { ScrubPreviewCard, useScrubPreview } from './player/ScrubPreviewCard'
+import { SubtitlePreview } from './player/SubtitlePreview'
+import { useAppVolume } from './player/useAppVolume'
 import { setLocalPrefs, useLocalPrefs } from '../localPrefs'
 import { useAddonSubtitles, useReportWatchState } from '../queries'
 import { useSettings, useSettingsLoaded, useUpdateSettings } from '../settings'
@@ -68,14 +75,21 @@ const AUDIO_DELAY_LIMIT_MS = 5_000
 let previousPlayerTeardown: Promise<void> = Promise.resolve()
 
 /** Rates offered by the speed tab; mpv corrects pitch up to 2×. */
+/** The native player's six speeds; mpv corrects pitch across all of them. */
 const SPEEDS: ReadonlyArray<{ rate: number; note: string }> = [
-  { rate: 0.5, note: 'half speed' },
-  { rate: 0.75, note: 'slower' },
-  { rate: 1, note: 'normal' },
-  { rate: 1.25, note: 'faster' },
-  { rate: 1.5, note: 'brisk' },
-  { rate: 2, note: 'double' },
+  { rate: 0.75, note: '25% slower' },
+  { rate: 1, note: 'Normal' },
+  { rate: 1.25, note: '25% faster' },
+  { rate: 1.5, note: '50% faster' },
+  { rate: 1.75, note: '75% faster' },
+  { rate: 2, note: 'Double' },
 ]
+
+/** A step of the volume keys, as natively. */
+const VOLUME_KEY_STEP = 5
+
+/** The native subtitle preview's line. */
+const SUBTITLE_PREVIEW_TEXT = 'They kept the antenna pointed at nothing for eleven years.'
 
 const KEY_HINTS = 'SPACE PLAY · ←/→ 10 S · F FULL SCREEN · Z FILL · ESC EXIT'
 
@@ -202,6 +216,13 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const [tracks, setTracks] = useState<MpvTrack[]>([])
   const [videoTags, setVideoTags] = useState<string[]>([])
   const [fileLoaded, setFileLoaded] = useState(false)
+  /** The first frame of this file has been shown (mpv's first playback-restart). */
+  const [firstFrameReady, setFirstFrameReady] = useState(false)
+  /** A seek has been issued and playback has not restarted at the new position. */
+  const [seekPending, setSeekPending] = useState(false)
+  /** The decoded picture, for the quality badge; zero until mpv reports it. */
+  const [videoFormat, setVideoFormat] = useState({ width: 0, height: 0, gamma: null as string | null })
+  const [dolbyVision, setDolbyVision] = useState(false)
   const [railTab, setRailTab] = useState<RailTab | null>(null)
   const [subTab, setSubTab] = useState<SubTab>('tracks')
   /** mpv `panscan`: 1 crops the picture to fill the window, 0 letterboxes. */
@@ -221,6 +242,9 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const [expandedLang, setExpandedLang] = useState<string | null>(null)
   /** Addon id of the currently active external sub (mpv can't tell us which). */
   const [activeExternalId, setActiveExternalId] = useState<string | null>(null)
+
+  const { volume: appVolumeLevel, sync: syncAppVolume, change: changeVolume } = useAppVolume(volume)
+  const quality = classifyVideoQuality({ ...videoFormat, dolbyVision })
 
   const subTracks = useMemo(() => tracks.filter((t) => t.type === 'sub'), [tracks])
   const audioTracks = useMemo(() => tracks.filter((t) => t.type === 'audio'), [tracks])
@@ -318,6 +342,19 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
               setMuted(value)
             } else if (name === 'speed' && typeof value === 'number') {
               setSpeed(value)
+            } else if (name === 'video-params/dw' || name === 'video-params/dh') {
+              // dw/dh are the display size after aspect correction; mpv
+              // reports null while no picture is decoded.
+              const size = typeof value === 'number' ? value : 0
+              setVideoFormat((format) =>
+                name === 'video-params/dw' ? { ...format, width: size } : { ...format, height: size },
+              )
+            } else if (name === 'video-params/gamma') {
+              setVideoFormat((format) => ({ ...format, gamma: typeof value === 'string' ? value : null }))
+            } else if (name === 'video-params/colormatrix') {
+              // This libmpv build reports Dolby Vision as a colour matrix; it
+              // has no dolby-vision-profile field to read.
+              setDolbyVision(value === 'dolbyvision')
             }
           }),
         ))
@@ -327,6 +364,14 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       if (
         !(await keepListener(
           onMpvEvent((kind) => {
+            if (kind === 'seek') {
+              setSeekPending(true)
+            } else if (kind === 'playback-restart') {
+              setSeekPending(false)
+              setFirstFrameReady(true)
+              // The mixer session appears once audio flows; adopt it then.
+              void syncAppVolume()
+            }
             if (kind === 'file-loaded') {
               setFileLoaded(true)
               setPlayerError(null)
@@ -394,6 +439,11 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
         ['speed', 'double'],
         // End of the demuxer's cached range, in absolute time.
         ['demuxer-cache-time', 'double'],
+        // The decoded picture, which the quality badge describes.
+        ['video-params/dw', 'double'],
+        ['video-params/dh', 'double'],
+        ['video-params/gamma', 'string'],
+        ['video-params/colormatrix', 'string'],
       ] as const
       for (const [name, format] of observations) {
         await mpvObserve(name, format)
@@ -429,6 +479,9 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       await mpvSet('pause', 'no')
       if (disposed) return
       await mpvCmd('loadfile', sourceUrl)
+      // Seek-bar thumbnails come from the same file; nothing connects until
+      // the pointer first crosses the bar.
+      if (sourceUrl) await openScrubPreview(sourceUrl).catch(() => undefined)
     }
     void setup().catch(() => {
       if (!disposed) setPlayerError('The player could not start this source.')
@@ -442,6 +495,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       reportNow()
       for (const unlisten of unlisteners) unlisten()
       previousPlayerTeardown = (async () => {
+        await closeScrubPreview().catch(() => undefined)
         await mpvUnobserveAll().catch(() => undefined)
         await mpvCmd('stop').catch(() => undefined)
       })()
@@ -477,6 +531,13 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     }
   }, [poke])
   const chromeVisible = controlsVisible || pinned
+
+  // One stall for two causes: the stream opening or starving, and a seek not
+  // yet live. A paused player is never stalled, and a drag waits for its one
+  // seek on release. (Native: IsPlaybackStalled.)
+  const stalled =
+    (!firstFrameReady || buffering || seekPending) && !paused && dragValue === null && !playerError
+  const loadingVisible = useLoadingIndicator(stalled, firstFrameReady)
 
   const togglePause = useCallback(() => void mpvCmd('cycle', 'pause'), [])
   const seekBy = useCallback((secs: number) => void mpvCmd('seek', secs, 'relative'), [])
@@ -682,6 +743,11 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       else if (shortcut === 'seek-forward') seekBy(10)
       else if (shortcut === 'toggle-fullscreen') toggleFullscreen()
       else if (shortcut === 'toggle-fill') setFill((value) => !value)
+      else if (shortcut === 'volume-up' || shortcut === 'volume-down') {
+        const from = muted ? 0 : appVolumeLevel
+        const step = shortcut === 'volume-up' ? VOLUME_KEY_STEP : -VOLUME_KEY_STEP
+        void changeVolume(from + step, muted)
+      }
       else if (shortcut === 'escape') {
         // Peel one layer at a time: the rail covers the chrome, and full
         // screen is the state the badge tells you Esc will leave.
@@ -692,7 +758,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [togglePause, seekBy, toggleFullscreen, back, poke, railTab, fullscreen])
+  }, [togglePause, seekBy, toggleFullscreen, back, poke, railTab, fullscreen, muted, appVolumeLevel, changeVolume])
 
   const selectEmbeddedSub = async (id: number | 'no'): Promise<boolean> => {
     setControlNotice(null)
@@ -1001,12 +1067,8 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
             </button>
           </div>
         )}
-        {buffering && !playerError && (
-          <div className="player-notice">
-            <span className="spinner" /> Buffering…
-          </div>
-        )}
-        {paused && !buffering && !playerError && <div className="paused-chip">Paused</div>}
+        {loadingVisible && <LoadingIndicator firstFrameReady={firstFrameReady} fullscreen={fullscreen} />}
+        {paused && !playerError && <div className="paused-chip">Paused</div>}
 
         {/* ── Top bar ───────────────────────────────────────────────────── */}
         <div className={`player-top player-chrome ${chromeVisible ? '' : 'player-hidden'}`}>
@@ -1017,9 +1079,21 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
             <div className="player-title ellipsis">{titleLine}</div>
             {sourceLine && <div className="player-source ellipsis">{sourceLine}</div>}
           </div>
-          <div className="spacer" />
-          {fullscreen && <div className="player-tag">FULL SCREEN · ESC TO EXIT</div>}
         </div>
+
+        {/* Describes the decoded picture for the whole file, so it does not
+            fade with the controls. It gives way to the panel, whose close
+            button takes the same corner. */}
+        {quality && railTab === null && (
+          <div className="pbadge">
+            <QualityBadge
+              tier={quality.tier}
+              detail={quality.detail || undefined}
+              gold
+              labelSize={fullscreen ? 12.5 : 10.5}
+            />
+          </div>
+        )}
 
         {/* ── Bottom chrome ─────────────────────────────────────────────── */}
         <div className={`player-bottom player-chrome ${chromeVisible ? '' : 'player-hidden'}`}>
@@ -1107,21 +1181,17 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
                 title={muted ? 'Unmute' : 'Mute'}
                 onClick={() => void mpvCmd('cycle', 'mute')}
               >
-                <Icon name={muted || volume === 0 ? 'volumeOff' : 'volume'} size={16} />
+                <Icon name={muted || appVolumeLevel === 0 ? 'volumeOff' : 'volume'} size={16} />
               </button>
               <input
                 type="range"
                 min={0}
                 max={100}
-                value={muted ? 0 : Math.round(volume)}
+                value={muted ? 0 : Math.round(appVolumeLevel)}
                 aria-label="Volume"
-                onChange={(event) => {
-                  const next = Number(event.target.value)
-                  if (muted && next > 0) void mpvSet('mute', 'no')
-                  void mpvSet('volume', String(next))
-                }}
+                onChange={(event) => void changeVolume(Number(event.target.value), muted)}
               />
-              <span className="pvol-value">{muted ? 0 : Math.round(volume)}%</span>
+              <span className="pvol-value">{muted ? 0 : Math.round(appVolumeLevel)}%</span>
             </div>
             <button
               type="button"
@@ -1506,26 +1576,39 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
                             ))}
                           </div>
                         </div>
+
+                        <SubtitlePreview
+                          text={SUBTITLE_PREVIEW_TEXT}
+                          scalePercent={settings.subtitleScalePercent ?? SUBTITLE_SCALE_DEFAULT}
+                          outline={settings.subtitleOutline ?? 'normal'}
+                          shadow={settings.subtitleShadow ?? true}
+                          fontFamily={settings.subtitleFontFamily}
+                        />
                       </div>
                     )}
                   </>
                 )}
 
                 {railTab === 'speed' && (
-                  <div className="pspeed-grid">
-                    {SPEEDS.map((entry) => (
-                      <button
-                        key={entry.rate}
-                        type="button"
-                        className={`pspeed ${
-                          Math.abs(speed - entry.rate) < 0.01 ? 'pspeed-active' : ''
-                        }`}
-                        onClick={() => void mpvSet('speed', String(entry.rate))}
-                      >
-                        <span className="pspeed-rate">{entry.rate}×</span>
-                        <span className="pspeed-note">{entry.note}</span>
-                      </button>
-                    ))}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div className="pspeed-grid">
+                      {SPEEDS.map((entry) => (
+                        <button
+                          key={entry.rate}
+                          type="button"
+                          className={`pspeed ${
+                            Math.abs(speed - entry.rate) < 0.01 ? 'pspeed-active' : ''
+                          }`}
+                          onClick={() => void mpvSet('speed', String(entry.rate))}
+                        >
+                          <span className="pspeed-rate">{entry.rate}×</span>
+                          <span className="pspeed-note">{entry.note}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="pcard-note" style={{ fontSize: 14 }}>
+                      Pitch is corrected up to 2×. Beyond that mpv drops the audio filter.
+                    </div>
                   </div>
                 )}
               </div>
@@ -1559,7 +1642,8 @@ function PlayerChip({
 
 /**
  * The seek bar. Dragging previews without seeking and commits once on release,
- * so a scrub across a remote stream issues one seek rather than dozens.
+ * so a scrub across a remote stream issues one seek rather than dozens. The
+ * pointer carries a thumbnail card, hovering or dragging.
  */
 function Scrubber({
   position,
@@ -1575,7 +1659,7 @@ function Scrubber({
   onCommit: (value: number) => void
 }) {
   const track = useRef<HTMLDivElement>(null)
-  const [hoverAt, setHoverAt] = useState<number | null>(null)
+  const preview = useScrubPreview()
 
   const valueAt = (clientX: number): number => {
     const el = track.current
@@ -1585,6 +1669,12 @@ function Scrubber({
     return ratio * duration
   }
   const percent = (value: number) => `${Math.min(100, Math.max(0, (value / duration) * 100))}%`
+  const followPointer = (clientX: number) => {
+    const el = track.current
+    if (!el || !(duration > 0)) return
+    const rect = el.getBoundingClientRect()
+    preview.track(valueAt(clientX), clientX - rect.left, rect.width)
+  }
 
   return (
     <div
@@ -1608,9 +1698,10 @@ function Scrubber({
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId)
           onPreview(valueAt(event.clientX))
+          followPointer(event.clientX)
         }}
         onPointerMove={(event) => {
-          setHoverAt(valueAt(event.clientX))
+          followPointer(event.clientX)
           if (event.currentTarget.hasPointerCapture(event.pointerId)) {
             onPreview(valueAt(event.clientX))
           }
@@ -1619,13 +1710,9 @@ function Scrubber({
           event.currentTarget.releasePointerCapture(event.pointerId)
           onCommit(valueAt(event.clientX))
         }}
-        onPointerLeave={() => setHoverAt(null)}
+        onPointerLeave={preview.leave}
       >
-        {hoverAt !== null && (
-          <div className="seek-bubble" style={{ left: percent(hoverAt) }}>
-            {formatClock(hoverAt)}
-          </div>
-        )}
+        <ScrubPreviewCard preview={preview} />
         <div className="seek-buffered" style={{ width: percent(bufferedTo) }} />
         <div className="seek-fill" style={{ width: percent(position) }} />
         <div className="seek-knob" style={{ left: percent(position) }} />

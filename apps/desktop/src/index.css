@@ -37,6 +37,33 @@
     U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
+/* The bundled subtitle faces (apps/desktop/fonts, which libass also loads), so
+   the player's subtitle preview draws the family a synced setting names. */
+@font-face {
+  font-family: 'Inter';
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/Inter-Regular.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/Inter-Bold.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Source Serif 4';
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/SourceSerif4-Regular.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Source Serif 4';
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/SourceSerif4-Bold.otf') format('opentype');
+}
+
 /* ── Tokens: dark (default) ────────────────────────────────────────────── */
 :root,
 :root[data-theme='dark'] {
@@ -3318,14 +3345,6 @@ body.player-active .titlebar {
   font: 400 12px/1.4 var(--mono);
   color: rgba(255, 255, 255, 0.58);
 }
-.player-tag {
-  padding: 2px 7px;
-  border-radius: 3px;
-  background: rgba(20, 20, 24, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  font: 700 12px/1.3 var(--mono);
-  color: rgba(255, 255, 255, 0.7);
-}
 .paused-chip {
   position: absolute;
   left: 50%;
@@ -3464,18 +3483,6 @@ body.player-active .titlebar {
   border-radius: 8px;
   background: #fff;
   margin-left: -8px;
-}
-.seek-bubble {
-  position: absolute;
-  bottom: 18px;
-  transform: translateX(-50%);
-  padding: 3px 7px;
-  border-radius: 4px;
-  background: rgba(20, 20, 24, 0.86);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  font: 400 12px/1.2 var(--mono);
-  color: #fff;
-  pointer-events: none;
 }
 
 .transport {
@@ -3807,4 +3814,112 @@ body.player-active .titlebar {
   font-size: 13px;
   color: #fce100;
   text-wrap: pretty;
+}
+
+/* ── Player: the native player's extras ─────────────────────────────────── */
+/* The quality badge sits on the header row but outside the fading chrome. */
+.pbadge {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+.ploading {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  pointer-events: none;
+}
+.ploading-ring {
+  animation: pringTurn 1.4s linear infinite;
+}
+.ploading-ring circle {
+  fill: none;
+  stroke: #60cdff;
+  stroke-width: 4;
+  stroke-linecap: round;
+  animation: pringArc 1.4s ease-in-out infinite;
+}
+@keyframes pringTurn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pringArc {
+  0% {
+    stroke-dasharray: 1 132;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 90 132;
+    stroke-dashoffset: -30;
+  }
+  100% {
+    stroke-dasharray: 90 132;
+    stroke-dashoffset: -131;
+  }
+}
+.ploading-label {
+  font: 700 12px/1.2 var(--mono);
+  letter-spacing: 1.92px;
+  color: rgba(255, 255, 255, 0.72);
+}
+/* The seek bar's thumbnail card: 200 wide, a 112-tall picture, the time under it. */
+.pscrub {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 20px);
+  width: 200px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(16, 16, 20, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+  z-index: 2;
+}
+.pscrub-picture {
+  height: 112px;
+  border-radius: 4px;
+  background: #060608;
+  overflow: hidden;
+}
+.pscrub-picture canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.pscrub-time {
+  margin: 4px 0 2px;
+  text-align: center;
+  font: 400 13px/1.3 var(--mono);
+  color: #fff;
+}
+/* The subtitle preview's stage stands in for a video frame, so it is dark in
+   every theme. */
+.psub-stage {
+  min-height: 86px;
+  margin-top: 10px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #232428;
+  border: 1px solid rgba(255, 255, 255, 0.122);
+}
+.psub-caption {
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  color: #fff;
+  overflow-wrap: anywhere;
 }
