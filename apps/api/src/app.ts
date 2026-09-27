@@ -277,13 +277,11 @@ export function createApp(config: AppConfig) {
 
   authed.get('/addons', (c) => {
     const user = c.get('user')
+    const globalRows = db.select().from(globalAddons).orderBy(globalAddons.position).all()
+    const globalUrls = new Set(globalRows.map((r) => r.transportUrl))
     // Global transport URLs can embed the admin's secrets (debrid API keys),
     // so non-admins get them redacted; the opaque id addresses resolution.
-    const global = db
-      .select()
-      .from(globalAddons)
-      .orderBy(globalAddons.position)
-      .all()
+    const global = globalRows
       .map(toAddonEntry)
       .map(stripHiddenCatalogs)
       .map(
@@ -297,6 +295,7 @@ export function createApp(config: AppConfig) {
       .orderBy(userAddons.position)
       .all()
       .map(toAddonEntry)
+      .map((a) => markProvidedGlobally(a, globalUrls))
       .map(stripHiddenCatalogs)
     return c.json({ global, user: userList })
   })
@@ -342,7 +341,10 @@ export function createApp(config: AppConfig) {
       })
       return tx.select().from(userAddons).where(eq(userAddons.userId, user.id)).orderBy(userAddons.position).all()
     })
-    return c.json(rows.map(toAddonEntry).map(stripHiddenCatalogs))
+    const globalUrls = new Set(
+      db.select({ transportUrl: globalAddons.transportUrl }).from(globalAddons).all().map((r) => r.transportUrl),
+    )
+    return c.json(rows.map(toAddonEntry).map((a) => markProvidedGlobally(a, globalUrls)).map(stripHiddenCatalogs))
   })
 
   // Per-addon knobs live outside the declarative URL-list PUT so the list
@@ -505,12 +507,20 @@ export function createApp(config: AppConfig) {
     }
   })
 
+  const installedAddons = (userId: string) => ({
+    global: db.select().from(globalAddons).orderBy(globalAddons.position).all(),
+    own: db.select().from(userAddons).where(eq(userAddons.userId, userId)).orderBy(userAddons.position).all(),
+  })
+
   // Effective addon set for a user: globals (by position) then their own (by
   // position). This ordering is the resolution priority for meta/streams/subs.
+  // A personal copy of a global addon is left out: it would ask the same
+  // addon twice for every lookup. It stays installed, and comes back into use
+  // if the global entry is removed.
   const effectiveAddons = (userId: string): EffectiveAddon[] => {
-    const global = db.select().from(globalAddons).orderBy(globalAddons.position).all()
-    const own = db.select().from(userAddons).where(eq(userAddons.userId, userId)).orderBy(userAddons.position).all()
-    return [...global, ...own].map(toAddonEntry)
+    const { global, own } = installedAddons(userId)
+    const globalUrls = new Set(global.map((a) => a.transportUrl))
+    return [...global, ...own.filter((a) => !globalUrls.has(a.transportUrl))].map(toAddonEntry)
   }
 
   authed.get('/catalog', async (c) => {
@@ -529,8 +539,12 @@ export function createApp(config: AppConfig) {
       return c.json({ error: 'extra param too long' }, 400)
     }
     // `addon` is the opaque entry id — the transport URL never round-trips
-    // through clients (global URLs can embed secrets).
-    const entry = effectiveAddons(c.get('user').id).find((a) => a.id === addon)
+    // through clients (global URLs can embed secrets). Looked up across every
+    // installed addon, personal copies of globals included: their catalogs
+    // are no longer listed, but a client still holding an older list gets its
+    // row answered by the same addon rather than refused.
+    const { global, own } = installedAddons(c.get('user').id)
+    const entry = [...global, ...own].map(toAddonEntry).find((a) => a.id === addon)
     if (!entry) return c.json({ error: 'addon not installed' }, 403)
     try {
       const res = await getCatalog(entry.transportUrl, type, id, extra, { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) })
@@ -715,10 +729,21 @@ type EffectiveAddon = AddonEntry & { transportUrl: string }
  * Wire-only redaction for hidden catalogs: the stored manifest keeps them, but
  * clients never see them — Home/search lose the rows with zero client logic.
  * The flag still ships because Settings must distinguish "catalogs hidden"
- * from "addon has no catalogs" to offer the un-hide toggle.
+ * from "addon has no catalogs" to offer the un-hide toggle. A personal copy
+ * of a global addon loses its catalogs the same way, so no client lists the
+ * global entry's rows a second time.
  */
 function stripHiddenCatalogs<T extends AddonEntry>(a: T): T {
-  return a.hideCatalogs ? { ...a, manifest: { ...a.manifest, catalogs: [] } } : a
+  return a.hideCatalogs || a.providedGlobally ? { ...a, manifest: { ...a.manifest, catalogs: [] } } : a
+}
+
+/**
+ * Flags a personal entry whose transport URL the admin also installs for
+ * everyone. The URL, not the manifest id, decides: one addon installed with
+ * different configuration shares an id but answers differently.
+ */
+function markProvidedGlobally(a: EffectiveAddon, globalUrls: ReadonlySet<string>): EffectiveAddon {
+  return globalUrls.has(a.transportUrl) ? { ...a, providedGlobally: true } : a
 }
 
 function toAddonEntry(r: {

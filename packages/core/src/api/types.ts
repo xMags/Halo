@@ -25,6 +25,13 @@ export interface AddonEntry {
    * Admin-set on global entries, owner-set on personal ones.
    */
   hideCatalogs?: boolean
+  /**
+   * Personal entries only: the admin installs this same transport URL for
+   * everyone, so the server skips this copy when resolving and strips its
+   * catalogs on the wire (the global entry answers instead). The copy stays
+   * installed and comes back into use if the global entry is removed.
+   */
+  providedGlobally?: boolean
 }
 
 /** Global addons (admin-managed, shown to everyone) plus the caller's own. */

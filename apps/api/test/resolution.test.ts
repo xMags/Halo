@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { adminToken, authed, installUserAddon, makeApp, mockResolveFetch } from './helpers'
+import { adminToken, authed, installGlobalAddon, installUserAddon, makeApp, mockResolveFetch } from './helpers'
 
 const manifest = (name: string, resources: string[], catalogs: Array<{ type: string; id: string }> = []) => ({
   id: name.toLowerCase(),
@@ -34,6 +34,40 @@ describe('GET /streams', () => {
     expect(body.results[0]!.addon).toEqual({ id: aId, name: 'A' })
     expect(body.results[0]!.streams).toHaveLength(1)
     expect(body.errors.map((e) => e.id)).toEqual([cId])
+  })
+})
+
+describe('personal copies of global addons', () => {
+  const DUP_URL = 'https://dup.test/manifest.json'
+
+  it('resolves streams from the global entry only, asking the addon once', async () => {
+    let streamCalls = 0
+    const inner = mockResolveFetch({ 'https://dup.test': { 'stream/movie/tt1': { streams: [{ url: 'https://cdn.test/a.mp4' }] } } })
+    const { app, db } = makeApp({
+      safeFetch: (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        if (String(input instanceof Request ? input.url : input).includes('/stream/')) streamCalls += 1
+        return inner(input, init)
+      }) as typeof fetch,
+    })
+    const token = await adminToken()
+    const globalId = installGlobalAddon(db, DUP_URL, manifest('Dup', ['stream']), 0)
+    installUserAddon(db, 'admin', DUP_URL, manifest('Dup', ['stream']), 0)
+
+    const body = (await (await app.request('/streams?type=movie&videoId=tt1', authed(token))).json()) as {
+      results: Array<{ addon: { id: string } }>
+    }
+    expect(body.results.map((r) => r.addon.id)).toEqual([globalId])
+    expect(streamCalls).toBe(1)
+  })
+
+  it('still answers a catalog addressed to the personal copy, for clients holding an older list', async () => {
+    const { app, db } = mount({ 'https://dup.test': { 'catalog/movie/top': { metas: [{ id: 'tt1', type: 'movie', name: 'Top' }] } } })
+    const token = await adminToken()
+    installGlobalAddon(db, DUP_URL, manifest('Dup', ['catalog'], [{ type: 'movie', id: 'top' }]), 0)
+    const copyId = installUserAddon(db, 'admin', DUP_URL, manifest('Dup', ['catalog'], [{ type: 'movie', id: 'top' }]), 0)
+
+    const res = await app.request(`/catalog?addon=${copyId}&type=movie&id=top`, authed(token))
+    expect(res.status).toBe(200)
   })
 })
 
