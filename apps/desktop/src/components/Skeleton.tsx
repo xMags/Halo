@@ -135,14 +135,14 @@ export function HeroSkeleton() {
   )
 }
 
-/** Full-screen detail placeholder matching `.detail-backdrop` and `.detail-grid`. */
+/** Full-screen detail placeholder matching `.detail-view` with full-bleed background. */
 export function DetailSkeleton() {
   return (
-    <div className="view detail-skeleton" aria-hidden>
-      <div style={{ paddingBottom: 48 }}>
-        <div className="art detail-backdrop">
-          <div className="detail-backdrop-fade" />
-        </div>
+    <div className="view detail-view detail-skeleton" aria-hidden>
+      <div className="art detail-bg">
+        <div className="detail-bg-scrim" />
+      </div>
+      <div className="detail-scroll">
         <div className="detail-grid detail-grid-movie">
           <div className="art detail-poster skeleton" />
           <div className="detail-head">
