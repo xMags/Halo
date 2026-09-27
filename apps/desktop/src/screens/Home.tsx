@@ -6,6 +6,7 @@ import { PosterCard } from '../components/PosterCard'
 import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { Shelf } from '../components/Shelf'
+import { HeroSkeleton, PosterCardSkeleton, ShelfSkeleton } from '../components/Skeleton'
 import { episodeTag, formatTimeLeft, runtimeMinutes, videoIdTag } from '../format'
 import { buildContinueWatching, type ContinueWatchingItem } from '../homeRows'
 import { useNav } from '../nav'
@@ -88,9 +89,11 @@ export function Home() {
           </div>
         )}
         {isLoading && (
-          <div className="state-note">
-            <span className="spinner" /> Loading addons…
-          </div>
+          <>
+            <HeroSkeleton />
+            <ShelfSkeleton titleWidth={150} count={6} />
+            <ShelfSkeleton titleWidth={180} count={6} />
+          </>
         )}
         {addons && allShelves.length === 0 && (
           <div className="state-note">
@@ -423,9 +426,9 @@ function CatalogShelf({ shelf }: { shelf: BrowsableCatalog }) {
         <PosterCard key={`${meta.type}:${meta.id}`} meta={meta} />
       ))}
       {isLoading && (
-        <div className="state-note" style={{ padding: 0 }}>
-          <span className="spinner" />
-        </div>
+        Array.from({ length: 6 }).map((_, index) => (
+          <PosterCardSkeleton key={`skeleton-${index}`} />
+        ))
       )}
     </Shelf>
   )
