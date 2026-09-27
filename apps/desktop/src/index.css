@@ -477,14 +477,10 @@ a {
   background: var(--cd);
 }
 
-.dl-skeleton-item {
+.dl-skeleton-row {
   pointer-events: none;
-  background: var(--cd);
-  border: 1px solid var(--cs);
-  border-radius: 8px;
-  padding: 10px 14px;
 }
-.dl-skeleton-item .dl-thumb {
+.dl-skeleton-row .dl-thumb {
   border: 1px solid var(--cs);
   border-radius: 4px;
   background: var(--cd);
