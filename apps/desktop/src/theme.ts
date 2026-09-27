@@ -21,6 +21,7 @@
  *   --tt   tile, --tb secondary   --dv        divider
  *   --p1/--p2  placeholder art    --pt        placeholder caption
  *   --ds   sheet + menu surface   --ib/--is   info fill / stroke
+ *   --fl   flyout (dialog surface)
  *   --chd  chart dim              --hs1/--hs2 hero scrim stops
  *
  * The player overlay is pinned to dark in both themes and uses literal
