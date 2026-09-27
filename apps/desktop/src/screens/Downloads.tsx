@@ -16,6 +16,7 @@ import {
   formatDownloadBytes,
   pauseAll,
   pauseTransfer,
+  refreshDownloads,
   resumeAll,
   resumeTransfer,
   retryFailedTransfers,
@@ -97,6 +98,12 @@ export function Downloads() {
   const [filter, setFilter] = useState<DownloadFilter>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // Opening the page re-reads the list, which is also when the engine checks
+  // that finished files are still on disk.
+  useEffect(() => {
+    void refreshDownloads()
+  }, [])
 
   const rows = useMemo(() => downloads.map(rowOf), [downloads])
   const transfers = rows.filter((row) => row.state !== 'ondisk')
