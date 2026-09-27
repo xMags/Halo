@@ -288,31 +288,29 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
       headers: record.stream.behaviorHints?.proxyHeaders?.request ?? {},
     }
     const begin = async (replace: boolean) => {
-      const entry = await startDownload({ ...request, replace_existing: replace })
-      void resolvePreferredSubtitle(record)
-        .then((subtitle) => (subtitle ? attachDownloadSubtitle(entry.job_id, subtitle) : undefined))
-        .catch(() => undefined)
+      const result = await startDownload({ ...request, replace_existing: replace })
+      if (result.outcome === 'started') {
+        const jobId = result.download.job_id
+        void resolvePreferredSubtitle(record)
+          .then((subtitle) => (subtitle ? attachDownloadSubtitle(jobId, subtitle) : undefined))
+          .catch(() => undefined)
+      }
+      return result.outcome
     }
     try {
-      await begin(false)
-      setRoot('downloads')
-    } catch (value) {
-      const message = value instanceof Error ? value.message : String(value)
+      let outcome = await begin(false)
       // One download per video: swapping the source has to be deliberate.
-      if (!message.includes('different source is already saved')) {
-        setDownloadFailed(true)
-        return
+      if (outcome === 'replacement_required') {
+        const replace = window.confirm(
+          'Replace the saved source?\n\nHalo will keep the current file until the replacement finishes successfully.',
+        )
+        if (!replace) return
+        outcome = await begin(true)
       }
-      const replace = window.confirm(
-        'Replace the saved source?\n\nHalo will keep the current file until the replacement finishes successfully.',
-      )
-      if (!replace) return
-      try {
-        await begin(true)
-        setRoot('downloads')
-      } catch {
-        setDownloadFailed(true)
-      }
+      if (outcome === 'replacement_required') setDownloadFailed(true)
+      else setRoot('downloads')
+    } catch {
+      setDownloadFailed(true)
     } finally {
       setBusyKey(null)
     }

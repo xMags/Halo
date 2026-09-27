@@ -16,6 +16,7 @@ import {
   openDownloadFolder,
   pauseDownload,
   removeDownload,
+  requiresNewSource,
   resumeDownload,
   setDownloadDirectory,
   type DirectoryInfo,
@@ -51,21 +52,11 @@ function matches(item: DownloadView, filter: Filter): boolean {
 /** A transfer can be told to carry on; an expired or unresumable one cannot. */
 function canResume(item: DownloadView): boolean {
   if (item.status === 'paused') return true
-  return (
-    item.status === 'failed' &&
-    item.failure !== 'source_expired' &&
-    item.failure !== 'invalid_range' &&
-    item.failure !== 'protected_request_corrupt'
-  )
+  return item.status === 'failed' && !requiresNewSource(item.failure)
 }
 
 function needsNewSource(item: DownloadView): boolean {
-  return (
-    item.status === 'failed' &&
-    (item.failure === 'source_expired' ||
-      item.failure === 'invalid_range' ||
-      item.failure === 'protected_request_corrupt')
-  )
+  return item.status === 'failed' && requiresNewSource(item.failure)
 }
 
 interface Pill {

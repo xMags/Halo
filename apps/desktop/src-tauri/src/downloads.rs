@@ -1,29 +1,76 @@
+//! Device-local downloads. One worker transfers one job at a time, oldest
+//! first, for the signed-in account only. The webview drives it through the
+//! `downloads_*` commands and renders the `download-changed` and
+//! `download-removed` events; it never sees a source URL or header, which
+//! live DPAPI-encrypted in a per-job request vault rather than in the index.
+
+mod containment;
+mod naming;
+mod rate;
+mod redirect;
+
+use containment::{is_within_approved_root, resolve_roots, same_path, strip_verbatim};
 use futures_util::StreamExt;
+use naming::{download_file_name, is_safe_file_name, safe_language, subtitle_extension};
+use rate::RateWindow;
+use redirect::{is_redirect_status, next_redirect_target};
 use reqwest::header::{
-    HeaderMap, HeaderName, HeaderValue, CONTENT_RANGE, ETAG, IF_RANGE, LAST_MODIFIED, RANGE,
+    HeaderMap, HeaderName, HeaderValue, CONTENT_RANGE, ETAG, IF_RANGE, LAST_MODIFIED, LOCATION,
+    RANGE,
 };
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
-const EVENT_NAME: &str = "download-changed";
+const CHANGED_EVENT: &str = "download-changed";
+const REMOVED_EVENT: &str = "download-removed";
 const INDEX_FILE: &str = "downloads-index.json";
 const CONFIG_FILE: &str = "downloads-config.json";
 const DOWNLOAD_DIR: &str = "downloads";
-const RETRIES: usize = 3;
+const TRANSFER_ATTEMPTS: u32 = 3;
+/// Progress reaches the UI this often.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
+/// The data file is flushed and the index persisted only this often, because
+/// both are synchronous disk work that stalls the socket when done on every
+/// progress tick.
+const DURABLE_INTERVAL: Duration = Duration::from_secs(2);
+/// Throughput is averaged over this much history before it is reported.
+const RATE_WINDOW: Duration = Duration::from_secs(3);
+/// A read that yields nothing for this long is a failed connection.
+const READ_TIMEOUT: Duration = Duration::from_secs(45);
+/// How quickly a stalled read notices it was paused or cancelled.
+const CANCEL_POLL: Duration = Duration::from_millis(250);
+/// How long a pause, removal or replacement waits for the worker to let go.
+const STOP_WAIT: Duration = Duration::from_secs(10);
 const SPACE_RESERVE: u64 = 64 * 1024 * 1024;
+/// Free space is rechecked after this many bytes even between progress ticks.
+const SPACE_CHECK_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_SUBTITLE_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_APPROVED_ROOTS: usize = 32;
 static JOB_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+const SIGN_IN_FIRST: &str = "Sign in before downloading.";
+const ACCOUNT_CHANGED: &str = "The active account changed while starting the download.";
+const STATE_CHANGED: &str = "Download state changed. Try again.";
+const FOLDER_UNAVAILABLE: &str =
+    "The download folder is unavailable. Choose another folder to continue.";
+const NOT_ENOUGH_SPACE: &str = "There is not enough free space for this video.";
+const OTHER_ACCOUNT: &str = "This download belongs to another account.";
+const RETAINED_FOR_REPLACEMENT: &str =
+    "The previous file is retained until its replacement finishes.";
+const OUTSIDE_FOLDERS: &str = "This download is saved outside Halo's download folders. It was removed from the list and its files were left in place.";
+const DELETE_FAILED: &str = "Halo could not delete every file for this download. It will try again the next time Halo starts.";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -71,10 +118,15 @@ impl DownloadFailureCode {
             Self::Unknown => "This download could not be completed.",
         }
     }
+    /// Failures a retry of the same request cannot fix. A missing file has no
+    /// request left to retry: the vault entry went when the file finished.
     pub fn requires_new_source(&self) -> bool {
         matches!(
             self,
-            Self::SourceExpired | Self::ProtectedRequestCorrupt | Self::InvalidRange
+            Self::SourceExpired
+                | Self::ProtectedRequestCorrupt
+                | Self::InvalidRange
+                | Self::MissingFile
         )
     }
 }
@@ -89,6 +141,10 @@ pub struct DownloadMedia {
     pub show_name: Option<String>,
     pub episode_label: Option<String>,
     pub poster: Option<String>,
+    /// An episode still or title backdrop for the row thumbnail, looked up by
+    /// the app after the download starts; never taken from the start request.
+    #[serde(default)]
+    pub landscape_artwork: Option<String>,
     pub addon_id: Option<String>,
     pub binge_group: Option<String>,
     pub filename: Option<String>,
@@ -136,6 +192,45 @@ pub struct DownloadView {
     pub updated_at: u64,
 }
 
+/// What asking for a download did. Swapping the saved source of a video is
+/// never implicit: the caller has to ask again with `replace_existing`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum StartOutcome {
+    Started { download: DownloadView },
+    AlreadyExists { download: DownloadView },
+    ReplacementRequired,
+}
+
+/// The download a replacement will supersede. It stays in the index, hidden,
+/// until the replacement finishes, so cancelling the replacement brings it
+/// back and a failed replacement never costs the file that already played.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ReplacementBackup {
+    job_id: String,
+    root_path: String,
+    file_name: String,
+    subtitle_file_name: Option<String>,
+}
+
+impl ReplacementBackup {
+    fn of(record: &DownloadRecord) -> Self {
+        Self {
+            job_id: record.job_id.clone(),
+            root_path: record.root_path.clone(),
+            file_name: record.file_name.clone(),
+            subtitle_file_name: record.subtitle_file_name.clone(),
+        }
+    }
+    fn files(&self) -> FileSet {
+        FileSet::new(
+            &self.root_path,
+            &self.file_name,
+            self.subtitle_file_name.as_deref(),
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DownloadRecord {
     job_id: String,
@@ -155,6 +250,12 @@ struct DownloadRecord {
     created_at: u64,
     updated_at: u64,
     bytes_per_second: u64,
+    #[serde(default)]
+    replacement: Option<ReplacementBackup>,
+    /// A tombstone: the files are being removed, and a record that survives a
+    /// crash in this state finishes its removal on the next launch.
+    #[serde(default)]
+    pending_deletion: bool,
 }
 
 impl DownloadRecord {
@@ -180,8 +281,55 @@ impl DownloadRecord {
         PathBuf::from(&self.root_path).join(&self.file_name)
     }
     fn part(&self) -> PathBuf {
-        PathBuf::from(format!("{}.part", self.target().display()))
+        part_path(&self.target())
     }
+    fn subtitle_path(&self) -> Option<PathBuf> {
+        self.subtitle_file_name
+            .as_deref()
+            .filter(|name| is_safe_file_name(name))
+            .map(|name| PathBuf::from(&self.root_path).join(name))
+    }
+    fn files(&self) -> FileSet {
+        FileSet::new(
+            &self.root_path,
+            &self.file_name,
+            self.subtitle_file_name.as_deref(),
+        )
+    }
+}
+
+/// Every file one download may own on disk.
+struct FileSet {
+    part: PathBuf,
+    subtitle: Option<PathBuf>,
+    target: PathBuf,
+}
+
+impl FileSet {
+    fn new(root: &str, file_name: &str, subtitle: Option<&str>) -> Self {
+        let target = PathBuf::from(root).join(file_name);
+        Self {
+            part: part_path(&target),
+            subtitle: subtitle
+                .filter(|name| is_safe_file_name(name))
+                .map(|name| PathBuf::from(root).join(name)),
+            target,
+        }
+    }
+    fn contains(&self, path: &Path) -> bool {
+        same_path(&self.target, path)
+            || same_path(&self.part, path)
+            || self
+                .subtitle
+                .as_deref()
+                .is_some_and(|subtitle| same_path(subtitle, path))
+    }
+}
+
+fn part_path(target: &Path) -> PathBuf {
+    let mut value = target.as_os_str().to_owned();
+    value.push(".part");
+    PathBuf::from(value)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -190,9 +338,15 @@ struct PersistedIndex {
     entries: Vec<DownloadRecord>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct PersistedConfig {
-    directory: String,
+    /// The folder the user chose; absent means the default under app data.
+    #[serde(default)]
+    directory: Option<String>,
+    /// Every folder this device has used as a download root, newest first.
+    /// Seeded once from the index, then only grows when a folder is chosen.
+    #[serde(default)]
+    approved_roots: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,13 +363,117 @@ enum TransferError {
     Paused,
 }
 
+struct Transferred {
+    bytes: u64,
+    total: u64,
+    validator: Option<String>,
+    subtitle: Option<(String, String)>,
+}
+
+struct OpenedResponse {
+    response: reqwest::Response,
+    /// Whether a redirect left the original origin on the way here.
+    crossed_origin: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ContentRange {
+    start: u64,
+    end: u64,
+    total: u64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum RemoveError {
+    /// A path resolved outside every approved root; nothing was deleted.
+    Containment,
+    Io,
+}
+
 struct Inner {
     entries: HashMap<String, DownloadRecord>,
     active_account: Option<String>,
     active_job: Option<String>,
     cancel: HashMap<String, Arc<AtomicBool>>,
-    queue: VecDeque<String>,
     directory: PathBuf,
+    approved_roots: Vec<PathBuf>,
+}
+
+impl Inner {
+    fn is_visible(&self, record: &DownloadRecord, account: &str) -> bool {
+        record.account_key == account
+            && !record.pending_deletion
+            && !is_hidden_backup(&self.entries, &record.job_id)
+    }
+    fn visible_for_video(&self, account: &str, video_id: &str) -> Option<DownloadRecord> {
+        self.entries
+            .values()
+            .find(|entry| entry.media.video_id == video_id && self.is_visible(entry, account))
+            .cloned()
+    }
+    fn visible_view(&self, job_id: &str) -> Option<DownloadView> {
+        let account = self.active_account.as_deref()?;
+        self.entries
+            .get(job_id)
+            .filter(|entry| self.is_visible(entry, account))
+            .map(DownloadRecord::view)
+    }
+    fn visible_views(&self) -> Vec<DownloadView> {
+        let Some(account) = self.active_account.as_deref() else {
+            return Vec::new();
+        };
+        let mut views: Vec<_> = self
+            .entries
+            .values()
+            .filter(|entry| self.is_visible(entry, account))
+            .map(DownloadRecord::view)
+            .collect();
+        views.sort_by(|a, b| (a.created_at, &a.job_id).cmp(&(b.created_at, &b.job_id)));
+        views
+    }
+}
+
+/// A record that some live record names as its replacement backup.
+fn is_hidden_backup(entries: &HashMap<String, DownloadRecord>, job_id: &str) -> bool {
+    entries.values().any(|entry| {
+        !entry.pending_deletion
+            && entry
+                .replacement
+                .as_ref()
+                .is_some_and(|backup| backup.job_id == job_id)
+    })
+}
+
+/// Refuses a second start for a video while the first is still being
+/// prepared, instead of letting both create a record.
+struct PreparingGuard<'a> {
+    set: &'a std::sync::Mutex<HashSet<String>>,
+    key: String,
+}
+
+impl<'a> PreparingGuard<'a> {
+    fn acquire(
+        set: &'a std::sync::Mutex<HashSet<String>>,
+        account: &str,
+        video_id: &str,
+    ) -> Result<Self, String> {
+        let key = format!("{account}\n{video_id}");
+        let mut pending = set
+            .lock()
+            .map_err(|_| "Download state is unavailable.".to_string())?;
+        if !pending.insert(key.clone()) {
+            return Err("This video is already being prepared for download.".into());
+        }
+        Ok(Self { set, key })
+    }
+}
+
+impl Drop for PreparingGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut pending) = self.set.lock() {
+            pending.remove(&self.key);
+        }
+    }
 }
 
 pub struct DownloadManager {
@@ -225,6 +483,12 @@ pub struct DownloadManager {
     vault_dir: PathBuf,
     client: reqwest::Client,
     inner: Mutex<Inner>,
+    /// Serialises snapshot-and-write so an older snapshot of the index can
+    /// never land on disk after a newer one. Always taken before `inner`.
+    persist_gate: Mutex<()>,
+    /// Signalled whenever the worker lets go of a job.
+    job_released: Notify,
+    preparing: std::sync::Mutex<HashSet<String>>,
 }
 
 impl DownloadManager {
@@ -234,16 +498,27 @@ impl DownloadManager {
         let config_path = data_dir.join(CONFIG_FILE);
         let vault_dir = data_dir.join("download-requests");
         fs::create_dir_all(&vault_dir).map_err(|e| format!("download vault unavailable: {e}"))?;
-        let entries = load_index(&index_path)?;
-        let configured_directory = load_config(&config_path);
-        let directory = configured_directory
+        let default_directory = data_dir.join(DOWNLOAD_DIR);
+        let mut entries = load_index(&index_path)?;
+        let config = load_config(&config_path).unwrap_or_default();
+        let configured = config
+            .directory
+            .as_ref()
+            .map(|directory| strip_verbatim(PathBuf::from(directory)));
+        let directory = configured
             .clone()
-            .unwrap_or_else(|| data_dir.join(DOWNLOAD_DIR));
-        if configured_directory.is_none() {
+            .unwrap_or_else(|| default_directory.clone());
+        if configured.is_none() {
             fs::create_dir_all(&directory)
                 .map_err(|e| format!("download directory unavailable: {e}"))?;
         }
-        let mut entries = entries;
+        let mut approved_roots = match config.approved_roots.as_ref() {
+            Some(saved) => saved.iter().map(PathBuf::from).collect(),
+            None => seed_roots(&entries),
+        };
+        remember_root(&mut approved_roots, &default_directory);
+        remember_root(&mut approved_roots, &directory);
+
         for entry in entries.values_mut() {
             let recovered = recovered_status(&entry.status, entry.explicit_pause);
             if recovered != entry.status {
@@ -252,13 +527,17 @@ impl DownloadManager {
                 entry.updated_at = now_ms();
             }
         }
+        finish_pending_deletions(&mut entries, &resolve_roots(&approved_roots), &vault_dir);
+
         let manager = Self {
             app,
             index_path,
             config_path,
             vault_dir,
             client: reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::limited(5))
+                // Redirects are followed by hand so the source's headers stop
+                // at the first hop that leaves its origin (see open_get).
+                .redirect(reqwest::redirect::Policy::none())
                 .connect_timeout(Duration::from_secs(30))
                 .build()
                 .map_err(|e| format!("HTTP client unavailable: {e}"))?,
@@ -267,11 +546,20 @@ impl DownloadManager {
                 active_account: None,
                 active_job: None,
                 cancel: HashMap::new(),
-                queue: VecDeque::new(),
                 directory,
+                approved_roots: approved_roots.clone(),
             }),
+            persist_gate: Mutex::new(()),
+            job_released: Notify::new(),
+            preparing: std::sync::Mutex::new(HashSet::new()),
         };
         manager.persist_blocking()?;
+        // The roots are re-seeded next launch if this write fails, so it does
+        // not stop the app from starting.
+        let _ = write_json(
+            &manager.config_path,
+            &config_document(configured.as_deref(), &approved_roots),
+        );
         Ok(manager)
     }
 
@@ -302,12 +590,7 @@ impl DownloadManager {
                 }
             }
             inner.active_account = Some(account_key);
-            inner
-                .entries
-                .values()
-                .filter(|e| e.account_key == inner.active_account.clone().unwrap())
-                .map(DownloadRecord::view)
-                .collect::<Vec<_>>()
+            inner.visible_views()
         };
         self.persist().await?;
         self.kick();
@@ -315,19 +598,10 @@ impl DownloadManager {
     }
 
     pub async fn clear_account(&self) -> Result<(), String> {
-        let active = {
-            self.inner
-                .lock()
-                .await
-                .cancel
-                .values()
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-        for flag in active {
+        let mut inner = self.inner.lock().await;
+        for flag in inner.cancel.values() {
             flag.store(true, Ordering::SeqCst);
         }
-        let mut inner = self.inner.lock().await;
         if let Some(account) = inner.active_account.take() {
             for entry in inner
                 .entries
@@ -345,93 +619,111 @@ impl DownloadManager {
     }
 
     pub async fn list(&self) -> Vec<DownloadView> {
-        let inner = self.inner.lock().await;
-        let Some(account) = inner.active_account.as_ref() else {
-            return Vec::new();
-        };
-        let mut views: Vec<_> = inner
-            .entries
-            .values()
-            .filter(|e| &e.account_key == account)
-            .map(DownloadRecord::view)
-            .collect();
-        views.sort_by_key(|e| (e.created_at, e.job_id.clone()));
-        views
+        self.reconcile_missing_files().await;
+        self.inner.lock().await.visible_views()
     }
 
     pub async fn start(
         self: &Arc<Self>,
-        request: DownloadStartRequest,
-    ) -> Result<DownloadView, String> {
+        mut request: DownloadStartRequest,
+    ) -> Result<StartOutcome, String> {
         let account = { self.inner.lock().await.active_account.clone() }
-            .ok_or_else(|| "Sign in before downloading.".to_string())?;
+            .ok_or_else(|| SIGN_IN_FIRST.to_string())?;
+        validate_media(&request.media)?;
         validate_url(&request.url)?;
         validate_headers(&request.headers)?;
         if let Some(subtitle) = request.subtitle.as_ref() {
-            validate_url(&subtitle.url)?;
-            validate_headers(&subtitle.headers)?;
+            validate_subtitle(subtitle)?;
         }
+        request.media.landscape_artwork = None;
+        let _preparing =
+            PreparingGuard::acquire(&self.preparing, &account, &request.media.video_id)?;
         let fingerprint = fingerprint(&request.url);
         let (existing, directory) = {
             let inner = self.inner.lock().await;
+            if inner.active_account.as_deref() != Some(account.as_str()) {
+                return Err(ACCOUNT_CHANGED.into());
+            }
             (
-                inner
-                    .entries
-                    .values()
-                    .find(|e| {
-                        e.account_key == account && e.media.video_id == request.media.video_id
-                    })
-                    .cloned(),
+                inner.visible_for_video(&account, &request.media.video_id),
                 inner.directory.clone(),
             )
         };
-        if !directory.is_dir() {
-            return Err(
-                "The download folder is unavailable. Choose another folder to continue.".into(),
-            );
-        }
-        if let Some(ref existing) = existing {
-            if !request.replace_existing && existing.source_fingerprint != fingerprint {
-                return Err("A different source is already saved for this video. Confirm replacement first.".into());
-            }
-            if !request.replace_existing && existing.status != DownloadStatus::Failed {
-                return Ok(existing.view());
-            }
-            if !request.replace_existing
-                && existing
-                    .failure
-                    .as_ref()
-                    .is_none_or(|failure| !failure.requires_new_source())
+        if let Some(existing) = existing.as_ref() {
+            if existing.source_fingerprint == fingerprint
+                && existing.status != DownloadStatus::Failed
             {
+                return Ok(StartOutcome::AlreadyExists {
+                    download: existing.view(),
+                });
+            }
+            let needs_new_source = existing
+                .failure
+                .as_ref()
+                .is_some_and(DownloadFailureCode::requires_new_source);
+            if !request.replace_existing
+                && (existing.source_fingerprint != fingerprint || needs_new_source)
+            {
+                return Ok(StartOutcome::ReplacementRequired);
+            }
+            if !request.replace_existing {
+                // The same source failed for a reason a retry can fix.
                 self.resume(&existing.job_id).await?;
-                let inner = self.inner.lock().await;
-                return inner
+                return self
+                    .inner
+                    .lock()
+                    .await
                     .entries
                     .get(&existing.job_id)
-                    .map(DownloadRecord::view)
-                    .ok_or_else(|| "Download state changed. Try again.".into());
+                    .map(|entry| StartOutcome::Started {
+                        download: entry.view(),
+                    })
+                    .ok_or_else(|| STATE_CHANGED.into());
             }
         }
-        if let Some(size) = request.media.video_size {
-            if let Some(free) = available_bytes(&directory) {
-                if free < size.saturating_add(SPACE_RESERVE) {
-                    return Err("There is not enough free space for this video.".into());
-                }
+        if !directory.is_dir() {
+            return Err(FOLDER_UNAVAILABLE.into());
+        }
+        if let (Some(size), Some(free)) = (request.media.video_size, available_bytes(&directory)) {
+            if !has_sufficient_space(free, size) {
+                return Err(NOT_ENOUGH_SPACE.into());
             }
         }
+
         let job_id = new_job_id();
-        let file_name = unique_file_name(
-            &request.media,
-            &request.url,
-            &request.media.video_id,
-            &directory,
-        )?;
+        let file_name = {
+            let inner = self.inner.lock().await;
+            choose_file_name(
+                &inner.entries,
+                &request.media,
+                &fingerprint,
+                &account,
+                &directory,
+            )?
+        };
         let protected = ProtectedRequest {
             url: request.url,
             headers: request.headers,
             subtitle: request.subtitle,
         };
         self.write_request(&job_id, &protected)?;
+
+        let mut superseded = Vec::new();
+        let backup = match existing.as_ref() {
+            Some(existing) => match self.prepare_replacement(existing).await {
+                Ok((backup, discarded)) => {
+                    superseded.push(existing.job_id.clone());
+                    superseded.extend(discarded);
+                    Some(backup)
+                }
+                Err(error) => {
+                    self.delete_request(&job_id);
+                    return Err(error);
+                }
+            },
+            None => None,
+        };
+
         let now = now_ms();
         let entry = DownloadRecord {
             job_id: job_id.clone(),
@@ -451,106 +743,220 @@ impl DownloadManager {
             created_at: now,
             updated_at: now,
             bytes_per_second: 0,
+            replacement: backup,
+            pending_deletion: false,
         };
         {
             let mut inner = self.inner.lock().await;
-            if let Some(old) = existing.clone() {
-                if request.replace_existing {
-                    if let Some(flag) = inner.cancel.remove(&old.job_id) {
-                        flag.store(true, Ordering::SeqCst);
-                    }
-                    let _ = fs::remove_file(old.target());
-                    let _ = fs::remove_file(old.part());
-                    let _ = self.delete_request(&old.job_id);
-                    inner.entries.remove(&old.job_id);
-                }
+            if inner.active_account.as_deref() != Some(account.as_str()) {
+                drop(inner);
+                self.delete_request(&job_id);
+                return Err(ACCOUNT_CHANGED.into());
             }
-            inner.queue.push_back(job_id.clone());
             inner.entries.insert(job_id.clone(), entry.clone());
         }
-        self.persist().await?;
-        self.emit(&entry).await;
+        if let Err(error) = self.persist().await {
+            self.inner.lock().await.entries.remove(&job_id);
+            self.delete_request(&job_id);
+            return Err(error);
+        }
+        // The superseded download is hidden now; the replacement stands in.
+        for id in &superseded {
+            self.emit_removed(id);
+        }
+        self.emit_changed(entry.view());
         self.kick();
-        Ok(entry.view())
+        Ok(StartOutcome::Started {
+            download: entry.view(),
+        })
+    }
+
+    /// Stops `existing` and decides what the replacement keeps as its backup.
+    /// Returns that backup and the ids of any record discarded on the way.
+    async fn prepare_replacement(
+        &self,
+        existing: &DownloadRecord,
+    ) -> Result<(ReplacementBackup, Vec<String>), String> {
+        self.stop_job(&existing.job_id).await;
+        let current = {
+            let inner = self.inner.lock().await;
+            inner
+                .entries
+                .get(&existing.job_id)
+                .filter(|entry| entry.source_fingerprint == existing.source_fingerprint)
+                .cloned()
+        }
+        .ok_or_else(|| STATE_CHANGED.to_string())?;
+        if let Some(carried) = current.replacement.clone() {
+            // `current` is itself an unfinished replacement. The download it
+            // was replacing is the one worth keeping; the unfinished one goes.
+            let _ = self.discard(&current, Some(&carried.files())).await;
+            return Ok((carried, vec![current.job_id]));
+        }
+        if current.status.is_active() {
+            let mut inner = self.inner.lock().await;
+            if let Some(entry) = inner.entries.get_mut(&current.job_id) {
+                entry.status = DownloadStatus::Paused;
+                entry.explicit_pause = true;
+                entry.bytes_per_second = 0;
+                entry.updated_at = now_ms();
+            }
+        }
+        Ok((ReplacementBackup::of(&current), Vec::new()))
     }
 
     pub async fn pause(&self, job_id: &str) -> Result<(), String> {
-        let mut inner = self.inner.lock().await;
-        let flag = inner.cancel.get(job_id).cloned();
-        let Some(entry) = inner.entries.get_mut(job_id) else {
-            return Ok(());
+        let view = {
+            let mut inner = self.inner.lock().await;
+            if is_hidden_backup(&inner.entries, job_id) {
+                return Ok(());
+            }
+            let account = inner.active_account.clone();
+            let flag = inner.cancel.get(job_id).cloned();
+            let Some(entry) = inner.entries.get_mut(job_id) else {
+                return Ok(());
+            };
+            if account.as_deref() != Some(entry.account_key.as_str()) {
+                return Err(OTHER_ACCOUNT.into());
+            }
+            if entry.status == DownloadStatus::Done || entry.pending_deletion {
+                return Ok(());
+            }
+            entry.status = DownloadStatus::Paused;
+            entry.explicit_pause = true;
+            entry.bytes_per_second = 0;
+            entry.updated_at = now_ms();
+            if let Some(flag) = flag {
+                flag.store(true, Ordering::SeqCst);
+            }
+            entry.view()
         };
-        if entry.status == DownloadStatus::Done {
-            return Ok(());
-        }
-        entry.status = DownloadStatus::Paused;
-        entry.explicit_pause = true;
-        entry.bytes_per_second = 0;
-        entry.updated_at = now_ms();
-        let view = entry.view();
-        if let Some(flag) = flag {
-            flag.store(true, Ordering::SeqCst);
-        }
-        drop(inner);
         self.persist().await?;
-        let _ = self.app.emit(EVENT_NAME, view);
+        self.emit_changed(view);
         Ok(())
     }
 
     pub async fn resume(self: &Arc<Self>, job_id: &str) -> Result<(), String> {
-        let mut inner = self.inner.lock().await;
-        let Some(entry) = inner.entries.get_mut(job_id) else {
-            return Ok(());
+        let view = {
+            let mut inner = self.inner.lock().await;
+            if is_hidden_backup(&inner.entries, job_id) {
+                return Err(RETAINED_FOR_REPLACEMENT.into());
+            }
+            let account = inner.active_account.clone();
+            let Some(entry) = inner.entries.get_mut(job_id) else {
+                return Ok(());
+            };
+            if account.as_deref() != Some(entry.account_key.as_str()) {
+                return Err(OTHER_ACCOUNT.into());
+            }
+            if entry.status == DownloadStatus::Done || entry.pending_deletion {
+                return Ok(());
+            }
+            if entry
+                .failure
+                .as_ref()
+                .is_some_and(DownloadFailureCode::requires_new_source)
+            {
+                return Err("Choose the source again before retrying this download.".into());
+            }
+            entry.status = DownloadStatus::Queued;
+            entry.explicit_pause = false;
+            entry.failure = None;
+            entry.bytes_per_second = 0;
+            entry.updated_at = now_ms();
+            entry.view()
         };
-        if entry.status == DownloadStatus::Done {
-            return Ok(());
-        }
-        if entry
-            .failure
-            .as_ref()
-            .is_some_and(DownloadFailureCode::requires_new_source)
-        {
-            return Err("Choose the source again before retrying this download.".into());
-        }
-        entry.status = DownloadStatus::Queued;
-        entry.explicit_pause = false;
-        entry.failure = None;
-        entry.updated_at = now_ms();
-        let view = entry.view();
-        if !inner.queue.iter().any(|id| id == job_id) {
-            inner.queue.push_back(job_id.to_string());
-        }
-        drop(inner);
         self.persist().await?;
-        let _ = self.app.emit(EVENT_NAME, view);
+        self.emit_changed(view);
         self.kick();
         Ok(())
     }
 
+    /// Cancels a transfer or deletes a finished download, files included.
     pub async fn remove(&self, job_id: &str) -> Result<(), String> {
-        let entry = {
-            let mut inner = self.inner.lock().await;
-            let entry = inner.entries.remove(job_id);
-            if let Some(flag) = inner.cancel.remove(job_id) {
-                flag.store(true, Ordering::SeqCst);
+        let record = {
+            let inner = self.inner.lock().await;
+            if is_hidden_backup(&inner.entries, job_id) {
+                return Err(RETAINED_FOR_REPLACEMENT.into());
             }
-            inner.queue.retain(|id| id != job_id);
-            entry
+            let Some(entry) = inner.entries.get(job_id) else {
+                return Ok(());
+            };
+            if inner.active_account.as_deref() != Some(entry.account_key.as_str()) {
+                return Err(OTHER_ACCOUNT.into());
+            }
+            entry.clone()
         };
-        if let Some(entry) = entry {
-            if is_safe_record_path(&entry) {
-                let _ = fs::remove_file(entry.target());
-                let _ = fs::remove_file(entry.part());
-                if let Some(sub) = entry.subtitle_file_name {
-                    if is_safe_file_name(&sub) {
-                        let _ = fs::remove_file(PathBuf::from(&entry.root_path).join(sub));
-                    }
+        self.stop_job(job_id).await;
+        let result = self.discard(&record, None).await;
+        self.emit_removed(job_id);
+        // Removing an unfinished replacement brings back what it replaced.
+        if let Some(backup) = record.replacement.as_ref() {
+            let restored = self.inner.lock().await.visible_view(&backup.job_id);
+            if let Some(view) = restored {
+                self.emit_changed(view);
+            }
+        }
+        match result {
+            Ok(()) => Ok(()),
+            Err(RemoveError::Containment) => Err(OUTSIDE_FOLDERS.into()),
+            Err(RemoveError::Io) => Err(DELETE_FAILED.into()),
+        }
+    }
+
+    /// Tombstones a record, deletes its request and files (except any the
+    /// `preserve` set owns), then forgets it. A containment failure forgets the
+    /// record without touching its files; an I/O failure keeps the tombstone
+    /// so the next launch retries.
+    async fn discard(
+        &self,
+        record: &DownloadRecord,
+        preserve: Option<&FileSet>,
+    ) -> Result<(), RemoveError> {
+        let (current, roots) = {
+            let mut inner = self.inner.lock().await;
+            let current = match inner.entries.get_mut(&record.job_id) {
+                Some(entry) => {
+                    entry.pending_deletion = true;
+                    entry.status = DownloadStatus::Paused;
+                    entry.explicit_pause = true;
+                    entry.bytes_per_second = 0;
+                    entry.updated_at = now_ms();
+                    entry.clone()
+                }
+                None => record.clone(),
+            };
+            (current, inner.approved_roots.clone())
+        };
+        let _ = self.persist().await;
+        self.delete_request(&current.job_id);
+        let result = remove_files(&current.files(), &resolve_roots(&roots), preserve);
+        if result != Err(RemoveError::Io) {
+            self.inner.lock().await.entries.remove(&current.job_id);
+            let _ = self.persist().await;
+        }
+        result
+    }
+
+    /// Asks the worker to drop `job_id` and waits until it has.
+    async fn stop_job(&self, job_id: &str) {
+        loop {
+            let released = self.job_released.notified();
+            {
+                let inner = self.inner.lock().await;
+                if let Some(flag) = inner.cancel.get(job_id) {
+                    flag.store(true, Ordering::SeqCst);
+                }
+                if inner.active_job.as_deref() != Some(job_id) {
+                    return;
                 }
             }
-            self.delete_request(job_id)?;
-            self.persist().await?;
+            // A stalled read notices the flag within CANCEL_POLL; the timeout
+            // only guards against a worker that never reports back.
+            if tokio::time::timeout(STOP_WAIT, released).await.is_err() {
+                return;
+            }
         }
-        Ok(())
     }
 
     pub async fn attach_subtitle(
@@ -558,18 +964,18 @@ impl DownloadManager {
         job_id: &str,
         subtitle: DownloadSubtitleRequest,
     ) -> Result<(), String> {
-        validate_url(&subtitle.url)?;
-        validate_headers(&subtitle.headers)?;
+        validate_subtitle(&subtitle)?;
         let completed_target = {
             let inner = self.inner.lock().await;
-            let account = inner
-                .active_account
-                .as_ref()
-                .ok_or_else(|| "Sign in before updating downloads.".to_string())?;
             let entry = inner
-                .entries
-                .get(job_id)
-                .filter(|entry| &entry.account_key == account)
+                .active_account
+                .as_deref()
+                .and_then(|account| {
+                    inner
+                        .entries
+                        .get(job_id)
+                        .filter(|entry| inner.is_visible(entry, account))
+                })
                 .ok_or_else(|| "Download not found.".to_string())?;
             if entry.subtitle_file_name.is_some() {
                 return Ok(());
@@ -578,26 +984,28 @@ impl DownloadManager {
         };
 
         if let Some(target) = completed_target {
-            self.save_completed_subtitle(job_id, &subtitle, &target)
-                .await?;
-            return Ok(());
+            return self
+                .save_completed_subtitle(job_id, &subtitle, &target)
+                .await;
         }
 
         let mut protected = match self.read_request(job_id) {
             Ok(protected) => protected,
             Err(_) => {
-                let target = {
-                    let inner = self.inner.lock().await;
-                    inner
-                        .entries
-                        .get(job_id)
-                        .filter(|entry| entry.status == DownloadStatus::Done)
-                        .map(DownloadRecord::target)
-                };
+                // The transfer may have finished, and its request gone, since
+                // the check above.
+                let target = self
+                    .inner
+                    .lock()
+                    .await
+                    .entries
+                    .get(job_id)
+                    .filter(|entry| entry.status == DownloadStatus::Done)
+                    .map(DownloadRecord::target);
                 if let Some(target) = target {
-                    self.save_completed_subtitle(job_id, &subtitle, &target)
-                        .await?;
-                    return Ok(());
+                    return self
+                        .save_completed_subtitle(job_id, &subtitle, &target)
+                        .await;
                 }
                 return Err("The protected download request could not be read.".into());
             }
@@ -609,14 +1017,12 @@ impl DownloadManager {
 
     pub async fn set_directory(&self, directory: String) -> Result<String, String> {
         let path = canonical_directory(Path::new(&directory))?;
-        {
-            let mut inner = self.inner.lock().await;
-            inner.directory = path.clone();
-        }
-        let config = PersistedConfig {
-            directory: path.to_string_lossy().into_owned(),
-        };
-        write_json(&self.config_path, &config)?;
+        let mut roots = self.inner.lock().await.approved_roots.clone();
+        remember_root(&mut roots, &path);
+        write_json(&self.config_path, &config_document(Some(&path), &roots))?;
+        let mut inner = self.inner.lock().await;
+        inner.directory = path.clone();
+        inner.approved_roots = roots;
         Ok(path.to_string_lossy().into_owned())
     }
 
@@ -629,52 +1035,120 @@ impl DownloadManager {
         })
     }
 
+    /// Stores the landscape artwork the app looked up for a download's row.
+    /// A stale answer (another account, a removed download) is ignored.
+    pub async fn set_landscape_artwork(&self, job_id: &str, artwork: String) -> Result<(), String> {
+        validate_artwork_url(&artwork)?;
+        let view = {
+            let mut inner = self.inner.lock().await;
+            let Some(account) = inner.active_account.clone() else {
+                return Ok(());
+            };
+            if !inner
+                .entries
+                .get(job_id)
+                .is_some_and(|entry| inner.is_visible(entry, &account))
+            {
+                return Ok(());
+            }
+            let Some(entry) = inner.entries.get_mut(job_id) else {
+                return Ok(());
+            };
+            if entry.media.landscape_artwork.as_deref() == Some(artwork.as_str()) {
+                return Ok(());
+            }
+            entry.media.landscape_artwork = Some(artwork);
+            entry.updated_at = now_ms();
+            entry.view()
+        };
+        self.persist().await?;
+        self.emit_changed(view);
+        Ok(())
+    }
+
     pub async fn playback_path(&self, job_id: &str) -> Result<String, String> {
-        let inner = self.inner.lock().await;
-        let account = inner
-            .active_account
-            .as_ref()
-            .ok_or_else(|| "Sign in before opening downloads.".to_string())?;
-        let entry = inner
-            .entries
-            .get(job_id)
-            .filter(|e| &e.account_key == account)
-            .ok_or_else(|| "Download not found.".to_string())?;
-        if !is_safe_record_path(entry)
-            || entry.status != DownloadStatus::Done
-            || !entry.target().is_file()
-        {
-            return Err(DownloadFailureCode::MissingFile.message().into());
-        }
-        Ok(entry.target().to_string_lossy().into_owned())
+        Ok(self.playback_files(job_id).await?.video_path)
     }
 
     pub async fn playback_files(&self, job_id: &str) -> Result<PlaybackFiles, String> {
-        let inner = self.inner.lock().await;
-        let account = inner
-            .active_account
-            .as_ref()
-            .ok_or_else(|| "Sign in before opening downloads.".to_string())?;
-        let entry = inner
-            .entries
-            .get(job_id)
-            .filter(|e| &e.account_key == account)
-            .ok_or_else(|| "Download not found.".to_string())?;
-        if !is_safe_record_path(entry)
+        self.reconcile_missing_files().await;
+        let (entry, roots) = {
+            let inner = self.inner.lock().await;
+            let account = inner
+                .active_account
+                .as_deref()
+                .ok_or_else(|| "Sign in before opening downloads.".to_string())?;
+            let entry = inner
+                .entries
+                .get(job_id)
+                .filter(|entry| inner.is_visible(entry, account))
+                .cloned()
+                .ok_or_else(|| "Download not found.".to_string())?;
+            (entry, inner.approved_roots.clone())
+        };
+        // The index names the file to open, so the rule that confines
+        // deletion also decides what the player may load.
+        let roots = resolve_roots(&roots);
+        let target = entry.target();
+        if !is_safe_record_path(&entry)
             || entry.status != DownloadStatus::Done
-            || !entry.target().is_file()
+            || !is_within_approved_root(&target, &roots)
+            || !target.is_file()
         {
             return Err(DownloadFailureCode::MissingFile.message().into());
         }
         Ok(PlaybackFiles {
-            video_path: entry.target().to_string_lossy().into_owned(),
-            subtitle_path: entry.subtitle_file_name.as_ref().map(|name| {
-                PathBuf::from(&entry.root_path)
-                    .join(name)
-                    .to_string_lossy()
-                    .into_owned()
-            }),
+            video_path: target.to_string_lossy().into_owned(),
+            subtitle_path: entry
+                .subtitle_path()
+                .filter(|path| is_within_approved_root(path, &roots) && path.is_file())
+                .map(|path| path.to_string_lossy().into_owned()),
         })
+    }
+
+    /// Marks finished downloads whose file has gone from disk, so the list
+    /// offers a new source instead of a Play button that cannot work.
+    async fn reconcile_missing_files(&self) {
+        let candidates: Vec<(String, PathBuf)> = {
+            let inner = self.inner.lock().await;
+            inner
+                .entries
+                .values()
+                .filter(|entry| entry.status == DownloadStatus::Done && !entry.pending_deletion)
+                .map(|entry| (entry.job_id.clone(), entry.target()))
+                .collect()
+        };
+        let missing: Vec<String> = candidates
+            .into_iter()
+            .filter(|(_, target)| !target.is_file())
+            .map(|(job_id, _)| job_id)
+            .collect();
+        if missing.is_empty() {
+            return;
+        }
+        let views: Vec<DownloadView> = {
+            let mut inner = self.inner.lock().await;
+            for job_id in &missing {
+                if let Some(entry) = inner
+                    .entries
+                    .get_mut(job_id)
+                    .filter(|entry| entry.status == DownloadStatus::Done)
+                {
+                    entry.status = DownloadStatus::Failed;
+                    entry.failure = Some(DownloadFailureCode::MissingFile);
+                    entry.bytes_per_second = 0;
+                    entry.updated_at = now_ms();
+                }
+            }
+            missing
+                .iter()
+                .filter_map(|id| inner.visible_view(id))
+                .collect()
+        };
+        let _ = self.persist().await;
+        for view in views {
+            self.emit_changed(view);
+        }
     }
 
     fn kick(self: &Arc<Self>) {
@@ -685,230 +1159,270 @@ impl DownloadManager {
     }
 
     async fn pump_once(self: &Arc<Self>) {
-        let job_id = {
+        let (job_id, view) = {
             let mut inner = self.inner.lock().await;
             if inner.active_job.is_some() {
                 return;
             }
-            let account = match inner.active_account.clone() {
-                Some(a) => a,
-                None => return,
+            let Some(account) = inner.active_account.clone() else {
+                return;
             };
-            let next = next_queued_job(&inner.entries, &account);
-            let Some(job_id) = next else {
+            let Some(job_id) = next_queued_job(&inner.entries, &account) else {
                 return;
             };
             let flag = Arc::new(AtomicBool::new(false));
             inner.active_job = Some(job_id.clone());
             inner.cancel.insert(job_id.clone(), flag);
-            if let Some(entry) = inner.entries.get_mut(&job_id) {
+            let view = inner.entries.get_mut(&job_id).map(|entry| {
                 entry.status = DownloadStatus::Downloading;
                 entry.updated_at = now_ms();
-            }
-            job_id
+                entry.view()
+            });
+            (job_id, view)
         };
+        let _ = self.persist().await;
+        if let Some(view) = view {
+            self.emit_changed(view);
+        }
         let manager = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
             manager.run(job_id).await;
         });
-        let _ = self.persist().await;
     }
 
     async fn run(self: Arc<Self>, job_id: String) {
         let result = self.transfer_with_retries(&job_id).await;
-        match result {
-            Ok((bytes, total, validator, subtitle)) => {
-                let mut inner = self.inner.lock().await;
-                if let Some(entry) = inner.entries.get_mut(&job_id) {
-                    entry.status = DownloadStatus::Done;
-                    entry.downloaded_bytes = bytes;
-                    entry.total_bytes = total;
-                    entry.validator = validator;
-                    entry.bytes_per_second = 0;
-                    if let Some((name, lang)) = subtitle {
-                        entry.subtitle_file_name = Some(name);
-                        entry.subtitle_lang = Some(lang);
-                    }
-                    entry.failure = None;
-                    entry.updated_at = now_ms();
-                }
-            }
-            Err(TransferError::Paused) => {
-                let mut inner = self.inner.lock().await;
-                if let Some(entry) = inner.entries.get_mut(&job_id) {
-                    entry.status = DownloadStatus::Paused;
-                    entry.bytes_per_second = 0;
-                    entry.updated_at = now_ms();
-                }
-            }
-            Err(TransferError::Permanent(code)) => {
-                let mut inner = self.inner.lock().await;
-                if let Some(entry) = inner.entries.get_mut(&job_id) {
-                    entry.status = DownloadStatus::Failed;
-                    entry.failure = Some(code);
-                    entry.bytes_per_second = 0;
-                    entry.updated_at = now_ms();
-                }
-            }
-            Err(TransferError::Retryable(code)) => {
-                let mut inner = self.inner.lock().await;
-                if let Some(entry) = inner.entries.get_mut(&job_id) {
-                    entry.status = DownloadStatus::Failed;
-                    entry.failure = Some(code);
-                    entry.bytes_per_second = 0;
-                    entry.updated_at = now_ms();
-                }
-            }
-        }
-        let view = {
+        let mut superseded: Option<DownloadRecord> = None;
+        {
             let mut inner = self.inner.lock().await;
+            let backup_id = inner.entries.get(&job_id).and_then(|entry| {
+                entry
+                    .replacement
+                    .as_ref()
+                    .map(|backup| backup.job_id.clone())
+            });
+            if let Some(entry) = inner.entries.get_mut(&job_id) {
+                // A pause, resume or account switch while the transfer wound
+                // down already wrote the state the user asked for.
+                let still_running = entry.status == DownloadStatus::Downloading;
+                entry.bytes_per_second = 0;
+                entry.updated_at = now_ms();
+                match &result {
+                    Ok(done) => {
+                        entry.status = DownloadStatus::Done;
+                        entry.downloaded_bytes = done.bytes;
+                        entry.total_bytes = done.total;
+                        entry.validator = done.validator.clone();
+                        entry.failure = None;
+                        entry.explicit_pause = false;
+                        if let Some((name, lang)) = done.subtitle.clone() {
+                            entry.subtitle_file_name = Some(name);
+                            entry.subtitle_lang = Some(lang);
+                        }
+                    }
+                    Err(TransferError::Paused) => {
+                        if still_running {
+                            entry.status = DownloadStatus::Paused;
+                        }
+                    }
+                    Err(TransferError::Permanent(code) | TransferError::Retryable(code)) => {
+                        if still_running {
+                            entry.status = DownloadStatus::Failed;
+                            entry.failure = Some(code.clone());
+                        }
+                    }
+                }
+            }
+            if result.is_ok() {
+                if let Some(backup) = backup_id.and_then(|id| inner.entries.get_mut(&id)) {
+                    backup.pending_deletion = true;
+                    backup.status = DownloadStatus::Paused;
+                    backup.explicit_pause = true;
+                    backup.bytes_per_second = 0;
+                    backup.updated_at = now_ms();
+                    superseded = Some(backup.clone());
+                    // Keep the replacement non-terminal on disk until the old
+                    // files are gone or deliberately kept behind their
+                    // tombstone; a crash in between finishes on next launch.
+                    if let Some(entry) = inner.entries.get_mut(&job_id) {
+                        entry.status = DownloadStatus::Downloading;
+                    }
+                }
+            }
             inner.cancel.remove(&job_id);
             inner.active_job = None;
-            inner.entries.get(&job_id).map(DownloadRecord::view)
-        };
+        }
         let _ = self.persist().await;
-        if let Some(view) = view {
-            let _ = self.app.emit(EVENT_NAME, view);
-        }
-        let should_delete_request = {
-            let inner = self.inner.lock().await;
-            inner.entries.get(&job_id).is_some_and(|entry| {
-                entry.status == DownloadStatus::Done
-                    || entry
-                        .failure
-                        .as_ref()
-                        .is_some_and(DownloadFailureCode::requires_new_source)
-            })
+        let request_spent = match &result {
+            Ok(_) => true,
+            Err(TransferError::Permanent(code) | TransferError::Retryable(code)) => {
+                code.requires_new_source()
+            }
+            Err(TransferError::Paused) => false,
         };
-        if should_delete_request {
-            let _ = self.delete_request(&job_id);
+        if request_spent {
+            self.delete_request(&job_id);
         }
+        if let Some(old) = superseded {
+            let (roots, owner_files) = {
+                let inner = self.inner.lock().await;
+                (
+                    inner.approved_roots.clone(),
+                    inner.entries.get(&job_id).map(DownloadRecord::files),
+                )
+            };
+            let outcome = remove_files(&old.files(), &resolve_roots(&roots), owner_files.as_ref());
+            self.delete_request(&old.job_id);
+            {
+                let mut inner = self.inner.lock().await;
+                if outcome != Err(RemoveError::Io) {
+                    inner.entries.remove(&old.job_id);
+                }
+                if let Some(entry) = inner.entries.get_mut(&job_id) {
+                    entry.status = DownloadStatus::Done;
+                    entry.replacement = None;
+                    entry.updated_at = now_ms();
+                }
+            }
+            let _ = self.persist().await;
+        }
+        let view = self.inner.lock().await.visible_view(&job_id);
+        if let Some(view) = view {
+            self.emit_changed(view);
+        }
+        self.job_released.notify_waiters();
         self.kick();
     }
 
-    async fn transfer_with_retries(
-        &self,
-        job_id: &str,
-    ) -> Result<(u64, u64, Option<String>, Option<(String, String)>), TransferError> {
+    async fn transfer_with_retries(&self, job_id: &str) -> Result<Transferred, TransferError> {
         let request = self
             .read_request(job_id)
             .map_err(|_| TransferError::Permanent(DownloadFailureCode::ProtectedRequestCorrupt))?;
-        for attempt in 0..=RETRIES {
-            match self.transfer_once(job_id, &request).await {
-                Ok(result) => return Ok(result),
-                Err(TransferError::Paused) => return Err(TransferError::Paused),
-                Err(TransferError::Permanent(code)) => return Err(TransferError::Permanent(code)),
-                Err(TransferError::Retryable(_code)) if attempt < RETRIES => {
-                    tokio::time::sleep(Duration::from_millis(250 * 2u64.pow(attempt as u32))).await;
+        let cancel =
+            { self.inner.lock().await.cancel.get(job_id).cloned() }.ok_or(TransferError::Paused)?;
+        let mut attempt = 0;
+        loop {
+            match self.transfer_once(job_id, &request, &cancel).await {
+                Err(TransferError::Retryable(code)) => {
+                    attempt += 1;
+                    if attempt >= TRANSFER_ATTEMPTS {
+                        return Err(TransferError::Retryable(code));
+                    }
+                    wait_unless_cancelled(&cancel, Duration::from_millis(250 << (attempt - 1)))
+                        .await?;
                 }
-                Err(TransferError::Retryable(code)) => return Err(TransferError::Retryable(code)),
+                other => return other,
             }
         }
-        Err(TransferError::Retryable(DownloadFailureCode::Network))
     }
 
     async fn transfer_once(
         &self,
         job_id: &str,
         request: &ProtectedRequest,
-    ) -> Result<(u64, u64, Option<String>, Option<(String, String)>), TransferError> {
-        let (part, target, declared, validator, cancel) = {
-            let inner = self.inner.lock().await;
-            let entry = inner
-                .entries
-                .get(job_id)
-                .ok_or(TransferError::Permanent(DownloadFailureCode::Unknown))?;
-            (
-                entry.part(),
-                entry.target(),
-                entry.media.video_size.unwrap_or(0),
-                entry.validator.clone(),
-                inner
-                    .cancel
-                    .get(job_id)
-                    .cloned()
-                    .ok_or(TransferError::Paused)?,
-            )
-        };
+        cancel: &Arc<AtomicBool>,
+    ) -> Result<Transferred, TransferError> {
+        let record = { self.inner.lock().await.entries.get(job_id).cloned() }
+            .ok_or(TransferError::Permanent(DownloadFailureCode::Unknown))?;
+        let part = record.part();
+        let target = record.target();
+        let root = PathBuf::from(&record.root_path);
+        let known_total = record.total_bytes;
         let mut partial = fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
-        if partial > 0 && validator.is_none() {
+        if known_total > 0 && partial > known_total {
+            return Err(TransferError::Permanent(DownloadFailureCode::InvalidRange));
+        }
+        if partial > 0 && partial == known_total {
+            // Every byte arrived but the final rename did not happen.
+            atomic_replace(&part, &target)
+                .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
+            let subtitle = self.fetch_latest_subtitle(job_id, &target, cancel).await;
+            return Ok(Transferred {
+                bytes: partial,
+                total: known_total,
+                validator: record.validator.clone(),
+                subtitle,
+            });
+        }
+        if partial > 0 && record.validator.is_none() {
             // Without ETag or Last-Modified there is no safe If-Range value.
             // Restarting loses bytes, appending could silently corrupt a film.
             partial = 0;
         }
-        let mut header_map = HeaderMap::new();
-        for (key, value) in &request.headers {
-            header_map.insert(
-                HeaderName::from_bytes(key.as_bytes())
-                    .map_err(|_| TransferError::Permanent(DownloadFailureCode::SourceRejected))?,
-                HeaderValue::from_str(value)
-                    .map_err(|_| TransferError::Permanent(DownloadFailureCode::SourceRejected))?,
-            );
-        }
-        let mut builder = self.client.get(&request.url).headers(header_map);
-        if partial > 0 {
-            builder = builder.header(RANGE, format!("bytes={partial}-"));
-            if let Some(value) = validator.as_ref() {
-                builder = builder.header(IF_RANGE, value);
+
+        let mut opened = self
+            .open_get(
+                &request.url,
+                &request.headers,
+                (partial > 0).then_some(partial),
+                record.validator.as_deref(),
+            )
+            .await?;
+        let (content_range, response_validator) = loop {
+            let response = &opened.response;
+            let status = response.status().as_u16();
+            classify_http_status(status)?;
+            if partial > 0 && status == 200 {
+                partial = 0;
             }
-        }
-        let response = builder
-            .send()
-            .await
-            .map_err(|_| TransferError::Retryable(DownloadFailureCode::Network))?;
-        let status = response.status().as_u16();
-        classify_http_status(status)?;
-        if partial > 0 && status == 200 {
-            partial = 0;
-        }
-        if partial > 0 && status != 206 {
-            return Err(TransferError::Permanent(DownloadFailureCode::InvalidRange));
-        }
-        if partial > 0 {
-            let Some((start, end, total)) =
-                parse_content_range(response.headers().get(CONTENT_RANGE))
-            else {
-                return Err(TransferError::Permanent(DownloadFailureCode::InvalidRange));
-            };
-            if start != partial || end < start || end >= total {
-                return Err(TransferError::Permanent(DownloadFailureCode::InvalidRange));
+            let mut content_range = None;
+            if status == 206 {
+                let range = parse_content_range(response.headers().get(CONTENT_RANGE))
+                    .ok_or(TransferError::Permanent(DownloadFailureCode::InvalidRange))?;
+                let length_matches = response
+                    .content_length()
+                    .is_none_or(|length| length == range.end - range.start + 1);
+                if range.start != partial
+                    || (known_total > 0 && range.total != known_total)
+                    || !length_matches
+                {
+                    return Err(TransferError::Permanent(DownloadFailureCode::InvalidRange));
+                }
+                content_range = Some(range);
             }
-        }
-        let response_validator = response
-            .headers()
-            .get(ETAG)
-            .or_else(|| response.headers().get(LAST_MODIFIED))
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_owned);
-        if partial > 0
-            && validator.is_some()
-            && response_validator.is_some()
-            && response_validator != validator
-        {
-            return Err(TransferError::Permanent(DownloadFailureCode::InvalidRange));
-        }
-        if response_validator.is_some() {
-            let mut inner = self.inner.lock().await;
-            if let Some(entry) = inner.entries.get_mut(job_id) {
-                entry.validator = response_validator.clone();
-                entry.updated_at = now_ms();
+            let response_validator = response
+                .headers()
+                .get(ETAG)
+                .or_else(|| response.headers().get(LAST_MODIFIED))
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned);
+            if partial > 0 {
+                if let (Some(saved), Some(fresh)) =
+                    (record.validator.as_ref(), response_validator.as_ref())
+                {
+                    if saved != fresh {
+                        return Err(TransferError::Permanent(DownloadFailureCode::InvalidRange));
+                    }
+                }
             }
-            drop(inner);
-            self.persist()
-                .await
-                .map_err(|_| TransferError::Permanent(DownloadFailureCode::Unknown))?;
-        }
-        let total = if status == 206 {
-            parse_content_range_total(response.headers().get(CONTENT_RANGE))
-                .unwrap_or(partial + response.content_length().unwrap_or(0))
-        } else {
-            response.content_length().unwrap_or(declared)
+            if partial > 0 && status == 206 && opened.crossed_origin {
+                // A ranged answer from another origin may describe a different
+                // object. Take the whole file from the original URL instead.
+                opened = self
+                    .open_get(&request.url, &request.headers, None, None)
+                    .await?;
+                partial = 0;
+                continue;
+            }
+            break (content_range, response_validator);
         };
-        if partial == 0 {
-            if let Some(parent) = part.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
-            }
+        let response = opened.response;
+        let total = match content_range {
+            Some(range) => range.total,
+            None => response
+                .content_length()
+                .unwrap_or(record.media.video_size.unwrap_or(0)),
+        };
+        self.update_response_metadata(job_id, response_validator.clone(), total)
+            .await
+            .map_err(|_| TransferError::Permanent(DownloadFailureCode::Unknown))?;
+
+        fs::create_dir_all(&root)
+            .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
+        if available_bytes(&root)
+            .is_some_and(|free| !has_sufficient_space(free, total.saturating_sub(partial)))
+        {
+            return Err(TransferError::Permanent(DownloadFailureCode::StorageFull));
         }
         let mut file = if partial == 0 {
             OpenOptions::new()
@@ -917,109 +1431,232 @@ impl DownloadManager {
                 .truncate(true)
                 .open(&part)
         } else {
-            OpenOptions::new().create(true).append(true).open(&part)
+            OpenOptions::new().write(true).open(&part)
         }
         .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
+        if partial > 0 {
+            file.seek(SeekFrom::Start(partial))
+                .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
+        }
+
+        let started = Instant::now();
+        let mut rate = RateWindow::new(RATE_WINDOW, started, partial);
         let mut written = partial;
-        let mut last_progress = SystemTime::now();
-        let mut last_bytes = written;
+        let mut last_progress = started;
+        let mut last_durable = started;
+        let mut last_space_check = started;
+        let mut unchecked_bytes = 0u64;
+        let mut idle = Duration::ZERO;
         let mut stream = response.bytes_stream();
         loop {
-            let next = tokio::time::timeout(Duration::from_secs(45), stream.next())
-                .await
-                .map_err(|_| TransferError::Retryable(DownloadFailureCode::Network))?;
-            let Some(chunk) = next else { break };
             if cancel.load(Ordering::SeqCst) {
                 return Err(TransferError::Paused);
             }
+            let next = match tokio::time::timeout(CANCEL_POLL, stream.next()).await {
+                Ok(next) => next,
+                Err(_) => {
+                    idle += CANCEL_POLL;
+                    if idle >= READ_TIMEOUT {
+                        return Err(TransferError::Retryable(DownloadFailureCode::Network));
+                    }
+                    continue;
+                }
+            };
+            idle = Duration::ZERO;
+            let Some(chunk) = next else { break };
             let chunk =
                 chunk.map_err(|_| TransferError::Retryable(DownloadFailureCode::Network))?;
+            let now = Instant::now();
+            unchecked_bytes += chunk.len() as u64;
+            // Rechecked every few megabytes rather than on every chunk: the
+            // reserve absorbs what lands in between, and a response that never
+            // states its size still cannot eat into the reserve.
+            if unchecked_bytes >= SPACE_CHECK_BYTES
+                || now.duration_since(last_space_check) >= PROGRESS_INTERVAL
+            {
+                let needed = total.saturating_sub(written).max(chunk.len() as u64);
+                if available_bytes(&root).is_some_and(|free| !has_sufficient_space(free, needed)) {
+                    return Err(TransferError::Permanent(DownloadFailureCode::StorageFull));
+                }
+                unchecked_bytes = 0;
+                last_space_check = now;
+            }
+            if cancel.load(Ordering::SeqCst) {
+                return Err(TransferError::Paused);
+            }
             file.write_all(&chunk)
                 .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
             written += chunk.len() as u64;
-            let elapsed = last_progress.elapsed().unwrap_or_default();
-            if elapsed >= PROGRESS_INTERVAL {
-                let rate = ((written.saturating_sub(last_bytes)) as f64
-                    / elapsed.as_secs_f64().max(0.001)) as u64;
-                self.update_progress(job_id, written, total, rate).await;
-                last_progress = SystemTime::now();
-                last_bytes = written;
+            if now.duration_since(last_progress) >= PROGRESS_INTERVAL {
+                let durable = now.duration_since(last_durable) >= DURABLE_INTERVAL;
+                if durable {
+                    file.sync_data()
+                        .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
+                    last_durable = now;
+                }
+                // Persisting only after a flush keeps the stored byte count at
+                // or below what is actually on disk.
+                self.update_progress(job_id, written, total, rate.record(now, written), durable)
+                    .await;
+                last_progress = now;
             }
         }
         if cancel.load(Ordering::SeqCst) {
             return Err(TransferError::Paused);
         }
-        file.flush()
+        file.sync_all()
             .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
+        drop(file);
         if total > 0 && written < total {
             return Err(TransferError::Retryable(DownloadFailureCode::Network));
         }
         if total > 0 && written > total {
             return Err(TransferError::Permanent(DownloadFailureCode::InvalidRange));
         }
-        if target.exists() {
-            let _ = fs::remove_file(&target);
-        }
-        fs::rename(&part, &target)
+        atomic_replace(&part, &target)
             .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
-        let latest_request = self.read_request(job_id).ok();
-        let subtitle = self
-            .download_subtitle(
-                latest_request
-                    .as_ref()
-                    .and_then(|latest| latest.subtitle.as_ref()),
-                &target,
-                &cancel,
-            )
-            .await;
-        Ok((written, total.max(written), response_validator, subtitle))
+        let subtitle = self.fetch_latest_subtitle(job_id, &target, cancel).await;
+        Ok(Transferred {
+            bytes: written,
+            total: total.max(written),
+            validator: response_validator,
+            subtitle,
+        })
     }
 
-    async fn download_subtitle(
+    /// GET with the source's headers, following redirects by hand: at most
+    /// five hops, never out of https, and the protected headers stop at the
+    /// first hop that leaves the original origin.
+    async fn open_get(
         &self,
-        subtitle: Option<&DownloadSubtitleRequest>,
+        url: &str,
+        headers: &HashMap<String, String>,
+        range_start: Option<u64>,
+        validator: Option<&str>,
+    ) -> Result<OpenedResponse, TransferError> {
+        let mut current = Url::parse(url)
+            .map_err(|_| TransferError::Permanent(DownloadFailureCode::SourceRejected))?;
+        let protected = header_map(headers)?;
+        let mut forward_headers = true;
+        let mut crossed_origin = false;
+        let mut hops = 0;
+        loop {
+            let mut builder = self.client.get(current.clone());
+            if forward_headers {
+                builder = builder.headers(protected.clone());
+            }
+            if let Some(start) = range_start {
+                builder = builder.header(RANGE, format!("bytes={start}-"));
+                if let Some(value) = validator {
+                    builder = builder.header(IF_RANGE, value);
+                }
+            }
+            let response = builder
+                .send()
+                .await
+                .map_err(|_| TransferError::Retryable(DownloadFailureCode::Network))?;
+            if !is_redirect_status(response.status().as_u16()) {
+                return Ok(OpenedResponse {
+                    response,
+                    crossed_origin,
+                });
+            }
+            let target = response
+                .headers()
+                .get(LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|location| next_redirect_target(&current, location, hops))
+                .ok_or(TransferError::Permanent(
+                    DownloadFailureCode::SourceRejected,
+                ))?;
+            if !target.same_origin {
+                forward_headers = false;
+                crossed_origin = true;
+            }
+            current = target.url;
+            hops += 1;
+        }
+    }
+
+    /// The subtitle the request carries now: it may have been attached after
+    /// the transfer started.
+    async fn fetch_latest_subtitle(
+        &self,
+        job_id: &str,
         target: &Path,
         cancel: &Arc<AtomicBool>,
     ) -> Option<(String, String)> {
-        let subtitle = subtitle?;
         if cancel.load(Ordering::SeqCst) {
             return None;
         }
-        let mut headers = HeaderMap::new();
-        for (key, value) in &subtitle.headers {
-            headers.insert(
-                HeaderName::from_bytes(key.as_bytes()).ok()?,
-                HeaderValue::from_str(value).ok()?,
-            );
-        }
-        let response = self
-            .client
-            .get(&subtitle.url)
-            .headers(headers)
-            .send()
-            .await
-            .ok()?;
-        if !response.status().is_success() {
+        let subtitle = self.read_request(job_id).ok()?.subtitle?;
+        self.download_subtitle(&subtitle, target, cancel).await
+    }
+
+    /// Saves a sidecar beside `target` as `<video stem>.<lang>.<ext>`, through
+    /// a `.part` file so a failed fetch never leaves half a subtitle behind.
+    async fn download_subtitle(
+        &self,
+        subtitle: &DownloadSubtitleRequest,
+        target: &Path,
+        cancel: &Arc<AtomicBool>,
+    ) -> Option<(String, String)> {
+        let language = safe_language(&subtitle.lang);
+        let stem = target.file_stem()?.to_string_lossy().into_owned();
+        let name = format!("{stem}.{language}.{}", subtitle_extension(&subtitle.url));
+        if !is_safe_file_name(&name) {
             return None;
         }
-        let extension = subtitle
-            .url
-            .split('?')
-            .next()
-            .and_then(|s| Path::new(s).extension())
-            .and_then(|s| s.to_str())
-            .filter(|s| matches!(*s, "srt" | "vtt" | "ass" | "ssa"))
-            .unwrap_or("srt");
-        let name = format!(
-            "{}.{}.{}",
-            target.file_stem()?.to_string_lossy(),
-            subtitle.lang,
-            extension
-        );
         let path = target.parent()?.join(&name);
-        let bytes = response.bytes().await.ok()?;
-        fs::write(&path, bytes).ok()?;
-        Some((name, subtitle.lang.clone()))
+        let temporary = part_path(&path);
+        let saved = self
+            .write_subtitle(subtitle, &temporary, cancel)
+            .await
+            .is_some()
+            && atomic_replace(&temporary, &path).is_ok();
+        if !saved {
+            let _ = fs::remove_file(&temporary);
+            return None;
+        }
+        Some((name, language))
+    }
+
+    async fn write_subtitle(
+        &self,
+        subtitle: &DownloadSubtitleRequest,
+        temporary: &Path,
+        cancel: &Arc<AtomicBool>,
+    ) -> Option<()> {
+        let response = self
+            .open_get(&subtitle.url, &subtitle.headers, None, None)
+            .await
+            .ok()?
+            .response;
+        if response.status().as_u16() != 200
+            || response
+                .content_length()
+                .is_some_and(|length| length > MAX_SUBTITLE_BYTES)
+        {
+            return None;
+        }
+        let mut file = fs::File::create(temporary).ok()?;
+        let mut written = 0u64;
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = tokio::time::timeout(READ_TIMEOUT, stream.next())
+            .await
+            .ok()?
+        {
+            if cancel.load(Ordering::SeqCst) {
+                return None;
+            }
+            let chunk = chunk.ok()?;
+            written += chunk.len() as u64;
+            if written > MAX_SUBTITLE_BYTES {
+                return None;
+            }
+            file.write_all(&chunk).ok()?;
+        }
+        file.sync_all().ok()
     }
 
     async fn save_completed_subtitle(
@@ -1029,10 +1666,7 @@ impl DownloadManager {
         target: &Path,
     ) -> Result<(), String> {
         let cancel = Arc::new(AtomicBool::new(false));
-        let Some((name, lang)) = self
-            .download_subtitle(Some(subtitle), target, &cancel)
-            .await
-        else {
+        let Some((name, lang)) = self.download_subtitle(subtitle, target, &cancel).await else {
             return Ok(());
         };
         let view = {
@@ -1043,30 +1677,67 @@ impl DownloadManager {
             entry.subtitle_file_name = Some(name);
             entry.subtitle_lang = Some(lang);
             entry.updated_at = now_ms();
-            entry.view()
+            inner.visible_view(job_id)
         };
         self.persist().await?;
-        let _ = self.app.emit(EVENT_NAME, view);
-        let _ = self.delete_request(job_id);
+        if let Some(view) = view {
+            self.emit_changed(view);
+        }
+        self.delete_request(job_id);
         Ok(())
     }
 
-    async fn update_progress(&self, job_id: &str, bytes: u64, total: u64, rate: u64) {
+    async fn update_progress(
+        &self,
+        job_id: &str,
+        bytes: u64,
+        total: u64,
+        rate: u64,
+        persist: bool,
+    ) {
         let view = {
             let mut inner = self.inner.lock().await;
             let Some(entry) = inner.entries.get_mut(job_id) else {
                 return;
             };
             entry.downloaded_bytes = bytes;
-            entry.total_bytes = total;
+            if total > 0 {
+                entry.total_bytes = total;
+            }
             entry.bytes_per_second = rate;
             entry.updated_at = now_ms();
             entry.view()
         };
-        let _ = self.persist().await;
-        let _ = self.app.emit(EVENT_NAME, view);
+        if persist {
+            let _ = self.persist().await;
+        }
+        self.emit_changed(view);
     }
+
+    async fn update_response_metadata(
+        &self,
+        job_id: &str,
+        validator: Option<String>,
+        total: u64,
+    ) -> Result<(), String> {
+        {
+            let mut inner = self.inner.lock().await;
+            let Some(entry) = inner.entries.get_mut(job_id) else {
+                return Ok(());
+            };
+            if validator.is_some() {
+                entry.validator = validator;
+            }
+            if total > 0 {
+                entry.total_bytes = total;
+            }
+            entry.updated_at = now_ms();
+        }
+        self.persist().await
+    }
+
     async fn persist(&self) -> Result<(), String> {
+        let _gate = self.persist_gate.lock().await;
         let entries = {
             self.inner
                 .lock()
@@ -1100,28 +1771,29 @@ impl DownloadManager {
             },
         )
     }
-    fn request_path(&self, job_id: &str) -> PathBuf {
-        self.vault_dir.join(format!("{job_id}.bin"))
-    }
     fn write_request(&self, job_id: &str, request: &ProtectedRequest) -> Result<(), String> {
         let raw = serde_json::to_vec(request).map_err(|e| e.to_string())?;
         let encrypted = protect(&raw)?;
-        let path = self.request_path(job_id);
+        let path = request_path(&self.vault_dir, job_id);
         let tmp = path.with_extension("tmp");
         fs::write(&tmp, encrypted).map_err(|e| e.to_string())?;
         atomic_replace(&tmp, &path)
     }
     fn read_request(&self, job_id: &str) -> Result<ProtectedRequest, String> {
-        let raw = fs::read(self.request_path(job_id)).map_err(|e| e.to_string())?;
+        let raw = fs::read(request_path(&self.vault_dir, job_id)).map_err(|e| e.to_string())?;
         let clear = unprotect(&raw)?;
         serde_json::from_slice(&clear).map_err(|e| e.to_string())
     }
-    fn delete_request(&self, job_id: &str) -> Result<(), String> {
-        let _ = fs::remove_file(self.request_path(job_id));
-        Ok(())
+    fn delete_request(&self, job_id: &str) {
+        delete_request_file(&self.vault_dir, job_id);
     }
-    async fn emit(&self, entry: &DownloadRecord) {
-        let _ = self.app.emit(EVENT_NAME, entry.view());
+    fn emit_changed(&self, view: DownloadView) {
+        let _ = self.app.emit(CHANGED_EVENT, view);
+    }
+    fn emit_removed(&self, job_id: &str) {
+        let _ = self
+            .app
+            .emit(REMOVED_EVENT, serde_json::json!({ "job_id": job_id }));
     }
 }
 
@@ -1163,14 +1835,109 @@ fn next_queued_job(entries: &HashMap<String, DownloadRecord>, account: &str) -> 
             entry.account_key == account
                 && entry.status == DownloadStatus::Queued
                 && !entry.explicit_pause
+                && !entry.pending_deletion
+                && !is_hidden_backup(entries, &entry.job_id)
         })
         .min_by_key(|entry| (entry.created_at, entry.job_id.clone()))
         .map(|entry| entry.job_id.clone())
 }
+
+/// Completes removals a previous run tombstoned but did not finish. A backup
+/// is only tombstoned after its replacement's file is complete, so the
+/// replacement that names it is finalised as done here too.
+fn finish_pending_deletions(
+    entries: &mut HashMap<String, DownloadRecord>,
+    resolved_roots: &[PathBuf],
+    vault_dir: &Path,
+) {
+    let pending: Vec<String> = entries
+        .values()
+        .filter(|entry| entry.pending_deletion)
+        .map(|entry| entry.job_id.clone())
+        .collect();
+    for job_id in pending {
+        let Some(record) = entries.get(&job_id).cloned() else {
+            continue;
+        };
+        let owner_id = entries
+            .values()
+            .find(|entry| {
+                entry
+                    .replacement
+                    .as_ref()
+                    .is_some_and(|backup| backup.job_id == job_id)
+            })
+            .map(|entry| entry.job_id.clone());
+        let owner_files = owner_id
+            .as_ref()
+            .and_then(|id| entries.get(id))
+            .map(DownloadRecord::files);
+        if let Some(owner) = owner_id.as_ref().and_then(|id| entries.get_mut(id)) {
+            owner.status = DownloadStatus::Done;
+            owner.failure = None;
+            owner.explicit_pause = false;
+            owner.bytes_per_second = 0;
+            owner.replacement = None;
+        }
+        match remove_files(&record.files(), resolved_roots, owner_files.as_ref()) {
+            // A containment failure forgets the record and leaves its files:
+            // retrying every launch would never succeed, and deleting outside
+            // the download folders is exactly what must not happen.
+            Ok(()) | Err(RemoveError::Containment) => {
+                delete_request_file(vault_dir, &job_id);
+                entries.remove(&job_id);
+            }
+            Err(RemoveError::Io) => {}
+        }
+    }
+}
+
+/// Deletes a download's files, the playable one last so a failed auxiliary
+/// cleanup still leaves the content in place. Paths `preserve` owns are
+/// skipped; every other path must resolve inside an approved root.
+fn remove_files(
+    files: &FileSet,
+    resolved_roots: &[PathBuf],
+    preserve: Option<&FileSet>,
+) -> Result<(), RemoveError> {
+    let paths = std::iter::once(&files.part)
+        .chain(files.subtitle.as_ref())
+        .chain(std::iter::once(&files.target));
+    for path in paths {
+        if preserve.is_some_and(|owner| owner.contains(path)) {
+            continue;
+        }
+        containment::ensure_within_roots(path, resolved_roots)
+            .map_err(|_| RemoveError::Containment)?;
+        match fs::remove_file(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err(RemoveError::Io),
+        }
+    }
+    Ok(())
+}
+
+async fn wait_unless_cancelled(cancel: &AtomicBool, delay: Duration) -> Result<(), TransferError> {
+    let slice = Duration::from_millis(25);
+    let mut waited = Duration::ZERO;
+    while waited < delay {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(TransferError::Paused);
+        }
+        tokio::time::sleep(slice).await;
+        waited += slice;
+    }
+    Ok(())
+}
+
 fn classify_http_status(status: u16) -> Result<(), TransferError> {
     match status {
         200 | 206 => Ok(()),
+        // A debrid link that stopped resolving answers 404 as often as 403,
+        // and a retry of it can never succeed.
         401 | 403 | 404 => Err(TransferError::Permanent(DownloadFailureCode::SourceExpired)),
+        416 => Err(TransferError::Permanent(DownloadFailureCode::InvalidRange)),
         408 | 425 | 429 | 500..=599 => Err(TransferError::Retryable(
             DownloadFailureCode::ServerUnavailable,
         )),
@@ -1197,13 +1964,78 @@ fn fingerprint(url: &str) -> String {
     hasher.update(url.as_bytes());
     format!("{:x}", hasher.finalize())
 }
+
+/// A file name no other record and no file on disk already uses.
+fn choose_file_name(
+    entries: &HashMap<String, DownloadRecord>,
+    media: &DownloadMedia,
+    source_fingerprint: &str,
+    account_key: &str,
+    directory: &Path,
+) -> Result<String, String> {
+    for attempt in 1..=99 {
+        let name = download_file_name(
+            media.filename.as_deref(),
+            &media.video_id,
+            source_fingerprint,
+            account_key,
+            attempt,
+        );
+        if !is_safe_file_name(&name) {
+            break;
+        }
+        let target = directory.join(&name);
+        let taken = target.exists()
+            || part_path(&target).exists()
+            || entries
+                .values()
+                .any(|entry| same_path(&entry.target(), &target));
+        if !taken {
+            return Ok(name);
+        }
+    }
+    Err("A safe download filename could not be created.".into())
+}
+
+fn validate_media(media: &DownloadMedia) -> Result<(), String> {
+    if media.video_id.is_empty()
+        || media.video_id.len() > 1024
+        || media.item_id.is_empty()
+        || media.item_id.len() > 1024
+        || media.title.is_empty()
+    {
+        return Err("Complete media metadata is required for a download.".into());
+    }
+    Ok(())
+}
 fn validate_url(url: &str) -> Result<(), String> {
-    let parsed =
-        reqwest::Url::parse(url).map_err(|_| "Choose a valid HTTP(S) source.".to_string())?;
+    if url.is_empty() || url.len() > 32_768 || url.contains('\0') {
+        return Err("Choose a valid HTTP(S) source.".into());
+    }
+    let parsed = Url::parse(url).map_err(|_| "Choose a valid HTTP(S) source.".to_string())?;
     if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
         return Err("Choose a valid HTTP(S) source.".into());
     }
     Ok(())
+}
+fn validate_subtitle(subtitle: &DownloadSubtitleRequest) -> Result<(), String> {
+    validate_url(&subtitle.url)?;
+    validate_headers(&subtitle.headers)?;
+    if subtitle.lang.is_empty() || subtitle.lang.chars().count() > 32 {
+        return Err("The subtitle language is invalid.".into());
+    }
+    Ok(())
+}
+fn validate_artwork_url(url: &str) -> Result<(), String> {
+    let valid = url.len() <= 8_192
+        && Url::parse(url).is_ok_and(|parsed| {
+            matches!(parsed.scheme(), "http" | "https") && parsed.host_str().is_some()
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err("The artwork address is invalid.".into())
+    }
 }
 fn validate_headers(headers: &HashMap<String, String>) -> Result<(), String> {
     if headers.len() > 64 {
@@ -1220,6 +2052,9 @@ fn validate_headers(headers: &HashMap<String, String>) -> Result<(), String> {
                     | "content-length"
                     | "host"
                     | "if-range"
+                    | "keep-alive"
+                    | "proxy-authenticate"
+                    | "proxy-authorization"
                     | "proxy-connection"
                     | "range"
                     | "te"
@@ -1234,58 +2069,76 @@ fn validate_headers(headers: &HashMap<String, String>) -> Result<(), String> {
     }
     Ok(())
 }
-fn parse_content_range_total(value: Option<&HeaderValue>) -> Option<u64> {
-    parse_content_range(value).map(|(_, _, total)| total)
+fn header_map(headers: &HashMap<String, String>) -> Result<HeaderMap, TransferError> {
+    let mut map = HeaderMap::new();
+    for (key, value) in headers {
+        map.insert(
+            HeaderName::from_bytes(key.as_bytes())
+                .map_err(|_| TransferError::Permanent(DownloadFailureCode::SourceRejected))?,
+            HeaderValue::from_str(value)
+                .map_err(|_| TransferError::Permanent(DownloadFailureCode::SourceRejected))?,
+        );
+    }
+    Ok(map)
 }
-fn parse_content_range(value: Option<&HeaderValue>) -> Option<(u64, u64, u64)> {
+fn has_sufficient_space(available: u64, needed: u64) -> bool {
+    needed
+        .checked_add(SPACE_RESERVE)
+        .is_some_and(|required| available >= required)
+}
+fn parse_content_range(value: Option<&HeaderValue>) -> Option<ContentRange> {
     let raw = value?.to_str().ok()?.strip_prefix("bytes ")?;
     let (range, total) = raw.split_once('/')?;
     let (start, end) = range.split_once('-')?;
-    Some((start.parse().ok()?, end.parse().ok()?, total.parse().ok()?))
-}
-fn unique_file_name(
-    media: &DownloadMedia,
-    url: &str,
-    video_id: &str,
-    directory: &Path,
-) -> Result<String, String> {
-    let raw = media.filename.as_deref().unwrap_or(video_id);
-    let stem = raw.rsplit('/').next().unwrap_or(raw).replace(
-        |c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '-' && c != '_',
-        "_",
-    );
-    let mut stem = stem.trim_matches('.').to_string();
-    if stem.is_empty() {
-        stem = "video".into();
-    }
-    let ext = Path::new(&stem)
-        .extension()
-        .and_then(|e| e.to_str())
-        .filter(|e| matches!(*e, "mp4" | "mkv" | "webm" | "avi" | "m4v" | "mov" | "ts"))
-        .unwrap_or("mkv");
-    let base = Path::new(&stem)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("video");
-    let name = format!(
-        "{}-{}.{}",
-        base.chars().take(80).collect::<String>(),
-        &fingerprint(url)[..12],
-        ext
-    );
-    if directory.join(&name).exists() {
-        return Ok(format!(
-            "{}-{}.{}",
-            base.chars().take(70).collect::<String>(),
-            &fingerprint(&format!("{url}:{video_id}"))[..12],
-            ext
-        ));
-    }
-    Ok(name)
+    let range = ContentRange {
+        start: start.parse().ok()?,
+        end: end.parse().ok()?,
+        total: total.parse().ok()?,
+    };
+    (range.end >= range.start && range.total > 0 && range.end < range.total).then_some(range)
 }
 fn canonical_directory(path: &Path) -> Result<PathBuf, String> {
     fs::create_dir_all(path).map_err(|e| format!("Could not create that folder: {e}"))?;
-    fs::canonicalize(path).map_err(|e| format!("Could not use that folder: {e}"))
+    fs::canonicalize(path)
+        .map(strip_verbatim)
+        .map_err(|e| format!("Could not use that folder: {e}"))
+}
+/// Moves `path` to the front of the approved roots, once.
+fn remember_root(roots: &mut Vec<PathBuf>, path: &Path) {
+    if !path.is_absolute() {
+        return;
+    }
+    roots.retain(|root| !same_path(root, path));
+    roots.insert(0, path.to_path_buf());
+    roots.truncate(MAX_APPROVED_ROOTS);
+}
+/// The roots an index written before roots were tracked already uses.
+fn seed_roots(entries: &HashMap<String, DownloadRecord>) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for entry in entries.values() {
+        remember_root(&mut roots, Path::new(&entry.root_path));
+        if let Some(backup) = entry.replacement.as_ref() {
+            remember_root(&mut roots, Path::new(&backup.root_path));
+        }
+    }
+    roots
+}
+fn config_document(directory: Option<&Path>, roots: &[PathBuf]) -> PersistedConfig {
+    PersistedConfig {
+        directory: directory.map(|path| path.to_string_lossy().into_owned()),
+        approved_roots: Some(
+            roots
+                .iter()
+                .map(|root| root.to_string_lossy().into_owned())
+                .collect(),
+        ),
+    }
+}
+fn request_path(vault_dir: &Path, job_id: &str) -> PathBuf {
+    vault_dir.join(format!("{job_id}.bin"))
+}
+fn delete_request_file(vault_dir: &Path, job_id: &str) {
+    let _ = fs::remove_file(request_path(vault_dir, job_id));
 }
 fn available_bytes(path: &Path) -> Option<u64> {
     #[cfg(windows)]
@@ -1375,17 +2228,9 @@ fn load_index(path: &Path) -> Result<HashMap<String, DownloadRecord>, String> {
         .map(|e| (e.job_id.clone(), e))
         .collect())
 }
-fn load_config(path: &Path) -> Option<PathBuf> {
+fn load_config(path: &Path) -> Option<PersistedConfig> {
     let raw = fs::read(path).ok()?;
-    let parsed: PersistedConfig = serde_json::from_slice(&raw).ok()?;
-    Some(PathBuf::from(parsed.directory))
-}
-
-fn is_safe_file_name(name: &str) -> bool {
-    !name.is_empty()
-        && Path::new(name)
-            .components()
-            .all(|component| matches!(component, std::path::Component::Normal(_)))
+    serde_json::from_slice(&raw).ok()
 }
 
 fn is_safe_record_path(entry: &DownloadRecord) -> bool {
@@ -1490,6 +2335,7 @@ mod tests {
                 show_name: None,
                 episode_label: None,
                 poster: None,
+                landscape_artwork: None,
                 addon_id: Some("addon".into()),
                 binge_group: None,
                 filename: Some("movie.mkv".into()),
@@ -1512,7 +2358,15 @@ mod tests {
             created_at: 1,
             updated_at: 1,
             bytes_per_second: 0,
+            replacement: None,
+            pending_deletion: false,
         }
+    }
+
+    fn scratch_dir(name: &str) -> PathBuf {
+        let directory = std::env::temp_dir().join(format!("halo-download-{name}-{}", new_job_id()));
+        fs::create_dir_all(&directory).unwrap();
+        directory
     }
 
     #[test]
@@ -1527,36 +2381,25 @@ mod tests {
         assert!(validate_url("https://example.test/movie.mkv").is_ok());
     }
     #[test]
-    fn sanitizes_file_names_and_keeps_extension_whitelist() {
-        let media = DownloadMedia {
-            video_id: "movie:1".into(),
-            item_id: "movie:1".into(),
-            media_type: "movie".into(),
-            meta_id: None,
-            title: "Test".into(),
-            show_name: None,
-            episode_label: None,
-            poster: None,
-            addon_id: None,
-            binge_group: None,
-            filename: Some("../../bad name.exe".into()),
-            video_size: None,
-            video_hash: None,
-            stream_name: None,
-            stream_title: None,
-        };
-        let name =
-            unique_file_name(&media, "https://example.test/a", "movie:1", Path::new(".")).unwrap();
-        assert!(!name.contains(".."));
-        assert!(name.ends_with(".mkv"));
-    }
-    #[test]
-    fn content_range_total_is_parsed() {
+    fn content_range_is_parsed_and_impossible_ranges_are_refused() {
         let value = HeaderValue::from_static("bytes 10-99/100");
-        assert_eq!(parse_content_range_total(Some(&value)), Some(100));
-        assert_eq!(parse_content_range(Some(&value)), Some((10, 99, 100)));
-        let invalid = HeaderValue::from_static("bytes 10-x/100");
-        assert_eq!(parse_content_range(Some(&invalid)), None);
+        assert_eq!(
+            parse_content_range(Some(&value)),
+            Some(ContentRange {
+                start: 10,
+                end: 99,
+                total: 100
+            })
+        );
+        for invalid in [
+            "bytes 10-x/100",
+            "bytes 10-100/100",
+            "bytes 50-10/100",
+            "bytes 0-0/0",
+        ] {
+            let value = HeaderValue::from_static(invalid);
+            assert_eq!(parse_content_range(Some(&value)), None, "{invalid}");
+        }
     }
 
     #[test]
@@ -1568,6 +2411,24 @@ mod tests {
         let raw = serde_json::to_string(&document).unwrap();
         assert!(!raw.contains("source.example"));
         assert!(!raw.contains("authorization"));
+    }
+
+    #[test]
+    fn an_index_written_before_replacements_existed_still_loads() {
+        let mut value = serde_json::to_value(record(r"C:\Halo".into())).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("replacement");
+        object.remove("pending_deletion");
+        object["media"]
+            .as_object_mut()
+            .unwrap()
+            .remove("landscape_artwork");
+        let parsed: DownloadRecord = serde_json::from_value(value).unwrap();
+        assert!(parsed.replacement.is_none());
+        assert!(!parsed.pending_deletion);
+        let config: PersistedConfig = serde_json::from_str(r#"{"directory":"D:\\Halo"}"#).unwrap();
+        assert_eq!(config.directory.as_deref(), Some(r"D:\Halo"));
+        assert!(config.approved_roots.is_none());
     }
 
     #[test]
@@ -1586,12 +2447,39 @@ mod tests {
 
     #[test]
     fn caller_cannot_override_range_or_transport_headers() {
-        assert!(validate_headers(&HashMap::from([("Range".into(), "bytes=0-1".into(),)])).is_err());
+        for denied in ["Range", "Host", "Proxy-Authorization", "Keep-Alive"] {
+            assert!(
+                validate_headers(&HashMap::from([(denied.into(), "x".into())])).is_err(),
+                "{denied}"
+            );
+        }
         assert!(validate_headers(&HashMap::from([(
             "Authorization".into(),
             "Bearer source-token".into(),
         )]))
         .is_ok());
+        assert!(validate_headers(&HashMap::from([("X-Key".into(), "a\r\nb".into())])).is_err());
+    }
+
+    #[test]
+    fn subtitle_requests_need_a_short_language() {
+        let subtitle = |lang: &str| DownloadSubtitleRequest {
+            url: "https://subs.test/a.srt".into(),
+            lang: lang.into(),
+            id: "1".into(),
+            headers: HashMap::new(),
+        };
+        assert!(validate_subtitle(&subtitle("en")).is_ok());
+        assert!(validate_subtitle(&subtitle("")).is_err());
+        assert!(validate_subtitle(&subtitle(&"e".repeat(33))).is_err());
+    }
+
+    #[test]
+    fn media_without_identity_is_refused() {
+        let mut media = record(r"C:\Halo".into()).media;
+        assert!(validate_media(&media).is_ok());
+        media.title.clear();
+        assert!(validate_media(&media).is_err());
     }
 
     #[test]
@@ -1607,6 +2495,9 @@ mod tests {
     fn missing_download_roots_keep_safe_index_records() {
         let entry = record(r"C:\missing-drive\Halo".into());
         assert!(is_safe_record_path(&entry));
+        let mut nested = entry.clone();
+        nested.file_name = r"..\escape.mkv".into();
+        assert!(!is_safe_record_path(&nested));
     }
 
     #[test]
@@ -1650,10 +2541,56 @@ mod tests {
     }
 
     #[test]
+    fn backups_and_tombstones_are_neither_queued_nor_listed() {
+        let mut backup = record(r"C:\Halo".into());
+        backup.job_id = "backup".into();
+        backup.created_at = 1;
+        let mut replacement = record(r"C:\Halo".into());
+        replacement.job_id = "replacement".into();
+        replacement.created_at = 3;
+        replacement.status = DownloadStatus::Paused;
+        replacement.replacement = Some(ReplacementBackup::of(&backup));
+        let mut tombstone = record(r"C:\Halo".into());
+        tombstone.job_id = "tombstone".into();
+        tombstone.created_at = 2;
+        tombstone.pending_deletion = true;
+        let account = backup.account_key.clone();
+        let inner = Inner {
+            entries: HashMap::from([
+                (backup.job_id.clone(), backup),
+                (replacement.job_id.clone(), replacement),
+                (tombstone.job_id.clone(), tombstone),
+            ]),
+            active_account: Some(account.clone()),
+            active_job: None,
+            cancel: HashMap::new(),
+            directory: PathBuf::from(r"C:\Halo"),
+            approved_roots: vec![PathBuf::from(r"C:\Halo")],
+        };
+        assert_eq!(next_queued_job(&inner.entries, &account), None);
+        let listed: Vec<_> = inner
+            .visible_views()
+            .into_iter()
+            .map(|view| view.job_id)
+            .collect();
+        assert_eq!(listed, vec!["replacement".to_string()]);
+        assert_eq!(
+            inner
+                .visible_for_video(&account, "movie:1")
+                .map(|record| record.job_id),
+            Some("replacement".to_string())
+        );
+    }
+
+    #[test]
     fn http_failures_are_sanitized_by_retry_policy() {
         assert!(matches!(
             classify_http_status(403),
             Err(TransferError::Permanent(DownloadFailureCode::SourceExpired)),
+        ));
+        assert!(matches!(
+            classify_http_status(416),
+            Err(TransferError::Permanent(DownloadFailureCode::InvalidRange)),
         ));
         assert!(matches!(
             classify_http_status(503),
@@ -1670,15 +2607,149 @@ mod tests {
     }
 
     #[test]
+    fn a_missing_file_needs_a_new_source_but_a_network_failure_does_not() {
+        assert!(DownloadFailureCode::MissingFile.requires_new_source());
+        assert!(DownloadFailureCode::InvalidRange.requires_new_source());
+        assert!(!DownloadFailureCode::Network.requires_new_source());
+        assert!(!DownloadFailureCode::StorageFull.requires_new_source());
+    }
+
+    #[test]
+    fn free_space_keeps_the_reserve_and_never_overflows() {
+        assert!(has_sufficient_space(SPACE_RESERVE + 10, 10));
+        assert!(!has_sufficient_space(SPACE_RESERVE + 9, 10));
+        assert!(!has_sufficient_space(u64::MAX, u64::MAX));
+    }
+
+    #[test]
+    fn roots_are_remembered_once_newest_first_and_capped() {
+        let mut roots = Vec::new();
+        remember_root(&mut roots, Path::new(r"C:\A"));
+        remember_root(&mut roots, Path::new(r"D:\B"));
+        remember_root(&mut roots, Path::new(r"c:\a"));
+        remember_root(&mut roots, Path::new("relative"));
+        assert_eq!(roots, vec![PathBuf::from(r"c:\a"), PathBuf::from(r"D:\B")]);
+        for index in 0..40 {
+            remember_root(&mut roots, &PathBuf::from(format!(r"E:\{index}")));
+        }
+        assert_eq!(roots.len(), MAX_APPROVED_ROOTS);
+    }
+
+    #[test]
+    fn file_names_skip_any_name_another_record_holds() {
+        let directory = scratch_dir("names");
+        let existing = record(directory.to_string_lossy().into_owned());
+        let mut media = existing.media.clone();
+        media.filename = Some("film.mkv".into());
+        let first = choose_file_name(
+            &HashMap::new(),
+            &media,
+            "a".repeat(64).as_str(),
+            "b".repeat(64).as_str(),
+            &directory,
+        )
+        .unwrap();
+        let mut holder = existing;
+        holder.file_name = first.clone();
+        let entries = HashMap::from([(holder.job_id.clone(), holder)]);
+        let second = choose_file_name(
+            &entries,
+            &media,
+            "a".repeat(64).as_str(),
+            "b".repeat(64).as_str(),
+            &directory,
+        )
+        .unwrap();
+        assert_ne!(first, second);
+        assert!(second.ends_with("-2.mkv"));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn deletion_outside_the_approved_roots_touches_nothing() {
+        let approved = scratch_dir("approved");
+        let outside = scratch_dir("outside");
+        let victim = outside.join("keep.mkv");
+        fs::write(&victim, b"precious").unwrap();
+        let mut entry = record(outside.to_string_lossy().into_owned());
+        entry.file_name = "keep.mkv".into();
+        let result = remove_files(
+            &entry.files(),
+            &resolve_roots(std::slice::from_ref(&approved)),
+            None,
+        );
+        assert_eq!(result, Err(RemoveError::Containment));
+        assert!(victim.is_file());
+        let _ = fs::remove_dir_all(approved);
+        let _ = fs::remove_dir_all(outside);
+    }
+
+    #[test]
+    fn an_interrupted_replacement_finishes_on_the_next_launch() {
+        let root = scratch_dir("replacement");
+        let root_text = root.to_string_lossy().into_owned();
+        let mut old = record(root_text.clone());
+        old.job_id = "old".into();
+        old.file_name = "old.mkv".into();
+        old.subtitle_file_name = Some("old.en.srt".into());
+        old.status = DownloadStatus::Paused;
+        old.pending_deletion = true;
+        let mut new = record(root_text);
+        new.job_id = "new".into();
+        new.file_name = "new.mkv".into();
+        new.status = DownloadStatus::Queued;
+        new.replacement = Some(ReplacementBackup::of(&old));
+        for name in ["old.mkv", "old.en.srt", "new.mkv"] {
+            fs::write(root.join(name), b"x").unwrap();
+        }
+        let vault = scratch_dir("vault");
+        fs::write(request_path(&vault, "old"), b"sealed").unwrap();
+        let mut entries = HashMap::from([(old.job_id.clone(), old), (new.job_id.clone(), new)]);
+        finish_pending_deletions(
+            &mut entries,
+            &resolve_roots(std::slice::from_ref(&root)),
+            &vault,
+        );
+        assert!(!entries.contains_key("old"));
+        let finished = &entries["new"];
+        assert_eq!(finished.status, DownloadStatus::Done);
+        assert!(finished.replacement.is_none());
+        assert!(!root.join("old.mkv").exists());
+        assert!(!root.join("old.en.srt").exists());
+        assert!(root.join("new.mkv").is_file());
+        assert!(!request_path(&vault, "old").exists());
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(vault);
+    }
+
+    #[test]
+    fn deleting_a_backup_spares_every_file_its_replacement_owns() {
+        let root = scratch_dir("shared");
+        let root_text = root.to_string_lossy().into_owned();
+        let mut backup = record(root_text.clone());
+        backup.file_name = "shared.mkv".into();
+        let owner = record(root_text);
+        fs::write(root.join("shared.mkv"), b"x").unwrap();
+        let mut owner = owner;
+        owner.file_name = "shared.mkv".into();
+        let result = remove_files(
+            &backup.files(),
+            &resolve_roots(std::slice::from_ref(&root)),
+            Some(&owner.files()),
+        );
+        assert_eq!(result, Ok(()));
+        assert!(root.join("shared.mkv").is_file());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn durable_json_writes_replace_existing_windows_files() {
-        let directory = std::env::temp_dir().join(format!("halo-download-test-{}", new_job_id()));
-        fs::create_dir_all(&directory).unwrap();
+        let directory = scratch_dir("json");
         let path = directory.join("index.json");
         write_json(&path, &serde_json::json!({ "version": 1 })).unwrap();
         write_json(&path, &serde_json::json!({ "version": 2 })).unwrap();
         let value: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         assert_eq!(value["version"], 2);
-        let _ = fs::remove_file(path);
-        let _ = fs::remove_dir(directory);
+        let _ = fs::remove_dir_all(directory);
     }
 }
