@@ -514,14 +514,10 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     return () => window.removeEventListener('resize', syncVideoMargin)
   }, [fullscreen])
 
-  // Controls auto-hide while playing. An open rail, a pause, a scrub in
-  // progress, or a pointer resting on the seek bar pins them: all are states
-  // the user is acting inside. The last matters over a stream, where a preview
-  // frame can take longer than the hide delay to arrive. (Native:
-  // KeepsOsdVisible.)
+  // Controls auto-hide while playing, unless something pins them (see
+  // `pinned`, below the up-next state it reads).
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [seekHovered, setSeekHovered] = useState(false)
-  const pinned = railTab !== null || paused || dragValue !== null || seekHovered
   const poke = useCallback(() => {
     setControlsVisible(true)
     if (hideTimer.current) clearTimeout(hideTimer.current)
@@ -543,7 +539,6 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       if (videoClickTimer.current) clearTimeout(videoClickTimer.current)
     }
   }, [poke])
-  const chromeVisible = controlsVisible || pinned
 
   // One stall for two causes: the stream opening or starving, and a seek not
   // yet live. A paused player is never stalled, and a drag waits for its one
@@ -574,6 +569,20 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const [nextEpisode, setNextEpisode] = useState<NextEpisodeResult | null>(null)
   const [upNextVisible, setUpNextVisible] = useState(false)
   const [upNextSeconds, setUpNextSeconds] = useState(UP_NEXT_COUNTDOWN_SEC)
+  const upNextShown = upNextVisible && !!nextEpisode?.video
+
+  // An open rail, a pause, a scrub in progress, a pointer resting on the seek
+  // bar, or the up-next card pins the controls: all are states the user is
+  // acting inside. The seek bar matters over a stream, where a preview frame
+  // can take longer than the hide delay to arrive; the up-next card, because
+  // its buttons are what the user is about to press. (Native: KeepsOsdVisible.)
+  const pinned = railTab !== null || paused || dragValue !== null || seekHovered || upNextShown
+  const chromeVisible = controlsVisible || pinned
+  // A closed card hands back a full delay, as leaving the seek bar does,
+  // rather than the controls vanishing because the timer ran out behind it.
+  useEffect(() => {
+    if (!upNextShown) poke()
+  }, [upNextShown, poke])
   // The countdown, "Play now", and "Cancel" can race — whichever navigation
   // fires first wins, the rest become no-ops.
   const advanceFiredRef = useRef(false)
