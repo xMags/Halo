@@ -13,6 +13,7 @@ import {
   type DownloadSubtitleRequest,
   type DownloadView,
 } from '../downloads'
+import { useLocalPrefs } from '../localPrefs'
 import { useNav, type StreamsParams } from '../nav'
 import { useStreams, useWatchStates } from '../queries'
 import { useSettings } from '../settings'
@@ -61,6 +62,7 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
   const { data: watchStates } = useWatchStates()
   const { downloads } = useDownloads()
   const settings = useSettings()
+  const localPrefs = useLocalPrefs()
 
   const [filter, setFilter] = useState<SourceFilter>('all')
   const [sort, setSort] = useState<SourceSort>('Recommended')
@@ -102,13 +104,19 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
     const tracked = row && row.durationSec > 0
     return {
       preferredSubtitleLanguage: settings.preferredSubtitleLang ?? null,
-      // This client has never measured the line, which the sheet says outright.
-      lineMbps: 0,
+      // Zero until a download has measured the line; the sheet says so outright.
+      lineMbps: localPrefs.measuredLineMbps,
       durationSeconds: tracked ? row.durationSec : (params.runtimeMinutes ?? 0) * 60,
       watchedSeconds: tracked && !row.watched ? row.positionSec : 0,
       watchedDurationSeconds: tracked ? row.durationSec : 0,
     }
-  }, [watchStates, params.videoId, params.runtimeMinutes, settings.preferredSubtitleLang])
+  }, [
+    watchStates,
+    params.videoId,
+    params.runtimeMinutes,
+    settings.preferredSubtitleLang,
+    localPrefs.measuredLineMbps,
+  ])
 
   // A failed resolve still offers what is saved on this device.
   const resolve = useMemo(

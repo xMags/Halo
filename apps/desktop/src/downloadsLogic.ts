@@ -32,10 +32,16 @@ export async function opaqueDownloadOwner(serverUrl: string, userId: string): Pr
     .join('')
 }
 
+/**
+ * Season and episode read back out of a label such as "S01E05", as one
+ * sortable number. Addons and our own formatter disagree about whether the
+ * halves are run together, so one separator between them is accepted. Each
+ * number may run to five digits, so "S01E100" still finds its next episode.
+ */
 function episodeOrdinal(label?: string): number | null {
-  const match = label?.match(/^S(\d+)E(\d+)$/i)
+  const match = label?.match(/^\s*S(\d{1,5})[ ._-]?E(\d{1,5})\s*$/i)
   if (!match) return null
-  return Number(match[1]) * 10_000 + Number(match[2])
+  return Number(match[1]) * 100_000 + Number(match[2])
 }
 
 export function nextDownloadedEpisode<T extends DownloadedEpisodeSummary>(
@@ -116,4 +122,98 @@ export function formatDownloadBytes(value: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1)
   return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`
+}
+
+/** The throughput strip keeps one sample per second for this many seconds. */
+export const THROUGHPUT_SLOTS = 30
+
+/** Appends one sample, dropping the oldest once the window is full. */
+export function pushThroughputSample(samples: readonly number[], value: number): number[] {
+  const next = [...samples, Number.isFinite(value) && value > 0 ? value : 0]
+  return next.length > THROUGHPUT_SLOTS ? next.slice(next.length - THROUGHPUT_SLOTS) : next
+}
+
+interface PausableRecord {
+  job_id: string
+  status: DownloadStatus
+}
+
+function isActive(status: DownloadStatus): boolean {
+  return status === 'queued' || status === 'downloading'
+}
+
+/**
+ * Paused as a page means nothing is moving and something the bulk pause
+ * stopped is waiting to be told to move again. Queued counts as moving: it
+ * starts on its own.
+ */
+export function isPausedAll(records: readonly PausableRecord[], pausedByBulk: ReadonlySet<string>): boolean {
+  if (pausedByBulk.size === 0) return false
+  let tracked = false
+  for (const record of records) {
+    if (isActive(record.status)) return false
+    if (pausedByBulk.has(record.job_id)) {
+      tracked = true
+      if (record.status !== 'paused') return false
+    }
+  }
+  return tracked
+}
+
+/**
+ * What "Pause all" stops, and which ids it remembers. The remembered set is
+ * what keeps "Resume all" from restarting a transfer the user paused on its
+ * own; ids already paused by an earlier bulk pause stay remembered.
+ */
+export function planPauseAll(
+  records: readonly PausableRecord[],
+  pausedByBulk: ReadonlySet<string>,
+): { pause: string[]; remembered: Set<string> } {
+  const pause: string[] = []
+  const remembered = new Set<string>()
+  for (const record of records) {
+    if (isActive(record.status)) {
+      pause.push(record.job_id)
+      remembered.add(record.job_id)
+    } else if (record.status === 'paused' && pausedByBulk.has(record.job_id)) {
+      remembered.add(record.job_id)
+    }
+  }
+  return { pause, remembered }
+}
+
+/** The transfers "Resume all" restarts: only those the bulk pause stopped. */
+export function planResumeAll(records: readonly PausableRecord[], pausedByBulk: ReadonlySet<string>): string[] {
+  return records
+    .filter((record) => record.status === 'paused' && pausedByBulk.has(record.job_id))
+    .map((record) => record.job_id)
+}
+
+interface ArtworkMeta {
+  background?: string
+  videos?: ReadonlyArray<{ id: string; thumbnail?: string }>
+}
+
+/**
+ * A download row's landscape artwork: the episode still, which is more
+ * specific than the title backdrop, then the backdrop. Null when the
+ * metadata has neither, so the row keeps its portrait poster.
+ */
+export function selectLandscapeArtwork(videoId: string, meta: ArtworkMeta): string | null {
+  const still = meta.videos?.find((video) => video.id === videoId)?.thumbnail
+  if (still) return still
+  return meta.background || null
+}
+
+/** The fastest line reading kept, in megabits per second. */
+export const MAX_LINE_MBPS = 100_000
+
+/**
+ * Whether a throughput sample is a new line-speed peak worth writing. Small
+ * gains are ignored so the store is not rewritten every second of a fast
+ * transfer.
+ */
+export function isNewLinePeak(sampleMbps: number, currentMbps: number): boolean {
+  if (!Number.isFinite(sampleMbps) || sampleMbps <= 0) return false
+  return Math.min(sampleMbps, MAX_LINE_MBPS) > currentMbps * 1.1
 }
