@@ -16,7 +16,7 @@ no build orchestration on purpose.
 | `packages/core` | Addon protocol client, subtitle utils (OpenSubtitles hash, srt→vtt, languages), typed API client | `pnpm --filter @halo/core typecheck` |
 | `apps/api` | Hono + Drizzle/better-sqlite3 sync backend | `pnpm --filter @halo/api test` (vitest), then curl |
 | `apps/mobile` | Expo (dev-client) iOS app, expo-router, VLC player | typecheck + `pnpm --filter @halo/mobile exec expo export --platform ios` |
-| `apps/desktop` | Tauri v2 streaming-only client (Windows-first), React UI over mpv | typecheck + `cargo build` in `src-tauri` (needs `vendor/mpv/libmpv-2.dll`, see `vendor/README.md`) |
+| `apps/desktop` | Tauri v2 client (Windows-first), React UI over mpv, device-local downloads | typecheck + `cargo build` in `src-tauri` (needs `vendor/mpv/libmpv-2.dll`, see `vendor/README.md`) |
 
 Dev: `pnpm dev` (api :8787, needs `apps/api/.env` from `.env.example`).
 Client work against a disposable server: `pnpm --filter @halo/api dev:fixtures`
@@ -32,12 +32,13 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
 
 ## Architecture invariants
 
-- **Desktop is a thin client over mpv, Stremio-style.** Streaming only — no
-  downloads subsystem, ever. All resolution via the fat-server endpoints
+- **Desktop is a thin client over mpv, Stremio-style.** All resolution via
+  the fat-server endpoints
   (`HaloClient` + tauri-plugin-http native fetch — no CORS allowlisting);
   playback via a generic mpv channel (`mpv_cmd`/`mpv_set`/`mpv_get`/
   `mpv_observe` + `mpv-prop`/`mpv-event` events), never a typed player API
-  across the JS↔Rust boundary. Two Windows compositing invariants (each broke
+  across the JS↔Rust boundary. Downloads are the one thing it does locally
+  (see the downloads invariant below). Two Windows compositing invariants (each broke
   video invisibly when violated): mpv's `wid` must be the top-level window
   HWND, not an intermediate child; and the `transparent: true` window config
   requires the `DwmEnableBlurBehindWindow(fEnable: FALSE)` counter-call in
@@ -89,12 +90,19 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
 - **ASS/SRT files are handed to VLC untouched.** libVLC renders both natively
   (ASS with full styling). `srtToVtt` in core is for future non-VLC clients
   only — it must stay off the mobile playback path.
-- **Downloads are device-local** (`expo-file-system/legacy` resumable — the
-  legacy import is deliberate: the new FS API has no resume/progress). One
-  entry per videoId, grouped by `itemId` in UI, chosen subtitle downloaded
-  alongside. Known limit: in-flight downloads don't survive app kill; entries
-  are re-marked paused on cold start. True background URLSession downloads are
-  a flagged follow-up.
+- **Downloads are device-local, on mobile and desktop.** One entry per
+  videoId, grouped by `itemId` in UI, chosen subtitle downloaded alongside.
+  - **mobile**: `expo-file-system/legacy` resumable (the legacy import is
+    deliberate: the new FS API has no resume/progress). Known limit: in-flight
+    downloads don't survive app kill; entries are re-marked paused on cold
+    start. True background URLSession downloads are a flagged follow-up.
+  - **desktop**: a Rust engine (`src-tauri/src/downloads.rs`) owns the queue,
+    the index and the files; the webview only sends `downloads_*` commands and
+    renders `download-changed` events. The index never holds a source URL or
+    header: those live DPAPI-encrypted in a per-job request vault. Interrupted
+    transfers re-queue on launch and resume by `Range` + `If-Range` only when
+    the source gave a validator. Behaviour and UI mirror the native WinUI Halo
+    Desktop's download engine and Downloads page.
 
 ## Mobile gotchas (each cost a debugging session)
 
