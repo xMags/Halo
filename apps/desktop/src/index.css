@@ -121,9 +121,6 @@
   /* Ambient glows behind the shell. */
   --glow-a: rgba(96, 205, 255, 0.129);
   --glow-b: rgba(168, 120, 255, 0.102);
-  /* Skeleton shimmer tone: base and sweep highlight. */
-  --sk1: rgba(255, 255, 255, 0.05);
-  --sk2: rgba(255, 255, 255, 0.14);
   color-scheme: dark;
 }
 
@@ -180,9 +177,6 @@
   --bds: rgba(0, 0, 0, 0.122);
   --glow-a: rgba(0, 95, 184, 0.075);
   --glow-b: rgba(120, 80, 200, 0.055);
-  /* Skeleton shimmer tone: base and sweep highlight. */
-  --sk1: rgba(0, 0, 0, 0.04);
-  --sk2: rgba(0, 0, 0, 0.09);
   color-scheme: light;
 }
 
@@ -393,27 +387,22 @@ a {
 
 /* ── Skeletons ─────────────────────────────────────────────────────────── */
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--sk1) 0%,
-    var(--sk2) 50%,
-    var(--sk1) 100%
-  );
-  background-size: 200% 100%;
-  animation: skeletonShimmer 1.5s linear infinite;
+  background: var(--sb);
+  border-radius: 4px;
+  animation: skeletonPulse 1.4s ease-in-out infinite alternate;
 }
-@keyframes skeletonShimmer {
+@keyframes skeletonPulse {
   from {
-    background-position: 200% 0;
+    opacity: 0.45;
   }
   to {
-    background-position: -200% 0;
+    opacity: 0.95;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .skeleton {
     animation: none;
-    background: var(--sb);
+    opacity: 0.7;
   }
 }
 
@@ -431,29 +420,74 @@ a {
   z-index: 1;
 }
 
+/* Framed surfaces for posters, cards and thumbnails so they never look like raw black cutouts */
+.poster-skeleton {
+  pointer-events: none;
+  flex: 0 0 var(--pw);
+  width: var(--pw);
+}
+.poster-skeleton .poster-art {
+  border: 1px solid var(--cs);
+  border-radius: var(--cr, 6px);
+  background: var(--cd);
+}
+
+.cw-card-skeleton {
+  pointer-events: none;
+}
+.cw-card-skeleton .cw-art {
+  border: 1px solid var(--cs);
+  border-radius: 6px;
+  background: var(--cd);
+}
+
 .hero-skeleton {
   pointer-events: none;
+  border: 1px solid var(--cs);
+}
+.hero-skeleton .hero-bg {
+  background: var(--cd);
 }
 .hero-skeleton-title {
   border-radius: 6px;
 }
-.poster-skeleton {
-  pointer-events: none;
-}
-.cw-card-skeleton {
-  pointer-events: none;
-}
+
 .shelf-skeleton {
   pointer-events: none;
 }
+
 .detail-skeleton {
   pointer-events: none;
 }
-.topmatch-skeleton {
+.detail-skeleton .detail-poster {
+  border: 1px solid var(--cs);
+  background: var(--cd);
+}
+.detail-skeleton .detail-backdrop {
+  border: 1px solid var(--cs);
+  background: var(--cd);
+}
+
+.top-match-skeleton {
   pointer-events: none;
 }
+.top-match-skeleton .top-match-art {
+  border: 1px solid var(--cs);
+  border-radius: 4px;
+  background: var(--cd);
+}
+
 .dl-skeleton-item {
   pointer-events: none;
+  background: var(--cd);
+  border: 1px solid var(--cs);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.dl-skeleton-item .dl-thumb {
+  border: 1px solid var(--cs);
+  border-radius: 4px;
+  background: var(--cd);
 }
 
 .state-note {

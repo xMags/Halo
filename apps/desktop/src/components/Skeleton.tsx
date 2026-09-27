@@ -10,8 +10,8 @@ interface SkeletonProps {
 }
 
 /**
- * Primitive shimmer placeholder element that adapts to both Dark and Light
- * themes, following WinUI / Fluent 2 shimmer guidance.
+ * Primitive soft-pulsing placeholder element that adapts to both Dark and Light
+ * themes, avoiding harsh moving glare over stark boxes.
  */
 export function Skeleton({
   width,
@@ -76,7 +76,7 @@ export function ShelfSkeleton({
         <div className="spacer" />
         <div className="skeleton skeleton-text" style={{ width: 48, height: 14 }} />
       </div>
-      <div className="shelf-track" style={{ overflow: 'hidden' }}>
+      <div className="shelf-scroll">
         {Array.from({ length: count }).map((_, index) => (
           <PosterCardSkeleton key={index} />
         ))}
@@ -94,7 +94,7 @@ export function ContinueShelfSkeleton({ count = 4 }: { count?: number }) {
         <div className="spacer" />
         <div className="skeleton skeleton-text" style={{ width: 80, height: 14 }} />
       </div>
-      <div className="shelf-track" style={{ overflow: 'hidden' }}>
+      <div className="shelf-scroll">
         {Array.from({ length: count }).map((_, index) => (
           <ContinueCardSkeleton key={index} />
         ))}
@@ -155,15 +155,15 @@ export function DetailSkeleton() {
   )
 }
 
-/** Top search match placeholder matching `.topmatch`. */
+/** Top search match placeholder matching `.top-match`. */
 export function TopMatchSkeleton() {
   return (
-    <div className="topmatch topmatch-skeleton" aria-hidden>
-      <div className="art topmatch-art skeleton" />
-      <div className="topmatch-body" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <div className="skeleton skeleton-text" style={{ width: 68, height: 12, marginBottom: 8 }} />
-        <div className="skeleton skeleton-text" style={{ width: 220, height: 24, marginBottom: 10 }} />
-        <div className="skeleton skeleton-text" style={{ width: 150, height: 14 }} />
+    <div className="top-match top-match-skeleton" aria-hidden>
+      <div className="art top-match-art skeleton" />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4, minWidth: 0 }}>
+        <div className="skeleton skeleton-text" style={{ width: 70, height: 12 }} />
+        <div className="skeleton skeleton-text" style={{ width: '60%', maxWidth: 260, height: 22 }} />
+        <div className="skeleton skeleton-text" style={{ width: '40%', maxWidth: 180, height: 13 }} />
       </div>
     </div>
   )
