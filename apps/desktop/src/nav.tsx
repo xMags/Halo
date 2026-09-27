@@ -1,3 +1,4 @@
+import type { MetaPreview } from '@halo/core'
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 
 /**
@@ -50,6 +51,23 @@ export interface StreamsParams {
   runtimeMinutes?: number
 }
 
+/** One poster in a catalog grid. `metaLine` replaces the release year under it. */
+export interface CatalogItem {
+  meta: MetaPreview
+  metaLine?: string
+}
+
+/**
+ * A shelf's "See all": the shelf's title, source label and items as they were
+ * when it was pressed, laid out as a grid. A snapshot, as natively, so the
+ * grid shows exactly what the shelf held.
+ */
+export interface CatalogParams {
+  title: string
+  source?: string
+  items: CatalogItem[]
+}
+
 export type Screen =
   | { name: 'home' }
   | { name: 'search' }
@@ -57,6 +75,7 @@ export type Screen =
   | { name: 'downloads' }
   | { name: 'settings' }
   | { name: 'detail'; type: string; id: string }
+  | ({ name: 'catalog' } & CatalogParams)
   | ({ name: 'player' } & PlayerParams)
 
 interface NavContextValue {

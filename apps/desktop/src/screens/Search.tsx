@@ -21,6 +21,7 @@ const DEBOUNCE_MS = 350
 const MIN_QUERY = 2
 
 export function Search() {
+  const { push } = useNav()
   const term = useSearchQuery()
   const [debounced, setDebounced] = useState(term)
   const [history, setHistory] = useState<SearchHistoryEntry[]>(() => getSearchHistory())
@@ -194,21 +195,41 @@ export function Search() {
       {/* The result shelves sit outside the padded block: a shelf carries its
           own gutter, and nesting it inside one would double it. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 26, padding: '0 0 40px' }}>
-        {shown.map((group) => (
-          <Shelf
-            key={group.key}
-            title={group.title}
-            source={`${group.addonName.toUpperCase()} · ${group.metas.length} RESULTS`}
-          >
-            {group.metas.map((meta) => (
-              <PosterCard
-                key={`${meta.type}:${meta.id}`}
-                meta={meta}
-                onBeforePress={() => recordTerm(query)}
-              />
-            ))}
-          </Shelf>
-        ))}
+        {shown.map((group) => {
+          const source = `${group.addonName.toUpperCase()} · ${group.metas.length} RESULTS`
+          return (
+            <Shelf
+              key={group.key}
+              title={group.title}
+              source={source}
+              action={
+                <button
+                  type="button"
+                  className="btn-link"
+                  aria-label="See all shelf items"
+                  onClick={() =>
+                    push({
+                      name: 'catalog',
+                      title: group.title,
+                      source,
+                      items: group.metas.map((meta) => ({ meta })),
+                    })
+                  }
+                >
+                  See all
+                </button>
+              }
+            >
+              {group.metas.map((meta) => (
+                <PosterCard
+                  key={`${meta.type}:${meta.id}`}
+                  meta={meta}
+                  onBeforePress={() => recordTerm(query)}
+                />
+              ))}
+            </Shelf>
+          )
+        })}
       </div>
     </div>
   )

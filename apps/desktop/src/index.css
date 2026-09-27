@@ -1479,6 +1479,70 @@ input[type='range'] {
   padding: 16px var(--gu) 32px;
 }
 
+/* ── Catalog (a shelf's "See all") ──────────────────────────────────────
+   The native CatalogPage: a 24px gutter at every width (it does not step up
+   with the layout tiers), and a wrap grid whose cells are the poster plus a
+   22px gap wide and the art plus 52px of caption tall. */
+.page-back {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  /* 14px before the title once the header's 16px gap is counted. */
+  margin: 0 -2px 2px 0;
+  border-bottom-color: var(--ces);
+}
+.catalog-view .page-head {
+  padding: 12px 24px;
+}
+/* HaloPageTitle and HaloMonoData line heights, so the back button and the
+   labels bottom-align on the same line as natively. */
+.catalog-view .page-title {
+  line-height: 1.1733;
+}
+.catalog-labels .mono {
+  line-height: 16px;
+}
+.catalog-labels {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.catalog-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, calc(var(--pw) + 22px));
+  grid-auto-rows: calc(var(--pw) * 1.5 + 52px);
+  padding: 16px 24px 32px;
+}
+/* WinUI's grid item takes 4px off the cell's right and bottom and centres
+   the card in what is left: 9px in from the left, 4px down. */
+.catalog-grid > .poster {
+  margin: 4px 0 0 9px;
+}
+.catalog-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.catalog-empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.catalog-empty-body {
+  font-size: 14px;
+  color: var(--t3);
+}
+
 /* ── Detail ────────────────────────────────────────────────────────────── */
 .detail-backdrop {
   position: relative;

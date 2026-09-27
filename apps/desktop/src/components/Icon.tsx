@@ -10,9 +10,9 @@ import type { ReactNode } from 'react'
  * from the same viewBox, so a 13px icon keeps the 16px proportions with a
  * proportionally lighter stroke, exactly as the prototype draws them.
  *
- * The navigation pane and the sources sheet are the exceptions: they
- * reproduce the native WinUI Halo Desktop glyph for glyph, so they draw
- * Segoe Fluent glyphs through `FluentIcon`.
+ * The navigation pane, the sources sheet and the header's back button are
+ * the exceptions: they reproduce the native WinUI Halo Desktop glyph for
+ * glyph, so they draw Segoe Fluent glyphs through `FluentIcon`.
  */
 
 interface Spec {

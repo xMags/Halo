@@ -4,6 +4,7 @@ import { NavRail } from './components/NavRail'
 import { TitleBar } from './components/TitleBar'
 import { NavProvider, useNav } from './nav'
 import { SessionProvider, useSession } from './session'
+import { Catalog } from './screens/Catalog'
 import { Connect } from './screens/Connect'
 import { Detail } from './screens/Detail'
 import { Downloads } from './screens/Downloads'
@@ -131,6 +132,8 @@ function Stack() {
       return <Settings />
     case 'detail':
       return <Detail type={screen.type} id={screen.id} />
+    case 'catalog':
+      return <Catalog title={screen.title} source={screen.source} items={screen.items} />
     case 'player':
       return null // handled by Shell
   }
