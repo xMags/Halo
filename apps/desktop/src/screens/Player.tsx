@@ -514,15 +514,28 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     return () => window.removeEventListener('resize', syncVideoMargin)
   }, [fullscreen])
 
-  // Controls auto-hide while playing. An open rail, a pause, or a scrub in
-  // progress pins them: all three are states the user is acting inside.
+  // Controls auto-hide while playing. An open rail, a pause, a scrub in
+  // progress, or a pointer resting on the seek bar pins them: all are states
+  // the user is acting inside. The last matters over a stream, where a preview
+  // frame can take longer than the hide delay to arrive. (Native:
+  // KeepsOsdVisible.)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pinned = railTab !== null || paused || dragValue !== null
+  const [seekHovered, setSeekHovered] = useState(false)
+  const pinned = railTab !== null || paused || dragValue !== null || seekHovered
   const poke = useCallback(() => {
     setControlsVisible(true)
     if (hideTimer.current) clearTimeout(hideTimer.current)
     hideTimer.current = setTimeout(() => setControlsVisible(false), CONTROLS_HIDE_DELAY_MS)
   }, [])
+  const seekHoverChange = useCallback(
+    (hovering: boolean) => {
+      setSeekHovered(hovering)
+      // Leaving the bar is activity. The controls get a full delay from here
+      // instead of vanishing because the timer ran out while the bar held them.
+      if (!hovering) poke()
+    },
+    [poke],
+  )
   useEffect(() => {
     poke()
     return () => {
@@ -1136,6 +1149,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
             position={shown}
             duration={total}
             bufferedTo={bufferedTo}
+            onHoverChange={seekHoverChange}
             onPreview={setDragValue}
             onCommit={(value) => {
               seekTo(value)
@@ -1649,17 +1663,22 @@ function Scrubber({
   position,
   duration,
   bufferedTo,
+  onHoverChange,
   onPreview,
   onCommit,
 }: {
   position: number
   duration: number
   bufferedTo: number
+  /** Whether the pointer is over the bar with its preview card up. */
+  onHoverChange: (hovering: boolean) => void
   onPreview: (value: number | null) => void
   onCommit: (value: number) => void
 }) {
   const track = useRef<HTMLDivElement>(null)
   const preview = useScrubPreview()
+  const hovering = preview.hover !== null
+  useEffect(() => onHoverChange(hovering), [hovering, onHoverChange])
 
   const valueAt = (clientX: number): number => {
     const el = track.current
