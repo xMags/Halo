@@ -18,6 +18,7 @@
  *   --cts  control stroke         --ns        nav selection
  *   --cth  control hover          --su/--ca/--cr  success / caution / critical
  *   --sb   subtle hover           --df/--dh   danger fill / hover
+ *   --sbp  subtle pressed (WinUI SubtleFillColorTertiary; not in the handoff)
  *   --tt   tile, --tb secondary   --dv        divider
  *   --p1/--p2  placeholder art    --pt        placeholder caption
  *   --ds   sheet + menu surface   --ib/--is   info fill / stroke
