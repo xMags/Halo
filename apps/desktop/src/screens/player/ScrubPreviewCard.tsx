@@ -93,7 +93,16 @@ export function ScrubPreviewCard({
         {/* Opacity, not visibility: a child set visible would stay on screen
             after the card hides, stranded at the card's reset offset. */}
         <canvas ref={canvasRef} style={{ opacity: hasImage && !skeleton ? 1 : 0 }} />
-        {skeleton && <div className="pscrub-skeleton" />}
+        {skeleton && (
+          <div className="pscrub-skeleton">
+            {/* The player's loading ring on a faint track, so it reads as
+                loading at a glance whatever point its arc is at. */}
+            <svg className="pscrub-ring" width={28} height={28} viewBox="0 0 48 48" aria-hidden>
+              <circle className="pscrub-ring-track" cx="24" cy="24" r="20" />
+              <circle className="pscrub-ring-arc" cx="24" cy="24" r="20" />
+            </svg>
+          </div>
+        )}
       </div>
       <div className="pscrub-time">{hover ? formatClock(hover.seconds) : ''}</div>
     </div>
