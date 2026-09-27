@@ -59,7 +59,9 @@ export function ScrubPreviewCard({
       aria-hidden
     >
       <div className="pscrub-picture">
-        <canvas ref={canvasRef} style={{ visibility: hasImage ? 'visible' : 'hidden' }} />
+        {/* Opacity, not visibility: a child set visible would stay on screen
+            after the card hides, stranded at the card's reset offset. */}
+        <canvas ref={canvasRef} style={{ opacity: hasImage ? 1 : 0 }} />
       </div>
       <div className="pscrub-time">{hover ? formatClock(hover.seconds) : ''}</div>
     </div>
