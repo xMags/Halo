@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import { FluentIcon } from './FluentIcon'
 import { Icon } from './Icon'
 
 /**
@@ -66,17 +67,28 @@ export function Menu({
 export function MenuItem({
   label,
   checked,
+  radio = false,
   onClick,
 }: {
   label: string
   /** Renders the accent tick that marks the active choice in a sort menu. */
   checked?: boolean
+  /** WinUI's RadioMenuFlyoutItem: the choice is marked with a bullet, not a tick. */
+  radio?: boolean
   onClick: () => void
 }) {
   return (
-    <button type="button" className="menu-item" role="menuitem" onClick={onClick}>
+    <button
+      type="button"
+      className="menu-item"
+      role={radio ? 'menuitemradio' : 'menuitem'}
+      aria-checked={radio ? Boolean(checked) : undefined}
+      onClick={onClick}
+    >
       {checked !== undefined && (
-        <span className="menu-check">{checked && <Icon name="check" size={14} />}</span>
+        <span className="menu-check">
+          {checked && (radio ? <FluentIcon glyph="radioBullet" size={16} /> : <Icon name="check" size={14} />)}
+        </span>
       )}
       <span>{label}</span>
     </button>

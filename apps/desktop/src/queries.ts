@@ -158,13 +158,15 @@ export function useStreams(type: string, videoId: string) {
   return useQuery({
     queryKey: ['streams', type, videoId],
     queryFn: async () => {
+      const started = performance.now()
       const { results, errors } = await getClient().getStreams(type, videoId)
       const groups: AddonStreams[] = results.map((r) => ({
         addonId: r.addon.id,
         addonName: r.addon.name,
         streams: r.streams,
       }))
-      return { groups, errors }
+      // The sources sheet reports how long the resolve took.
+      return { groups, errors, elapsedSeconds: (performance.now() - started) / 1000 }
     },
   })
 }
