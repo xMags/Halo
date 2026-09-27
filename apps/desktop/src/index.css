@@ -157,6 +157,7 @@
 
   --titlebar: 32px;
   --nav-w: 224px;
+  --nav-compact-w: 48px;
   --caption-w: 138px;
 
   /* Settings is capped on window width, matching the XAML visual states. */
@@ -931,20 +932,66 @@ input[type='range'] {
 }
 
 /* ── Navigation pane ───────────────────────────────────────────────────────
-   WinUI's NavigationView in Left mode, the pane Windows 11 Settings draws:
-   36px rows inset 4px from the pane edges with 4px between them, primary
-   text in every state, a subtle fill (not an accent tint) for hover and
-   selection, and a 3×16 accent pill marking the selected row. The metrics
-   and state brushes follow the NavigationView theme resources, and 83ms is
-   WinUI's ControlFasterAnimationDuration. The pane itself is not a surface:
-   it sits on the window's Mica colour like the native one does. */
+   The native WinUI Halo Desktop's NavigationView (Left mode), reproduced:
+   224px open or a 48px compact strip, 36px rows 4px apart and inset 4px,
+   icons 12px into the row and labels at 44px. Its selection overrides are
+   kept too: the accent-tinted fill with accent text and no indicator pill.
+   Unselected rows use WinUI's own subtle fills. The pane is not a surface;
+   it sits on the window colour like the native one does over Mica. */
 .nav {
   flex: 0 0 var(--nav-w);
   width: var(--nav-w);
   display: flex;
   flex-direction: column;
-  padding: 2px 4px 4px;
+  padding: 0 4px 4px;
   overflow: hidden;
+  transition:
+    flex-basis 200ms cubic-bezier(0.1, 0.9, 0.2, 1),
+    width 200ms cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+.nav-compact {
+  flex-basis: var(--nav-compact-w);
+  width: var(--nav-compact-w);
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav {
+    transition: none;
+  }
+}
+.fluent-icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 400 16px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+}
+/** PaneToggleButton: 40×36, centred 24px below the title bar. */
+.nav-toggle {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 36px;
+  margin: 6px 0 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--t1);
+  transition: background-color 83ms linear;
+}
+/** HaloNavSectionHeaderStyle, padded 12,6,12,8 from the pane. The style sets
+    CharacterSpacing on a ContentPresenter, which never reaches the text it
+    generates, so natively these headers draw untracked; so do these. */
+.nav-header {
+  flex: 0 0 auto;
+  padding: 6px 8px 8px;
+  font: 700 12px/16px var(--mono);
+  color: var(--t3);
+  white-space: nowrap;
+}
+.nav-header-jump {
+  margin-top: 14px;
 }
 .nav-item,
 .jump-row,
@@ -954,51 +1001,40 @@ input[type='range'] {
   width: 100%;
   display: flex;
   align-items: center;
-  margin: 2px 0;
   border-radius: 4px;
   color: var(--t1);
+  white-space: nowrap;
+  overflow: hidden;
   transition: background-color 83ms linear;
 }
+.nav-toggle:hover,
 .nav-item:hover,
 .jump-row:hover,
 .account-row:hover {
   background: var(--sb);
 }
+.nav-toggle:active,
 .nav-item:active,
 .jump-row:active,
 .account-row:active {
   background: var(--sbp);
   color: var(--t2);
 }
-/* The icon sits centred in a 40px column (the compact pane's width minus its
-   margins) and the label starts after it, at 44px. Posters and the avatar
-   centre in the same column so every label in the pane shares one edge. */
 .nav-item {
   height: 36px;
+  margin: 2px 0;
   gap: 16px;
   padding: 0 12px;
   font-size: 14px;
 }
-.nav-item-active {
-  background: var(--sb);
-}
+.nav-item-active,
 .nav-item-active:hover {
-  background: var(--sbp);
+  background: var(--ns);
+  color: var(--ac);
 }
 .nav-item-active:active {
-  background: var(--sb);
-}
-.nav-pill {
-  position: absolute;
-  z-index: 1;
-  left: 0;
-  top: 50%;
-  width: 3px;
-  height: 16px;
-  margin-top: -8px;
-  border-radius: 2px;
-  background: var(--ac);
-  pointer-events: none;
+  background: var(--chd);
+  color: var(--ac);
 }
 /** InfoBadge: a 16px accent pill, counts only. */
 .nav-badge {
@@ -1012,34 +1048,17 @@ input[type='range'] {
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
-.nav-separator {
-  flex: 0 0 auto;
-  height: 1px;
-  margin: 5px 12px 6px;
-  background: var(--dv);
-}
-/** NavigationViewItemHeader — BodyStrong, lined up with the labels' column. */
-.nav-header {
-  flex: 0 0 auto;
-  padding: 8px 12px 6px;
-  font: 600 14px/20px var(--sans);
-  color: var(--t1);
-}
-/** Two-line row text: a 14px primary line over a 12px caption. */
 .nav-lines {
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
-.nav-secondary {
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--t3);
-}
+/** 44px rows (40 drawn): a 24×34 poster in the icon's place, title at 50px. */
 .jump-row {
-  height: 44px;
-  gap: 12px;
-  padding: 0 8px;
+  height: 40px;
+  margin: 2px 0;
+  gap: 10px;
+  padding: 0 12px;
 }
 .jump-art {
   width: 24px;
@@ -1048,17 +1067,40 @@ input[type='range'] {
   border-radius: 4px;
 }
 .jump-title {
-  font-size: 14px;
+  font-size: 15px;
   line-height: 20px;
 }
+/** HaloMonoData. */
+.jump-meta {
+  font: 400 12px/16px var(--mono);
+  color: var(--t3);
+}
+/** HaloPaneRowButtonStyle: 44px, the avatar 8px from the pane edge. */
 .account-row {
   height: 44px;
   gap: 10px;
-  padding: 0 6px;
+  padding: 0 4px;
+}
+.account-avatar {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  object-fit: cover;
+}
+.account-lines {
+  gap: 2px;
 }
 .account-name {
-  font-size: 14px;
-  line-height: 20px;
+  min-height: 21px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 21px;
+}
+.account-role {
+  font: 700 12px/16px var(--mono);
+  letter-spacing: 1.44px;
+  color: var(--ac);
 }
 .avatar {
   width: 28px;
