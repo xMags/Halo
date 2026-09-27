@@ -6,7 +6,7 @@ import { PosterCard } from '../components/PosterCard'
 import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { Shelf } from '../components/Shelf'
-import { episodeTag, formatTimeLeft, runtimeMinutes } from '../format'
+import { episodeTag, formatTimeLeft, runtimeMinutes, videoIdTag } from '../format'
 import { buildContinueWatching, type ContinueWatchingItem } from '../homeRows'
 import { useNav } from '../nav'
 import {
@@ -45,7 +45,7 @@ type Filter = (typeof FILTERS)[number]['value']
 
 export function Home() {
   const [filter, setFilter] = useState<Filter>('all')
-  const { setRoot } = useNav()
+  const { setRoot, push } = useNav()
   const query = useSearchQuery()
   const { data: addons, isLoading, error } = useEffectiveAddons()
   const { data: watchStates } = useWatchStates()
@@ -106,9 +106,28 @@ export function Home() {
             title="Continue watching"
             source={`${continueItems.length} IN PROGRESS`}
             action={
-              <span className="btn-link soon" title="Coming soon">
+              <button
+                type="button"
+                className="btn-link"
+                aria-label="See all in progress titles"
+                onClick={() =>
+                  push({
+                    name: 'catalog',
+                    title: 'Continue watching',
+                    source: `${continueItems.length} IN PROGRESS`,
+                    // The grid has nowhere for time left or progress; the
+                    // poster and episode tag are what identify a title there.
+                    items: continueItems.map((item) => {
+                      const state = (watchStates ?? []).find((s) => s.itemId === item.itemId)
+                      return state
+                        ? { meta: item.meta, metaLine: videoIdTag(state.videoId, item.meta.id) }
+                        : { meta: item.meta }
+                    }),
+                  })
+                }
+              >
                 See all
-              </span>
+              </button>
             }
           >
             {continueItems.map((item) => (
@@ -375,18 +394,27 @@ function shelfTitle(name: string, type: string): string {
 }
 
 function CatalogShelf({ shelf }: { shelf: BrowsableCatalog }) {
-  const { setRoot } = useNav()
+  const { push } = useNav()
   const { data: metas, isLoading } = useCatalog(shelf.addonId, shelf.catalog.type, shelf.catalog.id)
 
   // A catalog that errored or came back empty doesn't earn a shelf.
   if (!isLoading && (!metas || metas.length === 0)) return null
 
+  const title = shelfTitle(shelf.catalog.name ?? shelf.addonName, shelf.catalog.type)
+  const source = shelf.addonName.toUpperCase()
   return (
     <Shelf
-      title={shelfTitle(shelf.catalog.name ?? shelf.addonName, shelf.catalog.type)}
-      source={shelf.addonName.toUpperCase()}
+      title={title}
+      source={source}
       action={
-        <button type="button" className="btn-link" onClick={() => setRoot('library')}>
+        <button
+          type="button"
+          className="btn-link"
+          aria-label="See all shelf items"
+          onClick={() =>
+            push({ name: 'catalog', title, source, items: (metas ?? []).map((meta) => ({ meta })) })
+          }
+        >
           See all
         </button>
       }
