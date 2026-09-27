@@ -39,8 +39,11 @@ export interface StreamInfo {
   detail: string
 }
 
+/** The file name hint is searched too: some addons put the release only there. */
 function searchText(stream: Stream): string {
-  return [stream.name, stream.title, stream.description].filter(Boolean).join('\n')
+  return [stream.name, stream.title, stream.description, stream.behaviorHints?.filename]
+    .filter(Boolean)
+    .join('\n')
 }
 
 function matchQuality(text: string): Quality | null {
@@ -97,7 +100,7 @@ function matchSize(text: string): number | null {
   const match = SIZE_RE.exec(text)
   if (!match) return null
   const value = Number(match[1]!.replace(',', '.'))
-  if (!Number.isFinite(value)) return null
+  if (!Number.isFinite(value) || value <= 0) return null
   return /^g/i.test(match[2]!) ? value * 1024 ** 3 : value * 1024 ** 2
 }
 
@@ -136,7 +139,7 @@ function matchLanguages(text: string): string[] {
  * and addons are wildly inconsistent about which pictograms they use.
  */
 function detailLine(stream: Stream, filename: string): string {
-  const raw = stream.title ?? stream.description ?? ''
+  const raw = stream.title || stream.description || ''
   const rest = raw
     .split('\n')
     .filter((line) => line.trim() && line.trim() !== filename)
@@ -147,10 +150,30 @@ function detailLine(stream: Stream, filename: string): string {
     .trim()
 }
 
+/** Shared by the fallback and the check below so they cannot disagree. */
+const UNNAMED_FILENAME = 'Unnamed source'
+
+function firstLine(value: string | undefined): string {
+  return (value ?? '').split(/\r?\n/)[0]!.trim()
+}
+
+/**
+ * Whether the name came from the stream rather than the shared placeholder,
+ * which identifies nothing and must never decide that two sources are the
+ * same file.
+ */
+export function hasIdentifyingFilename(info: StreamInfo): boolean {
+  return info.filename.length > 0 && info.filename !== UNNAMED_FILENAME
+}
+
 export function parseStreamInfo(stream: Stream): StreamInfo {
   const text = searchText(stream)
-  const firstTitleLine = (stream.title ?? stream.description ?? '').split('\n')[0]?.trim()
-  const filename = stream.behaviorHints?.filename ?? firstTitleLine ?? stream.name ?? 'Unnamed source'
+  const filename =
+    stream.behaviorHints?.filename ||
+    firstLine(stream.title) ||
+    firstLine(stream.description) ||
+    firstLine(stream.name) ||
+    UNNAMED_FILENAME
 
   return {
     filename,
