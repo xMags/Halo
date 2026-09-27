@@ -11,6 +11,7 @@ mod downloads;
 mod mpv;
 mod oauth;
 mod scrub_preview;
+mod window_icon;
 
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
@@ -400,6 +401,9 @@ fn main() {
             // Windows rejects the attribute and keeps square corners — that is
             // a cosmetic difference, so the result is deliberately ignored.
             let _ = set_corner_preference(hwnd, false);
+
+            // Tauri sets only a 16px small icon, which the taskbar stretches.
+            window_icon::apply(hwnd);
 
             // Tauri's undecorated-window shadow asks DWM for a one-pixel
             // frame. That frame becomes a bright focus-colour line at the
