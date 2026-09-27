@@ -340,6 +340,38 @@ describe('addons: server-fetched manifests', () => {
     expect(adminView.global[0]!.transportUrl).toBe(CINEMETA_URL)
   })
 
+  it('flags a personal copy of a global addon and strips its catalogs on the wire', async () => {
+    const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
+    const admin = await adminToken()
+    const bobToken = await userToken('bob')
+    await app.request('/addons/global', authed(admin, [CINEMETA_URL], 'PUT'))
+
+    type Entry = { providedGlobally?: boolean; manifest: { catalogs: unknown[] } }
+    const saved = (await (await app.request('/addons', authed(bobToken, [CINEMETA_URL]))).json()) as Entry[]
+    expect(saved[0]!.providedGlobally).toBe(true)
+
+    const view = (await (await app.request('/addons', authed(bobToken))).json()) as { global: Entry[]; user: Entry[] }
+    expect(view.user[0]!.providedGlobally).toBe(true)
+    // Home would otherwise list the global entry's catalogs a second time.
+    expect(view.user[0]!.manifest.catalogs).toEqual([])
+    expect(view.global[0]!.providedGlobally).toBeUndefined()
+    expect(view.global[0]!.manifest.catalogs).toHaveLength(1)
+  })
+
+  it('a personal copy is back in use once the admin removes the global entry', async () => {
+    const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
+    const admin = await adminToken()
+    const bobToken = await userToken('bob')
+    await app.request('/addons/global', authed(admin, [CINEMETA_URL], 'PUT'))
+    await app.request('/addons', authed(bobToken, [CINEMETA_URL]))
+    await app.request('/addons/global', authed(admin, [], 'PUT'))
+
+    type Entry = { providedGlobally?: boolean; manifest: { catalogs: unknown[] } }
+    const view = (await (await app.request('/addons', authed(bobToken))).json()) as { user: Entry[] }
+    expect(view.user[0]!.providedGlobally).toBeUndefined()
+    expect(view.user[0]!.manifest.catalogs).toHaveLength(1)
+  })
+
   it('admin status follows the groups claim, not a stored flag', async () => {
     const { app } = makeApp({ safeFetch: mockSafeFetch({ 'https://cinemeta.test': CINEMETA }) })
     // Same subject: admin while the group is present, demoted once it is gone.
