@@ -3886,10 +3886,24 @@ body.player-active .titlebar {
   z-index: 2;
 }
 .pscrub-picture {
+  position: relative;
   height: 112px;
   border-radius: 4px;
   background: #060608;
   overflow: hidden;
+}
+/* While a frame is on its way: the app's skeleton pulse (the sources sheet's
+   timing), lit a little against the black picture well. */
+.pscrub-skeleton {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.08);
+  animation: sxPulse 1.3s linear infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pscrub-skeleton {
+    animation: none;
+  }
 }
 .pscrub-picture canvas {
   display: block;
