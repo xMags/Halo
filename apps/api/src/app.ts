@@ -729,12 +729,10 @@ type EffectiveAddon = AddonEntry & { transportUrl: string }
  * Wire-only redaction for hidden catalogs: the stored manifest keeps them, but
  * clients never see them — Home/search lose the rows with zero client logic.
  * The flag still ships because Settings must distinguish "catalogs hidden"
- * from "addon has no catalogs" to offer the un-hide toggle. A personal copy
- * of a global addon loses its catalogs the same way, so no client lists the
- * global entry's rows a second time.
+ * from "addon has no catalogs" to offer the un-hide toggle.
  */
 function stripHiddenCatalogs<T extends AddonEntry>(a: T): T {
-  return a.hideCatalogs || a.providedGlobally ? { ...a, manifest: { ...a.manifest, catalogs: [] } } : a
+  return a.hideCatalogs ? { ...a, manifest: { ...a.manifest, catalogs: [] } } : a
 }
 
 /**

@@ -43,7 +43,7 @@ export function useEffectiveAddons() {
     queryKey: ['addons'],
     queryFn: () => getClient().getAddons(),
     staleTime: 5 * 60_000,
-    select: (data) => [...data.global, ...data.user],
+    select: (data) => [...data.global, ...data.user.filter((a) => !a.providedGlobally)],
   })
 }
 
