@@ -157,13 +157,14 @@ export function Detail({ type, id }: { type: string; id: string }) {
     .join(' · ')
 
   return (
-    <div className="view">
-      <div style={{ paddingBottom: 48 }}>
-        <div className="art detail-backdrop">
-          <ArtImage src={meta.background ?? meta.poster} label="BACKDROP" />
-          <div className="detail-backdrop-fade" />
-        </div>
+    <div className="view detail-view">
+      {/* Full-bleed background art covering the entire page */}
+      <div className="art detail-bg" aria-hidden>
+        <ArtImage src={meta.background ?? meta.poster} label="BACKDROP" />
+        <div className="detail-bg-scrim" />
+      </div>
 
+      <div className="detail-scroll">
         <div className={`detail-grid ${isSeries ? '' : 'detail-grid-movie'}`}>
           <div className="art detail-poster">
             <ArtImage src={meta.poster} label={meta.name} />
