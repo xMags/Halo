@@ -1019,18 +1019,6 @@ input[type='range'] {
   font-size: 14px;
   color: var(--t2);
 }
-.theme-toggle {
-  width: 46px;
-  height: var(--titlebar);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--t3);
-}
-.theme-toggle:hover {
-  background: var(--sb);
-  color: var(--t1);
-}
 /** The 138px the design reserves for the system caption buttons. This window
     is undecorated, so the app draws its own three inside that reservation. */
 .caption-slot {
