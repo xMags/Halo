@@ -1,8 +1,9 @@
 /* Halo desktop — the applied design system.
 
-   Token names match the design handoff (and the `Styles/Tokens.xaml` it was
-   derived from), so any value here can be checked against the handoff table by
-   name. `src/theme.ts` documents what each name means.
+   Token names mirror the brushes in the native WinUI Halo Desktop's
+   `Styles/Tokens.xaml` (HaloNavSelBrush is `--ns`, and so on), so a value here
+   can be checked against that file by name. `src/theme.ts` documents what each
+   name means.
 
    Both palettes live here rather than being written from JS, so the first
    paint is already correct. `localPrefs.applyTheme` stamps
@@ -364,8 +365,8 @@ a {
 /* ── Placeholder art ───────────────────────────────────────────────────── */
 /**
  * The fill behind poster/backdrop/still art while it loads or is missing.
- * The handoff ships a diagonal stripe PNG as a stand-in for real artwork; this
- * draws the same stand-in in CSS so no placeholder bitmap ships in the product.
+ * The stand-in for missing artwork is a diagonal stripe, drawn in CSS so no
+ * placeholder bitmap ships in the product.
  */
 .art {
   position: relative;
