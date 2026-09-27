@@ -5,6 +5,7 @@ import { Icon } from '../components/Icon'
 import { PosterCard } from '../components/PosterCard'
 import { SectionHeader } from '../components/SectionHeader'
 import { Shelf } from '../components/Shelf'
+import { ShelfSkeleton, TopMatchSkeleton } from '../components/Skeleton'
 import { formatRelative } from '../format'
 import { useNav } from '../nav'
 import { useLibrary, useSearch } from '../queries'
@@ -180,8 +181,9 @@ export function Search() {
           </div>
         )}
         {active && isFetching && groups.length === 0 && (
-          <div className="state-note" style={{ paddingLeft: 0 }}>
-            <span className="spinner" /> Searching…
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
+            <div className="kicker">TOP MATCH</div>
+            <TopMatchSkeleton />
           </div>
         )}
         {active && !isFetching && groups.length === 0 && (
@@ -191,6 +193,13 @@ export function Search() {
         )}
 
       </div>
+
+      {active && isFetching && groups.length === 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 26, padding: '0 0 40px' }}>
+          <ShelfSkeleton titleWidth={160} count={6} />
+          <ShelfSkeleton titleWidth={140} count={6} />
+        </div>
+      )}
 
       {/* The result shelves sit outside the padded block: a shelf carries its
           own gutter, and nesting it inside one would double it. */}

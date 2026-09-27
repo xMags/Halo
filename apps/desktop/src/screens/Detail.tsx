@@ -2,6 +2,7 @@ import type { MetaDetail, MetaVideo, WatchState } from '@halo/core'
 import { useMemo, useState } from 'react'
 import { ArtImage } from '../components/ArtImage'
 import { Icon } from '../components/Icon'
+import { DetailSkeleton } from '../components/Skeleton'
 import { useDownloads, type DownloadView } from '../downloads'
 import { airYear, episodeTag, formatAirDate, formatTimeLeft, runtimeMinutes } from '../format'
 import { useNav, type StreamsParams } from '../nav'
@@ -100,13 +101,7 @@ export function Detail({ type, id }: { type: string; id: string }) {
   }
 
   if (isLoading) {
-    return (
-      <div className="view">
-        <div className="state-note">
-          <span className="spinner" /> Loading title…
-        </div>
-      </div>
-    )
+    return <DetailSkeleton />
   }
   if (error || !meta) {
     return (

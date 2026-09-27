@@ -4,6 +4,7 @@ import { Icon } from '../components/Icon'
 import { Menu, MenuAnchor, MenuItem } from '../components/Menu'
 import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
+import { DownloadRowSkeleton } from '../components/Skeleton'
 import {
   chooseDownloadDirectory,
   downloadEtaSeconds,
@@ -323,11 +324,6 @@ export function Downloads() {
               {error ?? directoryError}
             </div>
           )}
-          {loading && (
-            <div className="state-note" style={{ padding: 0 }}>
-              <span className="spinner" /> Loading downloads…
-            </div>
-          )}
           {!loading && directory && !directory.exists && (
             <div className="state-note error-text" style={{ padding: 0 }}>
               The download folder is unavailable. Choose another folder to continue.
@@ -444,6 +440,14 @@ export function Downloads() {
                   selected={item.job_id === selectedItem?.job_id}
                   onSelect={() => setSelected(item.job_id)}
                 />
+              ))}
+            </div>
+          )}
+
+          {loading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+              {Array.from({ length: 4 }).map((_, index) => (
+                <DownloadRowSkeleton key={`skeleton-${index}`} />
               ))}
             </div>
           )}

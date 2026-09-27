@@ -5,6 +5,7 @@ import { Menu, MenuAnchor, MenuItem } from '../components/Menu'
 import { PosterCard } from '../components/PosterCard'
 import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
+import { PosterCardSkeleton } from '../components/Skeleton'
 import { buildLibraryRow } from '../homeRows'
 import { useLibrary, useWatchStates } from '../queries'
 
@@ -92,8 +93,10 @@ export function Library() {
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
         {error && <div className="state-note error-text">{String(error)}</div>}
         {isLoading && (
-          <div className="state-note">
-            <span className="spinner" /> Loading…
+          <div className="lib-grid">
+            {Array.from({ length: 12 }).map((_, index) => (
+              <PosterCardSkeleton key={`skeleton-${index}`} showKind />
+            ))}
           </div>
         )}
         {!isLoading && active.length === 0 && (
