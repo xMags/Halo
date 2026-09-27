@@ -6,9 +6,8 @@
  * wrong theme). This file documents what the names mean and exports the
  * handful of numbers that have to reach JS.
  *
- * Token names match the design handoff, which in turn matches the WinUI
- * `Styles/Tokens.xaml` the design was derived from — so a value here can be
- * checked against the handoff table by name:
+ * Token names mirror the brushes in the native WinUI Halo Desktop's
+ * `Styles/Tokens.xaml`, so a value here can be checked against that file:
  *
  *   --m    window (Mica)          --t1..--t4  text, brightest to faintest
  *   --ly   content layer          --ac        accent (text-safe)
@@ -18,7 +17,7 @@
  *   --cts  control stroke         --ns        nav selection
  *   --cth  control hover          --su/--ca/--cr  success / caution / critical
  *   --sb   subtle hover           --df/--dh   danger fill / hover
- *   --sbp  subtle pressed (WinUI SubtleFillColorTertiary; not in the handoff)
+ *   --sbp  subtle pressed (WinUI's SubtleFillColorTertiary)
  *   --tt   tile, --tb secondary   --dv        divider
  *   --p1/--p2  placeholder art    --pt        placeholder caption
  *   --ds   sheet + menu surface   --ib/--is   info fill / stroke
@@ -58,5 +57,5 @@ export const CONTENT_BREAKPOINTS = {
   wide: 1500,
 } as const
 
-/** Hero rotation dwell, paused on hover (handoff: 6s). */
+/** Hero rotation dwell, paused on hover. */
 export const HERO_DWELL_MS = 6_000
