@@ -21,7 +21,7 @@
  *   --tt   tile, --tb secondary   --dv        divider
  *   --p1/--p2  placeholder art    --pt        placeholder caption
  *   --ds   sheet + menu surface   --ib/--is   info fill / stroke
- *   --fl   flyout (dialog surface)
+ *   --fl   flyout (dialog surface) --crb       critical background (InfoBar)
  *   --chd  chart dim              --hs1/--hs2 hero scrim stops
  *
  * The player overlay is pinned to dark in both themes and uses literal
@@ -52,8 +52,6 @@ export const NAV_PANE_WIDTH = 224
 export const CONTENT_BREAKPOINTS = {
   /** Poster 148, continue card 300, gutter 30, hero 360. */
   medium: 1100,
-  /** The downloads detail pane appears. */
-  downloadsPane: 1200,
   /** Poster 168, continue card 336, gutter 36, hero 420. */
   wide: 1500,
 } as const

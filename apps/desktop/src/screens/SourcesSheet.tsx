@@ -611,7 +611,8 @@ function kickerFor(params: StreamsParams): string {
   return redundant ? episode : `${episode} · ${show}`
 }
 
-function playDownload(push: ReturnType<typeof useNav>['push'], item: DownloadView) {
+/** Opens the player on a finished download; the Downloads page plays through this too. */
+export function playDownload(push: ReturnType<typeof useNav>['push'], item: DownloadView) {
   push({
     name: 'player',
     sourceKind: 'download',

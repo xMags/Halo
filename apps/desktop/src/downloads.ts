@@ -471,6 +471,11 @@ export function showInExplorer(jobId?: string): void {
   })
 }
 
+/** Closes the page's error bar; the next action's result replaces it anyway. */
+export function dismissActionError(): void {
+  publish({ actionError: null })
+}
+
 /** Asks for a new download folder; `failed` means the choice could not be used. */
 export async function changeDownloadFolder(): Promise<'changed' | 'cancelled' | 'failed'> {
   try {
