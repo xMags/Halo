@@ -181,9 +181,11 @@ export function Search() {
           </div>
         )}
         {active && isFetching && groups.length === 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
-            <div className="kicker">TOP MATCH</div>
-            <TopMatchSkeleton />
+          <div className="search-cols" style={{ marginTop: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+              <div className="kicker">TOP MATCH</div>
+              <TopMatchSkeleton />
+            </div>
           </div>
         )}
         {active && !isFetching && groups.length === 0 && (
