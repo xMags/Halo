@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import { DialogHost } from './components/Dialog'
 import { NavRail } from './components/NavRail'
 import { TitleBar } from './components/TitleBar'
 import { NavProvider, useNav } from './nav'
@@ -144,6 +145,7 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
         <Routes />
+        <DialogHost />
       </SessionProvider>
     </QueryClientProvider>
   )

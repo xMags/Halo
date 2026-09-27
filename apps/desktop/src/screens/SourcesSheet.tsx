@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getClient } from '../api'
+import { showDialog } from '../components/Dialog'
 import { FluentIcon } from '../components/FluentIcon'
 import { Menu, MenuAnchor, MenuItem } from '../components/Menu'
 import {
@@ -76,7 +77,6 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
   const [infoOpen, setInfoOpen] = useState(false)
   const [closing, setClosing] = useState(false)
   const [busyKey, setBusyKey] = useState<string | null>(null)
-  const [downloadFailed, setDownloadFailed] = useState(false)
   const [revealRequest, setRevealRequest] = useState(0)
 
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -173,7 +173,6 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
     setFilter('all')
     setSort('Recommended')
     setColdRevealed(false)
-    setDownloadFailed(false)
     resetView()
     void queryClient.resetQueries({ queryKey: ['streams', params.type, params.videoId], exact: true })
   }
@@ -289,7 +288,6 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
     const record = resolve.records.get(key)
     if (!record?.stream?.url || busyKey) return
     setBusyKey(key)
-    setDownloadFailed(false)
     const request = {
       media: downloadMedia(record),
       url: record.stream.url,
@@ -309,19 +307,31 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
       let outcome = await begin(false)
       // One download per video: swapping the source has to be deliberate.
       if (outcome === 'replacement_required') {
-        const replace = window.confirm(
-          'Replace the saved source?\n\nHalo will keep the current file until the replacement finishes successfully.',
-        )
+        const replace = await showDialog({
+          title: 'Replace the saved source?',
+          body: 'Halo will keep the current file until the replacement finishes successfully.',
+          primary: 'Replace',
+          close: 'Keep current',
+          defaultButton: 'close',
+        })
         if (!replace) return
         outcome = await begin(true)
       }
-      if (outcome === 'replacement_required') setDownloadFailed(true)
-      else setRoot('downloads')
+      if (outcome !== 'replacement_required') {
+        // The transfer is on another page, so the sheet gets out of the way.
+        setRoot('downloads')
+        return
+      }
     } catch {
-      setDownloadFailed(true)
+      // Reported below, like any other start that did not happen.
     } finally {
       setBusyKey(null)
     }
+    await showDialog({
+      title: 'Download could not start',
+      body: 'Check the source, free storage, and download folder, then try again.',
+      close: 'Close',
+    })
   }
 
   const copyName = async (key: string, file: string) => {
@@ -504,15 +514,6 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
               }
               action={failed ? 'Retry connection' : 'Ask them again'}
               onAction={retry}
-            />
-          )}
-          {downloadFailed && (
-            <Banner
-              tone="caution"
-              title="Download could not start"
-              body="Check the source, free storage, and download folder, then try again."
-              action="Close"
-              onAction={() => setDownloadFailed(false)}
             />
           )}
 
