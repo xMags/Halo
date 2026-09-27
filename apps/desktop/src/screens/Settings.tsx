@@ -1,6 +1,7 @@
 import { LANGUAGE_OPTIONS, type AddonEntry } from '@halo/core'
-import { useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import mark from '../assets/halo-mark.png'
+import avatar from '../assets/user-avatar.png'
 import { useBuildInfo } from '../about'
 import { getServerUrl } from '../api'
 import { Icon } from '../components/Icon'
@@ -8,6 +9,7 @@ import { Segmented } from '../components/Segmented'
 import { Toggle } from '../components/Toggle'
 import { initials } from '../format'
 import { setLocalPrefs, useLocalPrefs } from '../localPrefs'
+import { subtitlePreviewMetrics } from '../playerLogic'
 import {
   useAddons,
   useMe,
@@ -17,7 +19,13 @@ import {
   useSetGlobalAddons,
 } from '../queries'
 import { describeStatus, useServerStatus } from '../serverStatus'
-import { setSettingsSection, useSettingsSection, type SettingsSection } from '../settingsSection'
+import { RAIL_ANCHOR_FRACTION, activeSettingsSection, isScrolledToEnd } from '../settingsRail'
+import {
+  SETTINGS_SECTIONS,
+  clearSettingsSectionRequest,
+  useSettingsSectionRequest,
+  type SettingsSection,
+} from '../settingsSection'
 import { useSession } from '../session'
 import { useSettings, useUpdateSettings } from '../settings'
 import {
@@ -29,6 +37,7 @@ import {
   SUBTITLE_SCALE_STEP,
 } from '../subtitleStyle'
 import type { ThemeChoice } from '../theme'
+import { subtitleCaptionShadow } from './player/SubtitlePreview'
 
 const RAIL: Array<{ key: SettingsSection; label: string; hint: string }> = [
   { key: 'appearance', label: 'Appearance', hint: 'Theme' },
@@ -38,12 +47,84 @@ const RAIL: Array<{ key: SettingsSection; label: string; hint: string }> = [
   { key: 'account', label: 'Server & account', hint: 'Sync, identity, version' },
 ]
 
+function sectionElement(form: HTMLElement | null, key: SettingsSection): HTMLElement | null {
+  return form?.querySelector<HTMLElement>(`[data-settings-section="${key}"]`) ?? null
+}
+
+/**
+ * One scrolling form beside a fixed rail, as the native Settings page is. The
+ * rail does not switch pages: it lights the section being read and jumps to
+ * a section when clicked.
+ */
 export function Settings() {
-  const section = useSettingsSection()
   const { data: build } = useBuildInfo()
+  const request = useSettingsSectionRequest()
+  const scroller = useRef<HTMLDivElement>(null)
+  const form = useRef<HTMLDivElement>(null)
+  /**
+   * The section last jumped to. It is held at the top while content above it
+   * is still arriving, until the reader scrolls for themselves.
+   */
+  const pinned = useRef<SettingsSection | null>(null)
+  const [active, setActive] = useState<SettingsSection>('appearance')
+
+  const updateActive = useCallback(() => {
+    const view = scroller.current
+    if (!view || view.clientHeight <= 0) return
+    const viewTop = view.getBoundingClientRect().top
+    const tops = SETTINGS_SECTIONS.map((key) => {
+      const section = sectionElement(form.current, key)
+      return section ? section.getBoundingClientRect().top - viewTop : Number.POSITIVE_INFINITY
+    })
+    const atEnd = isScrolledToEnd(view.scrollTop, view.scrollHeight, view.clientHeight)
+    const index = activeSettingsSection(tops, view.clientHeight * RAIL_ANCHOR_FRACTION, atEnd)
+    setActive(SETTINGS_SECTIONS[index] ?? 'appearance')
+  }, [])
+
+  const jumpTo = useCallback(
+    (key: SettingsSection) => {
+      const view = scroller.current
+      const section = sectionElement(form.current, key)
+      if (!view || !section) return
+      // An immediate jump, as the native rail makes.
+      view.scrollTop += section.getBoundingClientRect().top - view.getBoundingClientRect().top
+      pinned.current = key
+      updateActive()
+    },
+    [updateActive],
+  )
+
+  const releasePin = () => {
+    pinned.current = null
+  }
+
+  // A deep link asks for a section. Taken once the form is laid out, so it
+  // lands whether Settings was already open or is opening because of it.
+  useLayoutEffect(() => {
+    if (!request) return
+    jumpTo(request)
+    clearSettingsSectionRequest()
+  }, [request, jumpTo])
+
+  // Sections move without any scrolling when content above them finishes
+  // loading, as the addon list does, and the visible height changes with the
+  // window. Either can change which section is being read, and a load would
+  // carry a section just jumped to away from the top.
+  useEffect(() => {
+    const view = scroller.current
+    const content = form.current
+    if (!view || !content) return
+    const observer = new ResizeObserver(() => {
+      if (pinned.current) jumpTo(pinned.current)
+      else updateActive()
+    })
+    observer.observe(view)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [jumpTo, updateActive])
 
   return (
-    <div className="view">
+    <div className="view view-col">
       <div className="set-page">
         <div className="set-rail">
           <div className="set-rail-title">Settings</div>
@@ -52,8 +133,9 @@ export function Settings() {
               <button
                 key={item.key}
                 type="button"
-                className={`set-rail-btn ${section === item.key ? 'set-rail-btn-active' : ''}`}
-                onClick={() => setSettingsSection(item.key)}
+                className={`set-rail-btn ${active === item.key ? 'set-rail-btn-active' : ''}`}
+                aria-current={active === item.key ? 'location' : undefined}
+                onClick={() => jumpTo(item.key)}
               >
                 <span className="set-rail-label">{item.label}</span>
                 <span className="set-rail-hint">{item.hint}</span>
@@ -84,23 +166,61 @@ export function Settings() {
           </div>
         </div>
 
-        <div className="set-form">
-          {section === 'appearance' && <AppearanceSection />}
-          {section === 'addons' && <AddonsSection />}
-          {section === 'playback' && <PlaybackSection />}
-          {section === 'subtitles' && <SubtitlesSection />}
-          {section === 'account' && <AccountSection />}
+        <div
+          ref={scroller}
+          className="set-scroll"
+          onScroll={updateActive}
+          onWheel={releasePin}
+          onPointerDown={releasePin}
+          onKeyDown={releasePin}
+        >
+          <div ref={form} className="set-form">
+            <AppearanceSection />
+            <AddonsSection />
+            <PlaybackSection />
+            <SubtitlesSection />
+            <AccountSection />
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function SectionHead({ title, sub }: { title: string; sub: string }) {
+/** A section of the form: its heading, then its controls at the native spacing. */
+function Section({
+  id,
+  gap,
+  title,
+  sub,
+  children,
+}: {
+  id: SettingsSection
+  gap: number
+  title: string
+  sub: string
+  children: ReactNode
+}) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div className="set-h">{title}</div>
-      <div className="set-sub">{sub}</div>
+    <section className="set-section" data-settings-section={id} style={{ gap }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div className="set-h">{title}</div>
+        <div className="set-sub">{sub}</div>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+/** A labelled row in a settings card, with its control at the far end. (Native: SettingRow.) */
+function SettingRow({ label, hint, children }: { label: ReactNode; hint: string; children: ReactNode }) {
+  return (
+    <div className="set-row">
+      <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span className="opt-label">{label}</span>
+        <span className="set-row-hint">{hint}</span>
+      </span>
+      {children}
     </div>
   )
 }
@@ -156,11 +276,12 @@ function AppearanceSection() {
   const prefs = useLocalPrefs()
 
   return (
-    <div className="set-section">
-      <SectionHead
-        title="Appearance"
-        sub="Choose how Halo looks. System follows your Windows setting."
-      />
+    <Section
+      id="appearance"
+      gap={14}
+      title="Appearance"
+      sub="Choose how Halo looks. System follows your Windows setting."
+    >
       <div style={{ display: 'flex', gap: 12 }}>
         {THEME_CARDS.map((card) => (
           <button
@@ -186,7 +307,7 @@ function AppearanceSection() {
           </button>
         ))}
       </div>
-    </div>
+    </Section>
   )
 }
 
@@ -206,7 +327,7 @@ function providesLine(item: AddonEntry): string {
 }
 
 function AddonsSection() {
-  const { data: addons } = useAddons()
+  const { data: addons, isPending, isError, refetch } = useAddons()
   const { data: me } = useMe()
   const setAddons = useSetAddons()
   const setGlobalAddons = useSetGlobalAddons()
@@ -234,7 +355,7 @@ function AddonsSection() {
     setAdding(true)
     setAddError(null)
     try {
-      // Own entries always carry their URL (the caller sent it) — only global
+      // Own entries always carry their URL (the caller sent it); only global
       // entries are redacted, and only for non-admins, who never get here.
       await setAddons.mutateAsync([...userAddons.map((a) => a.transportUrl!), transportUrl])
       setUrl('')
@@ -259,7 +380,7 @@ function AddonsSection() {
   /**
    * Order is priority: the first addon that can answer a resolution request
    * wins, so dragging a row is a real setting, not decoration. Only rows
-   * within one scope reorder against each other — the server keeps the global
+   * within one scope reorder against each other: the server keeps the global
    * and per-user lists apart, and they resolve in that order.
    */
   const reorder = (scope: 'yours' | 'global', fromId: string, toId: string) => {
@@ -352,12 +473,43 @@ function AddonsSection() {
     )
   }
 
+  // A failed refresh keeps showing the list it already had; only a first
+  // load with nothing to show is an error.
+  let body: ReactNode
+  if (isPending) {
+    body = (
+      <div className="set-state">
+        <span className="spinner spinner-32" />
+        <span>Refreshing addons…</span>
+      </div>
+    )
+  } else if (isError && !addons) {
+    body = (
+      <div className="set-state">
+        <span className="error-text">Addons could not be refreshed.</span>
+        <button type="button" className="btn" onClick={() => void refetch()}>
+          Retry
+        </button>
+      </div>
+    )
+  } else if (all.length === 0) {
+    body = <div className="set-state set-state-quiet">No addons are installed for this account.</div>
+  } else {
+    body = (
+      <div className="list-card">
+        {globalAddons.map((item) => row(item, 'global'))}
+        {userAddons.map((item) => row(item, 'yours'))}
+      </div>
+    )
+  }
+
   return (
-    <div className="set-section">
-      <SectionHead
-        title="Addons"
-        sub="Catalogs, streams and subtitles come from these. Order sets priority."
-      />
+    <Section
+      id="addons"
+      gap={14}
+      title="Addons"
+      sub="Catalogs, streams and subtitles come from these. Order sets priority."
+    >
       <div style={{ display: 'flex', gap: 8 }}>
         <input
           className="field spacer"
@@ -372,6 +524,7 @@ function AddonsSection() {
         <button
           type="button"
           className="btn-accent"
+          style={{ paddingInline: 18 }}
           disabled={adding || !url.trim()}
           onClick={() => void add()}
         >
@@ -379,21 +532,8 @@ function AddonsSection() {
         </button>
       </div>
       {addError && <div className="error-text">{addError}</div>}
-
-      {all.length === 0 ? (
-        <div className="set-sub">No addons yet — paste a Stremio-compatible manifest URL above.</div>
-      ) : (
-        <div className="list-card">
-          {globalAddons.map((item) => row(item, 'global'))}
-          {userAddons.map((item) => row(item, 'yours'))}
-        </div>
-      )}
-      {globalAddons.length > 0 && !isAdmin && (
-        <div className="set-sub" style={{ fontSize: 13 }}>
-          Global addons are installed for everyone by this server&apos;s admin.
-        </div>
-      )}
-    </div>
+      {body}
+    </Section>
   )
 }
 
@@ -431,90 +571,69 @@ function PlaybackSection() {
   const prefs = useLocalPrefs()
 
   return (
-    <div className="set-section">
-      <SectionHead
-        title="Playback"
-        sub="Applied to every stream mpv opens. Changes take effect on the next file."
-      />
+    <Section
+      id="playback"
+      gap={10}
+      title="Playback"
+      sub="Applied to every stream mpv opens. Changes take effect on the next file."
+    >
       <div className="list-card">
-        <div className="list-row">
-          <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span className="opt-label">Default audio language</span>
-            <span className="opt-hint">Picked when the file offers a match</span>
-          </span>
+        <SettingRow label="Default audio language" hint="Picked when the file offers a match">
           <LanguageSelect
             value={settings.preferredAudioLang}
             noneLabel="First track"
             onChange={(value) => updateSettings.mutate({ preferredAudioLang: value })}
           />
-        </div>
-        <div className="list-row">
-          <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span className="opt-label">Default subtitles</span>
-            <span className="opt-hint">Falls back to addon results</span>
-          </span>
+        </SettingRow>
+        <SettingRow label="Default subtitles" hint="Falls back to addon results">
           <LanguageSelect
             value={settings.preferredSubtitleLang}
             noneLabel="Off"
             onChange={(value) => updateSettings.mutate({ preferredSubtitleLang: value })}
           />
-        </div>
-        <div className="list-row">
-          <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span className="opt-label">Autoplay next episode</span>
-            <span className="opt-hint">Prefetched, so the handoff needs no addon round-trip</span>
-          </span>
+        </SettingRow>
+        <SettingRow label="Autoplay next episode" hint="8 second countdown, cancellable">
           <Toggle
             label="Autoplay next episode"
             on={settings.autoplayNextEpisode ?? true}
             onChange={(next) => updateSettings.mutate({ autoplayNextEpisode: next })}
           />
-        </div>
-        <div className="list-row">
-          <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span className="opt-label">Resume where I left off</span>
-            <span className="opt-hint">Ignored under 30 seconds watched</span>
-          </span>
+        </SettingRow>
+        <SettingRow label="Resume where I left off" hint="Ignored under 30 seconds watched">
           <Toggle
             label="Resume where I left off"
             on={prefs.resumePlayback}
             onChange={(next) => setLocalPrefs({ resumePlayback: next })}
           />
-        </div>
-        <div className="list-row">
-          <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span className="opt-label">Hardware decoding</span>
-            <span className="opt-hint">mpv hwdec — this machine only, never synced</span>
-          </span>
+        </SettingRow>
+        <SettingRow label="Hardware decoding" hint="mpv hwdec=auto-safe">
           <Toggle
             label="Hardware decoding"
             on={prefs.hardwareDecoding}
             onChange={(next) => setLocalPrefs({ hardwareDecoding: next })}
           />
-        </div>
-        <div className="list-row">
-          <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span className="opt-label">
+        </SettingRow>
+        <SettingRow
+          label={
+            <>
               Discord Rich Presence <span className="soon-chip">SOON</span>
-            </span>
-            <span className="opt-hint">Shares the title and episode you are watching</span>
-          </span>
+            </>
+          }
+          hint="Shares the title and episode you are watching with Discord"
+        >
           <Toggle label="Discord Rich Presence" on={false} disabled onChange={() => undefined} />
-        </div>
+        </SettingRow>
       </div>
-    </div>
+    </Section>
   )
 }
 
 /* ── Subtitles ───────────────────────────────────────────────────────────── */
 
-/** Ring offsets for the preview's fake outline, per outline step. */
-const OUTLINE_PX: Record<string, number> = { none: 0, thin: 1, normal: 2, thick: 3 }
-
 /**
  * The bundled libass families have no webview equivalent, so the preview maps
  * each onto the closest face the WebView can actually draw. It is an
- * approximation on purpose — the real render is mpv, and these controls apply
+ * approximation on purpose: the real render is mpv, and these controls apply
  * there live.
  */
 function previewFamily(family: string | undefined): string {
@@ -531,25 +650,11 @@ function SubtitlesSection() {
   const scale = settings.subtitleScalePercent ?? SUBTITLE_SCALE_DEFAULT
   const outline = settings.subtitleOutline ?? 'normal'
   const shadow = settings.subtitleShadow ?? true
-
-  const ringPx = OUTLINE_PX[outline] ?? 2
-  const ring = ringPx
-    ? [
-        [-1, -1],
-        [0, -1],
-        [1, -1],
-        [-1, 0],
-        [1, 0],
-        [-1, 1],
-        [0, 1],
-        [1, 1],
-      ].map(([x, y]) => `${x! * ringPx}px ${y! * ringPx}px 0 #000`)
-    : []
-  if (shadow) ring.push('2px 2px 3px rgba(0,0,0,.72)')
+  // The same arithmetic the player panel's preview uses, so both agree.
+  const metrics = subtitlePreviewMetrics(scale, outline)
 
   return (
-    <div className="set-section">
-      <SectionHead title="Subtitles" sub="Appearance applies live during playback." />
+    <Section id="subtitles" gap={12} title="Subtitles" sub="Appearance applies live during playback.">
       <div className="sub-grid">
         <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="sub-row sub-row-value">
@@ -575,10 +680,12 @@ function SubtitlesSection() {
             <span>{SUBTITLE_SCALE_MAX}</span>
           </div>
 
-          <div className="sub-row" style={{ marginTop: 16 }}>
+          {/* One grid for both pickers, so the Outline tray takes the Font
+              tray's width as the native page binds it to. */}
+          <div className="sub-trays">
             <span className="opt-label">Font</span>
             <Segmented
-              even
+              compact
               options={SUBTITLE_FONTS.map((font) => ({
                 value: font.family ?? '',
                 label: font.label,
@@ -588,12 +695,9 @@ function SubtitlesSection() {
                 updateSettings.mutate({ subtitleFontFamily: value || undefined })
               }
             />
-          </div>
-
-          <div className="sub-row" style={{ marginTop: 10 }}>
             <span className="opt-label">Outline</span>
             <Segmented
-              even
+              compact
               options={SUBTITLE_OUTLINES.map((o) => ({ value: o.key, label: o.label }))}
               value={outline}
               onChange={(value) => updateSettings.mutate({ subtitleOutline: value })}
@@ -624,6 +728,9 @@ function SubtitlesSection() {
           </div>
         </div>
 
+        {/* A stand-in for a video frame rather than a themed surface, because
+            a video frame is what subtitles are drawn over. It stays dark in
+            both themes so the caption keeps the contrast playback gives it. */}
         <div className="sub-preview">
           <div className="sub-preview-scrim" />
           <div className="sub-preview-kicker">PREVIEW</div>
@@ -631,19 +738,24 @@ function SubtitlesSection() {
             className="sub-preview-caption"
             style={{
               fontFamily: previewFamily(settings.subtitleFontFamily),
-              fontSize: Math.round(22 * (scale / 100)),
-              textShadow: ring.length > 0 ? ring.join(',') : 'none',
+              fontSize: metrics.fontSize,
+              textShadow: subtitleCaptionShadow(metrics, shadow),
             }}
           >
-            The severed floor is not what it was.
+            Subtitle preview text
           </div>
         </div>
       </div>
-    </div>
+    </Section>
   )
 }
 
 /* ── Server & account ────────────────────────────────────────────────────── */
+
+/** The username with its first letter raised, as the native account card shows it. */
+function displayName(username: string): string {
+  return username.charAt(0).toUpperCase() + username.slice(1)
+}
 
 function AccountSection() {
   const { data: me } = useMe()
@@ -651,54 +763,49 @@ function AccountSection() {
   const { data: build } = useBuildInfo()
   const status = useServerStatus()
 
-  const connected = status.state === 'connected'
+  const statusLine = describeStatus(status)
+  const statusTone =
+    status.state === 'connected' ? 'connected' : status.state === 'probing' ? 'checking' : 'down'
+  const statusColor =
+    statusTone === 'connected' ? 'var(--su)' : statusTone === 'checking' ? 'var(--t3)' : 'var(--cr)'
+
+  const rows: Array<{ label: string; value: string; color?: string }> = [
+    // The full URL, not just the host: http vs https is the difference
+    // between a working self-hosted server and a confusing failure.
+    { label: 'Server', value: getServerUrl() ?? status.host },
+    { label: 'Signed in as', value: me?.username ?? '…' },
+    { label: 'Status', value: statusLine, color: statusColor },
+    { label: 'Version', value: `v${build?.app ?? '…'} · mpv ${build?.mpv ?? '…'}` },
+  ]
 
   return (
-    <div className="set-section">
-      <SectionHead
-        title="Server & account"
-        sub="Library, watch progress and addon order sync through this server."
-      />
-
+    <Section
+      id="account"
+      gap={12}
+      title="Server & account"
+      sub="Library, watch progress and addon order sync through this server."
+    >
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 13, padding: 14 }}>
-        <span className="avatar avatar-40">{me ? initials(me.username) : '··'}</span>
+        <img className="set-avatar" src={avatar} alt="" draggable={false} />
         <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 16, fontWeight: 600 }}>{me?.username ?? '…'}</span>
-          <span className="mono">
-            {me?.isAdmin ? 'OWNER · ALL LIBRARIES' : 'MEMBER · YOUR LIBRARY'}
-          </span>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>{me ? displayName(me.username) : '…'}</span>
+          <span className="mono">{me?.isAdmin ? 'ADMIN · HALO ACCOUNT' : 'HALO ACCOUNT'}</span>
         </span>
-        <span className={`status-pill ${connected ? '' : 'status-pill-off'}`}>
-          {connected ? 'CONNECTED' : status.state.toUpperCase()}
-        </span>
+        <span className={`status-pill status-pill-${statusTone}`}>{statusLine}</span>
       </div>
 
       <div className="list-card">
-        {[
-          // The full URL, not just the host: http vs https is the difference
-          // between a working self-hosted server and a confusing failure.
-          { label: 'Server', value: getServerUrl() ?? status.host, accent: false },
-          { label: 'Signed in as', value: me?.username ?? '…', accent: false },
-          { label: 'Status', value: describeStatus(status), accent: connected },
-          {
-            label: 'Version',
-            value: `v${build?.app ?? '…'} · mpv ${build?.mpv ?? '…'}`,
-            accent: false,
-          },
-        ].map((row) => (
+        {rows.map((row) => (
           <div key={row.label} className="list-row">
             <span className="spacer opt-label">{row.label}</span>
-            <span
-              className="mono"
-              style={{ fontSize: 13, color: row.accent ? 'var(--su)' : 'var(--t2)' }}
-            >
+            <span className="mono" style={{ fontSize: 13, color: row.color ?? 'var(--t2)' }}>
               {row.value}
             </span>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 9 }}>
+      <div style={{ display: 'flex', gap: 10 }}>
         <button
           type="button"
           className="btn-danger"
@@ -719,6 +826,6 @@ function AccountSection() {
           Switch server
         </button>
       </div>
-    </div>
+    </Section>
   )
 }

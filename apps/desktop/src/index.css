@@ -207,12 +207,16 @@
   --set-page: 1000px;
   --set-form: 680px;
   --set-rail: 216px;
+  --set-col-gap: 24px;
+  --set-form-gap: 36px;
 }
 @media (min-width: 1500px) {
   :root {
     --set-page: 1240px;
     --set-form: 840px;
     --set-rail: 240px;
+    --set-col-gap: 36px;
+    --set-form-gap: 44px;
   }
 }
 @media (min-width: 1900px) {
@@ -220,6 +224,8 @@
     --set-page: 1460px;
     --set-form: 1000px;
     --set-rail: 260px;
+    --set-col-gap: 44px;
+    --set-form-gap: 52px;
   }
 }
 
@@ -610,9 +616,8 @@ a {
   font: 400 12px/1 var(--mono);
   color: var(--t4);
 }
-/** Equal-width variant used by the font/outline/tab trays. */
-.tray-even .tray-btn {
-  flex: 1;
+/* Settings' font and outline pickers, at the native chips' size. */
+.tray-compact .tray-btn {
   padding: 4px 12px;
   font-size: 14px;
 }
@@ -705,9 +710,13 @@ a {
   font: 700 12px/1.2 var(--mono);
   color: var(--su);
 }
-.status-pill-off {
-  background: var(--cat);
-  color: var(--ca);
+.status-pill-checking {
+  background: var(--sb);
+  color: var(--t3);
+}
+.status-pill-down {
+  background: var(--crt);
+  color: var(--cr);
 }
 
 /* ── Fields, selects, toggles ──────────────────────────────────────────── */
@@ -1951,17 +1960,34 @@ input[type='range'] {
 }
 
 /* ── Settings ──────────────────────────────────────────────────────────── */
+/* The rail stands still and only the form scrolls, as in the native page. */
 .set-page {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   max-width: var(--set-page);
   margin: 0 auto;
   display: grid;
   grid-template-columns: var(--set-rail) minmax(0, 1fr);
-  gap: 24px;
-  padding: 4px var(--gu) 0;
+  gap: var(--set-col-gap);
+  padding: 4px 24px 0;
 }
 .set-rail {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+/* Scrolls without a visible bar; the rail is what shows where the reader is. */
+.set-scroll {
+  min-height: 0;
+  margin-top: 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+.set-scroll::-webkit-scrollbar {
+  display: none;
 }
 .set-rail-title {
   padding: 8px 0 12px;
@@ -2013,16 +2039,55 @@ input[type='range'] {
   background: var(--dv);
 }
 .set-form {
+  container: set-form / inline-size;
   max-width: var(--set-form);
   display: flex;
   flex-direction: column;
-  gap: 36px;
-  padding: 8px 8px 48px;
+  gap: var(--set-form-gap);
+  padding: 0 8px 48px 0;
 }
+/* Each section sets its own gap, as the native sections differ. */
 .set-section {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+}
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 36px;
+  padding: 14px;
+  border-top: 1px solid var(--dv);
+}
+.set-row:first-child {
+  border-top: 0;
+}
+.set-row-hint {
+  font-size: 14px;
+  color: var(--t3);
+}
+.set-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--t1);
+}
+.set-state-quiet {
+  color: var(--t3);
+}
+.spinner-32 {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+}
+.set-avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 20px;
+  object-fit: cover;
 }
 .set-h {
   font-size: 22px;
@@ -2155,6 +2220,7 @@ input[type='range'] {
   grid-template-columns: minmax(0, 1fr) 260px;
   gap: 12px;
   align-items: stretch;
+  min-height: 220px;
 }
 .sub-row {
   display: grid;
@@ -2165,20 +2231,39 @@ input[type='range'] {
 .sub-row-value {
   grid-template-columns: 76px minmax(0, 1fr) 44px;
 }
+.sub-trays {
+  display: grid;
+  grid-template-columns: 76px max-content;
+  column-gap: 16px;
+  row-gap: 10px;
+  align-items: center;
+  margin-top: 16px;
+}
+/* Too narrow for the controls and the 260px preview side by side. The native
+   page clips the pickers at its card edge here; the preview moving under the
+   controls keeps every choice visible instead. */
+@container set-form (max-width: 660px) {
+  .sub-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sub-preview {
+    min-height: 160px;
+  }
+}
+/* The native stage: the dark stripe asset in both themes, darkened toward the
+   caption, with a fixed hairline rather than the themed card stroke. */
 .sub-preview {
   position: relative;
   max-height: 300px;
-  min-height: 210px;
-  border: 1px solid var(--cs);
+  border: 1px solid rgba(255, 255, 255, 0.122);
   border-radius: 8px;
   overflow: hidden;
-  background-color: #151517;
-  background-image: repeating-linear-gradient(-45deg, #151517 0 9px, #1d1d21 9px 18px);
+  background: #232428 url('./assets/stripe-dark.png') center / cover;
 }
 .sub-preview-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(8, 8, 10, 0.42);
+  background: linear-gradient(to bottom, transparent 40%, rgba(0, 0, 0, 0.451));
 }
 .sub-preview-kicker {
   position: absolute;
@@ -2186,7 +2271,7 @@ input[type='range'] {
   top: 10px;
   font: 700 12px/1.2 var(--mono);
   letter-spacing: 1.92px;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.4);
 }
 .sub-preview-caption {
   position: absolute;
