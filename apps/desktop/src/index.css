@@ -1668,13 +1668,17 @@ input[type='range'] {
 .detail-view {
   position: absolute;
   inset: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
-/* Full-bleed background art covering the entire page surface */
+/* Full-page background art covering the entire page surface */
 .detail-bg {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   pointer-events: none;
   z-index: 0;
   overflow: hidden;
@@ -1684,65 +1688,54 @@ input[type='range'] {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 20%;
+  object-position: center top;
   display: block;
 }
 .detail-bg-scrim {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(16, 16, 18, 0.3) 0%, rgba(16, 16, 18, 0.6) 240px, rgba(16, 16, 18, 0.88) 500px, rgba(16, 16, 18, 0.96) 100%),
-    linear-gradient(90deg, rgba(16, 16, 18, 0.72) 0%, rgba(16, 16, 18, 0.42) 50%, rgba(16, 16, 18, 0.25) 100%);
-}
-
-.detail-scroll {
-  position: absolute;
-  inset: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  z-index: 1;
-  padding: 56px 0 48px;
+    linear-gradient(180deg, rgba(16, 16, 18, 0.05) 0%, rgba(16, 16, 18, 0.25) 220px, rgba(16, 16, 18, 0.5) 440px, rgba(16, 16, 18, 0.72) 100%),
+    linear-gradient(90deg, rgba(16, 16, 18, 0.5) 0%, rgba(16, 16, 18, 0.15) 45%, transparent 100%);
 }
 
 .detail-back {
   position: absolute;
   left: var(--gu);
-  top: 14px;
+  top: 12px;
   width: 34px;
   height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.75);
   color: #fff;
-  z-index: 5;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(12px);
-  transition: background-color 100ms ease;
+  z-index: 3;
 }
-.detail-back:hover {
-  background: rgba(0, 0, 0, 0.85);
-}
-
 .detail-grid {
   display: grid;
   grid-template-columns: 128px minmax(0, 1fr) 292px;
   column-gap: 20px;
   row-gap: 26px;
-  margin: 0 var(--gu);
+  margin: -76px var(--gu) 0;
   position: relative;
 }
 
+/* Semi-translucent frosted cards for crisp text without blacking out the artwork */
 .detail-view .card {
-  background: rgba(26, 26, 30, 0.76);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px);
+  background: rgba(20, 20, 24, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+}
+.detail-view .fact-line,
+.detail-view .avail-row {
+  color: var(--t2);
 }
 [data-theme='light'] .detail-view .card {
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.75);
   border: 1px solid rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(16px);
 }
 .detail-poster {
   width: 128px;

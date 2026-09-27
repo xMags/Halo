@@ -158,13 +158,15 @@ export function Detail({ type, id }: { type: string; id: string }) {
 
   return (
     <div className="view detail-view">
-      {/* Full-bleed background art covering the entire page */}
+      {/* Full-page background art covering the entire page behind content */}
       <div className="art detail-bg" aria-hidden>
         <ArtImage src={meta.background ?? meta.poster} label="BACKDROP" />
         <div className="detail-bg-scrim" />
       </div>
 
-      <div className="detail-scroll">
+      <div style={{ position: 'relative', zIndex: 1, paddingBottom: 48 }}>
+        <div style={{ height: 268 }} />
+
         <div className={`detail-grid ${isSeries ? '' : 'detail-grid-movie'}`}>
           <div className="art detail-poster">
             <ArtImage src={meta.poster} label={meta.name} />
