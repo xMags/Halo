@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { MAX_LINE_MBPS } from './downloadsLogic'
 import type { ThemeChoice } from './theme'
 
 /**
@@ -11,6 +12,9 @@ import type { ThemeChoice } from './theme'
  *   resumePlayback        whether a stream opens at its saved position
  *   subtitleTrackStyling  mpv `sub-ass-override`; a rendering choice libass
  *                         only makes on this client
+ *   measuredLineMbps      the fastest sustained download this machine has
+ *                         seen, in megabits; the sources sheet compares a
+ *                         source's bitrate against it (0 = never measured)
  *
  * Everything account-shaped (languages, subtitle size/font/outline/shadow,
  * autoplay) stays in `settings.ts`, which syncs last-write-wins.
@@ -27,6 +31,7 @@ export interface LocalPrefs {
   hardwareDecoding: boolean
   resumePlayback: boolean
   subtitleTrackStyling: boolean
+  measuredLineMbps: number
 }
 
 const DEFAULTS: LocalPrefs = {
@@ -34,6 +39,7 @@ const DEFAULTS: LocalPrefs = {
   hardwareDecoding: true,
   resumePlayback: true,
   subtitleTrackStyling: true,
+  measuredLineMbps: 0,
 }
 
 function isThemeChoice(value: unknown): value is ThemeChoice {
@@ -57,6 +63,12 @@ function read(): LocalPrefs {
         typeof row.subtitleTrackStyling === 'boolean'
           ? row.subtitleTrackStyling
           : DEFAULTS.subtitleTrackStyling,
+      measuredLineMbps:
+        typeof row.measuredLineMbps === 'number' &&
+        Number.isFinite(row.measuredLineMbps) &&
+        row.measuredLineMbps > 0
+          ? Math.min(row.measuredLineMbps, MAX_LINE_MBPS)
+          : DEFAULTS.measuredLineMbps,
     }
   } catch {
     // A blocked or corrupt store must not stop the app booting.

@@ -1706,12 +1706,16 @@ impl DownloadManager {
             }
             entry.bytes_per_second = rate;
             entry.updated_at = now_ms();
-            entry.view()
+            // A transfer winding down after an account switch still reports
+            // once; that report must not reach the new account's list.
+            inner.visible_view(job_id)
         };
         if persist {
             let _ = self.persist().await;
         }
-        self.emit_changed(view);
+        if let Some(view) = view {
+            self.emit_changed(view);
+        }
     }
 
     async fn update_response_metadata(
