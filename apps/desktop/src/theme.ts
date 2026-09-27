@@ -40,7 +40,7 @@ export const TITLE_BAR_HEIGHT = 32
 /** Width reserved for the caption buttons at the end of the title bar. */
 export const CAPTION_SLOT_WIDTH = 138
 
-/** Navigation pane width — fixed in every tier. */
+/** Navigation pane width when open; the compact strip is 48px. */
 export const NAV_PANE_WIDTH = 224
 
 /**

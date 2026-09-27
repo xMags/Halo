@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { NavRail } from './components/NavRail'
 import { TitleBar } from './components/TitleBar'
 import { NavProvider, useNav } from './nav'
@@ -62,6 +62,9 @@ function DownloadsAccountBinding() {
 function Shell() {
   const { screen, setRoot, sheet } = useNav()
   const windowFullscreen = useWindowFullscreen()
+  // Lives here, not in the pane: the player replaces the whole shell tree, and
+  // the pane must come back the way it was left.
+  const [paneOpen, setPaneOpen] = useState(true)
 
   useEffect(() => {
     if (screen.name !== 'player' && windowFullscreen.fullscreen) {
@@ -103,7 +106,7 @@ function Shell() {
       <div className="glow glow-b" />
       <TitleBar />
       <div className="shell-body">
-        <NavRail />
+        <NavRail open={paneOpen} onToggle={() => setPaneOpen((open) => !open)} />
         <div className="content">
           <Stack />
         </div>

@@ -9,6 +9,9 @@ import type { ReactNode } from 'react'
  * filled glyphs at weights that visibly disagree with it. Everything scales
  * from the same viewBox, so a 13px icon keeps the 16px proportions with a
  * proportionally lighter stroke, exactly as the prototype draws them.
+ *
+ * The navigation pane is the exception: it reproduces the native WinUI
+ * NavigationView, so it draws Segoe Fluent glyphs through `FluentIcon`.
  */
 
 interface Spec {

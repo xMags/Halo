@@ -1,111 +1,96 @@
-import { useLayoutEffect, useRef } from 'react'
-import { getServerUrl } from '../api'
+import avatar from '../assets/user-avatar.png'
 import { useDownloads } from '../downloads'
-import { formatTimeLeft, initials } from '../format'
+import { formatClock, videoIdTag } from '../format'
 import { buildContinueWatching } from '../homeRows'
 import { useNav, type Section } from '../nav'
 import { useLibrary, useMe, useWatchStates } from '../queries'
 import { ArtImage } from './ArtImage'
-import { Icon, type IconName } from './Icon'
+import { FluentIcon, type FluentGlyph } from './FluentIcon'
 
-interface NavEntry {
-  section: Section
-  label: string
-  icon: IconName
-}
-
-const MENU_ITEMS: NavEntry[] = [
-  { section: 'home', label: 'Home', icon: 'home' },
-  { section: 'search', label: 'Search', icon: 'search' },
-  { section: 'library', label: 'Library', icon: 'library' },
-  { section: 'downloads', label: 'Downloads', icon: 'downloads' },
+const ITEMS: Array<{ section: Section; label: string; glyph: FluentGlyph }> = [
+  { section: 'home', label: 'Home', glyph: 'home' },
+  { section: 'search', label: 'Search', glyph: 'search' },
+  { section: 'library', label: 'Library', glyph: 'library' },
+  { section: 'downloads', label: 'Downloads', glyph: 'downloads' },
+  { section: 'settings', label: 'Settings', glyph: 'settings' },
 ]
-
-/** WinUI pins Settings to the pane footer rather than the menu list. */
-const SETTINGS_ITEM: NavEntry = { section: 'settings', label: 'Settings', icon: 'settings' }
 
 /** How many in-progress titles the pane's shortcut list carries. */
 const JUMP_LIMIT = 3
 
-/** Matches `.nav-pill`'s height; the stretch is measured in pill lengths. */
-const PILL_HEIGHT = 16
+interface NavRailProps {
+  /** Expanded (224px) or compact (48px, icons only). Owned by the shell. */
+  open: boolean
+  onToggle: () => void
+}
 
 /**
- * The 224px navigation pane, laid out as WinUI's NavigationView in Left mode:
- * the four sections, three shortcuts back into whatever is half-watched, and a
- * footer holding Settings and the account.
+ * The navigation pane, drawn as the native WinUI Halo Desktop draws its
+ * NavigationView: a pane toggle, the five sections under a MENU header, three
+ * shortcuts back into whatever is half-watched, and the account at the foot.
+ *
+ * The toggle collapses the pane to its 48px compact strip, where only the
+ * icons and the avatar remain and each row names itself in a tooltip. Jump
+ * back in exists only while the pane is open, as it does natively.
  *
  * Detail and the sources sheet open on top of a section, so the stack *root* —
  * not the visible screen — decides which row is lit: opening a poster from
  * Home leaves Home lit, which is where Back goes.
  *
- * The shortcut rows deliberately print only the time left, not `S02E04 · …`:
- * the episode tag lives in the title's meta, and resolving it here would make
- * a permanently-mounted pane issue addon round-trips on every screen.
+ * The shortcut rows print the episode tag parsed from the watch state's video
+ * id, never the episode's name, so a permanently-mounted pane never issues
+ * addon round-trips.
  */
-export function NavRail() {
+export function NavRail({ open, onToggle }: NavRailProps) {
   const { section, push, setRoot } = useNav()
   const { data: me } = useMe()
   const { data: watchStates } = useWatchStates()
   const { data: library } = useLibrary()
   const { downloads } = useDownloads()
 
-  const itemRefs = useRef(new Map<Section, HTMLButtonElement>())
-  const shownSection = useRef(section)
-
-  // Runs before paint, so the new pill starts over the old row on the very
-  // first frame instead of flashing at rest and then jumping back.
-  useLayoutEffect(() => {
-    const from = shownSection.current
-    shownSection.current = section
-    if (from === section) return
-    const fromItem = itemRefs.current.get(from)
-    const toItem = itemRefs.current.get(section)
-    const pill = toItem?.querySelector<HTMLElement>('.nav-pill')
-    if (!fromItem || !toItem || !pill) return
-    slidePill(pill, fromItem.getBoundingClientRect().top - toItem.getBoundingClientRect().top)
-  }, [section])
-
   const activeTransfers = downloads.filter(
     (item) => item.status === 'downloading' || item.status === 'queued',
   ).length
 
-  const jump = buildContinueWatching(watchStates, library).slice(0, JUMP_LIMIT)
-  const name = me?.username ?? 'Account'
-  const server = serverHost(getServerUrl())
-
-  const renderItem = (entry: NavEntry, badge?: number) => {
-    const active = section === entry.section
-    return (
-      <button
-        key={entry.section}
-        ref={(el) => {
-          if (el) itemRefs.current.set(entry.section, el)
-          else itemRefs.current.delete(entry.section)
-        }}
-        type="button"
-        className={`nav-item ${active ? 'nav-item-active' : ''}`}
-        aria-current={active ? 'page' : undefined}
-        onClick={() => setRoot(entry.section)}
-      >
-        {active && <span className="nav-pill" aria-hidden />}
-        <Icon name={entry.icon} />
-        <span className="spacer ellipsis">{entry.label}</span>
-        {badge !== undefined && badge > 0 && <span className="nav-badge">{badge}</span>}
-      </button>
-    )
-  }
+  const jump = open ? buildContinueWatching(watchStates, library).slice(0, JUMP_LIMIT) : []
+  const role = me?.isAdmin ? 'ADMIN · HALO ACCOUNT' : 'HALO ACCOUNT'
 
   return (
-    <nav className="nav">
-      {MENU_ITEMS.map((entry) =>
-        renderItem(entry, entry.section === 'downloads' ? activeTransfers : undefined),
-      )}
+    <nav className={`nav ${open ? '' : 'nav-compact'}`}>
+      <button
+        type="button"
+        className="nav-toggle"
+        title={open ? 'Close Navigation' : 'Open Navigation'}
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <FluentIcon glyph="menu" />
+      </button>
+
+      <div className="nav-header">MENU</div>
+      {ITEMS.map((item) => {
+        const active = section === item.section
+        return (
+          <button
+            key={item.section}
+            type="button"
+            className={`nav-item ${active ? 'nav-item-active' : ''}`}
+            title={open ? undefined : item.label}
+            aria-current={active ? 'page' : undefined}
+            onClick={() => setRoot(item.section)}
+          >
+            <FluentIcon glyph={item.glyph} />
+            <span className="spacer ellipsis">{item.label}</span>
+            {item.section === 'downloads' && activeTransfers > 0 && (
+              <span className="nav-badge">{activeTransfers}</span>
+            )}
+          </button>
+        )
+      })}
 
       {jump.length > 0 && (
         <>
-          <div className="nav-separator" role="separator" />
-          <div className="nav-header">Jump back in</div>
+          <div className="nav-header nav-header-jump">JUMP BACK IN</div>
           {jump.map((item) => {
             const state = (watchStates ?? []).find((s) => s.itemId === item.itemId)
             return (
@@ -121,8 +106,8 @@ export function NavRail() {
                 </span>
                 <span className="nav-lines">
                   <span className="jump-title ellipsis">{item.meta.name}</span>
-                  <span className="nav-secondary ellipsis">
-                    {state ? capitalize(formatTimeLeft(state.positionSec, state.durationSec)) : 'In progress'}
+                  <span className="jump-meta ellipsis">
+                    {state ? jumpMeta(state.videoId, item.meta.id, state.positionSec, state.durationSec) : ''}
                   </span>
                 </span>
               </button>
@@ -133,57 +118,23 @@ export function NavRail() {
 
       <div className="spacer" />
 
-      <div className="nav-separator" role="separator" />
-      {renderItem(SETTINGS_ITEM)}
       <button
         type="button"
         className="account-row"
-        title="Server & account"
+        title={open ? 'Server & account' : me?.username ?? 'Server & account'}
         onClick={() => setRoot('settings')}
       >
-        <span className="avatar">{me ? initials(me.username) : '··'}</span>
-        <span className="nav-lines">
-          <span className="account-name ellipsis">{name}</span>
-          <span className="nav-secondary ellipsis">{server ?? 'Halo account'}</span>
+        <img className="account-avatar" src={avatar} alt="" draggable={false} />
+        <span className="nav-lines account-lines">
+          <span className="account-name ellipsis">{me?.username ?? ''}</span>
+          <span className="account-role ellipsis">{role}</span>
         </span>
       </button>
     </nav>
   )
 }
 
-/**
- * WinUI's selection change: the incoming pill starts over the old row,
- * stretches across the gap, then settles into place. Only the new row's pill
- * is animated, so an interrupted slide never strands an indicator on a row
- * that is no longer selected.
- */
-function slidePill(pill: HTMLElement, offset: number) {
-  if (offset === 0 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-  const stretch = (Math.abs(offset) + PILL_HEIGHT) / PILL_HEIGHT
-  pill.animate(
-    [
-      { transform: `translateY(${offset}px) scaleY(1)`, easing: 'cubic-bezier(0.9, 0.1, 1, 0.2)' },
-      {
-        transform: `translateY(${offset / 2}px) scaleY(${stretch})`,
-        offset: 0.3,
-        easing: 'cubic-bezier(0.1, 0.9, 0.2, 1)',
-      },
-      { transform: 'translateY(0) scaleY(1)' },
-    ],
-    { duration: 480 },
-  )
-}
-
-/** The account row's second line: which server this session belongs to. */
-function serverHost(url: string | null): string | null {
-  if (!url) return null
-  try {
-    return new URL(url).host
-  } catch {
-    return null
-  }
-}
-
-function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1)
+/** `S01E01 · 30:02 LEFT`, the native pane's second line. */
+function jumpMeta(videoId: string, metaId: string, positionSec: number, durationSec: number): string {
+  return `${videoIdTag(videoId, metaId)} · ${formatClock(durationSec - positionSec)} LEFT`
 }

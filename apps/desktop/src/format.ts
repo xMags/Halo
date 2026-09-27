@@ -49,6 +49,21 @@ export function episodeTag(season: number | undefined, episode: number | undefin
 }
 
 /**
+ * The tag a watch state can print without fetching its meta: `MOVIE` when the
+ * video is the title itself, `S02E04` when the id carries `:season:episode`
+ * after the meta id, and `SERIES` for any other episode id (kitsu's
+ * `kitsu:123:5` has no season). Meta ids may contain colons, so the meta id is
+ * stripped as a prefix rather than split on.
+ */
+export function videoIdTag(videoId: string, metaId: string): string {
+  const prefix = `${metaId}:`
+  if (!videoId.startsWith(prefix)) return 'MOVIE'
+  const parts = videoId.slice(prefix.length).split(':')
+  if (parts.length !== 2 || !parts.every((part) => /^\d+$/.test(part))) return 'SERIES'
+  return episodeTag(Number(parts[0]), Number(parts[1])) ?? 'SERIES'
+}
+
+/**
  * Minutes from an addon's free-text runtime. Cinemeta writes `48 min`, others
  * `2 h 46 min`, `2h46`, or a bare number of minutes. Anything that doesn't
  * parse returns null rather than a guess — the value feeds a bitrate estimate,
