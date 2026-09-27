@@ -1,4 +1,4 @@
-import { LANGUAGE_OPTIONS, type AddonEntry } from '@halo/core'
+import { DEFAULT_ADDON_URLS, LANGUAGE_OPTIONS, type AddonEntry } from '@halo/core'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import mark from '../assets/halo-mark.png'
 import avatar from '../assets/user-avatar.png'
@@ -326,6 +326,16 @@ function providesLine(item: AddonEntry): string {
   )
 }
 
+/**
+ * Cinemeta and OpenSubtitles, which every Halo app installs so it works
+ * before anything is added. They stay in your own list: without them there
+ * are no catalogs to browse and no subtitles.
+ */
+function isBuiltInAddon(item: AddonEntry, scope: 'yours' | 'global'): boolean {
+  if (scope !== 'yours' || item.transportUrl === undefined) return false
+  return (DEFAULT_ADDON_URLS as readonly string[]).includes(item.transportUrl)
+}
+
 function AddonsSection() {
   const { data: addons, isPending, isError, refetch } = useAddons()
   const { data: me } = useMe()
@@ -367,6 +377,7 @@ function AddonsSection() {
   }
 
   const remove = (item: AddonEntry, scope: 'yours' | 'global') => {
+    if (isBuiltInAddon(item, scope)) return
     const question =
       scope === 'global'
         ? `Remove “${item.manifest.name}” for every user?`
@@ -397,24 +408,35 @@ function AddonsSection() {
   const row = (item: AddonEntry, scope: 'yours' | 'global') => {
     const editable = scope === 'yours' || isAdmin
     const patch = scope === 'global' ? patchGlobalAddon : patchAddon
+    // The admin installs this same addon for everyone, so the server skips
+    // this copy. It stays listed, greyed, because it comes back into use if
+    // the global entry is removed; until then its order and catalogs mean
+    // nothing.
+    const shadowed = scope === 'yours' && item.providedGlobally === true
+    const builtIn = isBuiltInAddon(item, scope)
+    const movable = editable && !shadowed
     // A hidden addon comes back with a stripped manifest, so the flag is the
     // only way to know the switch should still be drawn.
-    const hasCatalogs = item.manifest.catalogs.length > 0 || item.hideCatalogs
+    const hasCatalogs = !shadowed && (item.manifest.catalogs.length > 0 || item.hideCatalogs)
+
+    let lockTitle: string | null = null
+    if (!editable) lockTitle = 'Managed by the server admin'
+    else if (builtIn) lockTitle = 'Built into Halo, so it cannot be removed'
 
     return (
       <div
         key={item.id}
         className={`addon-row ${dragKey === item.id ? 'addon-row-dragging' : ''} ${
           overKey === item.id ? 'addon-row-over' : ''
-        }`}
-        draggable={editable}
+        } ${shadowed ? 'addon-row-shadowed' : ''}`}
+        draggable={movable}
         onDragStart={() => setDragKey(item.id)}
         onDragEnd={() => {
           setDragKey(null)
           setOverKey(null)
         }}
         onDragOver={(event) => {
-          if (!editable || !dragKey || dragKey === item.id) return
+          if (!movable || !dragKey || dragKey === item.id) return
           event.preventDefault()
           setOverKey(item.id)
         }}
@@ -427,12 +449,18 @@ function AddonsSection() {
       >
         <span
           className="drag-handle"
-          title={editable ? 'Drag to change priority' : 'Managed by the server admin'}
+          title={
+            shadowed
+              ? 'Not used while the global copy is installed'
+              : editable
+                ? 'Drag to change priority'
+                : 'Managed by the server admin'
+          }
         >
           <Icon name="reorder" size={12} />
         </span>
         <span className="addon-tile">{initials(item.manifest.name)}</span>
-        <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+        <span className="addon-text">
           <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
             <span className="addon-name ellipsis">{item.manifest.name}</span>
             <span className="mono">v{item.manifest.version}</span>
@@ -440,7 +468,9 @@ function AddonsSection() {
               {scope === 'yours' ? 'YOURS' : 'GLOBAL'}
             </span>
           </span>
-          <span className="addon-provides ellipsis">{providesLine(item)}</span>
+          <span className="addon-provides ellipsis">
+            {shadowed ? 'Provided globally, so this copy is not used' : providesLine(item)}
+          </span>
         </span>
         {hasCatalogs ? (
           <Toggle
@@ -452,7 +482,7 @@ function AddonsSection() {
         ) : (
           <span />
         )}
-        {editable ? (
+        {lockTitle === null ? (
           <button
             type="button"
             className="icon-btn icon-btn-bare icon-btn-28"
@@ -462,10 +492,7 @@ function AddonsSection() {
             <Icon name="trash" size={14} />
           </button>
         ) : (
-          <span
-            style={{ display: 'flex', color: 'var(--t4)', padding: 6 }}
-            title="Managed by the server admin"
-          >
+          <span style={{ display: 'flex', color: 'var(--t4)', padding: 6 }} title={lockTitle}>
             <Icon name="lock" size={14} />
           </span>
         )}

@@ -2170,10 +2170,25 @@ input[type='range'] {
 .addon-row-over {
   background: var(--tt);
 }
+/* A personal copy the global entry answers for: present, but not in use. */
+.addon-row-shadowed .drag-handle,
+.addon-row-shadowed .addon-tile,
+.addon-row-shadowed .addon-text {
+  opacity: 0.5;
+}
+.addon-row-shadowed .drag-handle {
+  cursor: default;
+}
 .drag-handle {
   color: var(--t4);
   display: flex;
   cursor: grab;
+}
+.addon-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 .addon-tile {
   width: 34px;
