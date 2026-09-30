@@ -1,4 +1,4 @@
-import type { WatchState } from '@halo/core'
+import type { MetaVideo, WatchState } from '@halo/core'
 
 /** The video a mark is about, with the display fields its row carries. */
 export interface WatchMarkTarget {
@@ -45,6 +45,48 @@ export function unwatchedRow(target: WatchMarkTarget, existing: WatchState | und
     durationSec: 0,
     watched: false,
   }
+}
+
+/**
+ * The episodes before `video`, first to last: every numbered episode of an
+ * earlier season and the earlier ones of its own. Specials (season 0) are not
+ * part of that run, so they only count before another special. Addons without
+ * seasons (kitsu) put every episode in season 0, where this is simply the
+ * episodes numbered lower.
+ */
+export function earlierEpisodes(videos: readonly MetaVideo[], video: MetaVideo): MetaVideo[] {
+  const season = video.season ?? 0
+  const episode = video.episode
+  if (episode == null) return []
+  return videos
+    .filter((other) => {
+      if (other.id === video.id || other.episode == null) return false
+      const otherSeason = other.season ?? 0
+      if (season === 0) return otherSeason === 0 && other.episode < episode
+      if (otherSeason === 0) return false
+      return otherSeason < season || (otherSeason === season && other.episode < episode)
+    })
+    .sort((a, b) => (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0))
+}
+
+/**
+ * Rows marking several videos watched at once, given first to last. Each is
+ * stamped strictly later than the one before it, so the continue shelf, which
+ * follows a show's newest row, lands after the last of them rather than on
+ * whichever the server happens to list first among equal timestamps.
+ */
+export function watchedRowsInOrder(
+  targets: readonly WatchMarkTarget[],
+  existing: ReadonlyMap<string, WatchState>,
+  runtimeSec: number | null,
+  now: number,
+): WatchState[] {
+  let stamp = now
+  return targets.map((target) => {
+    const row = watchedRow(target, existing.get(target.videoId), runtimeSec, stamp)
+    stamp = row.updatedAt + 1
+    return row
+  })
 }
 
 /** Whether a row records any viewing at all, as opposed to an unwatched mark. */

@@ -40,6 +40,7 @@ const GLYPHS = {
   info: '',
   unfavorite: '',
   undo: '',
+  checkList: '',
 } as const
 
 export type FluentGlyph = keyof typeof GLYPHS

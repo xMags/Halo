@@ -49,6 +49,7 @@ import {
 } from './downloadsPresentation'
 import { useNav } from '../nav'
 import { playDownload, sheetParamsForDownload } from '../sources/SourcesSheet'
+import { confirmDeleteFromDevice } from './downloadPrompts'
 
 /**
  * The Downloads page, reproducing the native client's `DownloadsPage.xaml`:
@@ -149,13 +150,7 @@ export function Downloads() {
   }
 
   const deleteSelected = async (id: string) => {
-    const confirmed = await showDialog({
-      title: 'Delete from device?',
-      body: 'This permanently removes the video and its subtitle sidecar from this device.',
-      primary: 'Delete',
-      close: 'Cancel',
-    })
-    if (confirmed) deleteReady(id)
+    if (await confirmDeleteFromDevice()) void deleteReady(id)
   }
 
   const empty = rows.length === 0 && !loading
@@ -199,7 +194,7 @@ export function Downloads() {
                   label="Open folder in Explorer"
                   onClick={() => {
                     setMenuOpen(false)
-                    showInExplorer()
+                    void showInExplorer()
                   }}
                 />
                 <MenuItem
@@ -582,7 +577,7 @@ function ReadyRow({
           title="Show this file in Explorer"
           onClick={(event) => {
             event.stopPropagation()
-            showInExplorer(row.id)
+            void showInExplorer(row.id)
           }}
         >
           <FluentIcon glyph="folder" size={13} />

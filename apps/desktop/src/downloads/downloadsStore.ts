@@ -376,8 +376,12 @@ function lookUpArtwork(downloads: readonly DownloadView[]): void {
 
 /* ── Actions ─────────────────────────────────────────────────────────────── */
 
-/** Runs one engine action; its failure, or its success, replaces the last error. */
-async function runAction(action: () => Promise<unknown>): Promise<void> {
+/**
+ * Runs one engine action; its failure, or its success, replaces the last
+ * error. Resolves with the failure too, for callers away from the Downloads
+ * page, where the error bar that shows it is not on screen.
+ */
+async function runAction(action: () => Promise<unknown>): Promise<string | null> {
   const version = accountVersion
   let failure: string | null = null
   try {
@@ -385,9 +389,10 @@ async function runAction(action: () => Promise<unknown>): Promise<void> {
   } catch (value) {
     failure = errorText(value)
   }
-  if (version !== accountVersion) return
+  if (version !== accountVersion) return null
   publish({ actionError: failure })
   await refreshDownloads()
+  return failure
 }
 
 /** Attempts every id, then reports the first failure. */
@@ -427,11 +432,16 @@ export function cancelTransfer(jobId: string): void {
   void runAction(() => removeDownload(jobId))
 }
 
-/** Deletes a finished download and its subtitle from this device. */
-export function deleteReady(jobId: string): void {
+/** Deletes a finished download and its subtitle from this device; resolves with any failure. */
+export function deleteReady(jobId: string): Promise<string | null> {
   const item = find(jobId)
-  if (!item || item.status !== 'done') return
-  void runAction(() => removeDownload(jobId))
+  if (!item || item.status !== 'done') return Promise.resolve(null)
+  return runAction(() => removeDownload(jobId))
+}
+
+/** This video's finished download on this device, if it has one (one entry per video). */
+export function readyDownloadFor(videoId: string): DownloadView | undefined {
+  return snapshot.downloads.find((item) => item.media.video_id === videoId && item.status === 'done')
 }
 
 export function pauseAll(): void {
@@ -458,9 +468,9 @@ export function retryFailedTransfers(): void {
   void runAction(() => forEachJob(ids, resumeDownload))
 }
 
-/** Opens the download folder, or reveals one download's file in it. */
-export function showInExplorer(jobId?: string): void {
-  void runAction(async () => {
+/** Opens the download folder, or reveals one download's file in it; resolves with any failure. */
+export function showInExplorer(jobId?: string): Promise<string | null> {
+  return runAction(async () => {
     try {
       await openDownloadFolder(jobId)
     } catch {
