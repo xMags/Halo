@@ -11,13 +11,7 @@ import { formatRelative } from '../format'
 import { useNav } from '../nav'
 import { useLibrary, useSearch } from '../queries'
 import { setSearchQuery, useSearchQuery } from '../searchQuery'
-import {
-  addSearchTerm,
-  clearSearchHistory,
-  getSearchHistory,
-  removeSearchTerm,
-  type SearchHistoryEntry,
-} from '../searchHistory'
+import { addSearchTerm, getSearchHistory, type SearchHistoryEntry } from '../searchHistory'
 
 const DEBOUNCE_MS = 350
 const MIN_QUERY = 2
@@ -66,12 +60,14 @@ export function Search() {
     })
   }, [groups, typeFilter])
 
-  const topMatch = shown[0]?.metas[0]
+  // The best guess for the query itself, so the kind filter does not move it
+  // (the native page picks it before filtering too).
+  const topMatch = groups[0]?.metas[0]
 
   return (
     <div className="view">
       <SectionHeader title="Search" />
-      <div style={{ display: 'flex', flexDirection: 'column', padding: '8px var(--gu) 40px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', padding: '8px var(--gu) 0' }}>
         <SearchBox
           large
           autoFocus
@@ -155,7 +151,7 @@ export function Search() {
       </div>
 
       {active && isFetching && groups.length === 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 26, padding: '0 0 40px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 26, padding: '26px 0 0' }}>
           <ShelfSkeleton titleWidth={160} count={6} />
           <ShelfSkeleton titleWidth={140} count={6} />
         </div>
@@ -163,7 +159,14 @@ export function Search() {
 
       {/* The result shelves sit outside the padded block: a shelf carries its
           own gutter, and nesting it inside one would double it. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 26, padding: '0 0 40px' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 26,
+          padding: `${shown.length > 0 ? 26 : 0}px 0 40px`,
+        }}
+      >
         {shown.map((group) => {
           return (
             <Shelf
