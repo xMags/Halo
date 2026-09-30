@@ -1,4 +1,5 @@
 import mark from '../assets/halo-mark.png'
+import { showWindowMenu } from '../window'
 import { WindowButtons } from './WindowButtons'
 
 /**
@@ -15,7 +16,16 @@ import { WindowButtons } from './WindowButtons'
  */
 export function TitleBar() {
   return (
-    <div className="titlebar" data-tauri-drag-region>
+    <div
+      className="titlebar"
+      data-tauri-drag-region
+      // Anywhere on the bar, the caption buttons included, as on a system
+      // title bar.
+      onContextMenu={(event) => {
+        event.preventDefault()
+        showWindowMenu()
+      }}
+    >
       <div className="titlebar-brand">
         <img className="brand-mark" src={mark} alt="" />
         <span className="brand-word">Halo</span>

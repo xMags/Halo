@@ -22,6 +22,14 @@ export function closeWindow(): void {
 }
 
 /**
+ * The Windows window menu (Restore, Move, Size, Minimize, Maximize, Close) at
+ * the pointer: what a right-click on any Windows title bar opens.
+ */
+export function showWindowMenu(): void {
+  void invoke('window_show_system_menu').catch(() => undefined)
+}
+
+/**
  * Tracks the maximised state so the title bar can show restore vs. maximise.
  * The design draws one square glyph for both; distinguishing them is the
  * Windows convention and costs nothing.

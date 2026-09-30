@@ -13,6 +13,7 @@ mod mpv;
 mod oauth;
 mod scrub_preview;
 mod window_icon;
+mod window_menu;
 
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
@@ -148,6 +149,20 @@ fn window_set_fullscreen_style(app: tauri::AppHandle, fullscreen: bool) -> Resul
         .ok_or_else(|| "main window is unavailable".to_string())?;
     let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as isize;
     set_corner_preference(hwnd, fullscreen)
+}
+
+/// Right-click on the app-drawn title bar opens the Windows window menu
+/// (window_menu.rs). The menu runs its own modal loop, so it is posted to the
+/// event loop instead of running inside the webview's IPC dispatch, and this
+/// command returns straight away.
+#[tauri::command]
+fn window_show_system_menu(app: tauri::AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window is unavailable".to_string())?;
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as isize;
+    app.run_on_main_thread(move || window_menu::show_at_cursor(hwnd))
+        .map_err(|error| error.to_string())
 }
 
 /// Discord Rich Presence (discord.rs). The service starts disabled; the
@@ -403,6 +418,7 @@ fn main() {
             mpv_observe,
             mpv_unobserve_all,
             window_set_fullscreen_style,
+            window_show_system_menu,
             oauth_wait_callback,
             discord_presence_set_enabled,
             discord_presence_set_media,
