@@ -4,6 +4,7 @@ import mark from '../assets/halo-mark.png'
 import avatar from '../assets/user-avatar.png'
 import { useBuildInfo } from '../about'
 import { getServerUrl } from '../api'
+import { ComboBox } from '../components/ComboBox'
 import { FluentIcon } from '../components/FluentIcon'
 import { Segmented } from '../components/Segmented'
 import { Toggle } from '../components/Toggle'
@@ -157,10 +158,10 @@ export function Settings() {
               Check for updates
             </button>
             <div className="about-rule" />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }} className="mono">
-              <span>VERSION {build?.app ?? '…'}</span>
-              <span>
-                MPV {build?.mpv ?? '…'} · TAURI {build?.tauri ?? '…'}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span className="mono">© 2026 Last Projects</span>
+              <span className="mono" style={{ color: 'var(--t4)' }}>
+                Source-available license
               </span>
             </div>
           </div>
@@ -463,7 +464,7 @@ function AddonsSection() {
         <span className="addon-text">
           <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
             <span className="addon-name ellipsis">{item.manifest.name}</span>
-            <span className="mono">v{item.manifest.version}</span>
+            <span className="mono">{item.manifest.version}</span>
             <span className={`addon-badge ${scope === 'yours' ? 'addon-badge-yours' : ''}`}>
               {scope === 'yours' ? 'YOURS' : 'GLOBAL'}
             </span>
@@ -482,20 +483,15 @@ function AddonsSection() {
         ) : (
           <span />
         )}
-        {lockTitle === null ? (
-          <button
-            type="button"
-            className="icon-btn icon-btn-bare icon-btn-28"
-            title="Remove addon"
-            onClick={() => remove(item, scope)}
-          >
-            <FluentIcon glyph="delete" size={14} />
-          </button>
-        ) : (
-          <span style={{ display: 'flex', color: 'var(--t4)', padding: 6 }} title={lockTitle}>
-            <FluentIcon glyph="lock" size={14} />
-          </span>
-        )}
+        <button
+          type="button"
+          className="icon-btn icon-btn-bare icon-btn-28"
+          title={lockTitle ?? 'Remove addon'}
+          disabled={!editable}
+          onClick={() => remove(item, scope)}
+        >
+          <FluentIcon glyph="delete" size={14} />
+        </button>
       </div>
     )
   }
@@ -575,20 +571,17 @@ function LanguageSelect({
   noneLabel: string
   onChange: (value: string | undefined) => void
 }) {
+  const options = [
+    { value: 'none', label: noneLabel },
+    ...LANGUAGE_OPTIONS.map((lang) => ({ value: lang.code, label: lang.label })),
+  ]
   return (
-    <select
-      className="select"
-      style={{ width: 148 }}
+    <ComboBox
+      options={options}
       value={value ?? 'none'}
-      onChange={(e) => onChange(e.target.value === 'none' ? undefined : e.target.value)}
-    >
-      <option value="none">{noneLabel}</option>
-      {LANGUAGE_OPTIONS.map((lang) => (
-        <option key={lang.code} value={lang.code}>
-          {lang.label}
-        </option>
-      ))}
-    </select>
+      width={148}
+      onChange={(val) => onChange(val === 'none' ? undefined : val)}
+    />
   )
 }
 
@@ -641,14 +634,14 @@ function PlaybackSection() {
           />
         </SettingRow>
         <SettingRow
-          label={
-            <>
-              Discord Rich Presence <span className="soon-chip">SOON</span>
-            </>
-          }
+          label="Discord Rich Presence"
           hint="Shares the title and episode you are watching with Discord"
         >
-          <Toggle label="Discord Rich Presence" on={false} disabled onChange={() => undefined} />
+          <Toggle
+            label="Discord Rich Presence"
+            on={prefs.discordPresence}
+            onChange={(next) => setLocalPrefs({ discordPresence: next })}
+          />
         </SettingRow>
       </div>
     </Section>
@@ -731,7 +724,7 @@ function SubtitlesSection() {
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 16 }}>
             <span className="spacer opt-label">Shadow</span>
             <Toggle
               label="Subtitle shadow"
@@ -740,7 +733,7 @@ function SubtitlesSection() {
             />
           </div>
 
-          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 3 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <span className="spacer opt-label">Track styling</span>
               <Toggle
@@ -841,16 +834,6 @@ function AccountSection() {
           }}
         >
           Sign out
-        </button>
-        <button
-          type="button"
-          className="btn"
-          title="Forget this server and point Halo somewhere else"
-          onClick={() => {
-            if (window.confirm('Forget this server and start over?')) disconnect()
-          }}
-        >
-          Switch server
         </button>
       </div>
     </Section>

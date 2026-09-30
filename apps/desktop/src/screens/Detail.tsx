@@ -1,6 +1,7 @@
 import type { MetaDetail, MetaVideo, WatchState } from '@halo/core'
 import { useMemo, useState } from 'react'
 import { ArtImage } from '../components/ArtImage'
+import { ComboBox } from '../components/ComboBox'
 import { FluentIcon } from '../components/FluentIcon'
 import { DetailSkeleton } from '../components/Skeleton'
 import { useDownloads, type DownloadView } from '../downloads'
@@ -215,19 +216,17 @@ export function Detail({ type, id }: { type: string; id: string }) {
             <div className="detail-episodes">
               <div className="season-row">
                 {seasons.length > 1 && (
-                  <select
-                    className="select"
-                    style={{ minWidth: 140 }}
-                    aria-label="Season"
-                    value={String(activeSeason)}
-                    onChange={(e) => setSeason(Number(e.target.value))}
-                  >
-                    {seasons.map((s) => (
-                      <option key={s} value={s}>
-                        {s === 0 ? 'Specials' : `Season ${s}`}
-                      </option>
-                    ))}
-                  </select>
+                  <ComboBox
+                    options={seasons.map((s) => ({
+                      value: s,
+                      label: s === 0 ? 'Specials' : `Season ${s}`,
+                    }))}
+                    minWidth={140}
+                    width="auto"
+                    ariaLabel="Season"
+                    value={activeSeason ?? seasons[0] ?? 0}
+                    onChange={(val) => setSeason(Number(val))}
+                  />
                 )}
                 <div className="mono" style={{ paddingBottom: 6 }}>
                   {seasonMeta}

@@ -222,30 +222,13 @@
   --nav-compact-w: 48px;
   --caption-w: 138px;
 
-  /* Settings is capped on window width, matching the XAML visual states. */
-  --set-page: 1000px;
-  --set-form: 680px;
-  --set-rail: 216px;
-  --set-col-gap: 24px;
-  --set-form-gap: 36px;
-}
-@media (min-width: 1500px) {
-  :root {
-    --set-page: 1240px;
-    --set-form: 840px;
-    --set-rail: 240px;
-    --set-col-gap: 36px;
-    --set-form-gap: 44px;
-  }
-}
-@media (min-width: 1900px) {
-  :root {
-    --set-page: 1460px;
-    --set-form: 1000px;
-    --set-rail: 260px;
-    --set-col-gap: 44px;
-    --set-form-gap: 52px;
-  }
+  /* Settings layout matches what the native app draws: the wide 260px rail
+     and 44px column gap across all window sizes. */
+  --set-page: 1460px;
+  --set-form: 1000px;
+  --set-rail: 260px;
+  --set-col-gap: 44px;
+  --set-form-gap: 52px;
 }
 
 /* ── Reset ─────────────────────────────────────────────────────────────── */
@@ -643,10 +626,16 @@ a {
   background: var(--dh);
 }
 .btn:disabled,
-.btn-accent:disabled,
 .btn-outline-accent:disabled,
 .btn-danger:disabled {
   opacity: 0.45;
+}
+/* WinUI AccentButtonBackgroundDisabled turns neutral control fill. */
+.btn-accent:disabled {
+  background: var(--ct);
+  color: var(--t4);
+  border: 1px solid var(--cts);
+  opacity: 1;
 }
 .h28 {
   height: 28px;
@@ -910,29 +899,82 @@ a {
   color: var(--t1);
 }
 
+/* WinUI 3 ComboBox reproduction */
+.combo-box {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  background: var(--ct);
+  border: 1px solid var(--cts);
+  border-bottom-color: var(--cst);
+  border-radius: 4px;
+  font-size: 15px;
+  color: var(--t1);
+}
+.combo-box:hover {
+  background: var(--cth);
+}
+.combo-box:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 2px;
+}
+.combo-box-label {
+  flex: 1;
+  text-align: left;
+}
+.combo-box-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--t2);
+  flex-shrink: 0;
+}
+
+/* WinUI 3 ToggleSwitch reproduction */
 .toggle {
   width: 40px;
   height: 20px;
   flex: 0 0 40px;
   border-radius: 10px;
-  padding: 2px;
+  padding: 0 3px;
   display: flex;
+  align-items: center;
   justify-content: flex-start;
-  background: transparent;
-  border: 1px solid var(--bmf);
+  background: var(--ct);
+  border: 1px solid var(--cst);
+  transition: background-color 80ms ease, border-color 80ms ease;
+}
+.toggle:hover:not(:disabled) {
+  background: var(--cth);
+  border-color: var(--t2);
+}
+.toggle:hover:not(:disabled) .toggle-knob {
+  width: 14px;
+  height: 14px;
+  background: #ffffff;
+}
+.toggle-knob {
+  width: 12px;
+  height: 12px;
+  border-radius: 7px;
+  background: var(--t2);
+  transition: width 80ms ease, height 80ms ease, background-color 80ms ease;
 }
 .toggle-on {
   background: var(--aa);
   border-color: var(--aa);
+  padding: 0 2px;
   justify-content: flex-end;
 }
-.toggle-knob {
-  width: 14px;
-  height: 14px;
-  border-radius: 7px;
-  background: var(--t2);
+.toggle-on:hover:not(:disabled) {
+  background: var(--ac);
+  border-color: var(--ac);
 }
 .toggle-on .toggle-knob {
+  width: 14px;
+  height: 14px;
   background: var(--oa);
 }
 
@@ -1602,7 +1644,6 @@ input[type='range'] {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  text-wrap: pretty;
 }
 .hero-actions {
   display: flex;
@@ -1668,7 +1709,6 @@ input[type='range'] {
   font-size: 15px;
   line-height: 1.45;
   color: var(--t2);
-  text-wrap: pretty;
 }
 .recent-row {
   display: flex;
@@ -2910,7 +2950,6 @@ input[type='range'] {
   text-align: center;
   font-size: 15px;
   color: var(--t2);
-  text-wrap: pretty;
 }
 .field-block {
   margin-top: 12px;
@@ -4143,7 +4182,6 @@ body.player-active .titlebar {
   margin-top: 4px;
   font-size: 14px;
   color: rgba(255, 255, 255, 0.6);
-  text-wrap: pretty;
 }
 
 .player-bottom {
@@ -4476,7 +4514,6 @@ body.player-active .titlebar {
 .pcard-note {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.5);
-  text-wrap: pretty;
 }
 .pstepper {
   display: flex;
@@ -4560,7 +4597,6 @@ body.player-active .titlebar {
   margin-bottom: 10px;
   font-size: 13px;
   color: #fce100;
-  text-wrap: pretty;
 }
 
 /* ── Player: the native player's extras ─────────────────────────────────── */
