@@ -589,8 +589,14 @@ a {
   height: 32px;
   padding: 0 16px;
   border-radius: 4px;
-  font-size: 15px;
+  /* WinUI's ControlContentThemeFontSize: every Button the native app does not
+     size explicitly draws its label at 14. */
+  font-size: 14px;
   white-space: nowrap;
+}
+/* The few native buttons set to HaloFontBody (library sort, addon Add, Sign out). */
+.btn-body {
+  font-size: 15px;
 }
 .btn {
   background: var(--ct);
