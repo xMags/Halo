@@ -244,9 +244,12 @@
   --nav-compact-w: 48px;
   --caption-w: 138px;
 
-  /* Settings layout matches what the native app draws: the wide 260px rail
-     and 44px column gap across all window sizes. */
-  --set-page: 1460px;
+  /* Settings copies what the native page draws after launch: its widest rail
+     and gaps at every window size, with the page centred at the width its
+     content measures to at the default window (1016 = 24 + 260 + 44 + 664
+     + 24). Native only moves to its XAML breakpoints once the window has
+     been resized. */
+  --set-page: 1016px;
   --set-form: 1000px;
   --set-rail: 260px;
   --set-col-gap: 44px;
@@ -2993,10 +2996,11 @@ input[type='range'] {
   align-items: center;
   margin-top: 16px;
 }
-/* Too narrow for the controls and the 260px preview side by side. The native
-   page clips the pickers at its card edge here; the preview moving under the
+/* Too narrow for the controls (a 364px card: padding, the 76px label column
+   and the Font tray) plus the 12px gap and the 260px preview. The native page
+   clips the pickers at its card edge here; the preview moving under the
    controls keeps every choice visible instead. */
-@container set-form (max-width: 660px) {
+@container set-form (max-width: 635px) {
   .sub-grid {
     grid-template-columns: minmax(0, 1fr);
   }

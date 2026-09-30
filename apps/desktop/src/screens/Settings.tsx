@@ -7,6 +7,7 @@ import { getServerUrl } from '../api'
 import { ComboBox } from '../components/ComboBox'
 import { FluentIcon } from '../components/FluentIcon'
 import { Segmented } from '../components/Segmented'
+import { Slider } from '../components/Slider'
 import { Toggle } from '../components/Toggle'
 import { initials } from '../format'
 import { setLocalPrefs, useLocalPrefs } from '../localPrefs'
@@ -58,7 +59,6 @@ function sectionElement(form: HTMLElement | null, key: SettingsSection): HTMLEle
  * a section when clicked.
  */
 export function Settings() {
-  const { data: build } = useBuildInfo()
   const request = useSettingsSectionRequest()
   const scroller = useRef<HTMLDivElement>(null)
   const form = useRef<HTMLDivElement>(null)
@@ -160,9 +160,7 @@ export function Settings() {
             <div className="about-rule" />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <span className="mono">© 2026 Last Projects</span>
-              <span className="mono" style={{ color: 'var(--t4)' }}>
-                Source-available license
-              </span>
+              <span className="mono">Source-available license</span>
             </div>
           </div>
         </div>
@@ -487,7 +485,7 @@ function AddonsSection() {
           type="button"
           className="icon-btn icon-btn-bare icon-btn-28"
           title={lockTitle ?? 'Remove addon'}
-          disabled={!editable}
+          disabled={lockTitle !== null}
           onClick={() => remove(item, scope)}
         >
           <FluentIcon glyph="delete" size={14} />
@@ -634,14 +632,14 @@ function PlaybackSection() {
           />
         </SettingRow>
         <SettingRow
-          label="Discord Rich Presence"
+          label={
+            <>
+              Discord Rich Presence <span className="soon-chip">SOON</span>
+            </>
+          }
           hint="Shares the title and episode you are watching with Discord"
         >
-          <Toggle
-            label="Discord Rich Presence"
-            on={prefs.discordPresence}
-            onChange={(next) => setLocalPrefs({ discordPresence: next })}
-          />
+          <Toggle label="Discord Rich Presence" on={false} soon onChange={() => undefined} />
         </SettingRow>
       </div>
     </Section>
@@ -679,16 +677,13 @@ function SubtitlesSection() {
         <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="sub-row sub-row-value">
             <span className="opt-label">Size</span>
-            <input
-              type="range"
+            <Slider
               min={SUBTITLE_SCALE_MIN}
               max={SUBTITLE_SCALE_MAX}
               step={SUBTITLE_SCALE_STEP}
               value={scale}
-              aria-label="Subtitle size"
-              onChange={(e) =>
-                updateSettings.mutate({ subtitleScalePercent: Number(e.target.value) })
-              }
+              ariaLabel="Subtitle size"
+              onChange={(value) => updateSettings.mutate({ subtitleScalePercent: value })}
             />
             <span className="mono" style={{ color: 'var(--t2)', textAlign: 'right' }}>
               {scale}%
@@ -724,7 +719,7 @@ function SubtitlesSection() {
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 10 }}>
             <span className="spacer opt-label">Shadow</span>
             <Toggle
               label="Subtitle shadow"
@@ -733,7 +728,7 @@ function SubtitlesSection() {
             />
           </div>
 
-          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 3 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <span className="spacer opt-label">Track styling</span>
               <Toggle
@@ -779,7 +774,7 @@ function displayName(username: string): string {
 
 function AccountSection() {
   const { data: me } = useMe()
-  const { signOut, disconnect } = useSession()
+  const { signOut } = useSession()
   const { data: build } = useBuildInfo()
   const status = useServerStatus()
 

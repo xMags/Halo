@@ -20,7 +20,7 @@ import type { SubtitleOutline } from '@halo/core'
  */
 export const SUBTITLE_FONTS: ReadonlyArray<{ label: string; family?: string }> = [
   { label: 'Default' },
-  { label: 'System', family: 'Inter' },
+  { label: 'Inter', family: 'Inter' },
   { label: 'Serif', family: 'Source Serif 4' },
   { label: 'Mono', family: 'JetBrains Mono' },
 ]
