@@ -2071,6 +2071,7 @@ input[type='range'] {
   column-gap: 20px;
   row-gap: 26px;
   margin: -76px var(--gu) 0;
+  max-width: var(--set-page);
   position: relative;
 }
 
