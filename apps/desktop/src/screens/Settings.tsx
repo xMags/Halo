@@ -4,7 +4,7 @@ import mark from '../assets/halo-mark.png'
 import avatar from '../assets/user-avatar.png'
 import { useBuildInfo } from '../about'
 import { getServerUrl } from '../api'
-import { Icon } from '../components/Icon'
+import { FluentIcon } from '../components/FluentIcon'
 import { Segmented } from '../components/Segmented'
 import { Toggle } from '../components/Toggle'
 import { initials } from '../format'
@@ -457,7 +457,7 @@ function AddonsSection() {
                 : 'Managed by the server admin'
           }
         >
-          <Icon name="reorder" size={12} />
+          <FluentIcon glyph="grip" size={16} />
         </span>
         <span className="addon-tile">{initials(item.manifest.name)}</span>
         <span className="addon-text">
@@ -489,11 +489,11 @@ function AddonsSection() {
             title="Remove addon"
             onClick={() => remove(item, scope)}
           >
-            <Icon name="trash" size={14} />
+            <FluentIcon glyph="delete" size={14} />
           </button>
         ) : (
           <span style={{ display: 'flex', color: 'var(--t4)', padding: 6 }} title={lockTitle}>
-            <Icon name="lock" size={14} />
+            <FluentIcon glyph="lock" size={14} />
           </span>
         )}
       </div>

@@ -1461,6 +1461,10 @@ input[type='range'] {
   color: var(--t3);
   padding-bottom: 2px;
 }
+/* The native shelf draws its chevron glyphs in Text2 inside a default button. */
+.shelf-chevron {
+  color: var(--t2);
+}
 .shelf-scroll {
   display: flex;
   gap: 14px;

@@ -1,7 +1,7 @@
 import type { MetaDetail, MetaVideo, WatchState } from '@halo/core'
 import { useMemo, useState } from 'react'
 import { ArtImage } from '../components/ArtImage'
-import { Icon } from '../components/Icon'
+import { FluentIcon } from '../components/FluentIcon'
 import { DetailSkeleton } from '../components/Skeleton'
 import { useDownloads, type DownloadView } from '../downloads'
 import { airYear, episodeTag, formatAirDate, formatTimeLeft, runtimeMinutes } from '../format'
@@ -182,7 +182,7 @@ export function Detail({ type, id }: { type: string; id: string }) {
                 className="btn-accent h36"
                 onClick={() => openStreams(targetVideo)}
               >
-                <Icon name="play" size={14} />
+                <FluentIcon glyph="play" size={14} />
                 <span>
                   {resumeLabel}
                   {resumeState
@@ -195,7 +195,7 @@ export function Detail({ type, id }: { type: string; id: string }) {
                 className={libraryEntry ? 'btn-outline-accent h36' : 'btn h36'}
                 onClick={toggleLibrary}
               >
-                <Icon name={libraryEntry ? 'starFilled' : 'star'} size={15} />
+                <FluentIcon glyph={libraryEntry ? 'starFilled' : 'star'} size={15} />
                 <span>{libraryEntry ? 'In library' : 'Add to library'}</span>
               </button>
               <button
@@ -204,7 +204,7 @@ export function Detail({ type, id }: { type: string; id: string }) {
                 title="Choose a download source"
                 onClick={() => openStreams(targetVideo)}
               >
-                <Icon name="downloads" size={16} />
+                <FluentIcon glyph="downloads" size={16} />
               </button>
             </div>
           </div>
@@ -271,7 +271,7 @@ export function Detail({ type, id }: { type: string; id: string }) {
       </div>
 
       <button type="button" className="detail-back" title="Back" onClick={pop}>
-        <Icon name="back" size={16} />
+        <FluentIcon glyph="back" size={16} />
       </button>
     </div>
   )
@@ -316,7 +316,7 @@ function EpisodeRow({
           <span className={`ep-tag ${current || inProgress ? 'ep-tag-current' : ''}`}>{tag}</span>
           {state?.watched && (
             <span style={{ display: 'flex', color: 'var(--su)' }} title="Watched">
-              <Icon name="check" size={14} />
+              <FluentIcon glyph="check" size={14} />
             </span>
           )}
           <span className="ep-title ellipsis">{video.title ?? video.name ?? video.id}</span>

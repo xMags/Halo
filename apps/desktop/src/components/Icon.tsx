@@ -1,18 +1,12 @@
 import type { ReactNode } from 'react'
 
 /**
- * The icon set, drawn as inline SVG on a 16 × 16 grid with a 1.1–1.2px stroke
- * in `currentColor` — the design's own icon contract for a non-WinUI target.
- *
- * Inline rather than an icon font: this stroke weight and corner language is
- * specific to the design, and a system font (Segoe Fluent) mixes stroked and
- * filled glyphs at weights that visibly disagree with it. Everything scales
- * from the same viewBox, so a 13px icon keeps the 16px proportions with a
- * proportionally lighter stroke, exactly as the prototype draws them.
- *
- * The navigation pane, the sources sheet and the header's back button are
- * the exceptions: they reproduce the native WinUI Halo Desktop glyph for
- * glyph, so they draw Segoe Fluent glyphs through `FluentIcon`.
+ * The player's icon set: inline SVG on a 16 × 16 grid with a 1.1–1.2px stroke
+ * in `currentColor`. Every other surface draws the native app's Segoe Fluent
+ * glyphs through `FluentIcon`; the player has not been compared against the
+ * native OSD yet, so it keeps this set for now. Everything scales from the
+ * same viewBox, so a 13px icon keeps the 16px proportions with a
+ * proportionally lighter stroke.
  */
 
 interface Spec {

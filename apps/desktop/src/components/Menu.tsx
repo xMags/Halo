@@ -1,6 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
 import { FluentIcon } from './FluentIcon'
-import { Icon } from './Icon'
 
 /**
  * The flyout the library sort, the downloads overflow and the sheet's sort
@@ -87,7 +86,7 @@ export function MenuItem({
     >
       {checked !== undefined && (
         <span className="menu-check">
-          {checked && (radio ? <FluentIcon glyph="radioBullet" size={16} /> : <Icon name="check" size={14} />)}
+          {checked && (radio ? <FluentIcon glyph="radioBullet" size={16} /> : <FluentIcon glyph="check" size={12} />)}
         </span>
       )}
       <span>{label}</span>

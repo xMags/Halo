@@ -1,5 +1,5 @@
 import { useRef, type ReactNode } from 'react'
-import { Icon } from './Icon'
+import { FluentIcon } from './FluentIcon'
 
 /** How far a chevron pages the strip, per the design. */
 const PAGE_PX = 560
@@ -36,21 +36,21 @@ export function Shelf({ title, source, action, children }: Props) {
         {action}
         <button
           type="button"
-          className="icon-btn icon-btn-28"
+          className="icon-btn icon-btn-28 shelf-chevron"
           style={{ marginLeft: 8 }}
           title="Scroll left"
           onClick={() => page(-1)}
         >
-          <Icon name="chevronLeft" size={14} />
+          <FluentIcon glyph="chevronLeft" size={14} />
         </button>
         <button
           type="button"
-          className="icon-btn icon-btn-28"
+          className="icon-btn icon-btn-28 shelf-chevron"
           style={{ marginLeft: 6 }}
           title="Scroll right"
           onClick={() => page(1)}
         >
-          <Icon name="chevronRight" size={14} />
+          <FluentIcon glyph="chevronRight" size={14} />
         </button>
       </div>
       <div className="shelf-scroll" ref={scroller}>

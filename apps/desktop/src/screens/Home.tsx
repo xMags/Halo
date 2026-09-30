@@ -1,7 +1,7 @@
 import type { MetaDetail, MetaPreview, WatchState } from '@halo/core'
 import { useEffect, useState } from 'react'
 import { ArtImage } from '../components/ArtImage'
-import { Icon } from '../components/Icon'
+import { FluentIcon } from '../components/FluentIcon'
 import { PosterCard } from '../components/PosterCard'
 import { SearchBox } from '../components/SearchBox'
 import { SectionHeader } from '../components/SectionHeader'
@@ -334,7 +334,7 @@ function FeaturedHero({
         {featured.description && <div className="hero-synopsis">{featured.description}</div>}
         <div className="hero-actions">
           <button type="button" className="btn-accent h36" onClick={play}>
-            <Icon name="play" size={14} />
+            <FluentIcon glyph="play" size={14} />
             <span>{state ? `Resume${resumeTag ? ` ${resumeTag}` : ''}` : 'Play'}</span>
           </button>
           <button type="button" className="btn h36" onClick={openDetail}>
@@ -347,7 +347,7 @@ function FeaturedHero({
             onClick={toggleLibrary}
           >
             <span style={{ display: 'flex', color: libraryEntry ? 'var(--ca)' : undefined }}>
-              <Icon name={libraryEntry ? 'starFilled' : 'star'} size={16} />
+              <FluentIcon glyph={libraryEntry ? 'starFilled' : 'star'} size={16} />
             </span>
             <span>{libraryEntry ? 'In library' : 'Add to library'}</span>
           </button>

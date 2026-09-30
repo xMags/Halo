@@ -1,7 +1,7 @@
 import type { MetaPreview } from '@halo/core'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArtImage } from '../components/ArtImage'
-import { Icon } from '../components/Icon'
+import { FluentIcon } from '../components/FluentIcon'
 import { PosterCard } from '../components/PosterCard'
 import { SearchBox } from '../components/SearchBox'
 import { SectionHeader } from '../components/SectionHeader'
@@ -142,7 +142,7 @@ export function Search() {
                         onClick={() => searchAgain(entry.term)}
                       >
                         <span style={{ color: 'var(--t3)', display: 'flex', flex: '0 0 15px' }}>
-                          <Icon name="clock" size={15} />
+                          <FluentIcon glyph="clock" size={15} />
                         </span>
                         <span className="recent-term ellipsis">{entry.term}</span>
                         <span className="mono" style={{ color: 'var(--t4)' }}>
@@ -156,7 +156,7 @@ export function Search() {
                         title="Remove from history"
                         onClick={() => setHistory(removeSearchTerm(entry.term))}
                       >
-                        <Icon name="x" size={11} />
+                        <FluentIcon glyph="clear" size={11} />
                       </button>
                     </div>
                   ))}
