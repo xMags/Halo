@@ -228,7 +228,7 @@ export function useAddonSubtitles(opts: SubtitleOptions) {
   })
 }
 
-/** One search row per responding catalog, Stremio-style ("Popular – Movie"). */
+/** One search row per responding catalog, titled with the catalog's own name. */
 export interface SearchResultGroup {
   key: string
   title: string
@@ -303,10 +303,6 @@ export function useSearch(term: string) {
       return { groups }
     },
   })
-}
-
-function typeLabel(type: string): string {
-  return type.charAt(0).toUpperCase() + type.slice(1)
 }
 
 export function useLibrary() {
