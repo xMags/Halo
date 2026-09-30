@@ -12,10 +12,10 @@ import {
   seedDefaultAddons,
   setServerUrl,
   type SessionKind,
-} from './api'
+} from '../api'
 import { signOutLocal } from './localAuth'
 import { signOutOidc } from './oidc'
-import { clearDownloadsAccount } from './downloads'
+import { clearDownloadsAccount } from '../downloads/downloadsStore'
 
 /**
  * App-level auth state machine, mirroring mobile's session provider:

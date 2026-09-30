@@ -2,7 +2,7 @@ import type { MetaDetail } from '@halo/core'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useSyncExternalStore } from 'react'
-import { getClient } from './api'
+import { getClient } from '../api'
 import {
   downloadEtaSeconds,
   downloadFailureMessage,
@@ -22,7 +22,7 @@ import {
   type DownloadFailureCode,
   type DownloadStatus,
 } from './downloadsLogic'
-import { getLocalPrefs, setLocalPrefs } from './localPrefs'
+import { getLocalPrefs, setLocalPrefs } from '../localPrefs'
 export type { DownloadFailureCode, DownloadStatus } from './downloadsLogic'
 
 export interface DownloadMedia {

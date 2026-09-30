@@ -1,7 +1,7 @@
-import type { DownloadView } from './downloads'
+import type { DownloadView } from './downloadsStore'
 import { formatDownloadBytes, requiresNewSource, THROUGHPUT_SLOTS } from './downloadsLogic'
-import { badgeTierLabel, isHdr, isPremiumTier, NOT_PARSED, tierOf } from './sourcePresentation'
-import { parseStreamInfo } from './streamInfo'
+import { badgeTierLabel, isHdr, isPremiumTier, NOT_PARSED, tierOf } from '../sources/sourcePresentation'
+import { parseStreamInfo } from '../sources/streamInfo'
 
 /**
  * What the Downloads page says about each download and about the page as a

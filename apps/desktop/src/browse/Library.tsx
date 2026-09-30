@@ -6,7 +6,7 @@ import { PosterCard } from '../components/PosterCard'
 import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { PosterCardSkeleton } from '../components/Skeleton'
-import { buildLibraryRow } from '../homeRows'
+import { buildLibraryRow } from '../home/homeRows'
 import { useLibrary, useWatchStates } from '../queries'
 
 const SORTS = [

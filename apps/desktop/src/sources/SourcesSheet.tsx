@@ -13,13 +13,13 @@ import {
   type DownloadMedia,
   type DownloadSubtitleRequest,
   type DownloadView,
-} from '../downloads'
+} from '../downloads/downloadsStore'
 import { useLocalPrefs } from '../localPrefs'
 import { useNav, type StreamsParams } from '../nav'
 import { useStreams, useWatchStates } from '../queries'
-import { useSettings } from '../settings'
-import { revealSettingsSection, type SettingsSection } from '../settingsSection'
-import { languageName, watchNote, type DeviceContext } from '../sourcePresentation'
+import { useSettings } from '../settings/syncedSettings'
+import { revealSettingsSection, type SettingsSection } from '../settings/settingsSection'
+import { languageName, watchNote, type DeviceContext } from './sourcePresentation'
 import {
   SORTS,
   buildListing,
@@ -31,10 +31,10 @@ import {
   type SourceFilter,
   type SourceRecord,
   type SourceSort,
-} from '../sourcesModel'
-import { GroupHeader, PickCard, RevealRow, SourceCard } from './sources/SourceCards'
-import { SheetFooter } from './sources/SheetFooter'
-import { Banner, EmptyState, Resolving } from './sources/SheetStates'
+} from './sourcesModel'
+import { GroupHeader, PickCard, RevealRow, SourceCard } from './SourceCards'
+import { SheetFooter } from './SheetFooter'
+import { Banner, EmptyState, Resolving } from './SheetStates'
 
 /**
  * The source picker, reproducing the native WinUI Halo Desktop's sources

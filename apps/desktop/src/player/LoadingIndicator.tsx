@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { bufferingIndicatorDelayMs, bufferingIndicatorHoldMs } from '../../playerLogic'
+import { bufferingIndicatorDelayMs, bufferingIndicatorHoldMs } from './playerLogic'
 
 /**
  * Whether the loading ring should be up, with the native player's timing: a

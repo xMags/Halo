@@ -1,5 +1,5 @@
 import type { SubtitleOutline } from '@halo/core'
-import { subtitlePreviewMetrics } from '../../playerLogic'
+import { subtitlePreviewMetrics } from './playerLogic'
 
 /** The eight directions an outline copy is offset in, as the native preview rings the glyphs. */
 const OUTLINE_DIRECTIONS: ReadonlyArray<[number, number]> = [

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { DownloadView } from '../src/downloads.ts'
+import type { DownloadView } from '../src/downloads/downloadsStore.ts'
 import {
   addedFact,
   addedLabel,
@@ -16,7 +16,7 @@ import {
   resolveSelection,
   rowOf,
   storageFigures,
-} from '../src/downloadsPresentation.ts'
+} from '../src/downloads/downloadsPresentation.ts'
 
 function view(patch: Partial<DownloadView> & { media?: Partial<DownloadView['media']> } = {}): DownloadView {
   const { media, ...rest } = patch

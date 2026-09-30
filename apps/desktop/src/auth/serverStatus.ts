@@ -1,6 +1,6 @@
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { useQuery } from '@tanstack/react-query'
-import { getServerUrl } from './api'
+import { getServerUrl } from '../api'
 
 /**
  * Reachability and round-trip latency for the configured server, shown at the

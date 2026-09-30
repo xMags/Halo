@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { MAX_LINE_MBPS } from './downloadsLogic'
+import { MAX_LINE_MBPS } from './downloads/downloadsLogic'
 import type { ThemeChoice } from './theme'
 
 /**
@@ -19,7 +19,7 @@ import type { ThemeChoice } from './theme'
  *                         playing; on by default, as in the native app
  *
  * Everything account-shaped (languages, subtitle size/font/outline/shadow,
- * autoplay) stays in `settings.ts`, which syncs last-write-wins.
+ * autoplay) stays in `settings/syncedSettings.ts`, which syncs last-write-wins.
  *
  * One store with an explicit subscription rather than four `useState`s: the
  * settings pane and the player's rail both read and write these, and they must
