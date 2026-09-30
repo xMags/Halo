@@ -69,6 +69,10 @@
 :root[data-theme='dark'] {
   --m: #202020;
   --ly: rgba(58, 58, 58, 0.302);
+  /* WinUI's NavigationView content grid: LayerFillColorDefault and
+     CardStrokeColorDefault, drawn under the content host. */
+  --nvl: rgba(58, 58, 58, 0.298);
+  --nvs: rgba(0, 0, 0, 0.098);
   --cd: rgba(255, 255, 255, 0.051);
   --cs: rgba(255, 255, 255, 0.082);
   --ct: rgba(255, 255, 255, 0.059);
@@ -130,6 +134,8 @@
 :root[data-theme='light'] {
   --m: #f3f3f3;
   --ly: rgba(255, 255, 255, 0.62);
+  --nvl: rgba(255, 255, 255, 0.502);
+  --nvs: rgba(0, 0, 0, 0.059);
   --cd: rgba(255, 255, 255, 0.702);
   --cs: rgba(0, 0, 0, 0.059);
   --ct: rgba(255, 255, 255, 0.702);
@@ -1259,10 +1265,23 @@ input[type='range'] {
 }
 
 /* ── Content surface ───────────────────────────────────────────────────── */
+/* Two layers, as the native shell has: the NavigationView's own content grid
+   (a layer fill and a dark hairline, WinUI's defaults) and, inside it, Halo's
+   content host with its own layer and card stroke. The fills stack, which is
+   why the native page surface is a shade lighter than one layer would be. */
 .content {
   flex: 1;
   min-width: 0;
   position: relative;
+  background: var(--nvl);
+  border-top: 1px solid var(--nvs);
+  border-left: 1px solid var(--nvs);
+  border-radius: 8px 0 0 0;
+  overflow: hidden;
+}
+.content-host {
+  position: absolute;
+  inset: 0;
   background: var(--ly);
   border-top: 1px solid var(--cs);
   border-left: 1px solid var(--cs);

@@ -110,7 +110,9 @@ function Shell() {
       <div className="shell-body">
         <NavRail open={paneOpen} onToggle={() => setPaneOpen((open) => !open)} />
         <div className="content">
-          <Stack />
+          <div className="content-host">
+            <Stack />
+          </div>
         </div>
       </div>
       {sheet && <SourcesSheet params={sheet} />}
