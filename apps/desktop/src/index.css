@@ -244,7 +244,7 @@
 
   --titlebar: 32px;
   --nav-w: 224px;
-  --nav-compact-w: 48px;
+  --nav-compact-w: 56px;
   --caption-w: 138px;
 
   /* Settings copies what the native page draws after launch: its widest rail
@@ -1333,6 +1333,13 @@ input[type='range'] {
 .nav-compact {
   flex-basis: var(--nav-compact-w);
   width: var(--nav-compact-w);
+}
+/* Re-centre icons when the compact rail is wider than the items' own padding
+   would place them. 4px nav + 16px item = 20px; icon 16px; center at 28px
+   = rail center (56/2). */
+.nav-compact .nav-item,
+.nav-compact .account-row {
+  padding: 0 16px;
 }
 @media (prefers-reduced-motion: reduce) {
   .nav {
