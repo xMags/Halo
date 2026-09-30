@@ -1,5 +1,5 @@
 import type { MetaDetail, MetaVideo, WatchState } from '@halo/core'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type MouseEvent } from 'react'
 import { ArtImage } from '../components/ArtImage'
 import { ComboBox } from '../components/ComboBox'
 import { FluentIcon } from '../components/FluentIcon'
@@ -16,6 +16,8 @@ import {
   useWatchStates,
 } from '../queries'
 import { parseStreamInfo, qualityRank, type Quality } from '../sources/streamInfo'
+import { useTitleMenu } from './titleMenu'
+import { hasWatchProgress } from './watchMarks'
 
 /**
  * Title page: the backdrop runs to the top with the poster and playback entry
@@ -30,6 +32,7 @@ export function Detail({ type, id }: { type: string; id: string }) {
   const { data: watchStates } = useWatchStates()
   const { downloads } = useDownloads()
   const upsertLibrary = useUpsertLibrary()
+  const titleMenu = useTitleMenu()
 
   const itemId = `${type}:${id}`
   const libraryEntry = (library ?? []).find((item) => item.id === itemId && !item.removedAt)
@@ -61,10 +64,11 @@ export function Detail({ type, id }: { type: string; id: string }) {
 
   // Open on the season of the most recently watched episode, not season 1 —
   // mid-binge, "the season I'm in" is almost always where the next click goes.
+  // An episode marked unwatched records no viewing, so it does not count.
   const lastWatchedSeason = useMemo(() => {
     const videosById = new Map((meta?.videos ?? []).map((video) => [video.id, video]))
     const latest = statesForItem
-      .filter((s) => videosById.has(s.videoId))
+      .filter((s) => videosById.has(s.videoId) && hasWatchProgress(s))
       .sort((a, b) => b.updatedAt - a.updatedAt)[0]
     return latest ? (videosById.get(latest.videoId)!.season ?? null) : null
   }, [statesForItem, meta])
@@ -253,6 +257,9 @@ export function Detail({ type, id }: { type: string; id: string }) {
                       current={video.id === resumeState?.videoId}
                       download={downloads.find((item) => item.media.video_id === video.id)}
                       onOpen={() => openStreams(video)}
+                      onMenu={(event) =>
+                        titleMenu.forEpisode(event, { meta, itemId, video, play: () => openStreams(video) })
+                      }
                     />
                   ))}
                 </div>
@@ -285,6 +292,7 @@ function EpisodeRow({
   current,
   download,
   onOpen,
+  onMenu,
 }: {
   video: MetaVideo
   runtime: string | undefined
@@ -292,6 +300,7 @@ function EpisodeRow({
   current: boolean
   download: DownloadView | undefined
   onOpen: () => void
+  onMenu: (event: MouseEvent<HTMLElement>) => void
 }) {
   const fraction =
     state && state.durationSec > 0
@@ -303,7 +312,7 @@ function EpisodeRow({
   const inProgress = fraction > 0 && fraction < 1
 
   return (
-    <button type="button" className="ep-row" onClick={onOpen}>
+    <button type="button" className="ep-row" onClick={onOpen} onContextMenu={onMenu}>
       <div className="art ep-thumb">
         <ArtImage src={video.thumbnail} label="STILL" lazy />
         {fraction > 0 && (

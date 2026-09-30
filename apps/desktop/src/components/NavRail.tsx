@@ -1,4 +1,5 @@
 import avatar from '../assets/user-avatar.png'
+import { useTitleMenu } from '../browse/titleMenu'
 import { useDownloads } from '../downloads/downloadsStore'
 import { useContinueShelf } from '../home/continueShelf'
 import { formatClock, videoIdTag } from '../format'
@@ -47,6 +48,7 @@ export function NavRail({ open, onToggle }: NavRailProps) {
   const { section, push, setRoot } = useNav()
   const { data: me } = useMe()
   const { downloads } = useDownloads()
+  const titleMenu = useTitleMenu()
 
   const activeTransfers = downloads.filter(
     (item) => item.status === 'downloading' || item.status === 'queued',
@@ -100,6 +102,7 @@ export function NavRail({ open, onToggle }: NavRailProps) {
               className="jump-row"
               title={card.name}
               onClick={() => push({ name: 'detail', type: card.type, id: card.metaId })}
+              onContextMenu={(event) => titleMenu.forContinue(event, card)}
             >
               <span className="art jump-art">
                 <ArtImage src={card.poster} />
