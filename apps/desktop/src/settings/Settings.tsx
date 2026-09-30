@@ -162,7 +162,7 @@ export function Settings() {
             <div className="about-rule" />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <span className="mono">© 2026 cryguy</span>
-              <span className="mono">Open-source license</span>
+              <span className="mono">GPL-3.0 license</span>
             </div>
           </div>
         </div>
