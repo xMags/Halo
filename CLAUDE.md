@@ -114,9 +114,10 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
   History: the old react-native-vlc-media-player bridge emitted ms while its
   typings said seconds — verify units on a real episode before trusting a new
   bridge's typings.
-- **expo-libvlc-player runs patched** (`patches/`, applied by pnpm) — subtitle
-  delay prop + Android SurfaceView rendering. Read `patches/README.md` before
-  bumping the package version; the patch will not re-apply cleanly on its own.
+- **expo-libvlc-player runs patched** (`apps/mobile/patches/`, applied by
+  pnpm) — subtitle delay prop + Android SurfaceView rendering. Read
+  `apps/mobile/patches/README.md` before bumping the package version; the
+  patch will not re-apply cleanly on its own.
 - **Subtitle scale/font are creation-time VLC options** — changing them
   rebuilds the native player (`key` remount in `PlayerVideo.tsx`) with
   seek-back + slave-id re-learn. libvlc's Java/ObjC wrappers expose no runtime

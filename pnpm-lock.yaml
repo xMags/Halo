@@ -7,7 +7,7 @@ settings:
 patchedDependencies:
   expo-libvlc-player@7.1.2:
     hash: bf9a42886209664f54441628c63583c4c81a485f449d008ba52d3cc84277f07e
-    path: patches/expo-libvlc-player@7.1.2.patch
+    path: apps/mobile/patches/expo-libvlc-player@7.1.2.patch
 
 importers:
 
