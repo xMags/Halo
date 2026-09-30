@@ -11,12 +11,17 @@ interface Props<T extends string> {
   onChange: (value: T) => void
   /** The smaller cells Settings' font and outline pickers use. */
   compact?: boolean
+  /**
+   * The native filter pills (Downloads): regular weight, and the selection
+   * drawn as the accent wash with an info stroke instead of a neutral fill.
+   */
+  pills?: boolean
 }
 
 /** The segmented tray: browse filters, download filters, font/outline pickers. */
-export function Segmented<T extends string>({ options, value, onChange, compact }: Props<T>) {
+export function Segmented<T extends string>({ options, value, onChange, compact, pills }: Props<T>) {
   return (
-    <div className={`tray ${compact ? 'tray-compact' : ''}`} role="tablist">
+    <div className={`tray ${compact ? 'tray-compact' : ''} ${pills ? 'tray-pills' : ''}`} role="tablist">
       {options.map((option) => (
         <button
           key={option.value}

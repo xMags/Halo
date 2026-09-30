@@ -105,6 +105,8 @@
   --ns: rgba(96, 205, 255, 0.141);
   --p1: #2a2b2f;
   --p2: #232428;
+  /* HaloPlaceholderStripe, the asset behind every empty art slot. */
+  --ps: url('./assets/stripe-dark.png');
   --chd: rgba(96, 205, 255, 0.278);
   --pt: rgba(255, 255, 255, 0.341);
   --hs1: rgba(24, 24, 26, 0.961);
@@ -188,6 +190,7 @@
   --ns: rgba(0, 95, 184, 0.102);
   --p1: #e4e4e8;
   --p2: #efeff2;
+  --ps: url('./assets/stripe-light.png');
   --chd: rgba(0, 95, 184, 0.239);
   --pt: rgba(0, 0, 0, 0.38);
   --hs1: rgba(243, 243, 243, 0.969);
@@ -553,15 +556,12 @@ a {
  * The stand-in for missing artwork is a diagonal stripe, drawn in CSS so no
  * placeholder bitmap ships in the product.
  */
+/* The native PlaceholderArt: the stripe asset scaled to fill the slot
+   (UniformToFill), so a poster's stripes are finer than a backdrop's. */
 .art {
   position: relative;
   overflow: hidden;
-  background-color: var(--p1);
-  background-image: repeating-linear-gradient(
-    -45deg,
-    var(--p1) 0 9px,
-    var(--p2) 9px 18px
-  );
+  background: var(--p1) var(--ps) center / cover no-repeat;
 }
 .art img {
   width: 100%;
@@ -577,8 +577,7 @@ a {
   justify-content: center;
   padding: 8px;
   text-align: center;
-  font: 700 12px/1.3 var(--mono);
-  letter-spacing: 1.44px;
+  font: 700 12px/16px var(--mono);
   color: var(--pt);
 }
 .art-progress {
@@ -772,6 +771,27 @@ a {
 .tray-compact .tray-btn {
   padding: 4px 12px;
   font-size: 14px;
+}
+/* HaloFilterPillStyle: 30px pills, 13px in, never bold. Selection is the
+   accent wash inside an info stroke, with the label in accent. */
+.tray-pills .tray-btn {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+.tray-pills .tray-btn:hover {
+  background: var(--sb);
+}
+.tray-pills .tray-btn:active {
+  opacity: 0.7;
+}
+.tray-pills .tray-btn-active,
+.tray-pills .tray-btn-active:hover {
+  background: var(--at);
+  border-color: var(--is);
+  color: var(--ac);
+  font-weight: 400;
 }
 
 /* ── Chips / pills / badges ────────────────────────────────────────────── */
@@ -2527,7 +2547,7 @@ input[type='range'] {
 .dl-empty-folder {
   margin-top: 20px;
   color: var(--t4);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .dl-nomatch-card {
   margin-top: 12px;
@@ -2659,7 +2679,7 @@ input[type='range'] {
   font-size: 14px;
   line-height: 20px;
   color: var(--t2);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 /* ── InfoBar ───────────────────────────────────────────────────────────────
