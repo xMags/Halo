@@ -1,6 +1,6 @@
 import type { MetaPreview } from '@halo/core'
 import { useMemo, useState } from 'react'
-import { Icon } from '../components/Icon'
+import { FluentIcon } from '../components/FluentIcon'
 import { Menu, MenuAnchor, MenuItem } from '../components/Menu'
 import { PosterCard } from '../components/PosterCard'
 import { SectionHeader } from '../components/SectionHeader'
@@ -71,7 +71,7 @@ export function Library() {
           <button type="button" className="btn btn-body" onClick={() => setSortOpen((open) => !open)}>
             <span>{SORTS.find((option) => option.value === sort)!.label}</span>
             <span style={{ color: 'var(--t2)', display: 'flex' }}>
-              <Icon name="chevronDown" size={13} />
+              <FluentIcon glyph="chevronDown" size={13} />
             </span>
           </button>
           <Menu open={sortOpen} onClose={() => setSortOpen(false)}>
@@ -79,6 +79,7 @@ export function Library() {
               <MenuItem
                 key={option.value}
                 label={option.label}
+                radio
                 checked={sort === option.value}
                 onClick={() => {
                   setSort(option.value)
