@@ -1559,6 +1559,15 @@ input[type='range'] {
   letter-spacing: -0.3px;
   color: var(--t1);
 }
+/* WinUI lays a 30px Segoe UI Variable Display TextBlock out 36px tall with
+   the ink 4.8px from its top (measured on the native page titles); Chromium's
+   line box for the face puts the ink 2.4px lower at that height. */
+.page-title,
+.set-rail-title {
+  line-height: 36px;
+  position: relative;
+  top: -2.4px;
+}
 .head-right {
   display: flex;
   align-items: center;
