@@ -2017,6 +2017,13 @@ input[type='range'] {
   overflow-x: hidden;
 }
 
+/* The page is two layers: the art pinned to the screen, and the scroller
+   over it. The art used to live inside the scroller, where it was one screen
+   tall and scrolled away, leaving a hard edge across the page. */
+.detail-screen {
+  overflow: hidden;
+}
+
 /* Full-page background art covering the entire page surface */
 .detail-bg {
   position: absolute;

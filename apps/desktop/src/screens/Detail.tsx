@@ -158,120 +158,122 @@ export function Detail({ type, id }: { type: string; id: string }) {
     .join(' · ')
 
   return (
-    <div className="view detail-view">
-      {/* Full-page background art covering the entire page behind content */}
+    <div className="view detail-screen">
+      {/* Full-page background art, pinned behind the scrolling page */}
       <div className="art detail-bg" aria-hidden>
         <ArtImage src={meta.background ?? meta.poster} label="BACKDROP" />
         <div className="detail-bg-scrim" />
       </div>
 
-      <div style={{ position: 'relative', zIndex: 1, paddingBottom: 48 }}>
-        <div style={{ height: 268 }} />
+      <div className="detail-view">
+        <div style={{ position: 'relative', zIndex: 1, paddingBottom: 48 }}>
+          <div style={{ height: 268 }} />
 
-        <div className={`detail-grid ${isSeries ? '' : 'detail-grid-movie'}`}>
-          <div className="art detail-poster">
-            <ArtImage src={meta.poster} label={meta.name} />
-          </div>
-
-          <div className="detail-head">
-            <div className="kicker kicker-accent">{kicker}</div>
-            <div className="detail-title ellipsis">{meta.name}</div>
-            <div className="detail-meta ellipsis">{metaLine}</div>
-            <div className="detail-actions">
-              <button
-                type="button"
-                className="btn-accent h36"
-                onClick={() => openStreams(targetVideo)}
-              >
-                <FluentIcon glyph="play" size={14} />
-                <span>
-                  {resumeLabel}
-                  {resumeState
-                    ? ` · ${formatTimeLeft(resumeState.positionSec, resumeState.durationSec)}`
-                    : ''}
-                </span>
-              </button>
-              <button
-                type="button"
-                className={libraryEntry ? 'btn-outline-accent h36' : 'btn h36'}
-                onClick={toggleLibrary}
-              >
-                <FluentIcon glyph={libraryEntry ? 'starFilled' : 'star'} size={15} />
-                <span>{libraryEntry ? 'In library' : 'Add to library'}</span>
-              </button>
-              <button
-                type="button"
-                className="icon-btn icon-btn-36"
-                title="Choose a download source"
-                onClick={() => openStreams(targetVideo)}
-              >
-                <FluentIcon glyph="downloads" size={16} />
-              </button>
+          <div className={`detail-grid ${isSeries ? '' : 'detail-grid-movie'}`}>
+            <div className="art detail-poster">
+              <ArtImage src={meta.poster} label={meta.name} />
             </div>
-          </div>
 
-          {isSeries && <div />}
-
-          {isSeries && (
-            <div className="detail-episodes">
-              <div className="season-row">
-                {seasons.length > 1 && (
-                  <ComboBox
-                    options={seasons.map((s) => ({
-                      value: s,
-                      label: s === 0 ? 'Specials' : `Season ${s}`,
-                    }))}
-                    minWidth={140}
-                    width="auto"
-                    ariaLabel="Season"
-                    value={activeSeason ?? seasons[0] ?? 0}
-                    onChange={(val) => setSeason(Number(val))}
-                  />
-                )}
-                <div className="mono" style={{ paddingBottom: 6 }}>
-                  {seasonMeta}
-                </div>
-                <div className="spacer" />
+            <div className="detail-head">
+              <div className="kicker kicker-accent">{kicker}</div>
+              <div className="detail-title ellipsis">{meta.name}</div>
+              <div className="detail-meta ellipsis">{metaLine}</div>
+              <div className="detail-actions">
                 <button
                   type="button"
-                  className="btn-link"
-                  title="Choose a source for the episode you would resume"
+                  className="btn-accent h36"
                   onClick={() => openStreams(targetVideo)}
                 >
-                  Choose a source
+                  <FluentIcon glyph="play" size={14} />
+                  <span>
+                    {resumeLabel}
+                    {resumeState
+                      ? ` · ${formatTimeLeft(resumeState.positionSec, resumeState.durationSec)}`
+                      : ''}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={libraryEntry ? 'btn-outline-accent h36' : 'btn h36'}
+                  onClick={toggleLibrary}
+                >
+                  <FluentIcon glyph={libraryEntry ? 'starFilled' : 'star'} size={15} />
+                  <span>{libraryEntry ? 'In library' : 'Add to library'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn icon-btn-36"
+                  title="Choose a download source"
+                  onClick={() => openStreams(targetVideo)}
+                >
+                  <FluentIcon glyph="downloads" size={16} />
                 </button>
               </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {episodes.map((video) => (
-                  <EpisodeRow
-                    key={video.id}
-                    video={video}
-                    runtime={meta.runtime}
-                    state={statesForItem.find((s) => s.videoId === video.id) ?? null}
-                    current={video.id === resumeState?.videoId}
-                    download={downloads.find((item) => item.media.video_id === video.id)}
-                    onOpen={() => openStreams(video)}
-                  />
-                ))}
-              </div>
             </div>
-          )}
 
-          <aside className="detail-aside" style={isSeries ? undefined : { gap: 20 }}>
-            <SynopsisCard meta={meta} />
-            <AvailabilityCard
-              type={type}
-              videoId={targetVideo?.id ?? id}
-              onBrowse={() => openStreams(targetVideo)}
-            />
-          </aside>
+            {isSeries && <div />}
+
+            {isSeries && (
+              <div className="detail-episodes">
+                <div className="season-row">
+                  {seasons.length > 1 && (
+                    <ComboBox
+                      options={seasons.map((s) => ({
+                        value: s,
+                        label: s === 0 ? 'Specials' : `Season ${s}`,
+                      }))}
+                      minWidth={140}
+                      width="auto"
+                      ariaLabel="Season"
+                      value={activeSeason ?? seasons[0] ?? 0}
+                      onChange={(val) => setSeason(Number(val))}
+                    />
+                  )}
+                  <div className="mono" style={{ paddingBottom: 6 }}>
+                    {seasonMeta}
+                  </div>
+                  <div className="spacer" />
+                  <button
+                    type="button"
+                    className="btn-link"
+                    title="Choose a source for the episode you would resume"
+                    onClick={() => openStreams(targetVideo)}
+                  >
+                    Choose a source
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {episodes.map((video) => (
+                    <EpisodeRow
+                      key={video.id}
+                      video={video}
+                      runtime={meta.runtime}
+                      state={statesForItem.find((s) => s.videoId === video.id) ?? null}
+                      current={video.id === resumeState?.videoId}
+                      download={downloads.find((item) => item.media.video_id === video.id)}
+                      onOpen={() => openStreams(video)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <aside className="detail-aside" style={isSeries ? undefined : { gap: 20 }}>
+              <SynopsisCard meta={meta} />
+              <AvailabilityCard
+                type={type}
+                videoId={targetVideo?.id ?? id}
+                onBrowse={() => openStreams(targetVideo)}
+              />
+            </aside>
+          </div>
         </div>
-      </div>
 
-      <button type="button" className="detail-back" title="Back" onClick={pop}>
-        <FluentIcon glyph="back" size={16} />
-      </button>
+        <button type="button" className="detail-back" title="Back" onClick={pop}>
+          <FluentIcon glyph="back" size={16} />
+        </button>
+      </div>
     </div>
   )
 }

@@ -138,33 +138,35 @@ export function HeroSkeleton() {
 /** Full-screen detail placeholder matching `.detail-view` with full-page background. */
 export function DetailSkeleton() {
   return (
-    <div className="view detail-view detail-skeleton" aria-hidden>
+    <div className="view detail-screen detail-skeleton" aria-hidden>
       <div className="art detail-bg">
         <div className="detail-bg-scrim" />
       </div>
-      <div style={{ position: 'relative', zIndex: 1, paddingBottom: 48 }}>
-        <div style={{ height: 268 }} />
-        <div className="detail-grid detail-grid-movie">
-          <div className="art detail-poster skeleton" />
-          <div className="detail-head">
-            <div className="skeleton skeleton-text" style={{ width: 90, height: 12, marginBottom: 8 }} />
-            <div
-              className="skeleton skeleton-text"
-              style={{ width: '70%', maxWidth: 420, height: 36, borderRadius: 6, marginBottom: 10 }}
-            />
-            <div className="skeleton skeleton-text" style={{ width: 260, height: 15, marginBottom: 16 }} />
-            <div className="detail-actions" style={{ marginBottom: 20 }}>
-              <div className="skeleton" style={{ width: 130, height: 36, borderRadius: 4 }} />
-              <div className="skeleton" style={{ width: 120, height: 36, borderRadius: 4 }} />
+      <div className="detail-view">
+        <div style={{ position: 'relative', zIndex: 1, paddingBottom: 48 }}>
+          <div style={{ height: 268 }} />
+          <div className="detail-grid detail-grid-movie">
+            <div className="art detail-poster skeleton" />
+            <div className="detail-head">
+              <div className="skeleton skeleton-text" style={{ width: 90, height: 12, marginBottom: 8 }} />
+              <div
+                className="skeleton skeleton-text"
+                style={{ width: '70%', maxWidth: 420, height: 36, borderRadius: 6, marginBottom: 10 }}
+              />
+              <div className="skeleton skeleton-text" style={{ width: 260, height: 15, marginBottom: 16 }} />
+              <div className="detail-actions" style={{ marginBottom: 20 }}>
+                <div className="skeleton" style={{ width: 130, height: 36, borderRadius: 4 }} />
+                <div className="skeleton" style={{ width: 120, height: 36, borderRadius: 4 }} />
+              </div>
             </div>
-          </div>
-          <div className="detail-aside">
-            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div className="skeleton skeleton-text" style={{ width: 80, height: 12 }} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div className="skeleton skeleton-text" style={{ width: '100%', height: 14 }} />
-                <div className="skeleton skeleton-text" style={{ width: '95%', height: 14 }} />
-                <div className="skeleton skeleton-text" style={{ width: '65%', height: 14 }} />
+            <div className="detail-aside">
+              <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="skeleton skeleton-text" style={{ width: 80, height: 12 }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div className="skeleton skeleton-text" style={{ width: '100%', height: 14 }} />
+                  <div className="skeleton skeleton-text" style={{ width: '95%', height: 14 }} />
+                  <div className="skeleton skeleton-text" style={{ width: '65%', height: 14 }} />
+                </div>
               </div>
             </div>
           </div>
