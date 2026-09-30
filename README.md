@@ -100,9 +100,8 @@ The API resolves installed addons and returns normalized results to authenticate
 apps/api/             Hono API, authentication, SQLite schema, and addon fan-out
 apps/desktop/         Windows-first Tauri client with a native mpv host
 apps/mobile-native/   Compose Multiplatform client for Android and iOS
-apps/mobile/          Legacy Expo iOS client
+apps/mobile/          Legacy Expo iOS client, with its reviewed package patches
 packages/core/        Shared TypeScript addon and API contracts
-patches/              Reviewed patches for third-party packages
 ```
 
 ## Quick Start
