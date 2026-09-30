@@ -318,16 +318,6 @@ export function freeLine(freeBytes: number | undefined): string {
   return freeBytes === undefined ? 'FREE SPACE UNKNOWN' : `${formatDownloadBytes(freeBytes)} FREE`
 }
 
-export function folderPath(path: string | undefined): string {
-  return path ? path : 'Folder unavailable'
-}
-
-/** The empty state's mono footer: `FOLDER · D:\HALO · 120.4 GB FREE`. */
-export function folderLine(path: string | undefined, freeBytes: number | undefined): string {
-  const line = `FOLDER · ${folderPath(path).toUpperCase()}`
-  return freeBytes === undefined ? line : `${line} · ${formatDownloadBytes(freeBytes)} FREE`
-}
-
 /** The pane's "Added" fact drops the row label's prefix. */
 export function addedFact(label: string): string {
   return label.startsWith('ADDED ') ? label.slice('ADDED '.length) : label

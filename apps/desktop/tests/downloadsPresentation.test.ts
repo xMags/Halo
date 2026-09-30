@@ -6,7 +6,6 @@ import {
   addedLabel,
   chartBars,
   filterCounts,
-  folderLine,
   freeLine,
   matchesFilter,
   peakText,
@@ -185,6 +184,5 @@ test('storage counts finished files by their agreed size and transfers by what a
   assert.equal(figures.storedFraction, 0.6)
   assert.equal(freeLine(undefined), 'FREE SPACE UNKNOWN')
   assert.equal(freeLine(1024 ** 3), '1.0 GB FREE')
-  assert.equal(folderLine('D:\\Halo', 1024 ** 3), 'FOLDER · D:\\HALO · 1.0 GB FREE')
   assert.equal(addedLabel(0), 'ADDED UNKNOWN')
 })

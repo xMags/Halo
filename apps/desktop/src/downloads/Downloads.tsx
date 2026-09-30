@@ -6,7 +6,6 @@ import { InfoBar } from '../components/InfoBar'
 import { Menu, MenuAnchor, MenuItem } from '../components/Menu'
 import { QualityBadge } from '../components/QualityBadge'
 import { SectionHeader } from '../components/SectionHeader'
-import { PathText } from '../components/PathText'
 import { Segmented } from '../components/Segmented'
 import { DownloadRowSkeleton } from '../components/Skeleton'
 import {
@@ -32,8 +31,6 @@ import {
   chartBars,
   FILTERS,
   filterCounts,
-  folderLine,
-  folderPath,
   freeLine,
   itemsLabel,
   matchesFilter,
@@ -347,16 +344,12 @@ export function Downloads() {
                     </div>
                   ))}
                 </div>
+                {/* The folder card in the panel beside this one shows whenever
+                    this card does, so the folder action is not repeated here. */}
                 <div className="dl-empty-actions">
                   <button type="button" className="btn-accent" onClick={() => setRoot('library')}>
                     Browse library
                   </button>
-                  <button type="button" className="btn" onClick={() => void manageFolder()}>
-                    Manage download folder
-                  </button>
-                </div>
-                <div className="mono dl-empty-folder">
-                  <PathText text={folderLine(directory?.path, directory?.free_bytes)} />
                 </div>
               </div>
             </div>
@@ -388,10 +381,7 @@ export function Downloads() {
         ) : (
           <div className="dl-folder-card">
             <div className="kicker">DOWNLOAD FOLDER</div>
-            <div className="dl-folder-path">
-              <PathText text={folderPath(directory?.path)} />
-            </div>
-            <button type="button" className="btn btn-block" onClick={() => void manageFolder()}>
+            <button type="button" className="btn btn-block dl-folder-manage" onClick={() => void manageFolder()}>
               Manage folder
             </button>
           </div>
