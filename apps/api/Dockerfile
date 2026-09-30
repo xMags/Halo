@@ -1,5 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
+# Build from the repository root, which is the context (the image needs the
+# workspace lockfile and packages/core):
+#   docker build -f apps/api/Dockerfile -t halo-api .
+# Dockerfile.dockerignore beside this file limits that context to what the API
+# needs; BuildKit reads it in place of a root .dockerignore.
+
 FROM node:22-bookworm-slim AS dependencies
 
 WORKDIR /app

@@ -159,10 +159,10 @@ The response should contain `ok: true`.
 
 ### Docker
 
-The root `Dockerfile` builds the API only. A standalone container can be started with a persistent SQLite volume:
+`apps/api/Dockerfile` builds the API image. Build it from the repository root, which is the build context, and start a standalone container with a persistent SQLite volume:
 
 ```powershell
-docker build -t halo-api .
+docker build -f apps/api/Dockerfile -t halo-api .
 docker run --name halo-api --init --restart unless-stopped `
   --env-file apps/api/.env -e DATA_DIR=/data -p 8787:8787 `
   --read-only --tmpfs /tmp:size=64m --cap-drop ALL `
