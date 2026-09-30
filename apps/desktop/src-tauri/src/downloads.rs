@@ -8,6 +8,7 @@ mod containment;
 mod naming;
 mod rate;
 mod redirect;
+mod relocate;
 
 use containment::{is_within_approved_root, resolve_roots, same_path, strip_verbatim};
 use futures_util::StreamExt;
@@ -38,6 +39,7 @@ const REMOVED_EVENT: &str = "download-removed";
 const INDEX_FILE: &str = "downloads-index.json";
 const CONFIG_FILE: &str = "downloads-config.json";
 const DOWNLOAD_DIR: &str = "downloads";
+const VAULT_DIR: &str = "download-requests";
 const TRANSFER_ATTEMPTS: u32 = 3;
 /// Progress reaches the UI this often.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
@@ -496,7 +498,7 @@ impl DownloadManager {
         fs::create_dir_all(&data_dir).map_err(|e| format!("download state unavailable: {e}"))?;
         let index_path = data_dir.join(INDEX_FILE);
         let config_path = data_dir.join(CONFIG_FILE);
-        let vault_dir = data_dir.join("download-requests");
+        let vault_dir = data_dir.join(VAULT_DIR);
         fs::create_dir_all(&vault_dir).map_err(|e| format!("download vault unavailable: {e}"))?;
         let default_directory = data_dir.join(DOWNLOAD_DIR);
         let mut entries = load_index(&index_path)?;
@@ -1814,8 +1816,20 @@ pub struct PlaybackFiles {
     pub subtitle_path: Option<String>,
 }
 
+/// Download state lives in local app data, beside the webview's own data.
+/// Earlier builds kept it in roaming app data, so that is moved over first.
 pub fn load_manager(app: &AppHandle) -> Result<DownloadManager, String> {
-    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let data_dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let roaming = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    if let Err(error) = relocate::move_roaming_state(&roaming, &data_dir) {
+        // Everything is still usable where it was, so keep using it; a later
+        // launch tries the move again.
+        eprintln!(
+            "download state stays in {} for now: {error}",
+            roaming.display()
+        );
+        return DownloadManager::new(app.clone(), roaming);
+    }
     DownloadManager::new(app.clone(), data_dir)
 }
 
@@ -2326,7 +2340,7 @@ fn unprotect(bytes: &[u8]) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
 
-    fn record(root_path: String) -> DownloadRecord {
+    pub(super) fn record(root_path: String) -> DownloadRecord {
         DownloadRecord {
             job_id: "job".into(),
             account_key: fingerprint("server:user"),
@@ -2367,7 +2381,7 @@ mod tests {
         }
     }
 
-    fn scratch_dir(name: &str) -> PathBuf {
+    pub(super) fn scratch_dir(name: &str) -> PathBuf {
         let directory = std::env::temp_dir().join(format!("halo-download-{name}-{}", new_job_id()));
         fs::create_dir_all(&directory).unwrap();
         directory
