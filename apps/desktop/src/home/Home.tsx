@@ -9,8 +9,9 @@ import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { Shelf } from '../components/Shelf'
 import { HeroSkeleton, PosterCardSkeleton, ShelfSkeleton } from '../components/Skeleton'
-import { useContinueShelf } from './continueShelf'
-import { episodeTag, formatClock, runtimeMinutes, videoIdTag } from '../format'
+import { useTitleMenu } from '../browse/titleMenu'
+import { continueSheetParams, useContinueShelf } from './continueShelf'
+import { formatClock, videoIdTag } from '../format'
 import {
   buildLibraryRow,
   matchesHomeFilter,
@@ -195,33 +196,24 @@ export function Home() {
  */
 function ContinueCardView({ card }: { card: ContinueCard }) {
   const { openSheet } = useNav()
+  const titleMenu = useTitleMenu()
   const { data: meta } = useMeta(card.type, card.metaId)
 
   const video = meta?.videos?.find((v) => v.id === card.videoId)
   const tag = videoIdTag(card.videoId, card.metaId)
-  const episodeLabel = video ? episodeTag(video.season, video.episode) : null
   const still = video?.thumbnail ?? meta?.background ?? card.poster
-  const episodeName = video?.title ?? video?.name ?? null
   const promoted = card.kind === 'next'
   const left = promoted ? 'UP NEXT' : `${formatClock(card.durationSec - card.positionSec)} LEFT`
   const progress = promoted || card.durationSec <= 0 ? 0 : card.positionSec / card.durationSec
-  const minutes = runtimeMinutes(meta?.runtime)
-
-  const open = () =>
-    openSheet({
-      type: card.type,
-      videoId: card.videoId,
-      itemId: card.itemId,
-      metaId: card.metaId,
-      title: episodeName ?? card.name,
-      showName: card.name,
-      ...(episodeLabel ? { episodeLabel } : {}),
-      ...(card.poster ? { poster: card.poster } : {}),
-      ...(minutes != null ? { runtimeMinutes: minutes } : {}),
-    })
 
   return (
-    <button type="button" className="cw-card" onClick={open} title={card.name}>
+    <button
+      type="button"
+      className="cw-card"
+      onClick={() => openSheet(continueSheetParams(card, meta))}
+      onContextMenu={(event) => titleMenu.forContinue(event, card)}
+      title={card.name}
+    >
       <div className="art cw-art">
         <ArtImage src={still} label="EPISODE STILL" lazy />
         <div className="tag-chip cw-tag">{tag}</div>

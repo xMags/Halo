@@ -37,6 +37,9 @@ const GLYPHS = {
   clock: '',
   grip: '',
   lock: '',
+  info: '',
+  unfavorite: '',
+  undo: '',
 } as const
 
 export type FluentGlyph = keyof typeof GLYPHS

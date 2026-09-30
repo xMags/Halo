@@ -1,8 +1,11 @@
-import type { NextEpisodeResult } from '@halo/core'
+import type { MetaDetail, NextEpisodeResult } from '@halo/core'
 import { useQueries, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { getClient } from '../api'
+import { episodeTag, runtimeMinutes } from '../format'
+import type { StreamsParams } from '../nav'
 import {
   buildContinueShelf,
+  type ContinueCard,
   type ContinueNextRequest,
   type ContinueShelf,
   type NextEpisodeLookup,
@@ -66,4 +69,27 @@ export function useContinueShelf(opts?: { enabled?: boolean }): ContinueShelf {
   })
 
   return shelf
+}
+
+/**
+ * What a continue card opens the sources sheet with: the episode the card
+ * names, labelled from the title's meta when it is known. The pane never
+ * fetches meta, so its rows pass whatever the cache holds, possibly nothing.
+ */
+export function continueSheetParams(card: ContinueCard, meta: MetaDetail | undefined): StreamsParams {
+  const video = meta?.videos?.find((v) => v.id === card.videoId)
+  const episodeLabel = video ? episodeTag(video.season, video.episode) : null
+  const episodeName = video?.title ?? video?.name ?? null
+  const minutes = runtimeMinutes(meta?.runtime)
+  return {
+    type: card.type,
+    videoId: card.videoId,
+    itemId: card.itemId,
+    metaId: card.metaId,
+    title: episodeName ?? card.name,
+    showName: card.name,
+    ...(episodeLabel ? { episodeLabel } : {}),
+    ...(card.poster ? { poster: card.poster } : {}),
+    ...(minutes != null ? { runtimeMinutes: minutes } : {}),
+  }
 }

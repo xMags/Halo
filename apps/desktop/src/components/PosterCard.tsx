@@ -1,5 +1,6 @@
 import type { MetaPreview } from '@halo/core'
 import { ArtImage } from './ArtImage'
+import { useTitleMenu } from '../browse/titleMenu'
 import { useNav } from '../nav'
 
 interface Props {
@@ -19,6 +20,7 @@ interface Props {
  */
 export function PosterCard({ meta, showKind, metaLine, onBeforePress }: Props) {
   const { push } = useNav()
+  const titleMenu = useTitleMenu()
   const sub = metaLine ?? posterMeta(meta)
 
   return (
@@ -30,6 +32,7 @@ export function PosterCard({ meta, showKind, metaLine, onBeforePress }: Props) {
         onBeforePress?.()
         push({ name: 'detail', type: meta.type, id: meta.id })
       }}
+      onContextMenu={(event) => titleMenu.forPoster(event, meta, onBeforePress)}
     >
       <div className="art poster-art">
         <ArtImage src={meta.poster} label={meta.name} lazy />
