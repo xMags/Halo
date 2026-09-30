@@ -326,12 +326,6 @@
   font-weight: 600;
   color: var(--t1);
 }
-.dl-empty-body {
-  margin-top: 6px;
-  font-size: 15px;
-  line-height: 22px;
-  color: var(--t2);
-}
 .dl-empty-steps {
   display: flex;
   flex-direction: column;
