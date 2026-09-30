@@ -128,11 +128,11 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
   playback claims on a real iPhone.
 - **pnpm blocks native postinstalls** unless listed in `pnpm-workspace.yaml`
   `onlyBuiltDependencies` (better-sqlite3, esbuild).
-- **pnpm runs `node-linker=hoisted`** (`.npmrc`) — the default `.pnpm` virtual
-  store doubles path depth, which overflows Windows' 250-char CMake object-path
-  limit when Gradle compiles react-native-screens/worklets (ninja loops with
-  "manifest still dirty"). Don't remove it unless Android-on-Windows builds are
-  re-verified.
+- **pnpm runs `nodeLinker: hoisted`** (`pnpm-workspace.yaml`) — the default
+  `.pnpm` virtual store doubles path depth, which overflows Windows' 250-char
+  CMake object-path limit when Gradle compiles react-native-screens/worklets
+  (ninja loops with "manifest still dirty"). Don't remove it unless
+  Android-on-Windows builds are re-verified.
 - **Android-on-Windows Gradle needs two env fixes** (release variant verified
   2026-07-17): build with **JDK 17** (`JAVA_HOME` default is JDK 25, whose
   native-access warning fails AGP's `configureCMake` tasks with the useless

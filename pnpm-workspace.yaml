@@ -1,6 +1,11 @@
 packages:
   - apps/*
   - packages/*
+# Hoisted layout (Expo's recommended pnpm setup for React Native): the default
+# .pnpm virtual store doubles path depth, which overflows Windows' 250-char
+# CMake object-path limit when Gradle compiles native modules (screens,
+# worklets); ninja then loops with "manifest still dirty".
+nodeLinker: hoisted
 onlyBuiltDependencies:
   - better-sqlite3
   - esbuild
