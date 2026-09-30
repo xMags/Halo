@@ -29,6 +29,7 @@ const GLYPHS = {
   delete: '',
   more: '',
   switchSource: '',
+  clear: '',
 } as const
 
 export type FluentGlyph = keyof typeof GLYPHS

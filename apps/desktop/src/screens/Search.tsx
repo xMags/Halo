@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArtImage } from '../components/ArtImage'
 import { Icon } from '../components/Icon'
 import { PosterCard } from '../components/PosterCard'
+import { SearchBox } from '../components/SearchBox'
 import { SectionHeader } from '../components/SectionHeader'
 import { Shelf } from '../components/Shelf'
 import { ShelfSkeleton, TopMatchSkeleton } from '../components/Skeleton'
@@ -70,32 +71,22 @@ export function Search() {
     <div className="view">
       <SectionHeader title="Search" />
       <div style={{ display: 'flex', flexDirection: 'column', padding: '8px var(--gu) 40px' }}>
-        <div className="search-box search-box-lg">
-          <input
-            ref={inputRef}
-            placeholder="Search movies and series"
-            value={term}
-            autoFocus
-            spellCheck={false}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && term.trim().length >= MIN_QUERY) {
-                setDebounced(term)
-                recordTerm(term)
-              } else if (e.key === 'Escape' && term) {
-                e.stopPropagation()
-                setSearchQuery('')
-              }
-            }}
-          />
-          {active && (isFetching || !data) ? (
-            <span className="spinner" />
-          ) : (
-            <span style={{ color: 'var(--t3)', display: 'flex' }}>
-              <Icon name="search" size={15} />
-            </span>
-          )}
-        </div>
+        <SearchBox
+          large
+          autoFocus
+          inputRef={inputRef}
+          value={term}
+          onChange={setSearchQuery}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && term.trim().length >= MIN_QUERY) {
+              setDebounced(term)
+              recordTerm(term)
+            } else if (e.key === 'Escape' && term) {
+              e.stopPropagation()
+              setSearchQuery('')
+            }
+          }}
+        />
 
         {active && counts.total > 0 && (
           <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
