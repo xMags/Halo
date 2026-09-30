@@ -1,0 +1,280 @@
+/* ── Library ───────────────────────────────────────────────────────────── */
+.lib-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 var(--gu);
+}
+/* The native GridView: items 4px apart (GridViewItem's 0,0,4,4 margin), and
+   each card carries the 4px band above its art that it lifts into on hover. */
+.lib-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 16px var(--gu) 32px;
+}
+.lib-grid > .poster {
+  padding-top: 4px;
+}
+
+/* ── Catalog (a shelf's "See all") ──────────────────────────────────────
+   The native CatalogPage: a 24px gutter at every width (it does not step up
+   with the layout tiers), and a wrap grid whose cells are the poster plus a
+   22px gap wide and the art plus 52px of caption tall. */
+.page-back {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  /* 14px before the title once the header's 16px gap is counted. */
+  margin: 0 -2px 2px 0;
+  border-bottom-color: var(--ces);
+}
+.catalog-view .page-head {
+  padding: 12px 24px;
+}
+/* HaloPageTitle and HaloMonoData line heights, so the back button and the
+   labels bottom-align on the same line as natively. */
+.catalog-view .page-title {
+  line-height: 1.1733;
+}
+.catalog-labels .mono {
+  line-height: 16px;
+}
+.catalog-labels {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.catalog-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, calc(var(--pw) + 22px));
+  grid-auto-rows: calc(var(--pw) * 1.5 + 52px);
+  padding: 16px 24px 32px;
+}
+/* WinUI's grid item takes 4px off the cell's right and bottom and centres
+   the card in what is left: 9px in from the left, 4px down. */
+.catalog-grid > .poster {
+  margin: 4px 0 0 9px;
+}
+.catalog-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.catalog-empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.catalog-empty-body {
+  font-size: 14px;
+  color: var(--t3);
+}
+
+/* ── Detail ────────────────────────────────────────────────────────────── */
+.detail-view {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* The page is two layers: the art pinned to the screen, and the scroller
+   over it. The art used to live inside the scroller, where it was one screen
+   tall and scrolled away, leaving a hard edge across the page. */
+.detail-screen {
+  overflow: hidden;
+}
+
+/* Full-page background art covering the entire page surface */
+.detail-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  background-color: var(--p1);
+}
+.detail-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+}
+.detail-bg-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(16, 16, 18, 0.05) 0%, rgba(16, 16, 18, 0.25) 220px, rgba(16, 16, 18, 0.5) 440px, rgba(16, 16, 18, 0.72) 100%),
+    linear-gradient(90deg, rgba(16, 16, 18, 0.5) 0%, rgba(16, 16, 18, 0.15) 45%, transparent 100%);
+}
+
+.detail-back {
+  position: absolute;
+  left: var(--gu);
+  top: 12px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  z-index: 3;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr) 292px;
+  column-gap: 20px;
+  row-gap: 26px;
+  margin: -76px var(--gu) 0;
+  max-width: var(--set-page);
+  position: relative;
+}
+
+/* Semi-translucent frosted cards for crisp text without blacking out the artwork */
+.detail-view .card {
+  background: rgba(20, 20, 24, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+}
+.detail-view .fact-line,
+.detail-view .avail-row {
+  color: var(--t2);
+}
+[data-theme='light'] .detail-view .card {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(16px);
+}
+.detail-poster {
+  width: 128px;
+  height: 192px;
+  border: 1px solid var(--cs);
+  border-radius: 8px;
+}
+.detail-head {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-bottom: 4px;
+  min-width: 0;
+}
+.detail-title {
+  font-family: var(--display);
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--t1);
+}
+.detail-meta {
+  font-size: 16px;
+  color: var(--t2);
+}
+.detail-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.detail-episodes {
+  grid-column: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.season-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.detail-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/** A movie has no episode list, so the two cards take the full width. */
+.detail-grid-movie .detail-aside {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 292px;
+  align-items: start;
+}
+
+.ep-row {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  width: 100%;
+  background: var(--cd);
+  border: 1px solid var(--cs);
+  border-radius: 8px;
+}
+.ep-row:hover {
+  background: var(--cth);
+}
+.ep-thumb {
+  width: 118px;
+  height: 66px;
+  border-radius: 4px;
+}
+.ep-tag {
+  font: 400 12px/1.3 var(--mono);
+  color: var(--t3);
+}
+.ep-tag-current {
+  color: var(--ac);
+}
+.ep-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.ep-blurb {
+  font-size: 14px;
+  color: var(--t3);
+}
+.ep-right {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: right;
+  font: 400 12px/1.4 var(--mono);
+  color: var(--t3);
+}
+.fact-line {
+  margin-top: 4px;
+  font: 400 12px/1.5 var(--mono);
+  color: var(--t3);
+}
+.avail-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 400 12px/1.5 var(--mono);
+  color: var(--t3);
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  flex: 0 0 6px;
+}

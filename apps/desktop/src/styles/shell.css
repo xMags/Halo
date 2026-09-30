@@ -1,0 +1,463 @@
+/* ── Shell ─────────────────────────────────────────────────────────────── */
+.shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--m);
+  overflow: hidden;
+}
+.glow {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+}
+.glow-a {
+  left: -280px;
+  top: -340px;
+  width: 760px;
+  height: 520px;
+  background: radial-gradient(closest-side, var(--glow-a), transparent);
+}
+.glow-b {
+  right: -160px;
+  top: -350px;
+  width: 720px;
+  height: 500px;
+  background: radial-gradient(closest-side, var(--glow-b), transparent);
+}
+
+.titlebar {
+  position: relative;
+  z-index: 5;
+  flex: 0 0 var(--titlebar);
+  height: var(--titlebar);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 12px;
+}
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+.brand-mark {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+.brand-word {
+  font-size: 14px;
+  color: var(--t2);
+}
+/** The 138px the design reserves for the system caption buttons. This window
+    is undecorated, so the app draws its own three inside that reservation. */
+.caption-slot {
+  width: var(--caption-w);
+  flex: 0 0 var(--caption-w);
+  display: flex;
+  justify-content: flex-end;
+}
+.win-btns {
+  display: flex;
+}
+.win-btn {
+  width: 46px;
+  height: var(--titlebar);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t2);
+}
+.win-btn:hover {
+  background: var(--sb);
+  color: var(--t1);
+}
+.win-btn-close:hover {
+  background: var(--df);
+  color: #fff;
+}
+
+.shell-body {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* ── Navigation pane ───────────────────────────────────────────────────────
+   The native WinUI Halo Desktop's NavigationView (Left mode), reproduced:
+   224px open or a 48px compact strip, 36px rows 4px apart and inset 4px,
+   icons 12px into the row and labels at 44px. Its selection overrides are
+   kept too: the accent-tinted fill with accent text and no indicator pill.
+   Unselected rows use WinUI's own subtle fills. The pane is not a surface;
+   it sits on the window colour like the native one does over Mica. */
+.nav {
+  flex: 0 0 var(--nav-w);
+  width: var(--nav-w);
+  display: flex;
+  flex-direction: column;
+  padding: 0 4px 8px;
+  overflow: hidden;
+  transition:
+    flex-basis 200ms cubic-bezier(0.1, 0.9, 0.2, 1),
+    width 200ms cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+.nav-compact {
+  flex-basis: var(--nav-compact-w);
+  width: var(--nav-compact-w);
+}
+/* Re-centre icons when the compact rail is wider than the items' own padding
+   would place them. 4px nav + 16px item = 20px; icon 16px; center at 28px
+   = rail center (56/2). */
+.nav-compact .nav-item {
+  padding: 0 16px;
+}
+.nav-compact .account-row {
+  justify-content: center;
+  padding: 0;
+}
+.nav-compact .account-lines {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav {
+    transition: none;
+  }
+}
+.fluent-icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 400 16px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+}
+/** PaneToggleButton: 40×36, centred 24px below the title bar. */
+.nav-toggle {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 36px;
+  margin: 6px 0 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--t1);
+  transition: background-color 83ms linear;
+}
+/* The native toggle draws WinUI's animated hamburger, which is smaller than
+   the E700 glyph (18x12 device px at 125%) and sits 2.4px lower in the
+   button; the glyph is sized and nudged to land on the same pixels. */
+.nav-toggle .fluent-icon {
+  position: relative;
+  top: 2.4px;
+}
+/** HaloNavSectionHeaderStyle, padded 12,6,12,8 from the pane. The style sets
+    CharacterSpacing on a ContentPresenter, which never reaches the text it
+    generates, so natively these headers draw untracked; so do these. */
+.nav-header {
+  flex: 0 0 auto;
+  /* 2px more below than the style's 8: the native header lays out 2px
+     taller, which is where both lists start (measured). */
+  padding: 6px 8px 10px;
+  font: 700 12px/16px var(--mono);
+  color: var(--t3);
+  white-space: nowrap;
+}
+.nav-header-jump {
+  margin-top: 12px;
+}
+.nav-item,
+.jump-row,
+.account-row {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  color: var(--t1);
+  white-space: nowrap;
+  overflow: hidden;
+  transition: background-color 83ms linear;
+}
+.nav-toggle:hover,
+.nav-item:hover,
+.jump-row:hover,
+.account-row:hover {
+  background: var(--sb);
+}
+.nav-toggle:active,
+.nav-item:active,
+.jump-row:active,
+.account-row:active {
+  background: var(--sbp);
+  color: var(--t2);
+}
+.nav-item {
+  height: 36px;
+  margin: 2px 0;
+  gap: 16px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+.nav-item-active,
+.nav-item-active:hover {
+  background: var(--ns);
+  color: var(--ac);
+}
+.nav-item-active:active {
+  background: var(--chd);
+  color: var(--ac);
+}
+/** InfoBadge: a 16px accent pill, counts only. */
+.nav-badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--ac);
+  color: var(--oa);
+  font: 600 11px/16px var(--sans);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.nav-lines {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+/** 44px rows (40 drawn): a 24×34 poster in the icon's place, title at 50px.
+    The right padding is the item presenter's content margin, which is where
+    the native titles trim. */
+.jump-row {
+  height: 40px;
+  margin: 2px 0;
+  gap: 10px;
+  padding: 0 24px 0 12px;
+}
+.jump-art {
+  width: 24px;
+  height: 34px;
+  flex: 0 0 24px;
+  border-radius: 4px;
+}
+.jump-title {
+  font-size: 15px;
+  line-height: 20px;
+}
+/** HaloMonoData. */
+.jump-meta {
+  font: 400 12px/16px var(--mono);
+  color: var(--t3);
+}
+/** HaloPaneRowButtonStyle: 44px, the avatar 8px from the pane edge. */
+.account-row {
+  height: 44px;
+  gap: 10px;
+  padding: 0 4px;
+}
+.account-avatar {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  object-fit: cover;
+}
+.account-lines {
+  gap: 2px;
+}
+.account-name {
+  min-height: 21px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 21px;
+}
+.account-role {
+  font: 700 12px/16px var(--mono);
+  letter-spacing: 1.44px;
+  color: var(--ac);
+}
+.avatar {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 14px;
+  background: var(--at);
+  color: var(--ac);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 700 12px/1 var(--mono);
+}
+.avatar-40 {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 20px;
+  font-size: 14px;
+}
+
+/* ── Content surface ───────────────────────────────────────────────────── */
+/* Two layers, as the native shell has: the NavigationView's own content grid
+   (a layer fill and a dark hairline, WinUI's defaults) and, inside it, Halo's
+   content host with its own layer and card stroke. The fills stack, which is
+   why the native page surface is a shade lighter than one layer would be. */
+.content {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  background: var(--nvl);
+  border-top: 1px solid var(--nvs);
+  border-left: 1px solid var(--nvs);
+  border-radius: 8px 0 0 0;
+  overflow: hidden;
+}
+.content-host {
+  position: absolute;
+  inset: 0;
+  background: var(--ly);
+  border-top: 1px solid var(--cs);
+  border-left: 1px solid var(--cs);
+  border-radius: 8px 0 0 0;
+  overflow: hidden;
+  /* Every page metric below is measured on this column, not the window. */
+  container-type: inline-size;
+}
+
+/* ── Views and their responsive metrics ────────────────────────────────── */
+.view {
+  --pw: 132px;
+  --cw: 268px;
+  --gu: 24px;
+  --hh: 304px;
+  --ht: 36px;
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.view-col {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+@container (min-width: 1100px) {
+  .view {
+    --pw: 148px;
+    --cw: 300px;
+    --gu: 30px;
+    --hh: 360px;
+    --ht: 40px;
+  }
+}
+@container (min-width: 1500px) {
+  .view {
+    --pw: 168px;
+    --cw: 336px;
+    --gu: 36px;
+    --hh: 420px;
+    --ht: 46px;
+  }
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 12px var(--gu);
+}
+.page-title {
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--t1);
+}
+/* WinUI lays a 30px Segoe UI Variable Display TextBlock out 36px tall with
+   the ink 4.8px from its top (measured on the native page titles); Chromium's
+   line box for the face puts the ink 2.4px lower at that height. */
+.page-title,
+.set-rail-title {
+  line-height: 36px;
+  position: relative;
+  top: -2.4px;
+}
+.head-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* WinUI's AutoSuggestBox: the TextBox above plus a 32px query button at the
+   right edge and, while focused with text, a Clear button beside it. The text
+   starts 11px in (10px padding plus the border), as TextControlThemePadding
+   puts it. */
+.search-box {
+  width: 300px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 2px 0 10px;
+  background: var(--ct);
+  border: 1px solid var(--cts);
+  border-bottom-color: var(--cst);
+  border-radius: 4px;
+}
+.search-box:hover {
+  background: var(--cth);
+}
+.search-box:focus-within {
+  background: var(--tfa);
+  border-bottom: 2px solid var(--aa);
+}
+.search-box input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  font-size: 15px;
+  color: var(--t1);
+}
+.search-box input::placeholder {
+  color: var(--tps);
+}
+.search-box:focus-within input::placeholder {
+  color: var(--tpt);
+}
+.search-box-btn {
+  flex: 0 0 32px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--t2);
+}
+.search-box-btn:hover {
+  background: var(--sb);
+}
+/* The clear button sits 5px clear of the query glyph's slot. */
+.search-box-btn + .search-box-query {
+  margin-left: 5px;
+}
+.search-box-query {
+  color: var(--t1);
+  pointer-events: none;
+}
+.search-box-lg {
+  width: 480px;
+  max-width: 100%;
+  height: 36px;
+}
+.search-box-lg input {
+  font-size: 16px;
+}

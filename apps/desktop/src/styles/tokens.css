@@ -1,0 +1,194 @@
+/* ── Tokens: dark (default) ────────────────────────────────────────────── */
+:root,
+:root[data-theme='dark'] {
+  --m: #202020;
+  --ly: rgba(58, 58, 58, 0.302);
+  /* WinUI's NavigationView content grid: LayerFillColorDefault and
+     CardStrokeColorDefault, drawn under the content host. */
+  --nvl: rgba(58, 58, 58, 0.298);
+  --nvs: rgba(0, 0, 0, 0.098);
+  --cd: rgba(255, 255, 255, 0.051);
+  --cs: rgba(255, 255, 255, 0.082);
+  --ct: rgba(255, 255, 255, 0.059);
+  --cts: rgba(255, 255, 255, 0.071);
+  --cth: rgba(255, 255, 255, 0.082);
+  --sb: rgba(255, 255, 255, 0.059);
+  --sbp: rgba(255, 255, 255, 0.042);
+  --t1: #ffffff;
+  --t2: rgba(255, 255, 255, 0.784);
+  --t3: rgba(255, 255, 255, 0.545);
+  --t4: rgba(255, 255, 255, 0.365);
+  --ac: #60cdff;
+  --aa: #4cc2ff;
+  --oa: #000000;
+  --at: rgba(96, 205, 255, 0.141);
+  --su: #6ccb5f;
+  --sut: rgba(108, 203, 95, 0.141);
+  --sus: rgba(108, 203, 95, 0.278);
+  --ca: #fce100;
+  --cat: rgba(252, 225, 0, 0.129);
+  --cas: rgba(252, 225, 0, 0.239);
+  --cr: #ff99a4;
+  --crt: rgba(255, 153, 164, 0.078);
+  --crs: rgba(255, 153, 164, 0.341);
+  --df: #c42b1c;
+  --dh: #d13a2a;
+  --tt: rgba(255, 255, 255, 0.043);
+  --tb: rgba(255, 255, 255, 0.024);
+  --dv: rgba(255, 255, 255, 0.082);
+  --ns: rgba(96, 205, 255, 0.141);
+  --p1: #2a2b2f;
+  --p2: #232428;
+  /* HaloPlaceholderStripe, the asset behind every empty art slot. */
+  --ps: url('../assets/stripe-dark.png');
+  --chd: rgba(96, 205, 255, 0.278);
+  --pt: rgba(255, 255, 255, 0.341);
+  --hs1: rgba(24, 24, 26, 0.961);
+  --hs2: rgba(24, 24, 26, 0.62);
+  --ds: rgba(32, 32, 32, 0.98);
+  --fl: #2c2c2c;
+  --crb: #442726;
+  --ib: rgba(96, 205, 255, 0.078);
+  --is: rgba(96, 205, 255, 0.278);
+  --bmf: rgba(255, 255, 255, 0.122);
+  /* WinUI control strokes: strong (progress track) and the button bottom edge. */
+  --cst: rgba(255, 255, 255, 0.545);
+  --ces: rgba(255, 255, 255, 0.094);
+  /* WinUI text boxes: the focused fill (ControlFillColorInputActive) and the
+     placeholder ink at rest and while focused (TextFillColorSecondary and
+     TextFillColorTertiary). */
+  --tfa: rgba(30, 30, 30, 0.702);
+  --tps: rgba(255, 255, 255, 0.773);
+  --tpt: rgba(255, 255, 255, 0.529);
+  /* WinUI states the toggle, combo box and disabled buttons draw with:
+     ControlFillColorDisabled, ControlAltFillColorSecondary / Tertiary /
+     Quarternary (the toggle track at rest, hover, press),
+     ControlStrongStrokeColorDisabled, AccentFillColorDisabled and
+     TextOnAccentFillColorDisabled. */
+  --ctd: rgba(255, 255, 255, 0.043);
+  --caf2: rgba(0, 0, 0, 0.098);
+  --caf3: rgba(255, 255, 255, 0.043);
+  --caf4: rgba(255, 255, 255, 0.071);
+  --csd: rgba(255, 255, 255, 0.157);
+  --aad: rgba(255, 255, 255, 0.157);
+  --oad: rgba(255, 255, 255, 0.529);
+  /* ControlSolidFillColorDefault: the slider thumb's opaque ring. */
+  --csf: #454545;
+  /* Quality badge, muted tone: fill, plate, tier ink, detail ink, stroke. */
+  --bdf: rgba(255, 255, 255, 0.122);
+  --bdp: #1b1b1f;
+  --bdt: rgba(255, 255, 255, 0.784);
+  --bdi: rgba(255, 255, 255, 0.608);
+  --bds: rgba(255, 255, 255, 0.149);
+  /* Ambient glows behind the shell. */
+  --glow-a: rgba(96, 205, 255, 0.129);
+  --glow-b: rgba(168, 120, 255, 0.102);
+  color-scheme: dark;
+}
+
+/* ── Tokens: light ─────────────────────────────────────────────────────── */
+:root[data-theme='light'] {
+  --m: #f3f3f3;
+  --ly: rgba(255, 255, 255, 0.62);
+  --nvl: rgba(255, 255, 255, 0.502);
+  --nvs: rgba(0, 0, 0, 0.059);
+  --cd: rgba(255, 255, 255, 0.702);
+  --cs: rgba(0, 0, 0, 0.059);
+  --ct: rgba(255, 255, 255, 0.702);
+  --cts: rgba(0, 0, 0, 0.059);
+  --cth: rgba(0, 0, 0, 0.039);
+  --sb: rgba(0, 0, 0, 0.039);
+  --sbp: rgba(0, 0, 0, 0.024);
+  --t1: rgba(0, 0, 0, 0.894);
+  --t2: rgba(0, 0, 0, 0.69);
+  --t3: rgba(0, 0, 0, 0.584);
+  --t4: rgba(0, 0, 0, 0.361);
+  --ac: #005fb8;
+  --aa: #0067c0;
+  --oa: #ffffff;
+  --at: rgba(0, 95, 184, 0.102);
+  --su: #0f7b0f;
+  --sut: rgba(15, 123, 15, 0.102);
+  --sus: rgba(15, 123, 15, 0.278);
+  --ca: #9d5d00;
+  --cat: rgba(157, 93, 0, 0.129);
+  --cas: rgba(157, 93, 0, 0.239);
+  --cr: #c42b1c;
+  --crt: rgba(196, 43, 28, 0.078);
+  --crs: rgba(196, 43, 28, 0.341);
+  --df: #c42b1c;
+  --dh: #d13a2a;
+  --tt: rgba(0, 0, 0, 0.043);
+  --tb: rgba(0, 0, 0, 0.024);
+  --dv: rgba(0, 0, 0, 0.059);
+  --ns: rgba(0, 95, 184, 0.102);
+  --p1: #e4e4e8;
+  --p2: #efeff2;
+  --ps: url('../assets/stripe-light.png');
+  --chd: rgba(0, 95, 184, 0.239);
+  --pt: rgba(0, 0, 0, 0.38);
+  --hs1: rgba(243, 243, 243, 0.969);
+  --hs2: rgba(243, 243, 243, 0.659);
+  --ds: rgba(243, 243, 243, 0.988);
+  --fl: #f9f9f9;
+  --crb: #fde7e9;
+  --ib: rgba(0, 95, 184, 0.059);
+  --is: rgba(0, 95, 184, 0.2);
+  --bmf: rgba(0, 0, 0, 0.078);
+  --cst: rgba(0, 0, 0, 0.447);
+  --ces: rgba(0, 0, 0, 0.161);
+  --tfa: #ffffff;
+  --tps: rgba(0, 0, 0, 0.62);
+  --tpt: rgba(0, 0, 0, 0.447);
+  --ctd: rgba(249, 249, 249, 0.302);
+  --caf2: rgba(0, 0, 0, 0.024);
+  --caf3: rgba(0, 0, 0, 0.059);
+  --caf4: rgba(0, 0, 0, 0.094);
+  --csd: rgba(0, 0, 0, 0.216);
+  --aad: rgba(0, 0, 0, 0.216);
+  --oad: #ffffff;
+  --csf: #ffffff;
+  --bdf: rgba(0, 0, 0, 0.078);
+  --bdp: #4a4a52;
+  --bdt: #f4f4f6;
+  --bdi: rgba(0, 0, 0, 0.659);
+  --bds: rgba(0, 0, 0, 0.122);
+  --glow-a: rgba(0, 95, 184, 0.075);
+  --glow-b: rgba(120, 80, 200, 0.055);
+  color-scheme: light;
+}
+
+/* Covers the frame before the stored theme is stamped on the root. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --m: #f3f3f3;
+    --ly: rgba(255, 255, 255, 0.62);
+    --t1: rgba(0, 0, 0, 0.894);
+    color-scheme: light;
+  }
+}
+
+/* ── Typography and shared metrics ─────────────────────────────────────── */
+:root {
+  --sans: 'Segoe UI Variable Text', 'Segoe UI Variable Static Text', 'Segoe UI',
+    system-ui, sans-serif;
+  --display: 'Segoe UI Variable Display', 'Segoe UI Variable Static Display',
+    'Segoe UI', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --titlebar: 32px;
+  --nav-w: 224px;
+  --nav-compact-w: 56px;
+  --caption-w: 138px;
+
+  /* Settings copies what the native page draws after launch: its widest rail
+     and gaps at every window size, with the page centred at the width its
+     content measures to at the default window (1016 = 24 + 260 + 44 + 664
+     + 24). Native only moves to its XAML breakpoints once the window has
+     been resized. */
+  --set-page: 1016px;
+  --set-form: 1000px;
+  --set-rail: 260px;
+  --set-col-gap: 44px;
+  --set-form-gap: 52px;
+}

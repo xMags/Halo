@@ -1,0 +1,988 @@
+/* ── Sources sheet ─────────────────────────────────────────────────────────
+   The native WinUI Halo Desktop's `Views/SourcesPage.xaml`, reproduced: every
+   size, gap and colour below is the XAML's. Where XAML draws a stroke as a
+   sibling overlay (it does not move the content), this uses an inset shadow or
+   an outline for the same reason. Line heights are DirectWrite's for Segoe UI
+   Variable (1.35 of the size; 1.2 for the Display heading), measured off the
+   native sheet: Chromium's own metrics run short at 14px and tall at 26px. */
+.sx-layer {
+  position: fixed;
+  /* Below the title bar, so the caption buttons still work while it is open. */
+  inset: var(--titlebar) 0 0 0;
+  z-index: 30;
+  line-height: 1.35;
+}
+/* Outside the palettes on purpose: in the light theme a scrim that lightened
+   instead of darkened would leave the sheet floating on nothing. */
+.sx-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  animation: sxFadeIn 180ms cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+.sx-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  pointer-events: none;
+  animation:
+    sxSlideIn 240ms cubic-bezier(0.215, 0.61, 0.355, 1),
+    sxRise 240ms linear;
+}
+.sx-closing .sx-scrim {
+  animation: sxFadeOut 160ms linear forwards;
+}
+.sx-closing .sx-panel {
+  animation:
+    sxSlideOut 160ms cubic-bezier(0.55, 0.055, 0.675, 0.19) forwards,
+    sxSink 160ms linear forwards;
+}
+/* Close still waits for the slide to end, so it must end, however briefly. */
+@media (prefers-reduced-motion: reduce) {
+  .sx-scrim,
+  .sx-panel,
+  .sx-closing .sx-scrim,
+  .sx-closing .sx-panel {
+    animation-duration: 1ms;
+  }
+}
+@keyframes sxFadeIn {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sxFadeOut {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes sxSlideIn {
+  from {
+    transform: translateX(28px);
+  }
+}
+@keyframes sxSlideOut {
+  to {
+    transform: translateX(28px);
+  }
+}
+@keyframes sxRise {
+  from {
+    opacity: 0.4;
+  }
+}
+@keyframes sxSink {
+  to {
+    opacity: 0;
+  }
+}
+.sx-shadow {
+  flex: 0 0 34px;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.341));
+}
+.sx-sheet {
+  width: 700px;
+  display: flex;
+  flex-direction: column;
+  background: var(--m);
+  border-left: 1px solid var(--dv);
+  pointer-events: auto;
+}
+/* 880px once the content column (window less the pane) reaches 1500px. The
+   sheet sits outside that column, so it cannot container-query it. */
+@media (min-width: 1724px) {
+  .sx-sheet {
+    width: 880px;
+  }
+}
+@media (min-width: 1548px) {
+  .shell:has(.nav-compact) .sx-sheet {
+    width: 880px;
+  }
+}
+
+/* Header */
+.sx-head {
+  flex: 0 0 auto;
+  padding: 26px 32px 18px;
+}
+.sx-head-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.sx-head-text {
+  flex: 1;
+  min-width: 0;
+}
+.sx-kicker {
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  color: var(--t3);
+}
+.sx-heading {
+  margin-top: 6px;
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--t1);
+}
+.sx-count {
+  margin-top: 6px;
+  font-size: 15px;
+  color: var(--t3);
+}
+.sx-close {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--t2);
+}
+.sx-close:hover {
+  background: var(--cth);
+}
+.sx-filter-row {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sx-pills {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 4px;
+}
+/** HaloFilterPillStyle: the accent wash marks the choice, grey-on-grey would not. */
+.sx-pill {
+  height: 30px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 4px;
+  font-size: 15px;
+  color: var(--t3);
+}
+.sx-pill:hover {
+  background: var(--sb);
+}
+.sx-pill:active {
+  background: var(--sb);
+  opacity: 0.7;
+}
+.sx-pill-on {
+  background: var(--at);
+  box-shadow: inset 0 0 0 1px var(--is);
+  color: var(--ac);
+}
+.sx-pill-on:hover,
+.sx-pill-on:active {
+  background: linear-gradient(var(--at), var(--at)), var(--sb);
+}
+.sx-pill-count {
+  font-size: 13px;
+  color: var(--t4);
+}
+.sx-sort {
+  height: 30px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 4px;
+  background: var(--ct);
+  border: 1px solid var(--cts);
+  font-size: 14px;
+  color: var(--t2);
+  white-space: nowrap;
+}
+.sx-sort:hover {
+  background: var(--cth);
+}
+.sx-sheet .menu-item {
+  font-size: 14px;
+}
+
+/* Banner: one frame, two palettes. */
+.sx-banner {
+  flex: 0 0 auto;
+  margin: 0 32px 16px;
+  padding: 11px 13px;
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr) auto;
+  column-gap: 12px;
+  align-items: start;
+  border-radius: 8px;
+  border: 1px solid;
+}
+.sx-banner-caution {
+  background: var(--cat);
+  border-color: var(--cas);
+}
+.sx-banner-info {
+  background: var(--ib);
+  border-color: var(--is);
+}
+.sx-banner-dot {
+  width: 6px;
+  height: 6px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--ca);
+}
+.sx-banner-info .sx-banner-dot {
+  background: var(--ac);
+}
+.sx-banner-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.sx-banner-body {
+  margin-top: 3px;
+  font-size: 14px;
+  color: var(--t2);
+}
+.sx-banner .sx-link {
+  align-self: center;
+}
+.sx-link {
+  padding: 0;
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--ac);
+}
+.sx-link:hover {
+  background: var(--cth);
+}
+
+/* Body: resolving, empty, or the list. */
+.sx-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sx-resolving {
+  padding: 0 32px 26px;
+  overflow: hidden;
+}
+.sx-resolving-note {
+  font-size: 14px;
+  color: var(--t3);
+}
+.sx-skeletons {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sx-skeleton {
+  height: 86px;
+  padding: 15px 18px;
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  column-gap: 18px;
+  align-items: center;
+  border-radius: 10px;
+  background: var(--cd);
+  border: 1px solid var(--cs);
+}
+.sx-bar {
+  display: block;
+  border-radius: 4px;
+  background: var(--sb);
+}
+.sx-bar-pulse {
+  animation: sxPulse 1.3s linear infinite alternate;
+}
+@keyframes sxPulse {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.sx-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 32px 40px;
+}
+.sx-empty-inner {
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.sx-empty-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 22px;
+  background: var(--cd);
+  border: 1px solid var(--cs);
+  color: var(--t3);
+}
+.sx-empty-title {
+  margin-top: 16px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.sx-empty-body {
+  margin-top: 7px;
+  font-size: 15px;
+  color: var(--t2);
+}
+.sx-empty-actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 8px;
+}
+/* WinUI's scroll bar floats over the list; a stable gutter taken out of the
+   right padding keeps the column exactly as wide as the native one. */
+.sx-scroller {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  padding: 0 24px 0 32px;
+}
+.sx-list {
+  padding-bottom: 26px;
+}
+/* WinUI's scroll indicator: hidden while idle, a slim thumb with no track or
+   arrows while the pointer is over the list. (Setting scrollbar-width would make Chromium
+   ignore these and draw its classic bar.) */
+.sx-scroller::-webkit-scrollbar {
+  width: 8px;
+}
+.sx-scroller::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 4px;
+  background: transparent padding-box;
+}
+.sx-scroller:hover::-webkit-scrollbar-thumb {
+  background-color: var(--cst);
+}
+
+/* Buttons: WinUI's defaults (14px, 4px corners, a darker bottom edge). */
+.sx-btn {
+  gap: 8px;
+  font-size: 14px;
+}
+.btn.sx-btn {
+  border-bottom-color: var(--ces);
+}
+.sx-h36 {
+  height: 36px;
+}
+.sx-h34 {
+  height: 34px;
+}
+.sx-play {
+  padding: 0 22px;
+}
+.sx-gap-9 {
+  gap: 9px;
+}
+.sx-save,
+.sx-pad-16 {
+  padding: 0 16px;
+}
+.sx-details-btn {
+  padding: 0 14px;
+}
+.sx-pad-18 {
+  padding: 0 18px;
+}
+.sx-copy {
+  align-self: flex-start;
+  padding: 0 15px;
+}
+.sx-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Quality badge: gold is a mark, so it holds in both themes; muted follows. */
+.qbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px;
+  border-radius: 5px;
+  border: 1px solid;
+  font-family: var(--mono);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.qbadge-plate {
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.qbadge-tier {
+  display: block;
+  letter-spacing: 0.06em;
+}
+.qbadge-detail {
+  margin-right: 4px;
+  letter-spacing: 0.12em;
+}
+.qbadge-gold {
+  background: linear-gradient(#f8e7a6 0%, #e7c25c 46%, #c79a2e 54%, #ebcc72 100%);
+  border-color: rgba(0, 0, 0, 0.349);
+}
+.qbadge-gold .qbadge-plate {
+  background: #0a0a0c;
+}
+.qbadge-gold .qbadge-tier {
+  background: linear-gradient(#f8e7a6, #d3a63a);
+  /* Beats the reset's padding-box rule: this gradient is the lettering. */
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent;
+}
+.qbadge-gold .qbadge-detail {
+  color: #14100a;
+}
+.qbadge-muted {
+  background: var(--bdf);
+  border-color: var(--bds);
+}
+.qbadge-muted .qbadge-plate {
+  background: var(--bdp);
+}
+.qbadge-muted .qbadge-tier {
+  color: var(--bdt);
+}
+.qbadge-muted .qbadge-detail {
+  color: var(--bdi);
+}
+
+/* Status: instant green, on-disk accent, caching amber, a wait grey. */
+.sx-status-dot {
+  flex: 0 0 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.sx-status-label {
+  font-size: 14px;
+}
+.sx-status-label-15 {
+  font-size: 15px;
+}
+.sx-tone-instant {
+  color: var(--su);
+}
+.sx-tone-ondisk {
+  color: var(--ac);
+}
+.sx-tone-caching {
+  color: var(--ca);
+}
+.sx-status-dot.sx-tone-cold {
+  color: var(--t4);
+}
+.sx-status-label.sx-tone-cold {
+  color: var(--t3);
+}
+.sx-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.sx-meta {
+  margin-top: 6px;
+  column-gap: 10px;
+  row-gap: 5px;
+  align-items: center;
+}
+.sx-meta-line {
+  font: 400 12px var(--mono);
+  color: var(--t3);
+}
+.sx-subs {
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--ct);
+  border: 1px solid var(--cts);
+  font: 400 12px var(--mono);
+  letter-spacing: 0.05em;
+  color: var(--t2);
+}
+.sx-subs-off {
+  color: var(--t4);
+}
+/* The selected card's accent ring sits over its stroke. */
+.sx-selected {
+  outline: 1px solid var(--ac);
+  outline-offset: -1px;
+}
+
+/* The pick: an info-stroked card with an accent wash toward its top left. */
+.sx-pick {
+  position: relative;
+  border-radius: 10px;
+  background: var(--cd);
+  box-shadow: inset 0 0 0 1px var(--is);
+  overflow: hidden;
+}
+.sx-pick-wash {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.sx-pick-wash-from {
+  stop-color: var(--at);
+}
+.sx-pick-wash-to {
+  stop-color: var(--at);
+  stop-opacity: 0;
+}
+.sx-pick-body {
+  position: relative;
+  padding: 20px;
+}
+.sx-pick-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sx-pick-sep {
+  font-size: 14px;
+  color: var(--t4);
+}
+.sx-pick-by {
+  font-size: 14px;
+  color: var(--t3);
+}
+.sx-pick-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  column-gap: 20px;
+}
+.sx-pick-badge {
+  align-self: start;
+}
+.sx-pick-text {
+  min-width: 0;
+}
+.sx-pick-why {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.sx-pick .sx-meta {
+  margin-top: 7px;
+}
+.sx-pick-watch {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--ac);
+}
+.sx-pick-file {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--t4);
+}
+.sx-pick-actions {
+  margin-top: 18px;
+}
+.sx-pick-details {
+  margin: 18px -20px -20px;
+  padding: 20px;
+  border-top: 1px solid var(--ac);
+  border-radius: 0 0 9px 9px;
+  background: var(--sb);
+}
+
+/* Provider groups and their cards. */
+.sx-group {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin: 28px 0 12px;
+}
+.sx-group-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.sx-group-note {
+  font-size: 14px;
+  color: var(--t3);
+}
+.sx-group-count {
+  font-size: 14px;
+  color: var(--t4);
+}
+.sx-reveal {
+  position: relative;
+  width: 100%;
+  height: 38px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--t3);
+}
+.sx-reveal:hover {
+  background: var(--cth);
+}
+.sx-reveal-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.sx-reveal-outline rect {
+  width: calc(100% - 1px);
+  height: calc(100% - 1px);
+  fill: none;
+  stroke: var(--cs);
+  stroke-dasharray: 4 3;
+}
+.sx-card {
+  position: relative;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: var(--cd);
+  border: 1px solid var(--cs);
+  overflow: hidden;
+}
+.sx-card-head {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) auto;
+  column-gap: 18px;
+  align-items: center;
+  padding: 15px 18px;
+  border-radius: 10px;
+}
+.sx-card-badge {
+  display: flex;
+}
+.sx-card-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sx-card-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sx-warning {
+  margin-top: 5px;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 14px;
+  color: var(--ca);
+}
+.sx-card-file {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--t4);
+}
+.sx-card-reason {
+  max-width: 112px;
+  text-align: right;
+  font-size: 14px;
+  color: var(--t4);
+}
+.sx-card-actions {
+  margin: 0 18px 16px;
+}
+.sx-card-details {
+  padding: 20px;
+  border-top: 1px solid var(--dv);
+  background: var(--sb);
+}
+
+/* Details: tiles, as the native SourceDetailsTemplate lays them out. */
+.sx-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sx-tile-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.sx-tile {
+  min-width: 0;
+  padding: 13px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: 8px;
+  background: linear-gradient(var(--tt), var(--tb));
+  border: 1px solid var(--cts);
+}
+.sx-tile-9 {
+  gap: 9px;
+}
+.sx-tile-caption {
+  font: 400 12px var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--t4);
+}
+.sx-tile-caption-row {
+  display: flex;
+  justify-content: space-between;
+}
+.sx-wrap-9 {
+  column-gap: 9px;
+  row-gap: 3px;
+}
+.sx-wrap-10 {
+  column-gap: 10px;
+  row-gap: 3px;
+}
+.sx-wrap-comes {
+  column-gap: 9px;
+  row-gap: 7px;
+  align-items: center;
+}
+.sx-tile-mono {
+  font: 700 16px var(--mono);
+  color: var(--t1);
+}
+.sx-tile-data {
+  font: 400 12px var(--mono);
+  color: var(--t3);
+}
+.sx-tile-word {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.sx-tile-note {
+  font-size: 14px;
+  color: var(--t3);
+}
+.sx-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.sx-chip {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--ct);
+  border: 1px solid var(--cts);
+  font: 400 12px var(--mono);
+  letter-spacing: 0.11em;
+  color: var(--t2);
+}
+.sx-chip-muted {
+  color: var(--t4);
+}
+.sx-chip-start {
+  align-self: flex-start;
+}
+.sx-cache {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 4px;
+  background: var(--ct);
+  border: 1px solid var(--cts);
+  font-size: 13px;
+  color: var(--t3);
+}
+.sx-cache-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.sx-cache-good {
+  background: var(--sut);
+  border-color: var(--sus);
+  color: var(--su);
+}
+/* WinUI's determinate ProgressBar: a hairline track under a 4px indicator. */
+.sx-progress {
+  position: relative;
+  height: 4px;
+}
+.sx-progress-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 1.5px;
+  height: 1px;
+  border-radius: 0.5px;
+  background: var(--cst);
+}
+.sx-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 1.5px;
+  background: var(--ac);
+}
+
+/* Footer: the key legend, and the resolve laid bare behind it. */
+.sx-foot {
+  flex: 0 0 auto;
+  background: var(--cd);
+  border-top: 1px solid var(--dv);
+}
+.sx-foot-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 32px;
+}
+.sx-foot-toggle:hover {
+  background: var(--cth);
+}
+.sx-keys {
+  display: flex;
+  gap: 10px;
+}
+.sx-key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sx-keycap {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  background: var(--ct);
+  border: 1px solid var(--cts);
+  font-size: 12px;
+  color: var(--t2);
+}
+.sx-key-label {
+  font-size: 13px;
+  color: var(--t4);
+}
+.sx-foot-link {
+  font-size: 14px;
+  color: var(--ac);
+}
+.sx-foot-chevron {
+  flex: 0 0 14px;
+  display: flex;
+  justify-content: center;
+  color: var(--t3);
+}
+.sx-info {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 28px;
+  padding: 4px 32px 22px;
+}
+.sx-info-head {
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--t4);
+}
+.sx-provider {
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.sx-provider-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--su);
+}
+.sx-provider-dot-failed {
+  background: var(--cr);
+}
+.sx-provider-name {
+  font-size: 14px;
+  color: var(--t2);
+}
+.sx-provider-value {
+  font-size: 13px;
+  color: var(--t4);
+}
+.sx-mix {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  margin-bottom: 9px;
+}
+.sx-mix-label {
+  font-size: 14px;
+  color: var(--t2);
+}
+.sx-mix-track {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--sb);
+  overflow: hidden;
+}
+.sx-mix-track > span {
+  display: block;
+  height: 3px;
+  border-radius: 1.5px;
+}
+.sx-mix-count {
+  font-size: 13px;
+  color: var(--t4);
+}
+.sx-rule {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  margin-bottom: 7px;
+}
+.sx-rule-name {
+  font-size: 14px;
+  color: var(--t2);
+}
+.sx-rule-value {
+  font-size: 14px;
+  color: var(--t1);
+}
+.sx-rule-link {
+  margin-top: 6px;
+}

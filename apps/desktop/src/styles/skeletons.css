@@ -1,0 +1,166 @@
+/* ── Skeletons ─────────────────────────────────────────────────────────── */
+.skeleton {
+  background: var(--sb);
+  border-radius: 4px;
+  animation: skeletonPulse 1.4s ease-in-out infinite alternate;
+}
+@keyframes skeletonPulse {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 0.95;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+.skeleton-text {
+  display: block;
+  border-radius: 4px;
+}
+.skeleton-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 44px;
+  height: 18px;
+  border-radius: 4px;
+  z-index: 1;
+}
+
+/* Framed surfaces for posters, cards and thumbnails so they never look like raw black cutouts */
+.poster-skeleton {
+  pointer-events: none;
+  flex: 0 0 var(--pw);
+  width: var(--pw);
+}
+.poster-skeleton .poster-art {
+  border: 1px solid var(--cs);
+  border-radius: var(--cr, 6px);
+  background: var(--cd);
+}
+
+.cw-card-skeleton {
+  pointer-events: none;
+}
+.cw-card-skeleton .cw-art {
+  border: 1px solid var(--cs);
+  border-radius: 6px;
+  background: var(--cd);
+}
+
+.hero-skeleton {
+  pointer-events: none;
+  border: 1px solid var(--cs);
+}
+.hero-skeleton .hero-bg {
+  background: var(--cd);
+}
+.hero-skeleton-title {
+  border-radius: 6px;
+}
+
+.shelf-skeleton {
+  pointer-events: none;
+}
+
+.detail-skeleton {
+  pointer-events: none;
+}
+.detail-skeleton .detail-poster {
+  border: 1px solid var(--cs);
+  background: var(--cd);
+}
+
+.top-match-skeleton {
+  pointer-events: none;
+}
+.top-match-skeleton .top-match-art {
+  border: 1px solid var(--cs);
+  border-radius: 4px;
+  background: var(--cd);
+}
+
+.dl-skeleton-row {
+  pointer-events: none;
+}
+.dl-skeleton-row .dl-thumb {
+  border: 1px solid var(--cs);
+  border-radius: 4px;
+  background: var(--cd);
+}
+
+.state-note {
+  padding: 14px var(--gu, 24px);
+  font-size: 15px;
+  color: var(--t3);
+}
+.error-text {
+  color: var(--cr);
+}
+
+/**
+ * Marks a control the design draws but this build cannot honestly perform
+ * yet. It stays visible (so the screen still reads as designed) but never
+ * pretends to act.
+ */
+.soon {
+  opacity: 0.55;
+  cursor: default;
+}
+.soon-chip {
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--sb);
+  font: 700 12px/1.4 var(--mono);
+  letter-spacing: 0.6px;
+  color: var(--t4);
+}
+
+/* ── Placeholder art ───────────────────────────────────────────────────── */
+/**
+ * The fill behind poster/backdrop/still art while it loads or is missing.
+ * The stand-in for missing artwork is a diagonal stripe, drawn in CSS so no
+ * placeholder bitmap ships in the product.
+ */
+/* The native PlaceholderArt: the stripe asset scaled to fill the slot
+   (UniformToFill), so a poster's stripes are finer than a backdrop's. */
+.art {
+  position: relative;
+  overflow: hidden;
+  background: var(--p1) var(--ps) center / cover no-repeat;
+}
+.art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.art-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  text-align: center;
+  font: 700 12px/16px var(--mono);
+  color: var(--pt);
+}
+.art-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.451);
+}
+.art-progress > div {
+  height: 3px;
+  background: var(--ac);
+}

@@ -1,0 +1,95 @@
+/* ── Home hero ─────────────────────────────────────────────────────────── */
+.hero {
+  position: relative;
+  height: var(--hh);
+  margin: 0 var(--gu);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.hero-art {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.hero-art-active {
+  opacity: 1;
+}
+.hero-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--hs1) 0%, var(--hs2) 52%, transparent 92%);
+}
+.hero-body {
+  position: absolute;
+  left: 40px;
+  top: 0;
+  bottom: 0;
+  width: 580px;
+  max-width: calc(100% - 80px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+}
+.hero-title {
+  font-family: var(--display);
+  font-size: var(--ht);
+  font-weight: 600;
+  letter-spacing: -0.36px;
+  line-height: 1.1;
+  color: var(--t1);
+}
+.hero-facts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  color: var(--t2);
+}
+.hero-rating {
+  color: var(--ca);
+}
+.dot-sep {
+  color: var(--t4);
+}
+.hero-synopsis {
+  max-width: 520px;
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--t1);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.hero-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.hero-pips {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+/* Tokenised rather than the design's literal white: the pips sit over the
+   pale end of the light theme's hero scrim, where white is invisible. In dark
+   the token lands on the same value the design specifies. */
+.pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--t4);
+}
+.pip-active {
+  width: 7px;
+  height: 7px;
+  background: var(--t1);
+}

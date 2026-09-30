@@ -1,0 +1,34 @@
+/* Halo desktop: the applied design system, one partial per area.
+
+   Token names mirror the brushes in the native WinUI Halo Desktop's
+   `Styles/Tokens.xaml` (HaloNavSelBrush is `--ns`, and so on), so a value in
+   tokens.css can be checked against that file by name. `src/theme.ts`
+   documents what each name means.
+
+   Both palettes live in tokens.css rather than being written from JS, so the
+   first paint is already correct. `localPrefs.applyTheme` stamps
+   `data-theme="light|dark"` on the root before React mounts; the
+   `prefers-color-scheme` block there covers the frame before that runs.
+
+   The import order below is the cascade order: at equal specificity a later
+   partial wins over an earlier one (a screen's rules over the shared
+   controls). Put a new partial where its rules must win, not at the end by
+   default. */
+
+@import './fonts.css';
+@import './tokens.css';
+@import './base.css';
+@import './skeletons.css';
+@import './controls.css';
+@import './shell.css';
+@import './shelves.css';
+@import './home.css';
+@import './search.css';
+@import './browse.css';
+@import './downloads.css';
+@import './infobar.css';
+@import './settings.css';
+@import './auth.css';
+@import './dialog.css';
+@import './sources.css';
+@import './player.css';

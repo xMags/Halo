@@ -1,10 +1,10 @@
 /**
  * Halo desktop design system — the token reference.
  *
- * The applied values live in `index.css`: both palettes are declared there so
- * the first paint is already correct (a JS-applied palette would flash the
- * wrong theme). This file documents what the names mean and exports the
- * handful of numbers that have to reach JS.
+ * The applied values live in `styles/tokens.css`: both palettes are declared
+ * there so the first paint is already correct (a JS-applied palette would
+ * flash the wrong theme). This file documents what the names mean and exports
+ * the handful of numbers that have to reach JS.
  *
  * Token names mirror the brushes in the native WinUI Halo Desktop's
  * `Styles/Tokens.xaml`, so a value here can be checked against that file:
@@ -25,7 +25,7 @@
  *   --chd  chart dim              --hs1/--hs2 hero scrim stops
  *
  * The player overlay is pinned to dark in both themes and uses literal
- * colours, not these tokens — see the Player section at the end of index.css.
+ * colours, not these tokens; see `styles/player.css`.
  */
 
 /** Theme the user picked. `system` follows the OS setting live. */
@@ -46,8 +46,8 @@ export const NAV_PANE_WIDTH = 224
 
 /**
  * Content-column widths at which the poster/card/gutter/hero metrics step up.
- * Applied as container queries on the content surface (`index.css`), listed
- * here because the values are part of the design contract.
+ * Applied as container queries on the content surface (`styles/shell.css`),
+ * listed here because the values are part of the design contract.
  */
 export const CONTENT_BREAKPOINTS = {
   /** Poster 148, continue card 300, gutter 30, hero 360. */

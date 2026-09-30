@@ -1,0 +1,339 @@
+/* ── Settings ──────────────────────────────────────────────────────────── */
+/* The rail stands still and only the form scrolls, as in the native page. */
+.set-page {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: var(--set-page);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: var(--set-rail) minmax(0, 1fr);
+  gap: var(--set-col-gap);
+  padding: 4px 24px 0;
+}
+.set-rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+/* Scrolls without a visible bar; the rail is what shows where the reader is. */
+.set-scroll {
+  min-height: 0;
+  margin-top: 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+.set-scroll::-webkit-scrollbar {
+  display: none;
+}
+.set-rail-title {
+  padding: 8px 0 12px;
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--t1);
+}
+.set-rail-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  border-radius: 6px;
+  width: 100%;
+}
+.set-rail-btn:hover {
+  background: var(--sb);
+}
+.set-rail-btn-active,
+.set-rail-btn-active:hover {
+  background: var(--ns);
+}
+.set-rail-label {
+  font-size: 15px;
+  color: var(--t1);
+}
+.set-rail-btn-active .set-rail-label {
+  color: var(--ac);
+}
+.set-rail-hint {
+  font-size: 13px;
+  color: var(--t3);
+}
+.about-card {
+  margin-top: 18px;
+  padding: 14px;
+  background: var(--cd);
+  border: 1px solid var(--cs);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.about-rule {
+  height: 1px;
+  margin: 0 -14px;
+  background: var(--dv);
+}
+.set-form {
+  container: set-form / inline-size;
+  max-width: var(--set-form);
+  display: flex;
+  flex-direction: column;
+  gap: var(--set-form-gap);
+  padding: 0 8px 48px 0;
+}
+/* Each section sets its own gap, as the native sections differ. */
+.set-section {
+  display: flex;
+  flex-direction: column;
+}
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 36px;
+  padding: 14px;
+  border-top: 1px solid var(--dv);
+}
+.set-row:first-child {
+  border-top: 0;
+}
+.set-row-hint {
+  font-size: 14px;
+  color: var(--t3);
+}
+.set-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--t1);
+}
+.set-state-quiet {
+  color: var(--t3);
+}
+.spinner-32 {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+}
+.set-avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 20px;
+  object-fit: cover;
+}
+.set-h {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.set-sub {
+  font-size: 15px;
+  color: var(--t2);
+}
+
+.theme-card {
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--cd);
+  border: 1px solid var(--cs);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  align-items: center;
+}
+.theme-card-active {
+  background: var(--at);
+  border: 2px solid var(--ac);
+  padding: 9px;
+}
+.theme-mini {
+  position: relative;
+  width: 132px;
+  height: 80px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.theme-mini-tile {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  bottom: 8px;
+  width: 26px;
+  border-radius: 3px;
+}
+.theme-mini-lines {
+  position: absolute;
+  left: 42px;
+  right: 8px;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+}
+.theme-mini-lines > span {
+  height: 5px;
+  border-radius: 2px;
+}
+.theme-mini-split {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background: #fff;
+}
+
+.addon-row {
+  display: grid;
+  grid-template-columns: 12px 34px minmax(0, 1fr) auto auto;
+  gap: 13px;
+  align-items: center;
+  padding: 13px 14px;
+  border-top: 1px solid var(--dv);
+}
+.addon-row:first-child {
+  border-top: 0;
+}
+.addon-row-dragging {
+  opacity: 0.4;
+}
+.addon-row-over {
+  background: var(--tt);
+}
+/* A personal copy the global entry answers for: present, but not in use. */
+.addon-row-shadowed .drag-handle,
+.addon-row-shadowed .addon-tile,
+.addon-row-shadowed .addon-text {
+  opacity: 0.5;
+}
+.addon-row-shadowed .drag-handle {
+  cursor: default;
+}
+.drag-handle {
+  color: var(--t4);
+  display: flex;
+  cursor: grab;
+}
+.addon-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.addon-tile {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--sb);
+  font: 700 13px/1 var(--mono);
+  color: var(--t2);
+}
+.addon-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.addon-badge {
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--sb);
+  font: 700 12px/1.3 var(--mono);
+  color: var(--t3);
+}
+.addon-badge-yours {
+  background: var(--at);
+  color: var(--ac);
+}
+.addon-provides {
+  font-size: 14px;
+  color: var(--t3);
+}
+.opt-label {
+  font-size: 15px;
+  color: var(--t1);
+}
+.opt-hint {
+  font-size: 13px;
+  color: var(--t3);
+}
+
+.sub-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 12px;
+  align-items: stretch;
+  min-height: 220px;
+}
+.sub-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+.sub-row-value {
+  grid-template-columns: 76px minmax(0, 1fr) 44px;
+}
+.sub-trays {
+  display: grid;
+  grid-template-columns: 76px max-content;
+  column-gap: 16px;
+  row-gap: 10px;
+  align-items: center;
+  margin-top: 16px;
+}
+/* Too narrow for the controls (a 364px card: padding, the 76px label column
+   and the Font tray) plus the 12px gap and the 260px preview. The native page
+   clips the pickers at its card edge here; the preview moving under the
+   controls keeps every choice visible instead. */
+@container set-form (max-width: 635px) {
+  .sub-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sub-preview {
+    min-height: 160px;
+  }
+}
+/* The native stage: the dark stripe asset in both themes, darkened toward the
+   caption, with a fixed hairline rather than the themed card stroke. */
+.sub-preview {
+  position: relative;
+  max-height: 300px;
+  border: 1px solid rgba(255, 255, 255, 0.122);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #232428 url('../assets/stripe-dark.png') center / cover;
+}
+.sub-preview-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 40%, rgba(0, 0, 0, 0.451));
+}
+.sub-preview-kicker {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  font: 700 12px/1.2 var(--mono);
+  letter-spacing: 1.92px;
+  color: rgba(255, 255, 255, 0.4);
+}
+.sub-preview-caption {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 16px;
+  text-align: center;
+  font-weight: 600;
+  color: #fff;
+}

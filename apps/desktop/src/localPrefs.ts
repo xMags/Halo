@@ -131,8 +131,8 @@ function resolve(choice: ThemeChoice): 'light' | 'dark' {
 /**
  * Stamps the resolved palette on the root element. `system` is resolved here
  * rather than left to a CSS media query so the attribute is always present and
- * the two palettes need exactly one selector each; index.css still carries a
- * `prefers-color-scheme` fallback for the frame before this runs.
+ * the two palettes need exactly one selector each; styles/tokens.css still
+ * carries a `prefers-color-scheme` fallback for the frame before this runs.
  */
 export function applyTheme(choice: ThemeChoice): void {
   document.documentElement.dataset.theme = resolve(choice)
