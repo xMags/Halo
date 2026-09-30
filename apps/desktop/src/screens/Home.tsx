@@ -1,4 +1,5 @@
-import type { MetaDetail, MetaPreview, WatchState } from '@halo/core'
+import type { MetaPreview } from '@halo/core'
+import { useQueries } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { ArtImage } from '../components/ArtImage'
 import { FluentIcon } from '../components/FluentIcon'
@@ -8,60 +9,71 @@ import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { Shelf } from '../components/Shelf'
 import { HeroSkeleton, PosterCardSkeleton, ShelfSkeleton } from '../components/Skeleton'
-import { episodeTag, formatTimeLeft, runtimeMinutes, videoIdTag } from '../format'
-import { buildContinueWatching, type ContinueWatchingItem } from '../homeRows'
+import { useContinueShelf } from '../continueShelf'
+import { episodeTag, formatClock, runtimeMinutes, videoIdTag } from '../format'
+import {
+  buildLibraryRow,
+  matchesHomeFilter,
+  selectFeatured,
+  type ContinueCard,
+  type HomeFilter,
+} from '../homeRows'
 import { useNav } from '../nav'
 import {
   browsableCatalogs,
+  catalogQuery,
   libraryItemFromMeta,
   useCatalog,
   useEffectiveAddons,
   useLibrary,
   useMeta,
   useUpsertLibrary,
-  useWatchStates,
   type BrowsableCatalog,
 } from '../queries'
 import { setSearchQuery, useSearchQuery } from '../searchQuery'
 import { HERO_DWELL_MS } from '../theme'
 
-/** How many catalog shelves Home renders (each is one server round-trip). */
+/**
+ * The native catalog cap: the first eight browsable catalogs across the
+ * addons, in addon order, whatever the filter. The filter then narrows the
+ * titles inside each shelf, and a shelf left with none disappears.
+ */
 const MAX_SHELVES = 8
 /** How many catalog entries a single shelf shows. */
 const SHELF_LIMIT = 30
-/**
- * Continue-watching cards resolve their episode still from full meta, one
- * request each. Cap the row so a long history can't turn Home into a burst of
- * addon round-trips; the cards past this point are a scroll away anyway.
- */
-const CONTINUE_LIMIT = 8
-/** Keep desktop's featured rotation aligned with the mobile client. */
-const FEATURED_COUNT = 3
+/** The native carousel's length. */
+const FEATURED_COUNT = 5
 
-const FILTERS = [
+const FILTERS: ReadonlyArray<{ value: HomeFilter; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'movie', label: 'Movies' },
   { value: 'series', label: 'Series' },
-] as const
-type Filter = (typeof FILTERS)[number]['value']
+]
+
+/** The native shelf's kind label, printed beside the catalog's own name. */
+function typeLabel(type: string): string {
+  if (type === 'movie') return 'Movies'
+  if (type === 'series') return 'Series'
+  return type
+}
 
 export function Home() {
-  const [filter, setFilter] = useState<Filter>('all')
+  const [filter, setFilter] = useState<HomeFilter>('all')
   const { setRoot, push } = useNav()
   const query = useSearchQuery()
   const { data: addons, isLoading, error } = useEffectiveAddons()
-  const { data: watchStates } = useWatchStates()
   const { data: library } = useLibrary()
+  // Continue watching stays unfiltered, as natively: an in-progress title
+  // matters whichever browse filter is showing.
+  const { cards: continueCards } = useContinueShelf()
 
-  const allShelves = addons ? browsableCatalogs(addons) : []
-  const typeFilter = filter === 'all' ? null : filter
-  const shelves = (
-    typeFilter ? allShelves.filter((s) => s.catalog.type === typeFilter) : allShelves
-  ).slice(0, MAX_SHELVES)
-
-  // Continue watching stays unfiltered: an in-progress episode matters
-  // regardless of which browse filter is showing.
-  const continueItems = buildContinueWatching(watchStates, library).slice(0, CONTINUE_LIMIT)
+  const catalogs = addons ? browsableCatalogs(addons).slice(0, MAX_SHELVES) : []
+  // The library shelf's label counts the whole library; the filter only
+  // narrows the posters it shows.
+  const libraryAll = buildLibraryRow(library, null)
+  const libraryShown = libraryAll.filter((meta) => matchesHomeFilter(filter, meta.type))
+  const librarySource = `SYNCED · ${libraryAll.length}`
+  const continueSource = `${continueCards.length} IN PROGRESS`
 
   return (
     <div className="view">
@@ -89,19 +101,19 @@ export function Home() {
             <ShelfSkeleton titleWidth={180} count={6} />
           </>
         )}
-        {addons && allShelves.length === 0 && (
+        {addons && catalogs.length === 0 && (
           <div className="state-note">
             No browsable catalogs. Add an addon that publishes them (Cinemeta) under Settings →
             Addons.
           </div>
         )}
 
-        {shelves.length > 0 && <FeaturedHero lead={shelves[0]!} watchStates={watchStates} />}
+        {catalogs.length > 0 && <FeaturedHero catalogs={catalogs} filter={filter} />}
 
-        {continueItems.length > 0 && (
+        {continueCards.length > 0 && (
           <Shelf
             title="Continue watching"
-            source={`${continueItems.length} IN PROGRESS`}
+            source={continueSource}
             action={
               <button
                 type="button"
@@ -111,15 +123,13 @@ export function Home() {
                   push({
                     name: 'catalog',
                     title: 'Continue watching',
-                    source: `${continueItems.length} IN PROGRESS`,
+                    source: continueSource,
                     // The grid has nowhere for time left or progress; the
                     // poster and episode tag are what identify a title there.
-                    items: continueItems.map((item) => {
-                      const state = (watchStates ?? []).find((s) => s.itemId === item.itemId)
-                      return state
-                        ? { meta: item.meta, metaLine: videoIdTag(state.videoId, item.meta.id) }
-                        : { meta: item.meta }
-                    }),
+                    items: continueCards.map((card) => ({
+                      meta: { id: card.metaId, type: card.type, name: card.name, poster: card.poster },
+                      metaLine: videoIdTag(card.videoId, card.metaId),
+                    })),
                   })
                 }
               >
@@ -127,16 +137,45 @@ export function Home() {
               </button>
             }
           >
-            {continueItems.map((item) => (
-              <ContinueCard key={item.itemId} item={item} watchStates={watchStates} />
+            {continueCards.map((card) => (
+              <ContinueCardView key={card.itemId} card={card} />
             ))}
           </Shelf>
         )}
 
-        {shelves.map((shelf) => (
+        {libraryShown.length > 0 && (
+          <Shelf
+            title="My library"
+            source={librarySource}
+            action={
+              <button
+                type="button"
+                className="btn-link"
+                aria-label="See all shelf items"
+                onClick={() =>
+                  push({
+                    name: 'catalog',
+                    title: 'My library',
+                    source: librarySource,
+                    items: libraryShown.map((meta) => ({ meta })),
+                  })
+                }
+              >
+                See all
+              </button>
+            }
+          >
+            {libraryShown.map((meta) => (
+              <PosterCard key={`${meta.type}:${meta.id}`} meta={meta} />
+            ))}
+          </Shelf>
+        )}
+
+        {catalogs.map((shelf) => (
           <CatalogShelf
             key={`${shelf.addonId}/${shelf.catalog.type}/${shelf.catalog.id}`}
             shelf={shelf}
+            filter={filter}
           />
         ))}
       </div>
@@ -145,94 +184,100 @@ export function Home() {
 }
 
 /**
- * A continue-watching card wants a 16:9 still, an episode tag and the episode
- * title — none of which live in the watch state, so the card resolves full
- * meta for its title. The query is shared with Detail (same key), so opening
- * the card afterwards costs nothing.
+ * The native continue card: the tag in the top-left chip and again as the
+ * meta line, the clock time left (or UP NEXT for a promoted episode) in the
+ * bottom-right chip, and the episode still, which needs the title's full meta.
+ * That query is shared with Detail (same key), so opening the title afterwards
+ * costs nothing.
  *
- * Clicking it opens the sources sheet for the episode in progress rather than
- * the title page: the card exists to resume, and its progress bar promises
- * exactly that.
+ * Clicking it opens the sources sheet for the episode the card names rather
+ * than the title page: the card exists to resume, or to start what is next.
  */
-function ContinueCard({
-  item,
-  watchStates,
-}: {
-  item: ContinueWatchingItem
-  watchStates: WatchState[] | undefined
-}) {
+function ContinueCardView({ card }: { card: ContinueCard }) {
   const { openSheet } = useNav()
-  const { data: meta } = useMeta(item.meta.type, item.meta.id)
+  const { data: meta } = useMeta(card.type, card.metaId)
 
-  const state = (watchStates ?? []).find((s) => s.itemId === item.itemId)
-  const video = meta?.videos?.find((v) => v.id === state?.videoId)
-  const tag = video ? episodeTag(video.season, video.episode) : null
-  const still = video?.thumbnail ?? meta?.background ?? item.meta.poster
+  const video = meta?.videos?.find((v) => v.id === card.videoId)
+  const tag = videoIdTag(card.videoId, card.metaId)
+  const episodeLabel = video ? episodeTag(video.season, video.episode) : null
+  const still = video?.thumbnail ?? meta?.background ?? card.poster
   const episodeName = video?.title ?? video?.name ?? null
-  const left = state ? formatTimeLeft(state.positionSec, state.durationSec).toUpperCase() : ''
+  const promoted = card.kind === 'next'
+  const left = promoted ? 'UP NEXT' : `${formatClock(card.durationSec - card.positionSec)} LEFT`
+  const progress = promoted || card.durationSec <= 0 ? 0 : card.positionSec / card.durationSec
+  const minutes = runtimeMinutes(meta?.runtime)
 
   const open = () =>
     openSheet({
-      type: item.meta.type,
-      videoId: state?.videoId ?? item.meta.id,
-      itemId: item.itemId,
-      metaId: item.meta.id,
-      title: episodeName ?? item.meta.name,
-      showName: item.meta.name,
-      ...(tag ? { episodeLabel: tag } : {}),
-      ...(item.meta.poster ? { poster: item.meta.poster } : {}),
-      ...(runtimeMinutes(meta?.runtime) != null
-        ? { runtimeMinutes: runtimeMinutes(meta?.runtime)! }
-        : {}),
+      type: card.type,
+      videoId: card.videoId,
+      itemId: card.itemId,
+      metaId: card.metaId,
+      title: episodeName ?? card.name,
+      showName: card.name,
+      ...(episodeLabel ? { episodeLabel } : {}),
+      ...(card.poster ? { poster: card.poster } : {}),
+      ...(minutes != null ? { runtimeMinutes: minutes } : {}),
     })
 
   return (
-    <button type="button" className="cw-card" onClick={open} title={item.meta.name}>
+    <button type="button" className="cw-card" onClick={open} title={card.name}>
       <div className="art cw-art">
         <ArtImage src={still} label="EPISODE STILL" lazy />
-        {tag && <div className="tag-chip cw-tag">{tag}</div>}
-        {left && <div className="tag-chip cw-left">{left.replace(' LEFT', '')}</div>}
+        <div className="tag-chip cw-tag">{tag}</div>
+        <div className="tag-chip cw-left">{left}</div>
         <div className="art-progress">
-          <div style={{ width: `${Math.round(item.progress * 100)}%` }} />
+          <div style={{ width: `${Math.round(progress * 100)}%` }} />
         </div>
       </div>
-      <div className="card-title ellipsis">{item.meta.name}</div>
-      <div className="card-meta ellipsis">
-        {[episodeName?.toUpperCase() ?? (item.meta.type === 'movie' ? 'MOVIE' : 'EPISODE'), left]
-          .filter(Boolean)
-          .join(' · ')}
-      </div>
+      <div className="card-title ellipsis">{card.name}</div>
+      <div className="card-meta ellipsis">{tag}</div>
     </button>
   )
 }
 
 /**
- * Featured = the first titles of the first visible catalog, rotating every 6s
- * and pausing while the pointer is over it. Full meta is resolved only for the
- * title on screen, so rotating the hero does not turn Home into a burst of
- * eager addon requests. A prior watch state turns Play into Resume.
+ * The carousel: up to five titles picked across every shelf's catalog, the
+ * native rule (backdrops first, catalog order, no repeats, the filter
+ * applied). It rotates every 6s and pauses under the pointer.
+ *
+ * The pick is only shown once it can no longer change, so the strip does not
+ * swap titles as slower catalogs arrive: either every catalog has answered,
+ * or the catalogs that have, in order, already yield five titles with
+ * backdrops, which no later catalog can displace.
  */
-function FeaturedHero({
-  lead,
-  watchStates,
-}: {
-  lead: BrowsableCatalog
-  watchStates: WatchState[] | undefined
-}) {
+function FeaturedHero({ catalogs, filter }: { catalogs: BrowsableCatalog[]; filter: HomeFilter }) {
   const { push, openSheet } = useNav()
   const { data: library } = useLibrary()
   const upsertLibrary = useUpsertLibrary()
-  const { data: metas } = useCatalog(lead.addonId, lead.catalog.type, lead.catalog.id)
-  const previews = (metas ?? []).slice(0, FEATURED_COUNT)
+  const results = useQueries({
+    queries: catalogs.map((c) => catalogQuery(c.addonId, c.catalog.type, c.catalog.id)),
+  })
+
+  const pool: MetaPreview[] = []
+  let allAnswered = true
+  for (const result of results) {
+    if (result.isPending) {
+      allAnswered = false
+      break
+    }
+    // A catalog that failed contributes nothing, as its shelf does not appear.
+    pool.push(...(result.data ?? []))
+  }
+  const picks = selectFeatured(filter, pool, FEATURED_COUNT).map((index) => pool[index]!)
+  const settled =
+    allAnswered || (picks.length === FEATURED_COUNT && picks.every((meta) => Boolean(meta.background)))
+  const previews = settled ? picks : []
   const previewsKey = previews.map((meta) => `${meta.type}:${meta.id}`).join('|')
+
   const [featuredIndex, setFeaturedIndex] = useState(0)
   const [autoAdvance, setAutoAdvance] = useState(true)
   const [hovered, setHovered] = useState(false)
   const safeIndex = featuredIndex < previews.length ? featuredIndex : 0
-  const preview = previews[safeIndex]
+  const featured = previews[safeIndex]
 
   // A filter or catalog refresh can replace the carousel underneath its
-  // current index. Start the new list from its first title, just as mobile does.
+  // current index. Start the new list from its first title.
   useEffect(() => {
     setFeaturedIndex(0)
     setAutoAdvance(true)
@@ -246,38 +291,27 @@ function FeaturedHero({
     return () => window.clearTimeout(timer)
   }, [autoAdvance, hovered, previews.length, previewsKey, safeIndex])
 
-  const { data: fullMeta } = useMeta(preview?.type ?? '', preview?.id ?? '', { enabled: !!preview })
-  let featured: MetaDetail | MetaPreview | undefined = preview
-  if (fullMeta && preview && fullMeta.type === preview.type && fullMeta.id === preview.id) {
-    featured = fullMeta
-  }
+  if (!settled) return <HeroSkeleton />
   if (!featured) return null
 
   const itemId = `${featured.type}:${featured.id}`
   const libraryEntry = (library ?? []).find((i) => i.id === itemId && !i.removedAt)
-  const state = (watchStates ?? []).find((s) => s.itemId === itemId && !s.watched)
-  const videos = fullMeta?.videos ?? []
-  const resumeVideo = state ? videos.find((v) => v.id === state.videoId) : undefined
-  const resumeTag = resumeVideo ? episodeTag(resumeVideo.season, resumeVideo.episode) : null
+  const isSeries = featured.type === 'series'
 
   const openDetail = () => push({ name: 'detail', type: featured.type, id: featured.id })
 
+  // The native primary action: a series needs an episode chosen, and Detail is
+  // the picker; a film goes straight to its sources.
   const play = () => {
-    // A series with no resume point needs an episode choice first, and Detail
-    // is the picker; anything else goes straight to its sources.
-    if (featured.type === 'series' && !state) return openDetail()
+    if (isSeries) return openDetail()
     openSheet({
       type: featured.type,
-      videoId: state?.videoId ?? featured.id,
+      videoId: featured.id,
       itemId,
       metaId: featured.id,
-      title: resumeVideo?.title ?? resumeVideo?.name ?? featured.name,
+      title: featured.name,
       showName: featured.name,
-      ...(resumeTag ? { episodeLabel: resumeTag } : {}),
       ...(featured.poster ? { poster: featured.poster } : {}),
-      ...(runtimeMinutes(fullMeta?.runtime) != null
-        ? { runtimeMinutes: runtimeMinutes(fullMeta?.runtime)! }
-        : {}),
     })
   }
 
@@ -291,14 +325,7 @@ function FeaturedHero({
     }
   }
 
-  const facts = [
-    featured.releaseInfo,
-    featured.type.toUpperCase(),
-    videos.length > 0 ? `${new Set(videos.map((v) => v.season ?? 0)).size} SEASONS` : null,
-    (featured.genres ?? []).slice(0, 2).join(', ').toUpperCase() || null,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  const rating = featured.imdbRating ? `★ ${featured.imdbRating}` : null
 
   return (
     <div
@@ -310,8 +337,7 @@ function FeaturedHero({
         <div className="art-label">BACKDROP</div>
       </div>
       {previews.map((item, index) => {
-        const resolved = index === safeIndex ? featured : item
-        const artwork = resolved.background ?? resolved.poster
+        const artwork = item.background ?? item.poster
         if (!artwork) return null
         return (
           <div
@@ -327,15 +353,15 @@ function FeaturedHero({
         <div className="kicker kicker-accent">FEATURED</div>
         <div className="hero-title">{featured.name}</div>
         <div className="hero-facts">
-          {featured.imdbRating && <span className="hero-rating">★ {featured.imdbRating}</span>}
-          {featured.imdbRating && facts && <span className="dot-sep">·</span>}
-          {facts && <span className="ellipsis">{facts}</span>}
+          {rating && <span className="hero-rating">{rating}</span>}
+          {rating && featured.releaseInfo && <span className="dot-sep">·</span>}
+          {featured.releaseInfo && <span className="ellipsis">{featured.releaseInfo}</span>}
         </div>
         {featured.description && <div className="hero-synopsis">{featured.description}</div>}
         <div className="hero-actions">
           <button type="button" className="btn-accent h36" onClick={play}>
             <FluentIcon glyph="play" size={14} />
-            <span>{state ? `Resume${resumeTag ? ` ${resumeTag}` : ''}` : 'Play'}</span>
+            <span>{isSeries ? 'Choose episode' : 'Play'}</span>
           </button>
           <button type="button" className="btn h36" onClick={openDetail}>
             Details
@@ -380,25 +406,20 @@ function FeaturedHero({
 }
 
 /**
- * Addons publish the same catalog name for both types — Cinemeta has a
- * "Popular" and a "Featured" for each — so the type joins the title, or two
- * shelves read identically. Names that already say it are left alone.
+ * One catalog as a shelf: the catalog's own name with the kind label beside
+ * it, as the native shelf titles it, and only the titles the filter keeps.
  */
-function shelfTitle(name: string, type: string): string {
-  const label = type === 'movie' ? 'Movies' : type === 'series' ? 'Series' : null
-  if (!label || name.toLowerCase().includes(type)) return name
-  return `${name} ${label}`
-}
-
-function CatalogShelf({ shelf }: { shelf: BrowsableCatalog }) {
+function CatalogShelf({ shelf, filter }: { shelf: BrowsableCatalog; filter: HomeFilter }) {
   const { push } = useNav()
   const { data: metas, isLoading } = useCatalog(shelf.addonId, shelf.catalog.type, shelf.catalog.id)
+  const items = (metas ?? []).filter((meta) => matchesHomeFilter(filter, meta.type))
 
-  // A catalog that errored or came back empty doesn't earn a shelf.
-  if (!isLoading && (!metas || metas.length === 0)) return null
+  // A catalog that errored, came back empty, or holds nothing the filter keeps
+  // doesn't earn a shelf.
+  if (!isLoading && items.length === 0) return null
 
-  const title = shelfTitle(shelf.catalog.name ?? shelf.addonName, shelf.catalog.type)
-  const source = shelf.addonName.toUpperCase()
+  const title = shelf.catalog.name ?? shelf.addonName
+  const source = typeLabel(shelf.catalog.type)
   return (
     <Shelf
       title={title}
@@ -408,22 +429,17 @@ function CatalogShelf({ shelf }: { shelf: BrowsableCatalog }) {
           type="button"
           className="btn-link"
           aria-label="See all shelf items"
-          onClick={() =>
-            push({ name: 'catalog', title, source, items: (metas ?? []).map((meta) => ({ meta })) })
-          }
+          onClick={() => push({ name: 'catalog', title, source, items: items.map((meta) => ({ meta })) })}
         >
           See all
         </button>
       }
     >
-      {(metas ?? []).slice(0, SHELF_LIMIT).map((meta) => (
+      {items.slice(0, SHELF_LIMIT).map((meta) => (
         <PosterCard key={`${meta.type}:${meta.id}`} meta={meta} />
       ))}
-      {isLoading && (
-        Array.from({ length: 6 }).map((_, index) => (
-          <PosterCardSkeleton key={`skeleton-${index}`} />
-        ))
-      )}
+      {isLoading &&
+        Array.from({ length: 6 }).map((_, index) => <PosterCardSkeleton key={`skeleton-${index}`} />)}
     </Shelf>
   )
 }

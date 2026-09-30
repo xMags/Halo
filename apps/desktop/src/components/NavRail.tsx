@@ -1,9 +1,10 @@
 import avatar from '../assets/user-avatar.png'
 import { useDownloads } from '../downloads'
+import { useContinueShelf } from '../continueShelf'
 import { formatClock, videoIdTag } from '../format'
-import { buildContinueWatching } from '../homeRows'
+import type { ContinueCard } from '../homeRows'
 import { useNav, type Section } from '../nav'
-import { useLibrary, useMe, useWatchStates } from '../queries'
+import { useMe } from '../queries'
 import { ArtImage } from './ArtImage'
 import { FluentIcon, type FluentGlyph } from './FluentIcon'
 
@@ -37,22 +38,23 @@ interface NavRailProps {
  * not the visible screen — decides which row is lit: opening a poster from
  * Home leaves Home lit, which is where Back goes.
  *
- * The shortcut rows print the episode tag parsed from the watch state's video
- * id, never the episode's name, so a permanently-mounted pane never issues
- * addon round-trips.
+ * The shortcut rows are the first entries of Home's continue shelf and print
+ * the episode tag parsed from the video id, never the episode's name, so a
+ * permanently-mounted pane fetches no meta. Its only requests are the shelf's
+ * next-episode lookups, which it shares with Home by query key.
  */
 export function NavRail({ open, onToggle }: NavRailProps) {
   const { section, push, setRoot } = useNav()
   const { data: me } = useMe()
-  const { data: watchStates } = useWatchStates()
-  const { data: library } = useLibrary()
   const { downloads } = useDownloads()
 
   const activeTransfers = downloads.filter(
     (item) => item.status === 'downloading' || item.status === 'queued',
   ).length
 
-  const jump = open ? buildContinueWatching(watchStates, library).slice(0, JUMP_LIMIT) : []
+  // The first entries of Home's continue shelf, as the native pane reads them.
+  const { cards } = useContinueShelf({ enabled: open })
+  const jump = open ? cards.slice(0, JUMP_LIMIT) : []
   const role = me?.isAdmin ? 'ADMIN · HALO ACCOUNT' : 'HALO ACCOUNT'
 
   return (
@@ -91,28 +93,23 @@ export function NavRail({ open, onToggle }: NavRailProps) {
       {jump.length > 0 && (
         <>
           <div className="nav-header nav-header-jump">JUMP BACK IN</div>
-          {jump.map((item) => {
-            const state = (watchStates ?? []).find((s) => s.itemId === item.itemId)
-            return (
-              <button
-                key={item.itemId}
-                type="button"
-                className="jump-row"
-                title={item.meta.name}
-                onClick={() => push({ name: 'detail', type: item.meta.type, id: item.meta.id })}
-              >
-                <span className="art jump-art">
-                  <ArtImage src={item.meta.poster} />
-                </span>
-                <span className="nav-lines">
-                  <span className="jump-title ellipsis">{item.meta.name}</span>
-                  <span className="jump-meta ellipsis">
-                    {state ? jumpMeta(state.videoId, item.meta.id, state.positionSec, state.durationSec) : ''}
-                  </span>
-                </span>
-              </button>
-            )
-          })}
+          {jump.map((card) => (
+            <button
+              key={card.itemId}
+              type="button"
+              className="jump-row"
+              title={card.name}
+              onClick={() => push({ name: 'detail', type: card.type, id: card.metaId })}
+            >
+              <span className="art jump-art">
+                <ArtImage src={card.poster} />
+              </span>
+              <span className="nav-lines">
+                <span className="jump-title ellipsis">{card.name}</span>
+                <span className="jump-meta ellipsis">{jumpMeta(card)}</span>
+              </span>
+            </button>
+          ))}
         </>
       )}
 
@@ -134,7 +131,9 @@ export function NavRail({ open, onToggle }: NavRailProps) {
   )
 }
 
-/** `S01E01 · 30:02 LEFT`, the native pane's second line. */
-function jumpMeta(videoId: string, metaId: string, positionSec: number, durationSec: number): string {
-  return `${videoIdTag(videoId, metaId)} · ${formatClock(durationSec - positionSec)} LEFT`
+/** `S01E01 · 30:02 LEFT`, or `S02E01 · UP NEXT`: the native pane's second line. */
+function jumpMeta(card: ContinueCard): string {
+  const left =
+    card.kind === 'next' ? 'UP NEXT' : `${formatClock(card.durationSec - card.positionSec)} LEFT`
+  return `${videoIdTag(card.videoId, card.metaId)} · ${left}`
 }
