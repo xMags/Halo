@@ -1666,11 +1666,15 @@ input[type='range'] {
 .shelf-chevron {
   color: var(--t2);
 }
+/* The top padding is the band the cards lift into on hover; the native shelf
+   pulls its row up by the same 4px so the band does not widen the gap under
+   the header. */
 .shelf-scroll {
   display: flex;
   gap: 14px;
   overflow-x: auto;
   overflow-y: hidden;
+  margin-top: -4px;
   padding-top: 4px;
 }
 
