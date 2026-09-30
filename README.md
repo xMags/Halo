@@ -1,6 +1,6 @@
 <div align="center">
   <img
-    src="apps/mobile-native/composeApp/src/commonMain/composeResources/drawable/halo_mark.png"
+    src="apps/mobile/assets/halo-logo.png"
     alt="Halo logo"
     width="150"
     height="150"
