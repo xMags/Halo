@@ -1,0 +1,696 @@
+/* ── Player ────────────────────────────────────────────────────────────────
+   Pinned dark in both themes: the picture is the subject and the chrome sits
+   on top of it, so these colours are literal, not tokens. */
+.player-root {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  color: #fff;
+  overflow: hidden;
+}
+.player-root-windowed {
+  top: var(--titlebar);
+}
+body.player-active .titlebar {
+  background: #050507;
+}
+.player-chrome {
+  transition: opacity 0.18s ease;
+}
+.player-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.player-scrim-top,
+.player-scrim-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+.player-scrim-top {
+  top: 0;
+  height: 160px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0));
+}
+.player-scrim-bottom {
+  bottom: 0;
+  height: 240px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(4, 5, 8, 0.9));
+}
+.player-top {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.player-back {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: rgba(20, 20, 24, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.player-back:hover {
+  background: rgba(40, 40, 46, 0.7);
+}
+.player-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+}
+.player-source {
+  font: 400 12px/1.4 var(--mono);
+  color: rgba(255, 255, 255, 0.58);
+}
+.paused-chip {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 14px 26px;
+  border-radius: 8px;
+  background: rgba(20, 20, 24, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+.player-notice {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  background: rgba(20, 20, 24, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 15px;
+  color: #fff;
+}
+.player-error-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 560px;
+  padding: 20px 24px;
+  border-radius: 10px;
+  background: rgba(20, 20, 24, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.player-error-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+.player-error-copy {
+  margin-top: 4px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.player-bottom {
+  position: absolute;
+  left: 26px;
+  right: 26px;
+  bottom: 22px;
+  display: flex;
+  flex-direction: column;
+}
+.pchips {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.pchip {
+  padding: 7px 13px;
+  border-radius: 6px;
+  background: rgba(20, 20, 22, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+.pchip-on {
+  background: rgba(96, 205, 255, 0.18);
+  border-color: rgba(96, 205, 255, 0.6);
+}
+.pchip-kicker {
+  font: 700 12px/1.2 var(--mono);
+  letter-spacing: 1.92px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.pchip-on .pchip-kicker {
+  color: #60cdff;
+}
+.pchip-value {
+  max-width: 210px;
+  font-size: 14px;
+  color: #fff;
+}
+.pkeys {
+  padding-bottom: 8px;
+  font: 400 12px/1.2 var(--mono);
+  color: rgba(255, 255, 255, 0.44);
+}
+
+.seek {
+  height: 32px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+}
+.seek-track {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.16);
+}
+.seek-buffered {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.24);
+}
+.seek-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: #60cdff;
+}
+.seek-knob {
+  position: absolute;
+  top: -5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: #fff;
+  margin-left: -8px;
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+}
+.pplay {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 22px;
+  background: #fff;
+  color: #000;
+}
+.pround {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.pround:hover,
+.psquare:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.psquare {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.ptime {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 14px;
+  font: 400 14px/1 var(--mono);
+}
+.ptime-now {
+  color: rgba(255, 255, 255, 0.82);
+}
+.ptime-total {
+  color: rgba(255, 255, 255, 0.4);
+}
+.pvol {
+  display: flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.8);
+}
+.pvol input[type='range'] {
+  width: 96px;
+  margin: 0 10px;
+  accent-color: #fff;
+}
+.pvol-value {
+  width: 34px;
+  font: 400 14px/1 var(--mono);
+  color: #fff;
+}
+
+.upnext-card {
+  position: absolute;
+  right: 26px;
+  bottom: 190px;
+  width: 340px;
+  padding: 16px;
+  border-radius: 10px;
+  background: rgba(20, 20, 24, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.upnext-progress {
+  height: 3px;
+  margin-top: 12px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+.upnext-progress > div {
+  height: 3px;
+  background: #60cdff;
+  transition: width 1s linear;
+}
+.upnext-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Player panel — the 400px right sheet. */
+.prail-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 5, 8, 0.5);
+}
+.prail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 400px;
+  max-width: 100%;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(28, 28, 32, 0.86);
+  backdrop-filter: blur(28px);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 22px 0 0 22px;
+  animation: haloSheetIn 0.2s ease;
+}
+.prail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.prail-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+}
+.prail-hint {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.56);
+}
+.prail-close {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  border-radius: 4px;
+}
+.prail-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.ptray {
+  display: grid;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+}
+.ptray-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+  margin: 16px 0 18px;
+}
+.ptray-2 {
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 16px;
+}
+.ptray-4 {
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+.ptray-btn {
+  padding: 5px 4px;
+  border-radius: 3px;
+  text-align: center;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.56);
+}
+.ptray-btn-active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-weight: 600;
+}
+.prail-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.prail-kicker {
+  font: 700 12px/1.2 var(--mono);
+  letter-spacing: 1.92px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.ptrack {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 11px;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 3px;
+  padding: 10px 12px;
+  border-radius: 6px;
+}
+.ptrack:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.ptrack-active,
+.ptrack-active:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.ptrack-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: transparent;
+}
+.ptrack-active .ptrack-dot {
+  background: #60cdff;
+}
+.ptrack-title {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.86);
+}
+.ptrack-active .ptrack-title {
+  color: #fff;
+  font-weight: 600;
+}
+.ptrack-note {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.ptrack-codec {
+  font: 700 12px/1.3 var(--mono);
+  color: rgba(255, 255, 255, 0.55);
+}
+.ptrack-match-hash {
+  color: #6ccb5f;
+}
+.pcard {
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+.pcard-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+.pcard-note {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.pstepper {
+  display: flex;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.pstepper-btn {
+  width: 32px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 16px;
+}
+.pstepper-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.pstepper-value {
+  width: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 400 13px/1 var(--mono);
+  color: #fff;
+}
+.pspeed-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.pspeed {
+  padding: 12px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+}
+.pspeed-active {
+  background: rgba(96, 205, 255, 0.18);
+  border-color: rgba(96, 205, 255, 0.6);
+}
+.pspeed-rate {
+  font: 700 15px/1.2 var(--mono);
+  color: rgba(255, 255, 255, 0.8);
+}
+.pspeed-active .pspeed-rate {
+  color: #fff;
+}
+.pspeed-note {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+/* The shared switch reaches into the panel, which is pinned dark — so its
+   token colours are re-stated literally here or a light theme leaks in. */
+.prail .toggle {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.prail .toggle-knob {
+  background: rgba(255, 255, 255, 0.784);
+}
+.prail .toggle-on {
+  background: #4cc2ff;
+  border-color: #4cc2ff;
+}
+.prail .toggle-on .toggle-knob {
+  background: #000;
+}
+.prail-ticks {
+  display: flex;
+  justify-content: space-between;
+  font: 400 12px/1.4 var(--mono);
+  color: rgba(255, 255, 255, 0.36);
+}
+.prail-warn {
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #fce100;
+}
+
+/* ── Player: the native player's extras ─────────────────────────────────── */
+/* The quality badge sits on the header row but outside the fading chrome. */
+.pbadge {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+.ploading {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  pointer-events: none;
+}
+.ploading-ring {
+  animation: pringTurn 1.4s linear infinite;
+}
+.ploading-ring circle {
+  fill: none;
+  stroke: #60cdff;
+  stroke-width: 4;
+  stroke-linecap: round;
+  animation: pringArc 1.4s ease-in-out infinite;
+}
+@keyframes pringTurn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pringArc {
+  0% {
+    stroke-dasharray: 1 132;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 90 132;
+    stroke-dashoffset: -30;
+  }
+  100% {
+    stroke-dasharray: 90 132;
+    stroke-dashoffset: -131;
+  }
+}
+.ploading-label {
+  font: 700 12px/1.2 var(--mono);
+  letter-spacing: 1.92px;
+  color: rgba(255, 255, 255, 0.72);
+}
+/* The seek bar's thumbnail card: 200 wide, a 112-tall picture, the time under it. */
+.pscrub {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 20px);
+  width: 200px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(16, 16, 20, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+  z-index: 2;
+}
+.pscrub-picture {
+  position: relative;
+  height: 112px;
+  border-radius: 4px;
+  background: #060608;
+  overflow: hidden;
+}
+/* While a frame is on its way: a bright band sweeps left to right across the
+   picture well, with the player's loading ring in the middle, so a pending
+   thumbnail is never mistaken for an empty one. */
+.pscrub-skeleton {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.07) 20%,
+    rgba(255, 255, 255, 0.26) 50%,
+    rgba(255, 255, 255, 0.07) 80%
+  );
+  background-size: 300% 100%;
+  animation: pscrubShimmer 1.1s linear infinite;
+}
+@keyframes pscrubShimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+.pscrub-ring {
+  animation: pringTurn 1.4s linear infinite;
+}
+.pscrub-ring circle {
+  fill: none;
+  stroke-width: 5;
+}
+.pscrub-ring-track {
+  stroke: rgba(255, 255, 255, 0.2);
+}
+.pscrub-ring-arc {
+  stroke: #60cdff;
+  stroke-linecap: round;
+  animation: pringArc 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pscrub-skeleton {
+    animation: none;
+    background: rgba(255, 255, 255, 0.14);
+  }
+}
+.pscrub-picture canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.pscrub-time {
+  margin: 4px 0 2px;
+  text-align: center;
+  font: 400 13px/1.3 var(--mono);
+  color: #fff;
+}
+/* The subtitle preview's stage stands in for a video frame, so it is dark in
+   every theme. */
+.psub-stage {
+  min-height: 86px;
+  margin-top: 10px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #232428;
+  border: 1px solid rgba(255, 255, 255, 0.122);
+}
+.psub-caption {
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  color: #fff;
+  overflow-wrap: anywhere;
+}

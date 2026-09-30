@@ -1,0 +1,102 @@
+/* ── Shelves ───────────────────────────────────────────────────────────── */
+.shelf {
+  margin: 0 var(--gu);
+}
+.shelf-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.shelf-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.shelf-source {
+  font: 400 12px/1.2 var(--mono);
+  color: var(--t3);
+  padding-bottom: 2px;
+}
+/* The native shelf draws its chevron glyphs in Text2 inside a default button. */
+.shelf-chevron {
+  color: var(--t2);
+}
+/* The top padding is the band the cards lift into on hover; the native shelf
+   pulls its row up by the same 4px so the band does not widen the gap under
+   the header. */
+.shelf-scroll {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin-top: -4px;
+  padding-top: 4px;
+}
+
+/* ── Poster and continue cards ─────────────────────────────────────────── */
+.poster {
+  flex: 0 0 var(--pw);
+  width: var(--pw);
+  display: block;
+  transition: transform 0.12s ease;
+}
+.poster:hover {
+  transform: translateY(-2px);
+}
+.poster-art {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border: 1px solid var(--cs);
+  border-radius: 8px;
+}
+.poster-badge {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.69);
+  font: 700 12px/1.2 var(--mono);
+  color: #fff;
+}
+/* The native card's TextBlock line boxes: 20px for the 15px title and 16px
+   for the mono meta line, which keeps its height even when empty. */
+.card-title {
+  margin: 8px 1px 0;
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--t1);
+}
+.card-meta {
+  margin: 3px 1px 0;
+  min-height: 16px;
+  font: 400 12px/16px var(--mono);
+  color: var(--t3);
+}
+
+.cw-card {
+  flex: 0 0 var(--cw);
+  width: var(--cw);
+  display: block;
+  transition: transform 0.12s ease;
+}
+.cw-card:hover {
+  transform: translateY(-2px);
+}
+.cw-art {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--cs);
+  border-radius: 8px;
+}
+.cw-tag {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+}
+.cw-left {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+}

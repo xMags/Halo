@@ -1,0 +1,84 @@
+/* ── Auth (Login / Connect) ────────────────────────────────────────────── */
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--m);
+  overflow: hidden;
+}
+.auth-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  position: relative;
+  z-index: 1;
+}
+.auth-col {
+  width: 404px;
+  max-width: calc(100% - 48px);
+  display: flex;
+  flex-direction: column;
+}
+.logo-lockup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.logo-mark {
+  width: 26px;
+  height: 26px;
+}
+.logo-word {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 2.24px;
+  color: var(--t1);
+}
+.auth-title {
+  margin-top: 26px;
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--t1);
+  text-align: center;
+}
+.auth-host {
+  margin-top: 10px;
+  text-align: center;
+  font: 400 12px/1.3 var(--mono);
+  color: var(--ac);
+}
+.auth-sub {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--t2);
+}
+.field-block {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-label {
+  font-size: 14px;
+  color: var(--t2);
+}
+.auth-error {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--cr);
+}
+.auth-help {
+  margin-top: 12px;
+  padding: 4px 8px;
+  align-self: center;
+  font-size: 14px;
+  color: var(--ac);
+}

@@ -1,0 +1,166 @@
+/* ── Reset ─────────────────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+/* WinUI paints a Border's fill inside its stroke (BackgroundSizing
+   InnerBorderEdge), so a translucent stroke blends with whatever is behind the
+   control. CSS defaults to painting the fill under the stroke, which stacks two
+   translucent layers and draws every control outline visibly brighter than the
+   native app's. `!important` because the `background` shorthand in each rule
+   would otherwise reset this back to border-box. */
+*,
+::before,
+::after {
+  background-clip: padding-box !important;
+}
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+body {
+  background: var(--m);
+  color: var(--t1);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  user-select: none;
+  overflow: hidden;
+}
+
+/* mpv paints the window behind this surface, so anything transparent here
+   shows raw video. The player screen (and only it) opens the hole. */
+body.player-active,
+body.player-active #root {
+  background: transparent;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: default;
+}
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+a {
+  color: var(--ac);
+  text-decoration: none;
+}
+:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 2px;
+}
+
+/* Scrollbars are hidden in-app; the sources sheet keeps a thin one. */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.thin-bar {
+  scrollbar-width: thin;
+}
+.thin-bar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.thin-bar::-webkit-scrollbar-thumb {
+  background: var(--cs);
+  border-radius: 999px;
+}
+
+@keyframes haloFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes haloSheetIn {
+  from {
+    transform: translateX(28px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes haloSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes haloPulse {
+  0% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* ── Utilities ─────────────────────────────────────────────────────────── */
+.ellipsis {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.spacer {
+  flex: 1;
+  min-width: 0;
+}
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+/** MonoKicker — JetBrains Mono Bold 12, 1.92px tracking, uppercase. */
+.kicker {
+  font: 700 12px/1.2 var(--mono);
+  letter-spacing: 1.92px;
+  color: var(--t3);
+  text-transform: uppercase;
+}
+.kicker-accent {
+  color: var(--ac);
+}
+/** MonoData — the 12px mono line under every title. */
+.mono {
+  font: 400 12px/1.4 var(--mono);
+  color: var(--t3);
+}
+.mono-b {
+  font-weight: 700;
+}
+/** MonoTileCaption — 1.44px tracking, the quietest label. */
+.mono-cap {
+  font: 400 12px/1.2 var(--mono);
+  letter-spacing: 1.44px;
+  color: var(--t4);
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--cs);
+  border-top-color: var(--ac);
+  border-radius: 999px;
+  animation: haloSpin 0.7s linear infinite;
+  vertical-align: -1px;
+}

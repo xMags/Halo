@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { applyStoredTheme } from './localPrefs'
-import './index.css'
+import './styles/index.css'
 
 // Before the first render, so no frame paints the wrong palette.
 applyStoredTheme()

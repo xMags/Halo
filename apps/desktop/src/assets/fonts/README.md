@@ -8,7 +8,7 @@ and a self-hosted client should not phone home on launch.
 
 Each file is the **variable-weight** woff2 (400–800) for one unicode subset —
 `latin` covers the UI copy, `latin-ext` covers accented titles coming back from
-addon metadata. `@font-face` in `src/index.css` declares the matching
+addon metadata. `@font-face` in `src/styles/fonts.css` declares the matching
 `unicode-range`, so the ext file is only fetched when a page actually needs it.
 
 These are *not* the same fonts as `apps/desktop/fonts/`. That directory is fed
