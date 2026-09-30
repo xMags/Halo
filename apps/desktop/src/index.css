@@ -237,6 +237,17 @@
 * {
   box-sizing: border-box;
 }
+/* WinUI paints a Border's fill inside its stroke (BackgroundSizing
+   InnerBorderEdge), so a translucent stroke blends with whatever is behind the
+   control. CSS defaults to painting the fill under the stroke, which stacks two
+   translucent layers and draws every control outline visibly brighter than the
+   native app's. `!important` because the `background` shorthand in each rule
+   would otherwise reset this back to border-box. */
+*,
+::before,
+::after {
+  background-clip: padding-box !important;
+}
 html,
 body,
 #root {
@@ -3388,8 +3399,9 @@ input[type='range'] {
 }
 .qbadge-gold .qbadge-tier {
   background: linear-gradient(#f8e7a6, #d3a63a);
-  -webkit-background-clip: text;
-  background-clip: text;
+  /* Beats the reset's padding-box rule: this gradient is the lettering. */
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
   color: transparent;
 }
 .qbadge-gold .qbadge-detail {
