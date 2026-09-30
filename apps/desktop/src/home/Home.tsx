@@ -242,6 +242,7 @@ function FeaturedHero({ catalogs, filter }: { catalogs: BrowsableCatalog[]; filt
   const { push, openSheet } = useNav()
   const { data: library } = useLibrary()
   const upsertLibrary = useUpsertLibrary()
+  const titleMenu = useTitleMenu()
   const results = useQueries({
     queries: catalogs.map((c) => catalogQuery(c.addonId, c.catalog.type, c.catalog.id)),
   })
@@ -324,6 +325,7 @@ function FeaturedHero({ catalogs, filter }: { catalogs: BrowsableCatalog[]; filt
       className="hero"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onContextMenu={(event) => titleMenu.forPoster(event, featured)}
     >
       <div className="art" style={{ position: 'absolute', inset: 0 }} aria-hidden>
         <div className="art-label">BACKDROP</div>

@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { WatchState } from '@halo/core'
-import { hasWatchProgress, unwatchedRow, watchedRow } from '../src/browse/watchMarks.ts'
+import type { MetaVideo, WatchState } from '@halo/core'
+import {
+  earlierEpisodes,
+  hasWatchProgress,
+  unwatchedRow,
+  watchedRow,
+  watchedRowsInOrder,
+} from '../src/browse/watchMarks.ts'
 import { buildContinueShelf, type NextEpisodeLookup } from '../src/home/homeRows.ts'
 
 const episode = { videoId: 'tt1:1:3', itemId: 'series:tt1', name: 'Show', poster: 'https://img/show.jpg' }
@@ -90,4 +96,43 @@ test('an unwatched mark reads as a missing row: the show falls back to what came
   assert.equal(shelf.cards.length, 1)
   assert.equal(shelf.cards[0]?.kind, 'next')
   assert.equal(shelf.cards[0]?.videoId, 'tt1:1:3')
+})
+
+const ep = (season: number | undefined, episode: number | undefined): MetaVideo => ({
+  id: `tt1:${season ?? 'x'}:${episode ?? 'x'}`,
+  ...(season != null ? { season } : {}),
+  ...(episode != null ? { episode } : {}),
+})
+
+test('earlier episodes run through every earlier season, first to last, and skip specials', () => {
+  const videos = [ep(2, 2), ep(0, 1), ep(1, 2), ep(2, 1), ep(1, 1), ep(2, 3), ep(3, 1)]
+  const ids = earlierEpisodes(videos, ep(2, 3)).map((video) => video.id)
+  assert.deepEqual(ids, ['tt1:1:1', 'tt1:1:2', 'tt1:2:1', 'tt1:2:2'])
+  assert.deepEqual(earlierEpisodes(videos, ep(1, 1)), [])
+})
+
+test('before a special only earlier specials count; unnumbered videos never do', () => {
+  const videos = [ep(0, 1), ep(0, 2), ep(1, 1), ep(undefined, 3), ep(1, undefined)]
+  assert.deepEqual(earlierEpisodes(videos, ep(0, 3)).map((video) => video.id), ['tt1:0:1', 'tt1:0:2'])
+  // An addon without seasons (kitsu) reads as all season 0: the lower numbers count.
+  assert.deepEqual(earlierEpisodes(videos, ep(undefined, 3)).map((video) => video.id), ['tt1:0:1', 'tt1:0:2'])
+  assert.deepEqual(earlierEpisodes(videos, ep(1, undefined)), [])
+})
+
+test('a batch of marks is stamped in order, so the shelf lands after the last of them', () => {
+  const targets = ['tt1:1:1', 'tt1:1:2', 'tt1:1:3'].map((videoId) => ({ ...episode, videoId }))
+  // The middle episode's row carries a clock that ran ahead of this device.
+  const existing = new Map([['tt1:1:2', row({ videoId: 'tt1:1:2', updatedAt: 500 })]])
+  const rows = watchedRowsInOrder(targets, existing, 2880, 100)
+  assert.deepEqual(
+    rows.map((mark) => mark.updatedAt),
+    [100, 501, 502],
+  )
+  assert.equal(rows[1]?.durationSec, 3000)
+  assert.equal(rows[0]?.durationSec, 2880)
+
+  const shelf = buildContinueShelf(rows, [], (request) =>
+    request.videoId === 'tt1:1:3' ? { state: 'resolved', videoId: 'tt1:1:4' } : { state: 'unknown' },
+  )
+  assert.equal(shelf.cards[0]?.videoId, 'tt1:1:4')
 })
