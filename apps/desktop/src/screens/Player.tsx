@@ -42,6 +42,7 @@ import { useAppVolume } from './player/useAppVolume'
 import { setLocalPrefs, useLocalPrefs } from '../localPrefs'
 import { useAddonSubtitles, useReportWatchState } from '../queries'
 import { useSettings, useSettingsLoaded, useUpdateSettings } from '../settings'
+import { presenceClear, presenceSetMedia, presenceUpdate } from '../presence'
 import { getSubtitleChoice, rememberSubtitleChoice } from '../subtitleMemory'
 import {
   MPV_DEFAULT_SUB_FONT,
@@ -232,6 +233,11 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const [playerError, setPlayerError] = useState<string | null>(null)
   const [controlNotice, setControlNotice] = useState<string | null>(null)
   const [endReached, setEndReached] = useState(false)
+  /** Loads and restarts of this file, and whether it has ended: what Discord
+      Rich Presence needs to know about playback beyond the observed props. */
+  const [fileSerial, setFileSerial] = useState(0)
+  const [seekSerial, setSeekSerial] = useState(0)
+  const [fileEnded, setFileEnded] = useState(false)
   /** Non-null while the user drags the scrubber; committed as one seek on release. */
   const [dragValue, setDragValue] = useState<number | null>(null)
   /** Session-only subtitle sync offset (mobile parity: never synced). */
@@ -260,6 +266,43 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
 
   // Live values in refs so the report interval never resets on ticks.
   const progressRef = useRef({ positionSec: 0, durationSec: 0 })
+
+  // Discord Rich Presence, as the native player drives it: the media is set
+  // when this file starts and cleared when the player goes (it is keyed per
+  // video, so an autoplay replace clears and sets again). Declared before the
+  // update effect so the media is always there first.
+  useEffect(() => {
+    presenceSetMedia({
+      title: params.title,
+      showName: params.showName ?? '',
+      episodeLabel: params.episodeLabel ?? '',
+      mediaType: params.type,
+      posterUrl: params.poster ?? '',
+    })
+    return () => presenceClear()
+  }, [params.title, params.showName, params.episodeLabel, params.type, params.poster])
+
+  // Every playback change is reported; Rust drops the ones Discord would not
+  // show differently. While playing, a report every 15s keeps Discord's timer
+  // on the real position, the native service's refresh interval.
+  const presenceEnded = fileEnded || playerError !== null
+  useEffect(() => {
+    const report = () =>
+      presenceUpdate({
+        fileSerial,
+        seekSerial,
+        ended: presenceEnded,
+        buffering,
+        paused,
+        positionSeconds: progressRef.current.positionSec,
+        durationSeconds: progressRef.current.durationSec,
+        speed,
+      })
+    report()
+    if (fileSerial === 0 || presenceEnded || paused || buffering) return
+    const timer = window.setInterval(report, 15_000)
+    return () => window.clearInterval(timer)
+  }, [fileSerial, seekSerial, presenceEnded, buffering, paused, duration, speed])
   const videoClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reportNow = useCallback(() => {
     const { positionSec, durationSec: total } = progressRef.current
@@ -367,12 +410,15 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
             if (kind === 'seek') {
               setSeekPending(true)
             } else if (kind === 'playback-restart') {
+              setSeekSerial((serial) => serial + 1)
               setSeekPending(false)
               setFirstFrameReady(true)
               // The mixer session appears once audio flows; adopt it then.
               void syncAppVolume()
             }
             if (kind === 'file-loaded') {
+              setFileSerial((serial) => serial + 1)
+              setFileEnded(false)
               setFileLoaded(true)
               setPlayerError(null)
               void readVideoTags().then(setVideoTags).catch(() => undefined)
@@ -415,6 +461,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       if (
         !(await keepListener(
           onMpvEndFile(({ reason, error }) => {
+            if (reason === 'eof' || reason === 'error') setFileEnded(true)
             if (reason === 'eof') {
               onEndRef.current()
               return

@@ -1512,6 +1512,7 @@ dependencies = [
  "tauri-plugin-http",
  "tauri-plugin-opener",
  "tokio",
+ "url",
  "windows",
  "windows-sys 0.59.0",
 ]

@@ -21,6 +21,8 @@ import { getServerUrl, getSessionKind } from './api'
 import { setDownloadsAccount, clearDownloadsAccount, opaqueDownloadOwner } from './downloads'
 import { getLocalDownloadOwner, setLocalDownloadOwner } from './localAuth'
 import { getOidcDownloadOwner, setOidcDownloadOwner } from './oidc'
+import { useLocalPrefs } from './localPrefs'
+import { presenceSetEnabled } from './presence'
 import { useMe } from './queries'
 
 const queryClient = new QueryClient({
@@ -36,6 +38,7 @@ function Routes() {
   return (
     <NavProvider>
       <DownloadsAccountBinding />
+      <PresencePreferenceBinding />
       <Shell />
     </NavProvider>
   )
@@ -58,6 +61,15 @@ function DownloadsAccountBinding() {
       return setDownloadsAccount(owner)
     }).catch(() => undefined)
   }, [me])
+  return null
+}
+
+/** Hands the device-local Rich Presence switch to the Rust service. */
+function PresencePreferenceBinding() {
+  const { discordPresence } = useLocalPrefs()
+  useEffect(() => {
+    presenceSetEnabled(discordPresence)
+  }, [discordPresence])
   return null
 }
 

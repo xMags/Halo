@@ -15,6 +15,8 @@ import type { ThemeChoice } from './theme'
  *   measuredLineMbps      the fastest sustained download this machine has
  *                         seen, in megabits; the sources sheet compares a
  *                         source's bitrate against it (0 = never measured)
+ *   discordPresence       whether this machine's Discord shows what is
+ *                         playing; on by default, as in the native app
  *
  * Everything account-shaped (languages, subtitle size/font/outline/shadow,
  * autoplay) stays in `settings.ts`, which syncs last-write-wins.
@@ -32,6 +34,7 @@ export interface LocalPrefs {
   resumePlayback: boolean
   subtitleTrackStyling: boolean
   measuredLineMbps: number
+  discordPresence: boolean
 }
 
 const DEFAULTS: LocalPrefs = {
@@ -40,6 +43,7 @@ const DEFAULTS: LocalPrefs = {
   resumePlayback: true,
   subtitleTrackStyling: true,
   measuredLineMbps: 0,
+  discordPresence: true,
 }
 
 function isThemeChoice(value: unknown): value is ThemeChoice {
@@ -69,6 +73,8 @@ function read(): LocalPrefs {
         row.measuredLineMbps > 0
           ? Math.min(row.measuredLineMbps, MAX_LINE_MBPS)
           : DEFAULTS.measuredLineMbps,
+      discordPresence:
+        typeof row.discordPresence === 'boolean' ? row.discordPresence : DEFAULTS.discordPresence,
     }
   } catch {
     // A blocked or corrupt store must not stop the app booting.
