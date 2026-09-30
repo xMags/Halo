@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { ArtImage } from '../components/ArtImage'
 import { Icon } from '../components/Icon'
 import { PosterCard } from '../components/PosterCard'
+import { SearchBox } from '../components/SearchBox'
 import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { Shelf } from '../components/Shelf'
@@ -66,20 +67,13 @@ export function Home() {
     <div className="view">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 28, paddingBottom: 48 }}>
         <SectionHeader title="Home">
-          <div className="search-box">
-            <input
-              placeholder="Search movies and series"
-              value={query}
-              spellCheck={false}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') setRoot('search')
-              }}
-            />
-            <span style={{ color: 'var(--t3)', display: 'flex' }}>
-              <Icon name="search" size={14} />
-            </span>
-          </div>
+          <SearchBox
+            value={query}
+            onChange={setSearchQuery}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') setRoot('search')
+            }}
+          />
           <Segmented options={FILTERS} value={filter} onChange={setFilter} />
         </SectionHeader>
 
