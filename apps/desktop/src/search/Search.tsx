@@ -10,8 +10,8 @@ import { ShelfSkeleton, TopMatchSkeleton } from '../components/Skeleton'
 import { formatRelative } from '../format'
 import { useNav } from '../nav'
 import { useLibrary, useSearch } from '../queries'
-import { setSearchQuery, useSearchQuery } from '../searchQuery'
-import { addSearchTerm, getSearchHistory, type SearchHistoryEntry } from '../searchHistory'
+import { setSearchQuery, useSearchQuery } from './searchQuery'
+import { addSearchTerm, getSearchHistory, type SearchHistoryEntry } from './searchHistory'
 
 const DEBOUNCE_MS = 350
 const MIN_QUERY = 2

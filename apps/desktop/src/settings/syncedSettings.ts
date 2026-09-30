@@ -1,6 +1,6 @@
 import type { SettingsPayload, UserSettings } from '@halo/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { getClient } from './api'
+import { getClient } from '../api'
 
 const MIRROR_KEY = 'halo.settings.v1'
 const QUERY_KEY = ['settings'] as const

@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import mark from '../assets/halo-mark.png'
 import { TitleBar } from '../components/TitleBar'
-import { signInWithPassword } from '../localAuth'
-import { signInWithOidc } from '../oidc'
-import { useSession } from '../session'
+import { signInWithPassword } from './localAuth'
+import { signInWithOidc } from './oidc'
+import { useSession } from './session'
 
 /**
  * Sign-in, branched by the server's declared auth mode — the two modes are

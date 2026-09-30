@@ -12,7 +12,7 @@ createRoot(document.getElementById('root')!).render(<App />)
 
 // Dev-only: expose the mpv channel for scripts/cdp.mjs driving.
 if (import.meta.env.DEV) {
-  void import('./mpv').then((m) => {
+  void import('./player/mpv').then((m) => {
     ;(window as Window & { __haloMpv?: unknown }).__haloMpv = m
   })
 }

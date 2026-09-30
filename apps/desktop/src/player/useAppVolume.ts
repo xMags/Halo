@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
-import { readAudioSession, setAudioSessionVolume } from '../../audioSession'
-import { mpvSet } from '../../mpv'
+import { readAudioSession, setAudioSessionVolume } from './audioSession'
+import { mpvSet } from './mpv'
 
 /**
  * The player's volume, carried by Halo's Windows mixer session once mpv has

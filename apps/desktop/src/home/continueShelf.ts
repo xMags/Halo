@@ -1,13 +1,13 @@
 import type { NextEpisodeResult } from '@halo/core'
 import { useQueries, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { getClient } from './api'
+import { getClient } from '../api'
 import {
   buildContinueShelf,
   type ContinueNextRequest,
   type ContinueShelf,
   type NextEpisodeLookup,
 } from './homeRows'
-import { useLibrary, useWatchStates } from './queries'
+import { useLibrary, useWatchStates } from '../queries'
 
 function nextEpisodeKey(request: ContinueNextRequest) {
   return ['nextEpisode', request.type, request.metaId, request.videoId] as const

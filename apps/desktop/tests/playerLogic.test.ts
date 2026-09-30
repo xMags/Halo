@@ -11,7 +11,7 @@ import {
   subtitlePreviewMetrics,
   upNextCancelAction,
   videoTopMarginRatio,
-} from '../src/playerLogic.ts'
+} from '../src/player/playerLogic.ts'
 
 const shortcut = (overrides: Partial<Parameters<typeof resolvePlayerShortcut>[0]> = {}) => ({
   code: 'Space',

@@ -24,7 +24,7 @@ import {
   showInExplorer,
   useDownloadsSnapshot,
   type DownloadView,
-} from '../downloads'
+} from './downloadsStore'
 import {
   activeCount,
   addedFact,
@@ -49,9 +49,9 @@ import {
   type DownloadFilter,
   type DownloadRow,
   type RowTone,
-} from '../downloadsPresentation'
+} from './downloadsPresentation'
 import { useNav } from '../nav'
-import { playDownload, sheetParamsForDownload } from './SourcesSheet'
+import { playDownload, sheetParamsForDownload } from '../sources/SourcesSheet'
 
 /**
  * The Downloads page, reproducing the native client's `DownloadsPage.xaml`:

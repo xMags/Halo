@@ -7,7 +7,7 @@ import {
   itemType,
   selectFeatured,
   type NextEpisodeLookup,
-} from '../src/homeRows.ts'
+} from '../src/home/homeRows.ts'
 
 function row(partial: Partial<WatchState> & Pick<WatchState, 'itemId' | 'videoId'>): WatchState {
   return {

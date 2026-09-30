@@ -1,6 +1,6 @@
-import { FluentIcon } from '../../components/FluentIcon'
-import { tierLabel } from '../../sourcePresentation'
-import type { ProviderRow } from '../../sourcesModel'
+import { FluentIcon } from '../components/FluentIcon'
+import { tierLabel } from './sourcePresentation'
+import type { ProviderRow } from './sourcesModel'
 
 const KEYS = [
   { key: '↑↓', label: 'move' },

@@ -1,6 +1,6 @@
 import { getTauriVersion, getVersion } from '@tauri-apps/api/app'
 import { useQuery } from '@tanstack/react-query'
-import { mpvGet } from './mpv'
+import { mpvGet } from '../player/mpv'
 
 export interface BuildInfo {
   /** App version from tauri.conf.json. */

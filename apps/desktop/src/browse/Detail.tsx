@@ -4,7 +4,7 @@ import { ArtImage } from '../components/ArtImage'
 import { ComboBox } from '../components/ComboBox'
 import { FluentIcon } from '../components/FluentIcon'
 import { DetailSkeleton } from '../components/Skeleton'
-import { useDownloads, type DownloadView } from '../downloads'
+import { useDownloads, type DownloadView } from '../downloads/downloadsStore'
 import { airYear, episodeTag, formatAirDate, formatTimeLeft, runtimeMinutes } from '../format'
 import { useNav, type StreamsParams } from '../nav'
 import {
@@ -15,7 +15,7 @@ import {
   useUpsertLibrary,
   useWatchStates,
 } from '../queries'
-import { parseStreamInfo, qualityRank, type Quality } from '../streamInfo'
+import { parseStreamInfo, qualityRank, type Quality } from '../sources/streamInfo'
 
 /**
  * Title page: the backdrop runs to the top with the poster and playback entry

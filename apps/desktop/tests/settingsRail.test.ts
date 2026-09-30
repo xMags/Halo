@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { activeSettingsSection, isScrolledToEnd } from '../src/settingsRail.ts'
+import { activeSettingsSection, isScrolledToEnd } from '../src/settings/settingsRail.ts'
 
 test('the rail lights the last section to reach the anchor band', () => {
   assert.equal(activeSettingsSection([0, 400, 900], 150, false), 0)

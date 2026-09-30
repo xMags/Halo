@@ -9,7 +9,7 @@ import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { Shelf } from '../components/Shelf'
 import { HeroSkeleton, PosterCardSkeleton, ShelfSkeleton } from '../components/Skeleton'
-import { useContinueShelf } from '../continueShelf'
+import { useContinueShelf } from './continueShelf'
 import { episodeTag, formatClock, runtimeMinutes, videoIdTag } from '../format'
 import {
   buildLibraryRow,
@@ -17,7 +17,7 @@ import {
   selectFeatured,
   type ContinueCard,
   type HomeFilter,
-} from '../homeRows'
+} from './homeRows'
 import { useNav } from '../nav'
 import {
   browsableCatalogs,
@@ -30,7 +30,7 @@ import {
   useUpsertLibrary,
   type BrowsableCatalog,
 } from '../queries'
-import { setSearchQuery, useSearchQuery } from '../searchQuery'
+import { setSearchQuery, useSearchQuery } from '../search/searchQuery'
 import { HERO_DWELL_MS } from '../theme'
 
 /**

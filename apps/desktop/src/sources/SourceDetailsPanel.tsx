@@ -1,5 +1,5 @@
-import { FluentIcon } from '../../components/FluentIcon'
-import type { DetailChip, SourceDetails } from '../../sourcePresentation'
+import { FluentIcon } from '../components/FluentIcon'
+import type { DetailChip, SourceDetails } from './sourcePresentation'
 
 function Chips({ chips }: { chips: DetailChip[] }) {
   return (

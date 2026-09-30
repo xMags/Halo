@@ -14,7 +14,7 @@ import { Icon } from '../components/Icon'
 import { QualityBadge } from '../components/QualityBadge'
 import { TitleBar } from '../components/TitleBar'
 import { Toggle } from '../components/Toggle'
-import { getPlaybackFiles, nextDownloadedEpisode, useDownloads } from '../downloads'
+import { getPlaybackFiles, nextDownloadedEpisode, useDownloads } from '../downloads/downloadsStore'
 import { formatClock } from '../format'
 import {
   mpvCmd,
@@ -25,7 +25,7 @@ import {
   onMpvEndFile,
   onMpvEvent,
   onMpvProp,
-} from '../mpv'
+} from './mpv'
 import { useNav, type PlayerParams } from '../nav'
 import {
   classifyVideoQuality,
@@ -33,17 +33,17 @@ import {
   shouldRunUpNextCountdown,
   upNextCancelAction,
   videoTopMarginRatio,
-} from '../playerLogic'
-import { closeScrubPreview, openScrubPreview } from '../scrubPreview'
-import { LoadingIndicator, useLoadingIndicator } from './player/LoadingIndicator'
-import { ScrubPreviewCard, useScrubPreview } from './player/ScrubPreviewCard'
-import { SubtitlePreview } from './player/SubtitlePreview'
-import { useAppVolume } from './player/useAppVolume'
+} from './playerLogic'
+import { closeScrubPreview, openScrubPreview } from './scrubPreview'
+import { LoadingIndicator, useLoadingIndicator } from './LoadingIndicator'
+import { ScrubPreviewCard, useScrubPreview } from './ScrubPreviewCard'
+import { SubtitlePreview } from './SubtitlePreview'
+import { useAppVolume } from './useAppVolume'
 import { setLocalPrefs, useLocalPrefs } from '../localPrefs'
 import { useAddonSubtitles, useReportWatchState } from '../queries'
-import { useSettings, useSettingsLoaded, useUpdateSettings } from '../settings'
-import { presenceClear, presenceSetMedia, presenceUpdate } from '../presence'
-import { getSubtitleChoice, rememberSubtitleChoice } from '../subtitleMemory'
+import { useSettings, useSettingsLoaded, useUpdateSettings } from '../settings/syncedSettings'
+import { presenceClear, presenceSetMedia, presenceUpdate } from './presence'
+import { getSubtitleChoice, rememberSubtitleChoice } from './subtitleMemory'
 import {
   MPV_DEFAULT_SUB_FONT,
   OUTLINE_BORDER,
@@ -53,7 +53,7 @@ import {
   SUBTITLE_SCALE_MAX,
   SUBTITLE_SCALE_MIN,
   SUBTITLE_SCALE_STEP,
-} from '../subtitleStyle'
+} from './subtitleStyle'
 import { TITLE_BAR_HEIGHT } from '../theme'
 import type { WindowFullscreenController } from '../window'
 

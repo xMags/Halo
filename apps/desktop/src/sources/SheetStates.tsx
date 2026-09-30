@@ -1,4 +1,4 @@
-import { FluentIcon } from '../../components/FluentIcon'
+import { FluentIcon } from '../components/FluentIcon'
 
 /** Bar widths per skeleton card, left column then right, as the native sheet draws them. */
 const SKELETONS = [

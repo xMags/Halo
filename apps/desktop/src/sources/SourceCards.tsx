@@ -1,8 +1,8 @@
 import type { Ref } from 'react'
-import { FluentIcon } from '../../components/FluentIcon'
-import { QualityBadge } from '../../components/QualityBadge'
-import { badgeTierLabel, isPremiumTier, type MetaLine, type SourceEntry } from '../../sourcePresentation'
-import type { Pick, SourceRow } from '../../sourcesModel'
+import { FluentIcon } from '../components/FluentIcon'
+import { QualityBadge } from '../components/QualityBadge'
+import { badgeTierLabel, isPremiumTier, type MetaLine, type SourceEntry } from './sourcePresentation'
+import type { Pick, SourceRow } from './sourcesModel'
 import { SourceDetailsPanel } from './SourceDetailsPanel'
 
 /** Instant is green, on-disk accent, caching amber; anything that waits is grey. */

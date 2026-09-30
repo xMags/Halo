@@ -17,7 +17,7 @@ import {
   requiresNewSource,
   selectLandscapeArtwork,
   THROUGHPUT_SLOTS,
-} from '../src/downloadsLogic.ts'
+} from '../src/downloads/downloadsLogic.ts'
 
 test('download status labels distinguish active, ready, and source expiry', () => {
   assert.equal(downloadStatusLabel({ status: 'downloading' }), 'Downloading')

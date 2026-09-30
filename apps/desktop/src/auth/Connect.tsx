@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import mark from '../assets/halo-mark.png'
 import { TitleBar } from '../components/TitleBar'
 import { DEFAULT_SERVER_URL } from '../api'
-import { useSession } from '../session'
+import { useSession } from './session'
 
 const PROBE_DEBOUNCE_MS = 600
 

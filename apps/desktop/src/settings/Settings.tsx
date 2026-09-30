@@ -2,7 +2,7 @@ import { DEFAULT_ADDON_URLS, LANGUAGE_OPTIONS, type AddonEntry } from '@halo/cor
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import mark from '../assets/halo-mark.png'
 import avatar from '../assets/user-avatar.png'
-import { useBuildInfo } from '../about'
+import { useBuildInfo } from './about'
 import { getServerUrl } from '../api'
 import { ComboBox } from '../components/ComboBox'
 import { FluentIcon } from '../components/FluentIcon'
@@ -11,7 +11,7 @@ import { Slider } from '../components/Slider'
 import { Toggle } from '../components/Toggle'
 import { initials } from '../format'
 import { setLocalPrefs, useLocalPrefs } from '../localPrefs'
-import { subtitlePreviewMetrics } from '../playerLogic'
+import { subtitlePreviewMetrics } from '../player/playerLogic'
 import {
   useAddons,
   useMe,
@@ -20,16 +20,16 @@ import {
   useSetAddons,
   useSetGlobalAddons,
 } from '../queries'
-import { describeStatus, useServerStatus } from '../serverStatus'
-import { RAIL_ANCHOR_FRACTION, activeSettingsSection, isScrolledToEnd } from '../settingsRail'
+import { describeStatus, useServerStatus } from '../auth/serverStatus'
+import { RAIL_ANCHOR_FRACTION, activeSettingsSection, isScrolledToEnd } from './settingsRail'
 import {
   SETTINGS_SECTIONS,
   clearSettingsSectionRequest,
   useSettingsSectionRequest,
   type SettingsSection,
-} from '../settingsSection'
-import { useSession } from '../session'
-import { useSettings, useUpdateSettings } from '../settings'
+} from './settingsSection'
+import { useSession } from '../auth/session'
+import { useSettings, useUpdateSettings } from './syncedSettings'
 import {
   SUBTITLE_FONTS,
   SUBTITLE_OUTLINES,
@@ -37,9 +37,9 @@ import {
   SUBTITLE_SCALE_MAX,
   SUBTITLE_SCALE_MIN,
   SUBTITLE_SCALE_STEP,
-} from '../subtitleStyle'
+} from '../player/subtitleStyle'
 import type { ThemeChoice } from '../theme'
-import { subtitleCaptionShadow } from './player/SubtitlePreview'
+import { subtitleCaptionShadow } from '../player/SubtitlePreview'
 
 const RAIL: Array<{ key: SettingsSection; label: string; hint: string }> = [
   { key: 'appearance', label: 'Appearance', hint: 'Theme' },

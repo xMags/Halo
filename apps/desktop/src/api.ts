@@ -1,7 +1,7 @@
 import { DEFAULT_ADDON_URLS, HaloClient } from '@halo/core'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
-import { clearLocalSession, getLocalAccessToken, loadLocalSession, refreshLocalToken } from './localAuth'
-import { clearOidcSession, getOidcAccessToken, loadOidcSession, refreshOidcToken } from './oidc'
+import { clearLocalSession, getLocalAccessToken, loadLocalSession, refreshLocalToken } from './auth/localAuth'
+import { clearOidcSession, getOidcAccessToken, loadOidcSession, refreshOidcToken } from './auth/oidc'
 
 /**
  * All API traffic goes through the shell's native fetch (tauri-plugin-http →

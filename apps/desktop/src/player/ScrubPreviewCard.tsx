@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { formatClock } from '../../format'
-import { scrubPreviewOffset, shouldRequestScrubPreview } from '../../playerLogic'
-import { requestScrubPreview } from '../../scrubPreview'
+import { formatClock } from '../format'
+import { scrubPreviewOffset, shouldRequestScrubPreview } from './playerLogic'
+import { requestScrubPreview } from './scrubPreview'
 
 /** The native card: 200 wide, a 112-tall picture, and the time under it. */
 const CARD_WIDTH = 200

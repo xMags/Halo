@@ -11,7 +11,7 @@ import {
   sanitizeAddonName,
   statusLabel,
   type DeviceContext,
-} from '../src/sourcePresentation.ts'
+} from '../src/sources/sourcePresentation.ts'
 import {
   buildListing,
   buildResolveSummary,
@@ -20,7 +20,7 @@ import {
   sameReleaseFile,
   selectionStops,
   type AddonStreamGroup,
-} from '../src/sourcesModel.ts'
+} from '../src/sources/sourcesModel.ts'
 
 const device: DeviceContext = {
   preferredSubtitleLanguage: null,
