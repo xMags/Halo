@@ -58,9 +58,9 @@ export function Library() {
       <div className="lib-bar">
         <Segmented
           options={[
-            { value: 'all', label: 'All', count: counts.all },
-            { value: 'movie', label: 'Movies', count: counts.movie },
-            { value: 'series', label: 'Series', count: counts.series },
+            { value: 'all', label: `All ${counts.all}` },
+            { value: 'movie', label: `Movies ${counts.movie}` },
+            { value: 'series', label: `Series ${counts.series}` },
           ]}
           value={filter}
           onChange={setFilter}

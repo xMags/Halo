@@ -36,7 +36,9 @@ export function PosterCard({ meta, showKind, metaLine, onBeforePress }: Props) {
         {showKind && <div className="poster-badge">{meta.type.toUpperCase()}</div>}
       </div>
       <div className="card-title ellipsis">{meta.name}</div>
-      {sub && <div className="card-meta ellipsis">{sub}</div>}
+      {/* Always drawn, like the native card's meta TextBlock, so a card with
+          nothing to say there keeps the same height as its neighbours. */}
+      <div className="card-meta ellipsis">{sub}</div>
     </button>
   )
 }
