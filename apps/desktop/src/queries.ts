@@ -127,14 +127,22 @@ export function browsableCatalogs(addons: AddonEntry[]): BrowsableCatalog[] {
   )
 }
 
-/** One catalog, resolved server-side. `addonId` is the opaque `AddonEntry.id`. */
-export function useCatalog(addonId: string, type: string, id: string, opts?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: ['catalog', addonId, type, id],
+/**
+ * One catalog's query, shared by the shelf that draws it and by Home's
+ * featured picker, which reads every shelf's catalog at once: one key and one
+ * fetch for both.
+ */
+export function catalogQuery(addonId: string, type: string, id: string) {
+  return {
+    queryKey: ['catalog', addonId, type, id] as const,
     queryFn: async () => (await getClient().getCatalog(addonId, type, id)).metas,
     staleTime: 10 * 60_000,
-    enabled: opts?.enabled ?? true,
-  })
+  }
+}
+
+/** One catalog, resolved server-side. `addonId` is the opaque `AddonEntry.id`. */
+export function useCatalog(addonId: string, type: string, id: string, opts?: { enabled?: boolean }) {
+  return useQuery({ ...catalogQuery(addonId, type, id), enabled: opts?.enabled ?? true })
 }
 
 /** Meta resolved server-side: first effective addon that can describe this type/id wins. */
