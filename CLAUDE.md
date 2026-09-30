@@ -15,8 +15,9 @@ no build orchestration on purpose.
 | --- | --- | --- |
 | `packages/core` | Addon protocol client, subtitle utils (OpenSubtitles hash, srt→vtt, languages), typed API client | `pnpm --filter @halo/core typecheck` |
 | `apps/api` | Hono + Drizzle/better-sqlite3 sync backend | `pnpm --filter @halo/api test` (vitest), then curl |
-| `apps/mobile` | Expo (dev-client) iOS app, expo-router, VLC player | typecheck + `pnpm --filter @halo/mobile exec expo export --platform ios` |
-| `apps/desktop` | Tauri v2 client (Windows-first), React UI over mpv, device-local downloads | typecheck + `cargo build` in `src-tauri` (needs `vendor/mpv/libmpv-2.dll`, see `vendor/README.md`) |
+| `apps/mobile` | Legacy Expo (dev-client) iOS app, expo-router, VLC player; fixes-only until `apps/mobile-native` reaches parity | typecheck + `pnpm --filter @halo/mobile exec expo export --platform ios` |
+| `apps/mobile-native` | Compose Multiplatform client (iOS-first, Android kept compiling) over libmpv, replacing `apps/mobile`. Standalone Gradle project outside the pnpm workspace; its `README.md` is the guide | `.\gradlew.bat :composeApp:compileCommonMainKotlinMetadata` and `:composeApp:compileTestKotlinIosSimulatorArm64` (Apple framework and XCUITests need macOS) |
+| `apps/desktop` | Tauri v2 client (Windows-first), React UI over mpv, device-local downloads. `src/` is grouped by feature (auth, home, search, browse, sources, player, downloads, settings); styles are `src/styles/` partials | typecheck + `pnpm --filter @halo/desktop test` + `cargo build` in `src-tauri` (needs `vendor/mpv/libmpv-2.dll`, see `vendor/README.md`) |
 
 Dev: `pnpm dev` (api :8787, needs `apps/api/.env` from `.env.example`).
 Client work against a disposable server: `pnpm --filter @halo/api dev:fixtures`
@@ -165,8 +166,10 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
   client input is untrusted even from our own app.
 - Mobile UI matches `apps/mobile/src/theme.ts` tokens. Desktop UI matches the
   native WinUI Halo Desktop, and its token set is applied in
-  `apps/desktop/src/index.css` (both palettes there, stamped by `data-theme`;
-  `src/theme.ts` documents what the short token names mean and holds only the
-  values that must reach JS).
+  `apps/desktop/src/styles/tokens.css` (both palettes there, stamped by
+  `data-theme`; `src/theme.ts` documents what the short token names mean and
+  holds only the values that must reach JS). `src/styles/index.css` imports
+  the partials in cascade order, so a new partial goes where its rules must
+  win.
   Responsive metrics are container queries on the content surface, never
   window media queries — the design measures the content column.
