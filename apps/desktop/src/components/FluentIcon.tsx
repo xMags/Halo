@@ -16,6 +16,7 @@ const GLYPHS = {
   play: '',
   close: '',
   chevronDown: '',
+  chevronDownSmall: '',
   chevronUp: '',
   copy: '',
   warning: '',
