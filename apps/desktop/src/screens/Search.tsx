@@ -22,6 +22,12 @@ import {
 const DEBOUNCE_MS = 350
 const MIN_QUERY = 2
 
+const FILTERS = [
+  { value: null, label: 'All' },
+  { value: 'movie', label: 'Movies' },
+  { value: 'series', label: 'Series' },
+] as const
+
 export function Search() {
   const { push } = useNav()
   const term = useSearchQuery()
@@ -52,20 +58,15 @@ export function Search() {
     inputRef.current?.focus()
   }
 
-  const counts = useMemo(() => {
-    const byType = new Map<string, number>()
-    let total = 0
-    for (const group of groups) {
-      for (const meta of group.metas) {
-        byType.set(meta.type, (byType.get(meta.type) ?? 0) + 1)
-        total += 1
-      }
-    }
-    return { total, byType: [...byType.entries()].sort((a, b) => b[1] - a[1]) }
-  }, [groups])
+  const shown = useMemo(() => {
+    return groups.flatMap((group) => {
+      const metas = typeFilter ? group.metas.filter((m) => m.type === typeFilter) : group.metas
+      if (metas.length === 0) return []
+      return [{ ...group, metas }]
+    })
+  }, [groups, typeFilter])
 
-  const shown = typeFilter ? groups.filter((g) => g.type === typeFilter) : groups
-  const topMatch = groups[0]?.metas[0]
+  const topMatch = shown[0]?.metas[0]
 
   return (
     <div className="view">
@@ -88,77 +89,48 @@ export function Search() {
           }}
         />
 
-        {active && counts.total > 0 && (
-          <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          {FILTERS.map((f) => (
             <button
+              key={f.label}
               type="button"
-              className={`chip ${typeFilter === null ? 'chip-active' : ''}`}
-              onClick={() => setTypeFilter(null)}
+              className={`chip ${typeFilter === f.value ? 'chip-active' : ''}`}
+              onClick={() => setTypeFilter(f.value)}
             >
-              All {counts.total}
+              {f.label}
             </button>
-            {counts.byType.map(([type, count]) => (
-              <button
-                key={type}
-                type="button"
-                className={`chip ${typeFilter === type ? 'chip-active' : ''}`}
-                onClick={() => setTypeFilter(type)}
-              >
-                {type.charAt(0).toUpperCase() + type.slice(1)} {count}
-              </button>
-            ))}
-          </div>
-        )}
+          ))}
+        </div>
 
         {(topMatch || history.length > 0) && (
           <div className="search-cols">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
               {topMatch && (
                 <>
-                  <div className="kicker">TOP MATCH · {groups[0]!.addonName.toUpperCase()}</div>
+                  <div className="kicker">TOP MATCH</div>
                   <TopMatchCard meta={topMatch} onOpen={() => recordTerm(query)} />
                 </>
               )}
             </div>
             {history.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                  <div className="kicker">RECENT</div>
-                  <div className="spacer" />
-                  <button
-                    type="button"
-                    className="btn-link"
-                    onClick={() => setHistory(clearSearchHistory())}
-                  >
-                    Clear
-                  </button>
-                </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 232, flexShrink: 0 }}>
+                <div className="kicker">RECENT</div>
                 <div className="list-card">
                   {history.map((entry) => (
-                    <div key={entry.term} style={{ display: 'flex', alignItems: 'center' }}>
-                      <button
-                        type="button"
-                        className="recent-row"
-                        onClick={() => searchAgain(entry.term)}
-                      >
-                        <span style={{ color: 'var(--t3)', display: 'flex', flex: '0 0 15px' }}>
-                          <FluentIcon glyph="clock" size={15} />
-                        </span>
-                        <span className="recent-term ellipsis">{entry.term}</span>
-                        <span className="mono" style={{ color: 'var(--t4)' }}>
-                          {entry.at ? formatRelative(entry.at).toUpperCase() : ''}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-btn icon-btn-bare"
-                        style={{ width: 24, height: 24, marginRight: 8 }}
-                        title="Remove from history"
-                        onClick={() => setHistory(removeSearchTerm(entry.term))}
-                      >
-                        <FluentIcon glyph="clear" size={11} />
-                      </button>
-                    </div>
+                    <button
+                      key={entry.term}
+                      type="button"
+                      className="recent-row"
+                      onClick={() => searchAgain(entry.term)}
+                    >
+                      <span style={{ color: 'var(--t3)', display: 'flex', flex: '0 0 15px' }}>
+                        <FluentIcon glyph="clock" size={15} />
+                      </span>
+                      <span className="recent-term ellipsis">{entry.term}</span>
+                      <span className="mono" style={{ color: 'var(--t4)' }}>
+                        {entry.at ? formatRelative(entry.at).toUpperCase() : 'RECENT'}
+                      </span>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -166,11 +138,6 @@ export function Search() {
           </div>
         )}
 
-        {!active && history.length === 0 && (
-          <div className="state-note" style={{ paddingLeft: 0 }}>
-            Search every installed addon — titles, series, anything.
-          </div>
-        )}
         {active && isFetching && groups.length === 0 && (
           <div className="search-cols" style={{ marginTop: 14 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
@@ -179,9 +146,9 @@ export function Search() {
             </div>
           </div>
         )}
-        {active && !isFetching && groups.length === 0 && (
-          <div className="state-note" style={{ paddingLeft: 0 }}>
-            No results for “{query}”.
+        {active && !isFetching && shown.length === 0 && (
+          <div className="state-note" style={{ paddingLeft: 0, textAlign: 'center', marginTop: 30 }}>
+            No matching titles.
           </div>
         )}
 
@@ -198,12 +165,11 @@ export function Search() {
           own gutter, and nesting it inside one would double it. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 26, padding: '0 0 40px' }}>
         {shown.map((group) => {
-          const source = `${group.addonName.toUpperCase()} · ${group.metas.length} RESULTS`
           return (
             <Shelf
               key={group.key}
               title={group.title}
-              source={source}
+              source={group.addonName}
               action={
                 <button
                   type="button"
@@ -213,7 +179,7 @@ export function Search() {
                     push({
                       name: 'catalog',
                       title: group.title,
-                      source,
+                      source: group.addonName,
                       items: group.metas.map((meta) => ({ meta })),
                     })
                   }
@@ -247,8 +213,8 @@ function TopMatchCard({ meta, onOpen }: { meta: MetaPreview; onOpen: () => void 
   const inLibrary = (library ?? []).some((i) => i.id === `${meta.type}:${meta.id}` && !i.removedAt)
 
   const facts = [
+    meta.type === 'series' ? 'SERIES' : 'MOVIE',
     meta.releaseInfo,
-    meta.type.toUpperCase(),
     meta.imdbRating ? `★ ${meta.imdbRating}` : null,
     inLibrary ? 'IN LIBRARY' : null,
   ]
