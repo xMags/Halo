@@ -264,11 +264,20 @@ async fn downloads_set_directory(
 }
 
 #[tauri::command]
-async fn downloads_choose_directory(app: tauri::AppHandle) -> Result<Option<String>, String> {
+async fn downloads_choose_directory(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<downloads::DownloadManager>>,
+) -> Result<Option<String>, String> {
+    // Open on the folder downloads go to now. Without a starting folder
+    // Windows opens the picker wherever it was last, Documents at first,
+    // which reads as the current download location. A folder that no
+    // longer exists is skipped by the dialog, which then opens as before.
+    let current = state.directory_info().await?.path;
     let (sender, receiver) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
         .set_title("Choose Halo download folder")
+        .set_directory(current)
         .pick_folder(move |selection| {
             let path = selection
                 .map(std::path::PathBuf::try_from)
