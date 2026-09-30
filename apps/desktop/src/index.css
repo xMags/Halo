@@ -124,6 +124,20 @@
   --tfa: rgba(30, 30, 30, 0.702);
   --tps: rgba(255, 255, 255, 0.773);
   --tpt: rgba(255, 255, 255, 0.529);
+  /* WinUI states the toggle, combo box and disabled buttons draw with:
+     ControlFillColorDisabled, ControlAltFillColorSecondary / Tertiary /
+     Quarternary (the toggle track at rest, hover, press),
+     ControlStrongStrokeColorDisabled, AccentFillColorDisabled and
+     TextOnAccentFillColorDisabled. */
+  --ctd: rgba(255, 255, 255, 0.043);
+  --caf2: rgba(0, 0, 0, 0.098);
+  --caf3: rgba(255, 255, 255, 0.043);
+  --caf4: rgba(255, 255, 255, 0.071);
+  --csd: rgba(255, 255, 255, 0.157);
+  --aad: rgba(255, 255, 255, 0.157);
+  --oad: rgba(255, 255, 255, 0.529);
+  /* ControlSolidFillColorDefault: the slider thumb's opaque ring. */
+  --csf: #454545;
   /* Quality badge, muted tone: fill, plate, tier ink, detail ink, stroke. */
   --bdf: rgba(255, 255, 255, 0.122);
   --bdp: #1b1b1f;
@@ -189,6 +203,14 @@
   --tfa: #ffffff;
   --tps: rgba(0, 0, 0, 0.62);
   --tpt: rgba(0, 0, 0, 0.447);
+  --ctd: rgba(249, 249, 249, 0.302);
+  --caf2: rgba(0, 0, 0, 0.024);
+  --caf3: rgba(0, 0, 0, 0.059);
+  --caf4: rgba(0, 0, 0, 0.094);
+  --csd: rgba(0, 0, 0, 0.216);
+  --aad: rgba(0, 0, 0, 0.216);
+  --oad: #ffffff;
+  --csf: #ffffff;
   --bdf: rgba(0, 0, 0, 0.078);
   --bdp: #4a4a52;
   --bdt: #f4f4f6;
@@ -630,11 +652,11 @@ a {
 .btn-danger:disabled {
   opacity: 0.45;
 }
-/* WinUI AccentButtonBackgroundDisabled turns neutral control fill. */
+/* The native accent button is a plain Button with an accent background and no
+   border, so disabled it takes the stock Button's disabled fill and ink. */
 .btn-accent:disabled {
-  background: var(--ct);
+  background: var(--ctd);
   color: var(--t4);
-  border: 1px solid var(--cts);
   opacity: 1;
 }
 .h28 {
@@ -685,13 +707,18 @@ a {
 .icon-btn:hover:not(:disabled):not(.soon) {
   background: var(--cth);
 }
+/* The addon row's remove button: a transparent Button whose glyph is pinned
+   to Text3. Disabled, WinUI still paints the stock disabled fill behind it. */
 .icon-btn-bare {
   background: transparent;
   border: 0;
-  color: var(--t2);
+  color: var(--t3);
 }
-.icon-btn-bare:hover {
+.icon-btn-bare:hover:not(:disabled) {
   background: var(--sb);
+}
+.icon-btn-bare:disabled {
+  background: var(--ctd);
 }
 .icon-btn-30 {
   width: 30px;
@@ -899,17 +926,16 @@ a {
   color: var(--t1);
 }
 
-/* WinUI 3 ComboBox reproduction */
+/* WinUI ComboBox, closed: a stock control-fill box (no text-box underline),
+   text 12px in, and the small down chevron 14px from the right edge. */
 .combo-box {
   height: 32px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 0 10px;
+  padding: 0 13px 0 11px;
   background: var(--ct);
   border: 1px solid var(--cts);
-  border-bottom-color: var(--cst);
   border-radius: 4px;
   font-size: 15px;
   color: var(--t1);
@@ -917,12 +943,12 @@ a {
 .combo-box:hover {
   background: var(--cth);
 }
-.combo-box:focus-visible {
-  outline: 2px solid var(--ac);
-  outline-offset: 2px;
+.combo-box:active {
+  background: var(--ctd);
 }
 .combo-box-label {
   flex: 1;
+  min-width: 0;
   text-align: left;
 }
 .combo-box-chevron {
@@ -931,51 +957,172 @@ a {
   color: var(--t2);
   flex-shrink: 0;
 }
+/* The open list: the flyout surface with WinUI's 4px inset, items 5px in from
+   its sides, and the accent pill marking the chosen one. */
+.combo-popup {
+  position: absolute;
+  left: 0;
+  z-index: 20;
+  /* A flex column, so the items' 2px margins add up to WinUI's 36px pitch
+     instead of collapsing. */
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+  background: var(--ds);
+  border: 1px solid var(--cs);
+  border-radius: 8px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.26);
+  animation: haloFadeIn 0.12s ease;
+}
+.combo-item {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  width: calc(100% - 10px);
+  margin: 2px 5px;
+  padding: 5px 11px 7px;
+  border-radius: 3px;
+  font-size: 15px;
+  line-height: 20px;
+  text-align: left;
+  color: var(--t1);
+}
+.combo-item:hover,
+.combo-item-active {
+  background: var(--sb);
+}
+.combo-item-selected {
+  background: var(--sb);
+}
+.combo-item-selected:hover {
+  background: var(--sbp);
+}
+.combo-item-selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 1.5px;
+  background: var(--aa);
+}
 
-/* WinUI 3 ToggleSwitch reproduction */
+/* WinUI ToggleSwitch, measured off the native app: a 44x20 track and a knob
+   that rests at 10.4px (13 device px) and grows on hover about its centre.
+   Colours follow the ToggleSwitch brushes in WinUI's theme resources. */
 .toggle {
-  width: 40px;
+  width: 44px;
   height: 20px;
-  flex: 0 0 40px;
+  flex: 0 0 44px;
   border-radius: 10px;
-  padding: 0 3px;
+  padding: 0 3.8px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  background: var(--ct);
+  background: var(--caf2);
   border: 1px solid var(--cst);
-  transition: background-color 80ms ease, border-color 80ms ease;
 }
 .toggle:hover:not(:disabled) {
-  background: var(--cth);
-  border-color: var(--t2);
+  background: var(--caf3);
 }
-.toggle:hover:not(:disabled) .toggle-knob {
-  width: 14px;
-  height: 14px;
-  background: #ffffff;
+.toggle:active:not(:disabled) {
+  background: var(--caf4);
 }
 .toggle-knob {
+  width: 10.4px;
+  height: 10.4px;
+  border-radius: 50%;
+  background: var(--t2);
+  transition:
+    width 80ms ease,
+    height 80ms ease,
+    margin 80ms ease;
+}
+.toggle:hover:not(:disabled) .toggle-knob {
   width: 12px;
   height: 12px;
-  border-radius: 7px;
-  background: var(--t2);
-  transition: width 80ms ease, height 80ms ease, background-color 80ms ease;
+  margin: -0.8px;
 }
 .toggle-on {
   background: var(--aa);
   border-color: var(--aa);
-  padding: 0 2px;
   justify-content: flex-end;
 }
 .toggle-on:hover:not(:disabled) {
-  background: var(--ac);
-  border-color: var(--ac);
+  background: color-mix(in srgb, var(--aa) 90%, transparent);
+  border-color: color-mix(in srgb, var(--aa) 90%, transparent);
+}
+.toggle-on:active:not(:disabled) {
+  background: color-mix(in srgb, var(--aa) 80%, transparent);
+  border-color: color-mix(in srgb, var(--aa) 80%, transparent);
 }
 .toggle-on .toggle-knob {
-  width: 14px;
-  height: 14px;
   background: var(--oa);
+}
+.toggle:disabled {
+  background: transparent;
+  border-color: var(--csd);
+}
+.toggle:disabled .toggle-knob {
+  background: var(--t4);
+}
+.toggle-on:disabled {
+  background: var(--aad);
+  border-color: var(--aad);
+}
+.toggle-on:disabled .toggle-knob {
+  background: var(--oad);
+}
+/* The native Settings rows give the switch the ToggleSwitch's own 52x40 box:
+   10px above and below the track and an empty 8px column after it. */
+.set-form .toggle {
+  margin: 10px 8px 10px 0;
+}
+
+/* WinUI Slider: 32px tall, a 4px ControlStrongFill track whose value part is
+   accent up to the thumb's centre, and an 18px opaque thumb holding an accent
+   dot that rests at 0.86 of 12px, grows to 1.167 on hover and shrinks to 0.71
+   while dragged. */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 32px;
+  margin: 0;
+  background: transparent;
+}
+.slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--aa) calc(9px + (100% - 18px) * var(--fill)),
+    var(--cst) calc(9px + (100% - 18px) * var(--fill))
+  );
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border: 1px solid var(--cts);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--aa) 5.16px, var(--csf) 5.66px);
+}
+.slider:hover::-webkit-slider-thumb {
+  background: radial-gradient(circle, var(--aa) 7px, var(--csf) 7.5px);
+}
+.slider:active::-webkit-slider-thumb {
+  background: radial-gradient(circle, var(--aa) 4.26px, var(--csf) 4.76px);
+}
+.slider:focus-visible {
+  outline: none;
+}
+.slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--t1);
 }
 
 /** Range input, themed to the accent — used where the design draws one. */
