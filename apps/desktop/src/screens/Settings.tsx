@@ -550,7 +550,7 @@ function AddonsSection() {
         />
         <button
           type="button"
-          className="btn-accent"
+          className="btn-accent btn-body"
           style={{ paddingInline: 18 }}
           disabled={adding || !url.trim()}
           onClick={() => void add()}
@@ -835,7 +835,7 @@ function AccountSection() {
       <div style={{ display: 'flex', gap: 10 }}>
         <button
           type="button"
-          className="btn-danger"
+          className="btn-danger btn-body"
           onClick={() => {
             if (window.confirm('Sign out of this server?')) signOut()
           }}

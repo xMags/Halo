@@ -68,7 +68,7 @@ export function Library() {
         <div className="spacer" />
         <div style={{ fontSize: 14, color: 'var(--t3)' }}>Sort by</div>
         <MenuAnchor>
-          <button type="button" className="btn" onClick={() => setSortOpen((open) => !open)}>
+          <button type="button" className="btn btn-body" onClick={() => setSortOpen((open) => !open)}>
             <span>{SORTS.find((option) => option.value === sort)!.label}</span>
             <span style={{ color: 'var(--t2)', display: 'flex' }}>
               <Icon name="chevronDown" size={13} />
