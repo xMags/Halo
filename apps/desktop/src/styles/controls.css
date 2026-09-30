@@ -602,6 +602,30 @@ input[type='range'] {
   color: var(--ac);
   display: flex;
 }
+/* Right-click menu: the same flyout, placed at the pointer. Above the sources
+   sheet and the player chrome, below a dialog. Items carry a 16px glyph and
+   the text starts 28px in, WinUI's icon placeholder. */
+.context-menu {
+  position: fixed;
+  right: auto;
+  max-width: 320px;
+  z-index: 45;
+}
+.context-menu:focus {
+  outline: none;
+}
+.context-menu .menu-item {
+  gap: 12px;
+}
+.context-menu .menu-item:focus-visible {
+  outline-offset: -2px;
+}
+/* MenuFlyoutSeparator: a 1px DividerStroke rule. */
+.menu-separator {
+  height: 1px;
+  margin: 4px -4px;
+  background: var(--dv);
+}
 
 /* ── Cards ─────────────────────────────────────────────────────────────── */
 .card {
