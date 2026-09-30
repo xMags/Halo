@@ -6,6 +6,7 @@ import { InfoBar } from '../components/InfoBar'
 import { Menu, MenuAnchor, MenuItem } from '../components/Menu'
 import { QualityBadge } from '../components/QualityBadge'
 import { SectionHeader } from '../components/SectionHeader'
+import { PathText } from '../components/PathText'
 import { Segmented } from '../components/Segmented'
 import { DownloadRowSkeleton } from '../components/Skeleton'
 import {
@@ -169,6 +170,7 @@ export function Downloads() {
         <SectionHeader title="Downloads">
           <div className="dl-head-actions">
             <Segmented
+              pills
               options={FILTERS.map((entry) => ({ ...entry, count: counts[entry.value] }))}
               value={filter}
               onChange={setFilter}
@@ -354,7 +356,7 @@ export function Downloads() {
                   </button>
                 </div>
                 <div className="mono dl-empty-folder">
-                  {folderLine(directory?.path, directory?.free_bytes)}
+                  <PathText text={folderLine(directory?.path, directory?.free_bytes)} />
                 </div>
               </div>
             </div>
@@ -386,7 +388,9 @@ export function Downloads() {
         ) : (
           <div className="dl-folder-card">
             <div className="kicker">DOWNLOAD FOLDER</div>
-            <div className="dl-folder-path">{folderPath(directory?.path)}</div>
+            <div className="dl-folder-path">
+              <PathText text={folderPath(directory?.path)} />
+            </div>
             <button type="button" className="btn btn-block" onClick={() => void manageFolder()}>
               Manage folder
             </button>
