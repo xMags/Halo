@@ -1,8 +1,9 @@
 import { DEFAULT_ADDON_URLS, LANGUAGE_OPTIONS, type AddonEntry } from '@halo/core'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import mark from '../assets/halo-mark.png'
 import avatar from '../assets/user-avatar.png'
-import { useBuildInfo } from './about'
+import { RELEASES_URL, useBuildInfo } from './about'
 import { getServerUrl } from '../api'
 import { ComboBox } from '../components/ComboBox'
 import { FluentIcon } from '../components/FluentIcon'
@@ -151,15 +152,16 @@ export function Settings() {
             </div>
             <button
               type="button"
-              className="btn-link soon"
+              className="btn-link"
               style={{ alignSelf: 'flex-start', paddingInline: 0 }}
-              title="Coming soon"
+              title="Opens the Halo releases page on GitHub"
+              onClick={() => void openUrl(RELEASES_URL).catch(() => {})}
             >
               Check for updates
             </button>
             <div className="about-rule" />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span className="mono">© 2026 Last Projects</span>
+              <span className="mono">© 2026 cryguy</span>
               <span className="mono">Source-available license</span>
             </div>
           </div>

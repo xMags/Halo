@@ -2,6 +2,9 @@ import { getTauriVersion, getVersion } from '@tauri-apps/api/app'
 import { useQuery } from '@tanstack/react-query'
 import { mpvGet } from '../player/mpv'
 
+/** Where new builds are published; "Check for updates" opens it. */
+export const RELEASES_URL = 'https://github.com/cryguy/halo/releases'
+
 export interface BuildInfo {
   /** App version from tauri.conf.json. */
   app: string
