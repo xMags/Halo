@@ -9,7 +9,7 @@
     "vite": "vite",
     "vite:build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test:player": "node --import tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
     "tauri": "tauri"
   },
   "dependencies": {
