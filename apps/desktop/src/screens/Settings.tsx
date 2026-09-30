@@ -632,14 +632,14 @@ function PlaybackSection() {
           />
         </SettingRow>
         <SettingRow
-          label={
-            <>
-              Discord Rich Presence <span className="soon-chip">SOON</span>
-            </>
-          }
+          label="Discord Rich Presence"
           hint="Shares the title and episode you are watching with Discord"
         >
-          <Toggle label="Discord Rich Presence" on={false} soon onChange={() => undefined} />
+          <Toggle
+            label="Discord Rich Presence"
+            on={prefs.discordPresence}
+            onChange={(next) => setLocalPrefs({ discordPresence: next })}
+          />
         </SettingRow>
       </div>
     </Section>

@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod audio_session;
+mod discord;
 mod downloads;
 mod mpv;
 mod oauth;
@@ -147,6 +148,28 @@ fn window_set_fullscreen_style(app: tauri::AppHandle, fullscreen: bool) -> Resul
         .ok_or_else(|| "main window is unavailable".to_string())?;
     let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as isize;
     set_corner_preference(hwnd, fullscreen)
+}
+
+/// Discord Rich Presence (discord.rs). The service starts disabled; the
+/// webview turns it on from the device-local preference at startup.
+#[tauri::command]
+fn discord_presence_set_enabled(presence: State<discord::PresenceService>, enabled: bool) {
+    presence.set_enabled(enabled);
+}
+
+#[tauri::command]
+fn discord_presence_set_media(presence: State<discord::PresenceService>, media: discord::PresenceMedia) {
+    presence.set_media(media);
+}
+
+#[tauri::command]
+fn discord_presence_update(presence: State<discord::PresenceService>, snapshot: discord::PlaybackSnapshot) {
+    presence.update(snapshot);
+}
+
+#[tauri::command]
+fn discord_presence_clear(presence: State<discord::PresenceService>) {
+    presence.clear();
 }
 
 /// Async + spawn_blocking: a plain (non-async) command would run ON the main
@@ -359,6 +382,11 @@ fn main() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(discord::PresenceService::new(
+            false,
+            Box::new(discord::NamedPipeTransport::default()),
+            discord::RETRY_DELAY,
+        ))
         .invoke_handler(tauri::generate_handler![
             mpv_cmd,
             mpv_set,
@@ -367,6 +395,10 @@ fn main() {
             mpv_unobserve_all,
             window_set_fullscreen_style,
             oauth_wait_callback,
+            discord_presence_set_enabled,
+            discord_presence_set_media,
+            discord_presence_update,
+            discord_presence_clear,
             downloads_set_account,
             downloads_clear_account,
             downloads_list,
@@ -473,8 +505,15 @@ fn main() {
             app.manage(PlayerState { mpv });
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("tauri run");
+        .build(tauri::generate_context!())
+        .expect("tauri build")
+        .run(|app, event| {
+            // Clear what Discord shows before the process goes, as native does
+            // on close. Bounded: a failed delivery is not retried on exit.
+            if let tauri::RunEvent::Exit = event {
+                app.state::<discord::PresenceService>().shutdown();
+            }
+        });
 }
 
 #[cfg(test)]
