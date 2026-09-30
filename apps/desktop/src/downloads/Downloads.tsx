@@ -332,10 +332,6 @@ export function Downloads() {
               </div>
               <div className="dl-empty-copy">
                 <div className="dl-empty-title">Nothing downloaded yet</div>
-                <div className="dl-empty-body">
-                  Downloads live on this device and play without a connection to your Halo server.
-                  Nothing here yet, so there is nothing to watch offline.
-                </div>
                 <div className="dl-empty-steps">
                   {EMPTY_STEPS.map((step, index) => (
                     <div key={step} className="dl-empty-step">
