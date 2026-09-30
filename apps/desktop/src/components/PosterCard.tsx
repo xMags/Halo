@@ -6,7 +6,7 @@ interface Props {
   meta: MetaPreview
   /** `MOVIE` / `SERIES` chip in the poster's top-left (library grid). */
   showKind?: boolean
-  /** Mono line under the title; defaults to the release year. */
+  /** Mono line under the title; defaults to the year and rating. */
   metaLine?: string
   /** Runs before navigation — e.g. recording the search term that led here. */
   onBeforePress?: () => void
@@ -19,7 +19,7 @@ interface Props {
  */
 export function PosterCard({ meta, showKind, metaLine, onBeforePress }: Props) {
   const { push } = useNav()
-  const sub = metaLine ?? meta.releaseInfo ?? ''
+  const sub = metaLine ?? posterMeta(meta)
 
   return (
     <button
@@ -41,4 +41,11 @@ export function PosterCard({ meta, showKind, metaLine, onBeforePress }: Props) {
       <div className="card-meta ellipsis">{sub}</div>
     </button>
   )
+}
+
+/** `2026 · ★ 6.8`, the native card's meta line; either half may be missing. */
+function posterMeta(meta: MetaPreview): string {
+  return [meta.releaseInfo, meta.imdbRating ? `★ ${meta.imdbRating}` : null]
+    .filter(Boolean)
+    .join(' · ')
 }
