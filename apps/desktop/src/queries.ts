@@ -273,7 +273,7 @@ export function useSearch(term: string) {
             addonName: addon.manifest.name,
             type: c.type,
             id: c.id,
-            title: `${c.name ?? addon.manifest.name} – ${typeLabel(c.type)}`,
+            title: c.name ?? addon.manifest.name,
           })),
       )
       const results = await Promise.allSettled(
