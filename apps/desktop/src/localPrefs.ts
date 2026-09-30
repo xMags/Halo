@@ -32,6 +32,7 @@ export interface LocalPrefs {
   resumePlayback: boolean
   subtitleTrackStyling: boolean
   measuredLineMbps: number
+  discordPresence: boolean
 }
 
 const DEFAULTS: LocalPrefs = {
@@ -40,6 +41,7 @@ const DEFAULTS: LocalPrefs = {
   resumePlayback: true,
   subtitleTrackStyling: true,
   measuredLineMbps: 0,
+  discordPresence: true,
 }
 
 function isThemeChoice(value: unknown): value is ThemeChoice {
@@ -69,6 +71,10 @@ function read(): LocalPrefs {
         row.measuredLineMbps > 0
           ? Math.min(row.measuredLineMbps, MAX_LINE_MBPS)
           : DEFAULTS.measuredLineMbps,
+      discordPresence:
+        typeof row.discordPresence === 'boolean'
+          ? row.discordPresence
+          : DEFAULTS.discordPresence,
     }
   } catch {
     // A blocked or corrupt store must not stop the app booting.
