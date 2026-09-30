@@ -1337,9 +1337,15 @@ input[type='range'] {
 /* Re-centre icons when the compact rail is wider than the items' own padding
    would place them. 4px nav + 16px item = 20px; icon 16px; center at 28px
    = rail center (56/2). */
-.nav-compact .nav-item,
-.nav-compact .account-row {
+.nav-compact .nav-item {
   padding: 0 16px;
+}
+.nav-compact .account-row {
+  justify-content: center;
+  padding: 0;
+}
+.nav-compact .account-lines {
+  display: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .nav {
