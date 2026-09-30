@@ -66,7 +66,7 @@ export function NavRail({ open, onToggle }: NavRailProps) {
         aria-expanded={open}
         onClick={onToggle}
       >
-        <FluentIcon glyph="menu" />
+        <FluentIcon glyph="menu" size={14.4} />
       </button>
 
       <div className="nav-header">MENU</div>
