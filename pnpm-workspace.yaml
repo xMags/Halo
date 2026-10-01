@@ -9,8 +9,3 @@ nodeLinker: hoisted
 onlyBuiltDependencies:
   - better-sqlite3
   - esbuild
-# The only patch is for the Expo app, so patches live beside it; patchesDir
-# keeps `pnpm patch-commit` writing new ones there too.
-patchesDir: apps/mobile/patches
-patchedDependencies:
-  expo-libvlc-player@7.1.2: apps/mobile/patches/expo-libvlc-player@7.1.2.patch

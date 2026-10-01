@@ -6,12 +6,6 @@
 
 !apps/
 apps/*
-# pnpm reads every patchedDependencies file at install, even for an API-only
-# filter, so the mobile app's patches must be in the context.
-!apps/mobile/
-apps/mobile/*
-!apps/mobile/patches/
-!apps/mobile/patches/**
 !apps/api/
 apps/api/*
 !apps/api/package.json

@@ -8,7 +8,6 @@
   },
   "scripts": {
     "dev": "pnpm --filter @halo/api dev",
-    "dev:mobile": "pnpm --filter @halo/mobile start",
     "test": "pnpm --filter @halo/api test",
     "typecheck": "pnpm -r typecheck"
   }

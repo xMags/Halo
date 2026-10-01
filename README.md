@@ -1,6 +1,6 @@
 <div align="center">
   <img
-    src="apps/mobile/assets/halo-logo.png"
+    src=".github/halo-logo.png"
     alt="Halo logo"
     width="150"
     height="150"
