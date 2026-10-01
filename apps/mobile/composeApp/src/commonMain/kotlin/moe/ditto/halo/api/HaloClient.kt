@@ -24,9 +24,8 @@ import moe.ditto.halo.auth.TokenProvider
 
 /**
  * The server answered with a non-success status. Transport failures are not
- * this type — they surface as the HTTP client's own exceptions, because the
- * two have opposite session consequences: a 401 that survives a refresh is a
- * dead session, while a network error must leave it intact.
+ * this type: they surface as the HTTP client's own exceptions. A 401 here is
+ * one that survived a successful refresh, which leaves the session intact.
  */
 class HaloApiException(
     val status: Int,
@@ -36,18 +35,23 @@ class HaloApiException(
 /** A success response could not be decoded into the endpoint's public contract. */
 class MalformedResponseException : Exception("Halo returned an invalid response.")
 
-/** A request remained unauthorized after the one permitted refresh attempt. */
+/** The server definitively rejected the session's refresh, which ended the session. */
 class SessionRejectedException : Exception("Your session is no longer valid. Sign in again.")
 
 /**
  * Typed client for the Halo API.
  *
  * Holds no auth state: every request draws a bearer token from [TokenProvider],
- * and a 401 buys exactly one forced refresh and retry. A failed refresh or a
- * retried 401 invokes [onUnauthorized], which is bound to the session
- * generation that created this client. Concurrent requests are safe because
- * refreshing is single-flight beneath the provider and the session authority
- * serializes rejection callbacks.
+ * and a 401 buys exactly one forced refresh and retry. Only a refresh the
+ * server definitively rejects invokes [onUnauthorized], which is bound to the
+ * session generation that created this client. A 401 that survives a
+ * successful refresh does not end the session: the server can briefly refuse
+ * a token the identity provider has just issued (after a signing-key rotation,
+ * until its cached key set refreshes), and signing out there would also revoke
+ * the refresh token on every device that hit it. That 401 surfaces as a
+ * [HaloApiException] instead, and the next request tries again. Concurrent
+ * requests are safe because refreshing is single-flight beneath the provider
+ * and the session authority serializes rejection callbacks.
  *
  * `GET /auth/config` is deliberately absent: it is public, is called before a
  * server is even chosen, and is already owned by the auth layer's config
@@ -246,10 +250,6 @@ class HaloClient(
             val refreshed = tokens.refreshAccessToken() ?: rejectSession()
             response = executeUrl(HttpMethod.Get, url, token = refreshed)
         }
-        if (response.status == HttpStatusCode.Unauthorized) {
-            response.bodyAsText()
-            rejectSession()
-        }
         if (!response.status.isSuccess()) {
             val text = response.bodyAsText()
             throw HaloApiException(
@@ -279,8 +279,9 @@ class HaloClient(
 
     /**
      * Runs one request, spending a single forced refresh if the first attempt
-     * comes back 401, and returns the success body. A 401 that survives the
-     * retry means the session is gone rather than stale.
+     * comes back 401, and returns the success body. Only a rejected refresh
+     * ends the session; a 401 that survives the retry is thrown as an ordinary
+     * [HaloApiException] (see the class comment).
      */
     private suspend fun exchange(
         method: HttpMethod,
@@ -294,10 +295,6 @@ class HaloClient(
             val refreshed = tokens.refreshAccessToken() ?: rejectSession()
             response = execute(method, path, body, query, refreshed)
         }
-        if (response.status == HttpStatusCode.Unauthorized) {
-            response.bodyAsText()
-            rejectSession()
-        }
         val text = response.bodyAsText()
         if (!response.status.isSuccess()) {
             throw HaloApiException(
@@ -308,7 +305,7 @@ class HaloClient(
         return text
     }
 
-    /** Exactly one callback for this request, and only for a definitive 401 outcome. */
+    /** Exactly one callback for this request, and only when the refresh itself was rejected. */
     private suspend fun rejectSession(): Nothing {
         onUnauthorized()
         throw SessionRejectedException()

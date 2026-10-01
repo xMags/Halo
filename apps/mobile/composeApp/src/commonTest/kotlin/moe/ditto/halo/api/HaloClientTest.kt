@@ -145,16 +145,75 @@ class HaloClientTest {
     }
 
     @Test
-    fun retriedUnauthorizedStillFailsAsUnauthorized() = runTest {
+    fun unauthorizedAfterASuccessfulRefreshKeepsTheSession() = runTest {
+        // The refresh succeeded, so the session is alive; the server just did
+        // not accept the new token (e.g. right after a signing-key rotation).
+        // Signing out here would also revoke the refresh token.
         val tokens = FakeTokens()
         var unauthorizedCalls = 0
         val client = client(tokens, onUnauthorized = { unauthorizedCalls += 1 }) {
             jsonResponse("""{"error":"still no"}""", HttpStatusCode.Unauthorized)
         }
 
-        assertFailsWith<SessionRejectedException> { client.getMe() }
+        val error = assertFailsWith<HaloApiException> { client.getMe() }
+
+        assertEquals(401, error.status)
+        assertEquals(0, unauthorizedCalls)
+        assertEquals(1, tokens.refreshCalls)
+        assertEquals(2, recorded.size)
+    }
+
+    @Test
+    fun aLaterRequestSucceedsOnceTheServerAcceptsTheNewToken() = runTest {
+        val tokens = FakeTokens()
+        var unauthorizedCalls = 0
+        var serverAcceptsNewToken = false
+        val client = client(tokens, onUnauthorized = { unauthorizedCalls += 1 }) { request ->
+            val bearer = request.headers[HttpHeaders.Authorization]
+            if (bearer == "Bearer access-2" && serverAcceptsNewToken) {
+                jsonResponse("""{"id":"u1","username":"kenneth","isAdmin":false,"createdAt":1}""")
+            } else {
+                jsonResponse("""{"error":"unknown signing key"}""", HttpStatusCode.Unauthorized)
+            }
+        }
+
+        assertFailsWith<HaloApiException> { client.getMe() }
+        serverAcceptsNewToken = true
+
+        assertEquals("kenneth", client.getMe().username)
+        assertEquals(0, unauthorizedCalls)
+    }
+
+    @Test
+    fun proxyRejectedRefreshEndsTheSession() = runTest {
+        val tokens = FakeTokens(refreshed = null)
+        var unauthorizedCalls = 0
+        val client = client(tokens, onUnauthorized = { unauthorizedCalls += 1 }) {
+            Triple("", HttpStatusCode.Unauthorized, io.ktor.http.Headers.Empty)
+        }
+
+        assertFailsWith<SessionRejectedException> {
+            client.getAddonProxyResponse("https://subs.example/a.srt")
+        }
 
         assertEquals(1, unauthorizedCalls)
+        assertEquals(1, recorded.size)
+    }
+
+    @Test
+    fun proxyUnauthorizedAfterASuccessfulRefreshKeepsTheSession() = runTest {
+        val tokens = FakeTokens()
+        var unauthorizedCalls = 0
+        val client = client(tokens, onUnauthorized = { unauthorizedCalls += 1 }) {
+            Triple("", HttpStatusCode.Unauthorized, io.ktor.http.Headers.Empty)
+        }
+
+        val error = assertFailsWith<HaloApiException> {
+            client.getAddonProxyResponse("https://subs.example/a.srt")
+        }
+
+        assertEquals(401, error.status)
+        assertEquals(0, unauthorizedCalls)
         assertEquals(1, tokens.refreshCalls)
         assertEquals(2, recorded.size)
     }
