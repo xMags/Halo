@@ -145,35 +145,6 @@ interface MpvTrack {
   'external-filename'?: string
 }
 
-/** Technical badges in the top bar, read from mpv once the file is loaded. */
-async function readVideoTags(): Promise<string[]> {
-  const [height, format, pixelFormat, primaries, gamma] = await Promise.all([
-    mpvGet('video-params/h'),
-    mpvGet('video-format'),
-    mpvGet('video-params/pixelformat'),
-    mpvGet('video-params/primaries'),
-    mpvGet('video-params/gamma'),
-  ])
-  const tags: string[] = []
-
-  const lines = Number(height)
-  if (Number.isFinite(lines) && lines > 0) tags.push(`${Math.round(lines)}p`)
-
-  if (format) {
-    const codec = format.toUpperCase()
-    const tenBit = /10/.test(pixelFormat ?? '')
-    tags.push(tenBit ? `${codec} 10-BIT` : codec)
-  }
-
-  // bt.2020 primaries with a PQ or HLG transfer is the definition of an HDR
-  // presentation; anything else is SDR regardless of what the file claims.
-  if (primaries === 'bt.2020') {
-    if (gamma === 'pq') tags.push('HDR10')
-    else if (gamma === 'hlg') tags.push('HLG')
-  }
-  return tags
-}
-
 function trackLabel(track: MpvTrack): string {
   return track.title ?? (track.lang ? languageLabel(track.lang) : `Track ${track.id}`)
 }
@@ -215,7 +186,6 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const [muted, setMuted] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [tracks, setTracks] = useState<MpvTrack[]>([])
-  const [videoTags, setVideoTags] = useState<string[]>([])
   const [fileLoaded, setFileLoaded] = useState(false)
   /** The first frame of this file has been shown (mpv's first playback-restart). */
   const [firstFrameReady, setFirstFrameReady] = useState(false)
@@ -421,7 +391,6 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
               setFileEnded(false)
               setFileLoaded(true)
               setPlayerError(null)
-              void readVideoTags().then(setVideoTags).catch(() => undefined)
               if (localSubtitlePath) {
                 void mpvCmd('sub-add', localSubtitlePath)
                   .then(() => {
@@ -1070,16 +1039,10 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       ? trackLabel(activeSub)
       : 'Off'
 
-  const titleLine = [
-    params.showName ?? params.title,
-    params.showName && params.episodeLabel ? `${params.episodeLabel} ${params.title}` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ')
-  const sourceLine =
-    params.sourceKind === 'download'
-      ? ['ON DISK', ...videoTags].join(' · ')
-      : videoTags.join(' · ')
+  // The show leads; the episode sits on its own line beneath it. A film's title
+  // is its only line (its show name, when set, is the same title).
+  const heading = params.showName ?? params.title
+  const episodeName = params.showName && params.title !== params.showName ? params.title : null
   const speedLabel = `${speed % 1 === 0 ? speed : speed.toFixed(2).replace(/0$/, '')}×`
   const hashLabel = subs.data?.hashMatched ? 'HASH MATCH' : 'NAME MATCH'
 
@@ -1144,9 +1107,14 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
           <button type="button" className="player-back" title="Back" onClick={back}>
             <Icon name="back" size={16} />
           </button>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            <div className="player-title ellipsis">{titleLine}</div>
-            {sourceLine && <div className="player-source ellipsis">{sourceLine}</div>}
+          <div className="player-heading">
+            <div className="player-title ellipsis">{heading}</div>
+            {episodeName && (
+              <div className="player-episode ellipsis">
+                {params.episodeLabel && <span className="player-episode-tag">{params.episodeLabel}</span>}
+                {episodeName}
+              </div>
+            )}
           </div>
         </div>
 

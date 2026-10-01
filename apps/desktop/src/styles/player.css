@@ -67,8 +67,20 @@ body.player-active .titlebar {
   font-weight: 600;
   color: #fff;
 }
-.player-source {
-  font: 400 12px/1.4 var(--mono);
+.player-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.player-episode {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.78);
+}
+.player-episode-tag {
+  margin-right: 8px;
+  font: 600 12px var(--mono);
+  letter-spacing: 0.06em;
   color: rgba(255, 255, 255, 0.58);
 }
 .paused-chip {
