@@ -1,4 +1,6 @@
+import { isIP } from 'node:net'
 import { join } from 'node:path'
+import type { AddonEgress } from './safeFetch'
 
 export type AuthEnv =
   | { mode: 'oidc'; issuer: string; clientId: string; adminGroup: string }
@@ -9,10 +11,13 @@ export interface Env {
   dbPath: string
   port: number
   corsOrigins: string[]
+  /** Absent unless both ADDON_EGRESS_* settings are given. */
+  addonEgress?: AddonEgress
 }
 
 /** Fail fast on missing or half-configured auth — the server must not boot into an ambiguous mode. */
 export function loadEnv(): Env {
+  const addonEgress = loadAddonEgress()
   return {
     auth: loadAuthEnv(),
     dbPath: join(process.env.DATA_DIR ?? './data', 'halo.sqlite'),
@@ -22,7 +27,50 @@ export function loadEnv(): Env {
       'https://halo.ditto.moe',
       ...(process.env.CORS_ORIGINS?.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
     ],
+    ...(addonEgress ? { addonEgress } : {}),
   }
+}
+
+const HOSTNAME = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/
+
+/** A dotted, lowercase DNS name; never an IP literal. */
+export function isHostname(value: string): boolean {
+  return isIP(value) === 0 && HOSTNAME.test(value)
+}
+
+/**
+ * The optional egress route for addon hosts that block this server's address.
+ * Both settings or neither: a proxy with no hosts, or hosts with no proxy, is
+ * a typo that would otherwise boot silently into the direct route.
+ */
+function loadAddonEgress(): AddonEgress | undefined {
+  const rawProxy = process.env.ADDON_EGRESS_PROXY?.trim()
+  const hosts = (process.env.ADDON_EGRESS_HOSTS ?? '')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean)
+  if (!rawProxy && hosts.length === 0) return undefined
+  if (!rawProxy || hosts.length === 0) {
+    throw new Error('ADDON_EGRESS_PROXY and ADDON_EGRESS_HOSTS go together: set both or neither (see .env.example)')
+  }
+
+  let url: URL
+  try {
+    url = new URL(rawProxy)
+  } catch {
+    throw new Error(`ADDON_EGRESS_PROXY is not a valid URL: ${rawProxy}`)
+  }
+  // Plain http on purpose: the proxy only tunnels, so TLS stays end to end.
+  if (url.protocol !== 'http:' || !url.port) {
+    throw new Error('ADDON_EGRESS_PROXY must be http://host:port')
+  }
+  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('ADDON_EGRESS_PROXY must be just http://host:port, with no credentials, path or query')
+  }
+
+  const invalid = hosts.find((host) => !isHostname(host))
+  if (invalid) throw new Error(`ADDON_EGRESS_HOSTS must list hostnames only (got "${invalid}")`)
+  return { proxyUrl: url.origin, hosts: new Set(hosts) }
 }
 
 function loadAuthEnv(): AuthEnv {
