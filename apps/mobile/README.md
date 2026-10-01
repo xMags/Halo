@@ -63,9 +63,11 @@ reached from Settings and is absent from a build that is not debuggable.
 Android ownership instrumentation uses one local-mode fixture for both auth and
 media. Start `fixtures/fixture_server.py --port 18788 --auth-mode local` with
 the required media directory, then run `adb reverse tcp:18788 tcp:18788`.
-`PlayerOwnershipInstrumentedTest` passes both `serverUrl` and the debug-only
-`mediaHttpBase` launch override to that port, so it does not inherit the default
-media route on 18787.
+`PlayerOwnershipInstrumentedTest` passes both the `serverUrl` and `mediaHttpBase`
+launch overrides to that port, so it does not inherit the default media route on
+18787. Every launch override (`serverUrl`, `mediaHttpBase`, `resetSession`) is
+debug-only: a release build ignores them, because any app can start the exported
+launcher activity.
 
 ## Local commands
 
