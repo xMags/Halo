@@ -1,9 +1,8 @@
 # Halo mobile (native)
 
 The native mobile client: Compose Multiplatform UI over an owned libmpv
-player core, replacing the Expo/React Native app in `apps/mobile` once it
-reaches feature parity. Until then `apps/mobile` stays the shipping client
-(fixes-only) and this app is built out screen by screen.
+player core. It replaced the earlier Expo/React Native client, which has been
+removed from the repository.
 
 Standalone Gradle project — deliberately not part of the pnpm workspace
 (no `package.json`; the JS toolchain never sees it).

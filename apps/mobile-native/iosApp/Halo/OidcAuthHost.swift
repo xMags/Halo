@@ -7,8 +7,8 @@ import UIKit
 
 /// Real native OIDC host.
 ///
-/// Owns the whole flow in Swift on purpose — the `expo-auth-session` landmines
-/// the Expo client works around in `apps/mobile/src/oidc.ts` (trailing-slash
+/// Owns the whole flow in Swift on purpose: the `expo-auth-session` landmines
+/// the former Expo client had to work around in its `oidc.ts` (trailing-slash
 /// mangling of `/token/`, the Android browser-dismiss race) are Foundation
 /// behaviours, so the strongest proof that the native path dodges them is to
 /// build it directly on `URLSession` + `ASWebAuthenticationSession`. Kotlin
@@ -279,8 +279,8 @@ final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresenta
             fail("Authorization error: \(oauthError)")
             return
         }
-        // Validate state before touching the code — the fallback path in
-        // apps/mobile/src/oidc.ts makes the same point.
+        // Validate state before touching the code: a callback whose state does
+        // not match is not the sign-in this attempt started.
         let returnedState = items.first(where: { $0.name == "state" })?.value
         guard returnedState == expectedState else {
             fail("Authorization state did not match")

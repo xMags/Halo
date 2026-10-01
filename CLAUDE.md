@@ -15,8 +15,7 @@ no build orchestration on purpose.
 | --- | --- | --- |
 | `packages/core` | Addon protocol client, subtitle utils (OpenSubtitles hash, srt→vtt, languages), typed API client | `pnpm --filter @halo/core typecheck` |
 | `apps/api` | Hono + Drizzle/better-sqlite3 sync backend | `pnpm --filter @halo/api test` (vitest), then curl |
-| `apps/mobile` | Legacy Expo (dev-client) iOS app, expo-router, VLC player; fixes-only until `apps/mobile-native` reaches parity | typecheck + `pnpm --filter @halo/mobile exec expo export --platform ios` |
-| `apps/mobile-native` | Compose Multiplatform client (iOS-first, Android kept compiling) over libmpv, replacing `apps/mobile`. Standalone Gradle project outside the pnpm workspace; its `README.md` is the guide | `.\gradlew.bat :composeApp:compileCommonMainKotlinMetadata` and `:composeApp:compileTestKotlinIosSimulatorArm64` (Apple framework and XCUITests need macOS) |
+| `apps/mobile-native` | Compose Multiplatform client (iOS-first, Android kept compiling) over libmpv. Standalone Gradle project outside the pnpm workspace; its `README.md` is the guide | `.\gradlew.bat :composeApp:compileCommonMainKotlinMetadata` and `:composeApp:compileTestKotlinIosSimulatorArm64` (Apple framework and XCUITests need macOS) |
 | `apps/desktop` | Tauri v2 client (Windows-first), React UI over mpv, device-local downloads. `src/` is grouped by feature (auth, home, search, browse, sources, player, downloads, settings); styles are `src/styles/` partials | typecheck + `pnpm --filter @halo/desktop test` + `cargo build` in `src-tauri` (needs `vendor/mpv/libmpv-2.dll`, see `vendor/README.md`) |
 
 Dev: `pnpm dev` (api :8787, needs `apps/api/.env` from `.env.example`).
@@ -28,8 +27,6 @@ one video with byte ranges beside the API and points every canned stream at it,
 which is what makes the picker→player path exercisable). Addons are injected
 through `createApp`'s `safeFetch` because the SSRF guard rejects loopback with
 no override — so a fake addon cannot simply be hosted on the dev machine.
-Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
-`pnpm --filter @halo/mobile exec expo run:ios --configuration Release --device <udid>`.
 
 ## Architecture invariants
 
@@ -62,9 +59,10 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
     request with `users.id` = IdP `sub`; admin = the `OIDC_ADMIN_GROUP` UUID
     appearing in the token's `groups` claim (a custom Authentik scope mapping
     emits group UUIDs — names would break on rename), computed per request,
-    never stored. The mobile app signs in with PKCE in the system browser
-    (`expo-auth-session`) and keeps rotating refresh tokens in SecureStore
-    behind a single-flight refresh.
+    never stored. The native mobile app signs in with PKCE in the system
+    browser (`ASWebAuthenticationSession` on iOS, a Custom Tab on Android) and
+    keeps rotating refresh tokens in platform secure storage (Keychain; an
+    Android Keystore-backed store) behind a single-flight refresh.
   - **local** (self-host without an IdP): the API mints its own 30-day HS256
     session JWTs (scrypt password hashes, timing-decoy + rate-limited login,
     `ADMIN_PASSWORD` seeds the first admin, admin-managed user CRUD). Stored
@@ -88,15 +86,13 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
   last 64 KiB) is computed via HTTP range requests for streams and from disk
   for downloads, then passed as `videoHash`/`videoSize` extras. This is the
   root fix for "inaccurate subs" — never regress to bare id search.
-- **ASS/SRT files are handed to VLC untouched.** libVLC renders both natively
-  (ASS with full styling). `srtToVtt` in core is for future non-VLC clients
-  only — it must stay off the mobile playback path.
 - **Downloads are device-local, on mobile and desktop.** One entry per
   videoId, grouped by `itemId` in UI, chosen subtitle downloaded alongside.
-  - **mobile**: `expo-file-system/legacy` resumable (the legacy import is
-    deliberate: the new FS API has no resume/progress). Known limit: in-flight
-    downloads don't survive app kill; entries are re-marked paused on cold
-    start. True background URLSession downloads are a flagged follow-up.
+  - **mobile** (`apps/mobile-native`): platform-owned background transfers, a
+    WorkManager foreground worker on Android and a background `URLSession` on
+    iOS, so ordinary process death reconciles with the OS-owned work. Source
+    URLs and headers live only in encrypted request records (Keychain items on
+    iOS), never in the download index; its `README.md` has the details.
   - **desktop**: a Rust engine (`src-tauri/src/downloads.rs`) owns the queue,
     the index and the files; the webview only sends `downloads_*` commands and
     renders `download-changed` events. The index never holds a source URL or
@@ -105,28 +101,8 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
     the source gave a validator. Behaviour and UI mirror the native WinUI Halo
     Desktop's download engine and Downloads page.
 
-## Mobile gotchas (each cost a debugging session)
+## Workspace gotchas
 
-- **Expo Go doesn't work** — expo-libvlc-player is a native module;
-  dev-client builds only (`expo prebuild` + `expo run:ios`).
-- **VLC time units**: expo-libvlc-player events emit milliseconds;
-  `PlayerVideo.tsx` divides by 1000 exactly once, at the event boundary.
-  History: the old react-native-vlc-media-player bridge emitted ms while its
-  typings said seconds — verify units on a real episode before trusting a new
-  bridge's typings.
-- **expo-libvlc-player runs patched** (`apps/mobile/patches/`, applied by
-  pnpm) — subtitle delay prop + Android SurfaceView rendering. Read
-  `apps/mobile/patches/README.md` before bumping the package version; the
-  patch will not re-apply cleanly on its own.
-- **Subtitle scale/font are creation-time VLC options** — changing them
-  rebuilds the native player (`key` remount in `PlayerVideo.tsx`) with
-  seek-back + slave-id re-learn. libvlc's Java/ObjC wrappers expose no runtime
-  SPU text-scale, so a live prop is not an option without JNI work.
-- **RN `Modal` defaults to portrait-only** — every sheet must keep the
-  `supportedOrientations` prop or it yanks the landscape player to portrait.
-- **VLCKit on the arm64 simulator lies**: playback timing/rendering there is
-  not evidence. Subtitle sync was "broken" on sim and perfect on device. Test
-  playback claims on a real iPhone.
 - **pnpm blocks native postinstalls** unless listed in `pnpm-workspace.yaml`
   `onlyBuiltDependencies` (better-sqlite3, esbuild).
 - **pnpm runs `nodeLinker: hoisted`** (`pnpm-workspace.yaml`) — the default
@@ -134,30 +110,6 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
   CMake object-path limit when Gradle compiles react-native-screens/worklets
   (ninja loops with "manifest still dirty"). Don't remove it unless
   Android-on-Windows builds are re-verified.
-- **Android-on-Windows Gradle needs two env fixes** (release variant verified
-  2026-07-17): build with **JDK 17** (`JAVA_HOME` default is JDK 25, whose
-  native-access warning fails AGP's `configureCMake` tasks with the useless
-  error "A restricted method in java.lang.System has been called"), and pin
-  **SDK CMake 3.31** via `cmake.dir` in `android/local.properties` — 3.22's
-  bundled ninja predates long-path support and release (`RelWithDebInfo`)
-  object paths for gesture-handler's codegen exceed 260 chars even hoisted.
-  `expo prebuild` deletes `local.properties`; re-create it after.
-- **Android release builds block plain-HTTP by default** — `usesCleartextTraffic`
-  (expo-build-properties, mirrors iOS `NSAllowsArbitraryLoads`) is required or
-  self-hosted local-mode servers and HTTP stream URLs fail with "CLEARTEXT
-  communication not permitted" (debug builds allow it, so the bug only shows
-  in release).
-- **OAuth on Android has two landmines** (`src/oidc.ts` works around both):
-  promptAsync's browser-dismiss (AppState active) races the Linking event
-  carrying the authorization code, so a successful login can report `dismiss` —
-  we pre-register our own redirect listener + grace window. And
-  expo-auth-session's fetch layer strips trailing slashes from URLs, which
-  turns Django-based IdPs' `/token/` endpoint into an APPEND_SLASH 301 that
-  downgrades the POST to a body-less GET — token/refresh/revoke are hand-rolled
-  form POSTs on purpose. `app/oauth/callback.tsx` must exist or expo-router
-  routes the redirect to "Unmatched Route".
-- New native modules (config plugins) need `expo prebuild` + a rebuild — Metro
-  hot reload alone shows "Unimplemented component".
 
 ## Conventions
 
@@ -165,7 +117,8 @@ Mobile sim: `pnpm --filter @halo/mobile ios`. Device (Release, standalone JS):
 - Never push without explicit permission. Linear history, no merge commits.
 - Explicit imports only; early returns; zod-validate every API request body —
   client input is untrusted even from our own app.
-- Mobile UI matches `apps/mobile/src/theme.ts` tokens. Desktop UI matches the
+- Mobile UI matches the `HaloColors` tokens in `apps/mobile-native`'s
+  `ui/HaloTheme.kt`. Desktop UI matches the
   native WinUI Halo Desktop, and its token set is applied in
   `apps/desktop/src/styles/tokens.css` (both palettes there, stamped by
   `data-theme`; `src/theme.ts` documents what the short token names mean and

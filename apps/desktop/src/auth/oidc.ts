@@ -4,7 +4,7 @@ import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { openUrl } from '@tauri-apps/plugin-opener'
 
 /**
- * OIDC session management — desktop port of apps/mobile/src/oidc.ts.
+ * OIDC session management, ported from the former Expo client's oidc.ts.
  * The browser dance is RFC 8252 (system browser + loopback redirect): the
  * Rust side listens on a fixed localhost port, the default browser opens the
  * IdP's authorize URL, and the redirect lands on the listener. PKCE with

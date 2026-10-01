@@ -15,7 +15,7 @@ import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { getClient } from './api'
 
 /**
- * Data layer — desktop port of apps/mobile/src/queries.ts (same query keys and
+ * Data layer, ported from the former Expo client's queries.ts (same query keys and
  * cache semantics so behavior stays recognizable across clients).
  */
 
