@@ -15,7 +15,7 @@ no build orchestration on purpose.
 | --- | --- | --- |
 | `packages/core` | Addon protocol client, subtitle utils (OpenSubtitles hash, srt→vtt, languages), typed API client | `pnpm --filter @halo/core typecheck` |
 | `apps/api` | Hono + Drizzle/better-sqlite3 sync backend | `pnpm --filter @halo/api test` (vitest), then curl |
-| `apps/mobile-native` | Compose Multiplatform client (iOS-first, Android kept compiling) over libmpv. Standalone Gradle project outside the pnpm workspace; its `README.md` is the guide | `.\gradlew.bat :composeApp:compileCommonMainKotlinMetadata` and `:composeApp:compileTestKotlinIosSimulatorArm64` (Apple framework and XCUITests need macOS) |
+| `apps/mobile` | Compose Multiplatform client (iOS-first, Android kept compiling) over libmpv. Standalone Gradle project outside the pnpm workspace; its `README.md` is the guide | `.\gradlew.bat :composeApp:compileCommonMainKotlinMetadata` and `:composeApp:compileTestKotlinIosSimulatorArm64` (Apple framework and XCUITests need macOS) |
 | `apps/desktop` | Tauri v2 client (Windows-first), React UI over mpv, device-local downloads. `src/` is grouped by feature (auth, home, search, browse, sources, player, downloads, settings); styles are `src/styles/` partials | typecheck + `pnpm --filter @halo/desktop test` + `cargo build` in `src-tauri` (needs `vendor/mpv/libmpv-2.dll`, see `vendor/README.md`) |
 
 Dev: `pnpm dev` (api :8787, needs `apps/api/.env` from `.env.example`).
@@ -88,7 +88,7 @@ no override — so a fake addon cannot simply be hosted on the dev machine.
   root fix for "inaccurate subs" — never regress to bare id search.
 - **Downloads are device-local, on mobile and desktop.** One entry per
   videoId, grouped by `itemId` in UI, chosen subtitle downloaded alongside.
-  - **mobile** (`apps/mobile-native`): platform-owned background transfers, a
+  - **mobile** (`apps/mobile`): platform-owned background transfers, a
     WorkManager foreground worker on Android and a background `URLSession` on
     iOS, so ordinary process death reconciles with the OS-owned work. Source
     URLs and headers live only in encrypted request records (Keychain items on
@@ -117,7 +117,7 @@ no override — so a fake addon cannot simply be hosted on the dev machine.
 - Never push without explicit permission. Linear history, no merge commits.
 - Explicit imports only; early returns; zod-validate every API request body —
   client input is untrusted even from our own app.
-- Mobile UI matches the `HaloColors` tokens in `apps/mobile-native`'s
+- Mobile UI matches the `HaloColors` tokens in `apps/mobile`'s
   `ui/HaloTheme.kt`. Desktop UI matches the
   native WinUI Halo Desktop, and its token set is applied in
   `apps/desktop/src/styles/tokens.css` (both palettes there, stamped by

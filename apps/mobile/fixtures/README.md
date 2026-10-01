@@ -9,15 +9,15 @@ provider or production media service.
 From the repository root:
 
 ```powershell
-python apps/mobile-native/fixtures/fixture_server.py
+python apps/mobile/fixtures/fixture_server.py
 ```
 
 The default bind address is `127.0.0.1:18787`, OIDC mode is enabled, and media
-is read from the ignored `apps/mobile-native/fixtures/media/` directory.
+is read from the ignored `apps/mobile/fixtures/media/` directory.
 All three are configurable:
 
 ```powershell
-python apps/mobile-native/fixtures/fixture_server.py `
+python apps/mobile/fixtures/fixture_server.py `
   --host 192.168.1.20 `
   --port 18787 `
   --media-dir C:\path\to\media `
@@ -40,7 +40,7 @@ authentication and media. Start it in local mode, with the media directory that
 contains the sample files used by the test:
 
 ```powershell
-python apps/mobile-native/fixtures/fixture_server.py `
+python apps/mobile/fixtures/fixture_server.py `
   --port 18788 `
   --auth-mode local `
   --media-dir C:\path\to\media
@@ -80,7 +80,7 @@ of failure as Django/Authentik's APPEND_SLASH behavior.
 Select a mode globally for a native-app run:
 
 ```powershell
-python apps/mobile-native/fixtures/fixture_server.py --negative-mode state_mismatch
+python apps/mobile/fixtures/fixture_server.py --negative-mode state_mismatch
 ```
 
 Or select it for one request with `fixture_mode=<mode>`. Supported modes are:
@@ -97,7 +97,7 @@ A global HTTP error can target `health`, `status`, `auth_config`, `discovery`,
 preceding steps before reaching the intended failure:
 
 ```powershell
-python apps/mobile-native/fixtures/fixture_server.py `
+python apps/mobile/fixtures/fixture_server.py `
   --negative-mode http_error `
   --http-error-route token
 ```
@@ -162,7 +162,7 @@ percent-encoded.
 From the repository root:
 
 ```powershell
-python -m unittest discover -s apps/mobile-native/fixtures/tests -v
+python -m unittest discover -s apps/mobile/fixtures/tests -v
 ```
 
 The tests start real loopback servers on ephemeral ports and exercise the HTTP
