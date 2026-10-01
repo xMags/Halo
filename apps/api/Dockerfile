@@ -18,7 +18,6 @@ RUN corepack enable \
     && corepack prepare pnpm@10.33.3 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/mobile/patches ./apps/mobile/patches
 COPY apps/api/package.json ./apps/api/package.json
 COPY packages/core/package.json ./packages/core/package.json
 
