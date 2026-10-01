@@ -65,7 +65,7 @@ That gives you one private source of truth without turning the server into a ban
 
 | Component | Current status | Implementation |
 | --- | --- | --- |
-| `apps/mobile-native` | Mobile client for Android and iOS. Browsing, playback, sync, settings, and durable downloads are implemented. | Kotlin Multiplatform, Compose Multiplatform, Ktor, libmpv |
+| `apps/mobile` | Mobile client for Android and iOS. Browsing, playback, sync, settings, and durable downloads are implemented. | Kotlin Multiplatform, Compose Multiplatform, Ktor, libmpv |
 | `apps/desktop` | Functional Windows-first development client with the complete browse-to-playback flow. | Tauri 2, React, TypeScript, Rust, WebView2, libmpv |
 | `apps/api` | Self-hosted API with local and OIDC authentication, SQLite persistence, addon resolution, and per-user synchronization. | Node.js 22, Hono, Drizzle ORM, SQLite |
 | `packages/core` | Shared Stremio protocol types, addon client, subtitle tools, and TypeScript API client. | TypeScript |
@@ -98,7 +98,7 @@ The API resolves installed addons and returns normalized results to authenticate
 ```text
 apps/api/             Hono API, authentication, SQLite schema, and addon fan-out
 apps/desktop/         Windows-first Tauri client with a native mpv host
-apps/mobile-native/   Compose Multiplatform client for Android and iOS
+apps/mobile/          Compose Multiplatform client for Android and iOS
 packages/core/        Shared TypeScript addon and API contracts
 ```
 
@@ -182,11 +182,11 @@ Requirements:
 Build a debug APK on Windows:
 
 ```powershell
-Set-Location apps/mobile-native
+Set-Location apps/mobile
 .\gradlew.bat :composeApp:assembleDebug
 ```
 
-The APK is written to `apps/mobile-native/composeApp/build/outputs/apk/debug/composeApp-debug.apk`.
+The APK is written to `apps/mobile/composeApp/build/outputs/apk/debug/composeApp-debug.apk`.
 
 Release builds intentionally fail unless signing credentials are supplied through local Gradle properties or environment variables. Never commit signing credentials.
 
@@ -195,14 +195,14 @@ Release builds intentionally fail unless signing credentials are supplied throug
 iOS requires macOS, Xcode, XcodeGen, and the MPVKit layout documented by the native project. The main development flow is:
 
 ```bash
-cd apps/mobile-native
+cd apps/mobile
 ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64
 cd iosApp
 xcodegen generate
 open Halo.xcodeproj
 ```
 
-See [`apps/mobile-native/README.md`](apps/mobile-native/README.md) for the native architecture, fixture servers, and test-suite requirements.
+See [`apps/mobile/README.md`](apps/mobile/README.md) for the native architecture, fixture servers, and test-suite requirements.
 
 ### Windows desktop
 
@@ -233,7 +233,7 @@ corepack pnpm --filter @halo/api test
 Native mobile project on Windows:
 
 ```powershell
-Set-Location apps/mobile-native
+Set-Location apps/mobile
 .\gradlew.bat :composeApp:compileCommonMainKotlinMetadata
 .\gradlew.bat :composeApp:compileTestKotlinIosSimulatorArm64
 python -m unittest discover -s fixtures/tests -v
@@ -243,8 +243,8 @@ Apple framework, host-bridge, and XCUITest verification require macOS or an iOS 
 
 ## Additional Documentation
 
-- [`apps/mobile-native/README.md`](apps/mobile-native/README.md): native client architecture and platform verification
-- [`apps/mobile-native/fixtures/README.md`](apps/mobile-native/fixtures/README.md): local authentication and ranged-media fixtures
+- [`apps/mobile/README.md`](apps/mobile/README.md): native client architecture and platform verification
+- [`apps/mobile/fixtures/README.md`](apps/mobile/fixtures/README.md): local authentication and ranged-media fixtures
 
 ## Scope and Content
 
