@@ -51,7 +51,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return restoreSession() ? 'authenticated' : 'unauthenticated'
   })
 
-  // A 401 that survives the refresh retry means the session is dead.
+  // Reached only when the refresh itself was rejected (or impossible): the
+  // session is dead. A 401 after a successful refresh keeps the session.
   useEffect(() => {
     onUnauthorized(() => {
       void clearDownloadsAccount().catch(() => undefined)
