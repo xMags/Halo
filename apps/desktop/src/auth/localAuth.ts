@@ -2,7 +2,7 @@ import type { LocalSessionToken } from '@halo/core'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 
 /**
- * Local-mode session management — port of apps/mobile/src/localAuth.ts.
+ * Local-mode session management, ported from the former Expo client's localAuth.ts.
  * Differences from mobile: persistence is localStorage (WebView2 profile in
  * the app's data dir) instead of the OS keychain — plaintext at rest, accepted
  * for v1 since the machine account is the trust boundary on desktop.

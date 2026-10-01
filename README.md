@@ -35,7 +35,7 @@
 </div>
 
 > [!IMPORTANT]
-> Halo is under active development. The repository contains usable development clients, but it does not currently promise polished installers or a stable public API. The Compose Multiplatform mobile client is replacing the legacy Expo client feature by feature.
+> Halo is under active development. The repository contains usable development clients, but it does not currently promise polished installers or a stable public API.
 
 ## Why Halo
 
@@ -65,10 +65,9 @@ That gives you one private source of truth without turning the server into a ban
 
 | Component | Current status | Implementation |
 | --- | --- | --- |
-| `apps/mobile-native` | Active mobile client rewrite. Browsing, playback, sync, settings, and durable downloads are implemented. | Kotlin Multiplatform, Compose Multiplatform, Ktor, libmpv |
+| `apps/mobile-native` | Mobile client for Android and iOS. Browsing, playback, sync, settings, and durable downloads are implemented. | Kotlin Multiplatform, Compose Multiplatform, Ktor, libmpv |
 | `apps/desktop` | Functional Windows-first development client with the complete browse-to-playback flow. | Tauri 2, React, TypeScript, Rust, WebView2, libmpv |
 | `apps/api` | Self-hosted API with local and OIDC authentication, SQLite persistence, addon resolution, and per-user synchronization. | Node.js 22, Hono, Drizzle ORM, SQLite |
-| `apps/mobile` | Legacy iOS client kept fixes-only while the native client reaches parity. | Expo, React Native, libVLC |
 | `packages/core` | Shared Stremio protocol types, addon client, subtitle tools, and TypeScript API client. | TypeScript |
 
 Platform floors in the current native configuration are Android 8.0 (API 26) and iOS 15.1. The desktop host is Windows-specific today.
@@ -100,7 +99,6 @@ The API resolves installed addons and returns normalized results to authenticate
 apps/api/             Hono API, authentication, SQLite schema, and addon fan-out
 apps/desktop/         Windows-first Tauri client with a native mpv host
 apps/mobile-native/   Compose Multiplatform client for Android and iOS
-apps/mobile/          Legacy Expo iOS client, with its reviewed package patches
 packages/core/        Shared TypeScript addon and API contracts
 ```
 
