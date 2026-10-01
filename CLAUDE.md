@@ -105,11 +105,11 @@ no override — so a fake addon cannot simply be hosted on the dev machine.
 
 - **pnpm blocks native postinstalls** unless listed in `pnpm-workspace.yaml`
   `onlyBuiltDependencies` (better-sqlite3, esbuild).
-- **pnpm runs `nodeLinker: hoisted`** (`pnpm-workspace.yaml`) — the default
-  `.pnpm` virtual store doubles path depth, which overflows Windows' 250-char
-  CMake object-path limit when Gradle compiles react-native-screens/worklets
-  (ninja loops with "manifest still dirty"). Don't remove it unless
-  Android-on-Windows builds are re-verified.
+- **pnpm runs `nodeLinker: hoisted`** (`pnpm-workspace.yaml`): the API image
+  starts with `node --import tsx` from the repo root, which resolves only
+  because hoisting puts tsx in the root `node_modules`. Under the default
+  isolated layout the container exits with `ERR_MODULE_NOT_FOUND`. Don't remove
+  it without changing that start command and re-running the image.
 
 ## Conventions
 
