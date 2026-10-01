@@ -36,6 +36,16 @@ export type AuthModeConfig = ({ mode: 'oidc' } & OidcConfig) | ({ mode: 'local' 
 /** Scopes clients must request in OIDC mode; served to the app via GET /auth/config. */
 export const OIDC_SCOPES = ['openid', 'profile', 'email', 'offline_access', 'groups']
 
+/**
+ * After fetching the IdP's JWKS, jose will not fetch it again for a token with
+ * an unknown `kid` until this much time has passed. Right after a signing-key
+ * rotation, tokens signed with the new key are refused for up to this long, so
+ * it is kept short (jose's default is 30 s). It must not be zero: anyone can
+ * present a token with a made-up `kid`, and the cooldown caps how often that
+ * makes this server fetch from the IdP.
+ */
+export const JWKS_REFETCH_COOLDOWN_MS = 5_000
+
 /** Sliding session: each token lives this long, refreshable while still valid. */
 export const SESSION_DAYS = 30
 /** Hard ceiling from the original login; a stolen token can't be renewed forever. */
@@ -126,9 +136,11 @@ export function authMiddleware(auth: AuthModeConfig, db: Db): MiddlewareHandler<
  * than stored, so group changes in the IdP apply within the access-token TTL.
  */
 function oidcAuthMiddleware(oidc: OidcConfig, db: Db): MiddlewareHandler<{ Variables: AuthVariables }> {
-  // jose caches the JWKS and re-fetches on unknown kid, so an IdP signing-key
-  // rotation needs no API restart.
-  const getKey = oidc.getKey ?? createRemoteJWKSet(new URL('jwks/', oidc.issuer))
+  // jose caches the JWKS and re-fetches on unknown kid (at most once per
+  // JWKS_REFETCH_COOLDOWN_MS), so an IdP signing-key rotation needs no API restart.
+  const getKey =
+    oidc.getKey ??
+    createRemoteJWKSet(new URL('jwks/', oidc.issuer), { cooldownDuration: JWKS_REFETCH_COOLDOWN_MS })
   return async (c, next) => {
     const token = bearerToken(c)
     if (!token) return c.json({ error: 'unauthorized' }, 401)
