@@ -71,20 +71,14 @@ class MainActivity : ComponentActivity() {
         val diagnosticsEnabled =
             (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
-        // Automation may point at a fixture. With no override, using the shared
-        // default preserves the last-successful-server prefill rule in HaloApp.
-        val serverUrl = intent?.getStringExtra("serverUrl")
-            ?: PlatformDependencies.DefaultServerUrl
-        // The media base is an internal debug/test seam. A release build always
-        // keeps the normal default, even if a caller supplies this extra.
-        val mediaHttpBase = if (diagnosticsEnabled) {
-            intent?.getStringExtra("mediaHttpBase")
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-                ?: PlatformDependencies.DefaultMediaHttpBase
-        } else {
-            PlatformDependencies.DefaultMediaHttpBase
-        }
+        // Automation may point at a fixture and reset the session. A release
+        // build ignores these extras, since any app can start this activity.
+        val launch = LaunchOverrides.resolve(
+            diagnosticsEnabled = diagnosticsEnabled,
+            serverUrl = intent?.getStringExtra("serverUrl"),
+            mediaHttpBase = intent?.getStringExtra("mediaHttpBase"),
+            resetSession = intent?.getBooleanExtra("resetSession", false) ?: false,
+        )
 
         val dependencies = PlatformDependencies(
             authConfigSource = KtorAuthConfigSource(authHttpClient),
@@ -114,9 +108,9 @@ class MainActivity : ComponentActivity() {
             openDownloadsEvents = openDownloads.receiveAsFlow(),
             nativePlayerSurface = AndroidNativePlayerSurface(playerHost),
             nativeHostDiagnostics = AndroidNativeHostDiagnostics(authHost, playerHost),
-            initialServerUrl = serverUrl,
-            mediaHttpBase = mediaHttpBase,
-            resetPersistedSession = intent?.getBooleanExtra("resetSession", false) ?: false,
+            initialServerUrl = launch.serverUrl,
+            mediaHttpBase = launch.mediaHttpBase,
+            resetPersistedSession = launch.resetSession,
         )
 
         setContent {

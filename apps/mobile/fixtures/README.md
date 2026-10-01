@@ -47,10 +47,10 @@ python apps/mobile/fixtures/fixture_server.py `
 adb reverse tcp:18788 tcp:18788
 ```
 
-The test launch supplies `serverUrl=http://127.0.0.1:18788` and the debug-only
-`mediaHttpBase=http://127.0.0.1:18788/media` override. Both routes therefore
-reach the same fixture process. The override is read only from a debuggable
-Android build and is not a production media configuration API.
+The test launch supplies the `serverUrl=http://127.0.0.1:18788` and
+`mediaHttpBase=http://127.0.0.1:18788/media` overrides. Both routes therefore
+reach the same fixture process. Like `resetSession`, these overrides are read
+only from a debuggable Android build and are not a production configuration API.
 
 ## Endpoints
 
