@@ -63,7 +63,11 @@ export interface HaloClientOptions {
    * Return null when the session is truly dead (refresh token rejected).
    */
   refreshAccessToken?: () => Promise<string | null>
-  /** Called when a request stays unauthorized after the refresh retry; the app should sign out. */
+  /**
+   * Called when the session is definitively over: the refresh was rejected, or
+   * there is no way to refresh. The app should sign out. A 401 that survives a
+   * successful refresh does not call it (see `request`).
+   */
   onUnauthorized?: () => void
   fetch?: typeof fetch
 }
@@ -107,10 +111,15 @@ export class HaloClient {
     })
 
     if (res.status === 401) {
+      // The refresh succeeded, so the session is alive: the server can briefly
+      // refuse a token the identity provider has just issued (after a
+      // signing-key rotation, until its cached key set refreshes). Fail this
+      // request and keep the session; the next request tries again.
+      if (retried) throw new HaloApiError(401, 'Unauthorized')
       // One refresh-and-retry: a 401 with a live refresh token usually just
       // means the access token aged out between the provider's expiry check
       // and the server's.
-      if (!retried && this.refreshAccessToken && (await this.refreshAccessToken())) {
+      if (this.refreshAccessToken && (await this.refreshAccessToken())) {
         return this.request(method, path, body, opts, true)
       }
       this.onUnauthorized?.()
