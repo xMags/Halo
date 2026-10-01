@@ -383,11 +383,13 @@ final class BackgroundDownloadService: NSObject, HaloIosBackgroundDownloadHost {
         SecItemDelete(keychainQuery(jobId: jobId) as CFDictionary)
     }
 
-    private static func keychainQuery(jobId: String) -> [String: Any] = [
-        kSecClass as String: kSecClassGenericPassword,
-        kSecAttrService as String: keychainService,
-        kSecAttrAccount as String: jobId,
-    ]
+    private static func keychainQuery(jobId: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: jobId,
+        ]
+    }
 
     private func notify(jobId: String, title: String, body: String) {
         DispatchQueue.main.async {
