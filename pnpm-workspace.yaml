@@ -1,10 +1,10 @@
 packages:
   - apps/*
   - packages/*
-# Hoisted layout (Expo's recommended pnpm setup for React Native): the default
-# .pnpm virtual store doubles path depth, which overflows Windows' 250-char
-# CMake object-path limit when Gradle compiles native modules (screens,
-# worklets); ninja then loops with "manifest still dirty".
+# Hoisted layout: the API image starts with `node --import tsx` from the repo
+# root (apps/api/Dockerfile), which resolves only because hoisting puts tsx in
+# the root node_modules. Under the default isolated layout the container exits
+# with ERR_MODULE_NOT_FOUND.
 nodeLinker: hoisted
 onlyBuiltDependencies:
   - better-sqlite3
