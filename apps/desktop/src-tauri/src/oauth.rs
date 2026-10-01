@@ -6,8 +6,8 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::time::{Duration, Instant};
 
-/// Must match `OAUTH_CALLBACK_PORT` in src/auth/oidc.ts and the redirect URI
-/// registered on the IdP: http://127.0.0.1:17871/callback
+/// Must match `OAUTH_CALLBACK_PORT` in src/auth/loopbackSignIn.ts and the
+/// redirect URI registered with each provider: http://127.0.0.1:17871/callback
 pub const CALLBACK_PORT: u16 = 17871;
 
 const TIMEOUT: Duration = Duration::from_secs(300);

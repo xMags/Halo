@@ -1,7 +1,8 @@
 import type { OidcAuthConfig } from '@halo/core'
-import { invoke } from '@tauri-apps/api/core'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { REDIRECT_URI, signInInBrowser } from './loopbackSignIn'
+import { pkceChallenge, randomToken } from './pkce'
 
 /**
  * OIDC session management, ported from the former Expo client's oidc.ts.
@@ -16,9 +17,6 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 const OIDC_KEY = 'halo.oidc'
 /** Refresh this many ms before nominal expiry so in-flight requests don't race it. */
 const EXPIRY_MARGIN_MS = 60_000
-/** Must match CALLBACK_PORT in src-tauri/src/oauth.rs and the IdP-registered redirect URI. */
-const OAUTH_CALLBACK_PORT = 17871
-const REDIRECT_URI = `http://127.0.0.1:${OAUTH_CALLBACK_PORT}/callback`
 
 interface OidcSession {
   clientId: string
@@ -138,31 +136,6 @@ async function fetchDiscovery(issuer: string): Promise<DiscoveryDocument> {
   return (await res.json()) as DiscoveryDocument
 }
 
-function base64Url(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes))
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replaceAll('=', '')
-}
-
-function randomToken(): string {
-  const bytes = new Uint8Array(32)
-  crypto.getRandomValues(bytes)
-  return base64Url(bytes)
-}
-
-async function pkceChallenge(verifier: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
-  return base64Url(new Uint8Array(digest))
-}
-
-function parseCallbackParams(path: string): Record<string, string> {
-  const query = path.split('?')[1] ?? ''
-  const params: Record<string, string> = {}
-  for (const [key, value] of new URLSearchParams(query)) params[key] = value
-  return params
-}
-
 /** Browser-based PKCE sign-in against the IdP the Halo server names. */
 export async function signInWithOidc(config: OidcAuthConfig): Promise<void> {
   const discovery = await fetchDiscovery(config.issuer)
@@ -188,18 +161,7 @@ export async function signInWithOidc(config: OidcAuthConfig): Promise<void> {
     ;(window as Window & { __haloOidcDebug?: unknown }).__haloOidcDebug = { state, authUrl }
   }
 
-  // Listener first, then browser — the redirect must never race the bind.
-  const callback = invoke<string>('oauth_wait_callback')
-  try {
-    await openUrl(authUrl)
-  } catch (err) {
-    // Unblock the Rust listener so the port frees immediately, then surface a
-    // real Error (plugin rejections are plain strings).
-    void nativeFetch(`http://127.0.0.1:${OAUTH_CALLBACK_PORT}/cancel`).catch(() => {})
-    void callback.catch(() => {})
-    throw err instanceof Error ? err : new Error(String(err))
-  }
-  const params = parseCallbackParams(await callback)
+  const params = await signInInBrowser(authUrl)
 
   if (params.error) throw new Error(params.error_description || `Sign-in failed: ${params.error}`)
   if (!params.code) throw new Error('Sign-in failed: no authorization code returned')
