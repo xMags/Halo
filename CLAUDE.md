@@ -8,7 +8,7 @@ scope — streams come from debrid/HTTP addons as direct URLs.
 ## Layout & commands
 
 pnpm workspace monorepo, Node 22, TS strict everywhere. `packages/core` ships
-raw TS source (`main: src/index.ts`) — Metro/tsx consume it directly, there is
+raw TS source (`main: src/index.ts`) — Vite/tsx consume it directly, there is
 no build orchestration on purpose.
 
 | Path | What | Verify with |
