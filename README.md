@@ -37,6 +37,21 @@
 > [!IMPORTANT]
 > Halo is under active development. The repository contains usable development clients, but it does not currently promise polished installers or a stable public API.
 
+## Credits
+
+<p align="center">
+  <a href="https://github.com/cryguy">
+    <img src="https://github.com/cryguy.png" width="96" height="96" alt="cryguy's avatar">
+  </a>
+</p>
+
+Halo was originally created by **[cryguy](https://github.com/cryguy)**, who built the foundations it still runs on.
+
+He's too busy these days, so [xMags](https://github.com/xMags) is continuing to build Halo out of respect for an overworked, underpaid friend. Same foundations, more native apps, and a solemn promise never to touch his SSRF guard.
+
+> [!IMPORTANT]
+> **If you're cryguy's boss:** please pay him more. :D
+
 ## Why Halo
 
 Most media-center clients either depend on someone else's hosted service or make every device keep its own disconnected state. Halo separates those concerns:
@@ -251,8 +266,8 @@ Apple framework, host-bridge, and XCUITest verification require macOS or an iOS 
 Halo is a client and synchronization service. It does not bundle content, host media, include a torrent engine, or grant access to third-party services. You are responsible for the addons and providers you configure and for following their terms and applicable law.
 
 There is deliberately no browser web app. Browser playback of the MKV/HEVC
-streams debrid providers serve is fractured — no MKV demuxing in Firefox,
-hardware-dependent HEVC everywhere — which is the same wall Stremio's web client
+streams debrid providers serve is fractured (no MKV demuxing in Firefox,
+hardware-dependent HEVC everywhere), which is the same wall Stremio's web client
 hits. Desktop is a native client with an embedded player instead, and it plays
 everything. `packages/core` and the API are client-agnostic, so nothing here
 blocks a web client if that ever changes.
