@@ -78,7 +78,14 @@ no override — so a fake addon cannot simply be hosted on the dev machine.
   with a connect-time DNS lookup hook (`safeFetch.ts`) that re-checks the
   resolved address to close the rebinding TOCTOU (`proxyGuard.ts` holds the
   blocklist). Don't "simplify" it to an allowlist; don't remove the redirect
-  loop or the lookup hook.
+  loop or the lookup hook. Addon hosts that block the server's own address
+  (Torrentio refuses cloud IPs) can take an egress route instead
+  (`ADDON_EGRESS_PROXY` + `ADDON_EGRESS_HOSTS`): a CONNECT-only proxy
+  (`egressProxy.ts`, run as `egressMain.ts` from the same image) on a machine
+  they accept, reached over Tailscale. The route is chosen per hop, listed
+  hosts go over https:443 only (the proxy must never see a URL, since addon
+  URLs carry API keys), and the proxy itself admits only its listed peers,
+  hosts and port and re-checks the blocklist on the address it dials.
 - **SQLite schema is evolved via drizzle-kit migrations run at boot**
   (`db.ts` `migrate()` over `apps/api/drizzle`, foreign keys enabled). Add a new
   migration for schema changes; the `:memory:` test DBs run them too.
