@@ -68,6 +68,9 @@ export { isVtt, srtToVtt } from './subtitles/srtToVtt'
 export { LANGUAGE_OPTIONS, languageLabel, languageMatches } from './subtitles/languages'
 
 export { HaloApiError, HaloClient } from './api/client'
+export type { HaloBackend } from './api/backend'
+export { DeviceBackend, DeviceDataError } from './device/deviceBackend'
+export type { DeviceBackendOptions, DeviceCollection, DeviceStore } from './device/deviceBackend'
 export type {
   AuthConfig,
   HaloClientOptions,

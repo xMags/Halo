@@ -9,9 +9,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "test": "node --import tsx --test test/*.test.ts"
   },
   "devDependencies": {
+    "tsx": "^4.19.0",
     "typescript": "^5.8.0"
   }
 }
