@@ -4,10 +4,11 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import mark from '../assets/halo-mark.png'
 import avatar from '../assets/user-avatar.png'
-import { activateSession, addonSessionKind, getAccountClient, getServerUrl, seedDefaultAddons, type SessionKind } from '../api'
+import { activateSession, addonSessionKind, getAccountClient, getDeviceProfile, getServerUrl, seedDefaultAddons, type SessionKind } from '../api'
 import { FluentIcon } from '../components/FluentIcon'
 import { ProgressBar, ProgressRing } from '../components/ProgressRing'
 import { TitleBar } from '../components/TitleBar'
+import { moveDeviceDataIntoAccount } from '../device/deviceDataMove'
 import { accountLabel } from './accountLabel'
 import { signInAddonFor } from './installedAddons'
 import { signInWithPassword } from './localAuth'
@@ -36,7 +37,7 @@ type Step =
   | { kind: 'browser'; method: BrowserMethod; error: string | null }
   | { kind: 'waiting'; local: true }
   | { kind: 'waiting'; local: false; method: BrowserMethod; authUrl: string | null }
-  | { kind: 'signedIn'; name: string; label: string }
+  | { kind: 'signedIn'; name: string; label: string; moving: boolean }
   | { kind: 'declined'; method: BrowserMethod }
   | { kind: 'expired'; method: BrowserMethod }
   | { kind: 'preparing' }
@@ -114,14 +115,27 @@ export function Login() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /** Binds the new session, shows "You're all set" while the account gets ready, then opens the app. */
+  /**
+   * Binds the new session, shows "You're all set" while the account gets
+   * ready (and takes in what this PC holds from Halo without an account),
+   * then opens the app.
+   */
   async function finish(kind: SessionKind, id: number) {
     activateSession(kind)
     const me = await (getAccountClient()?.getMe() ?? Promise.resolve(null)).catch(() => null)
     if (id !== attempt.current) return
-    setStep({ kind: 'signedIn', name: me?.username ?? '', label: accountLabel(me ?? undefined) })
-    // A first sign-in seeds the default addons; Home must not draw before they exist.
-    await Promise.all([seedDefaultAddons(), delay(SIGNED_IN_DWELL_MS)])
+    // Moving needs the account's id (it names the downloads partition); when
+    // it is not known yet, the signed-in shell does the move once it is.
+    const moving = me !== null && getDeviceProfile() !== null
+    setStep({ kind: 'signedIn', name: me?.username ?? '', label: accountLabel(me ?? undefined), moving })
+    const ready = async () => {
+      // A first sign-in seeds the default addons; Home must not draw before
+      // they exist. Seeding first also keeps a moved addon from counting as
+      // the account already having addons.
+      await seedDefaultAddons()
+      if (moving) await moveDeviceDataIntoAccount(me.id)
+    }
+    await Promise.all([ready(), delay(SIGNED_IN_DWELL_MS)])
     if (id === attempt.current) signedIn(kind)
   }
 
@@ -333,7 +347,7 @@ export function Login() {
                 <ProgressBar />
               </div>
               <div className="mono auth-center" style={{ marginTop: 10 }}>
-                Opening your library…
+                {step.moving ? 'Moving this PC’s library into your account…' : 'Opening your library…'}
               </div>
             </>
           )}
@@ -450,7 +464,9 @@ export function Login() {
                 <button type="button" className="btn h36 btn-block" onClick={cancelSignIn}>
                   Back to Halo
                 </button>
-                <div className="auth-alt-note">Keep using Halo on this PC without an account.</div>
+                <div className="auth-alt-note">
+                  Signing in moves this PC’s library, history, addons and downloads into your account.
+                </div>
               </div>
             ) : (
               <div className="auth-alt">

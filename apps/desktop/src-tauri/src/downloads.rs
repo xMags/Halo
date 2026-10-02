@@ -436,6 +436,56 @@ impl Inner {
     }
 }
 
+/// What moving one partition's downloads into another does.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct AdoptionPlan {
+    /// Records that change owner.
+    rekey: Vec<String>,
+    /// Duplicates removed, files included.
+    discard: Vec<String>,
+}
+
+/// Every record of `from` moves to `to`, except where `to` already shows the
+/// same video: there a finished download beats an unfinished one, and when
+/// both are finished (or neither is) the one already in `to` stays. A losing
+/// record's replacement backup goes with it, so it cannot resurface as a
+/// second copy.
+fn plan_adoption(entries: &HashMap<String, DownloadRecord>, from: &str, to: &str) -> AdoptionPlan {
+    if from == to {
+        return AdoptionPlan::default();
+    }
+    let visible = |entry: &DownloadRecord, account: &str| {
+        entry.account_key == account
+            && !entry.pending_deletion
+            && !is_hidden_backup(entries, &entry.job_id)
+    };
+    let mut discard: HashSet<String> = HashSet::new();
+    for moving in entries.values().filter(|entry| visible(entry, from)) {
+        let Some(existing) = entries
+            .values()
+            .find(|entry| visible(entry, to) && entry.media.video_id == moving.media.video_id)
+        else {
+            continue;
+        };
+        let moving_wins =
+            moving.status == DownloadStatus::Done && existing.status != DownloadStatus::Done;
+        let loser = if moving_wins { existing } else { moving };
+        discard.insert(loser.job_id.clone());
+        if let Some(backup) = loser.replacement.as_ref() {
+            discard.insert(backup.job_id.clone());
+        }
+    }
+    let mut rekey: Vec<String> = entries
+        .values()
+        .filter(|entry| entry.account_key == from && !discard.contains(&entry.job_id))
+        .map(|entry| entry.job_id.clone())
+        .collect();
+    rekey.sort();
+    let mut discard: Vec<String> = discard.into_iter().collect();
+    discard.sort();
+    AdoptionPlan { rekey, discard }
+}
+
 /// A record that some live record names as its replacement backup.
 fn is_hidden_backup(entries: &HashMap<String, DownloadRecord>, job_id: &str) -> bool {
     entries.values().any(|entry| {
@@ -619,6 +669,46 @@ impl DownloadManager {
         }
         drop(inner);
         self.persist().await
+    }
+
+    /// Moves the downloads made without an account (`from`) to the account
+    /// they now belong to (`to`), when someone signs in. Files and request
+    /// vault entries stay where they are; only the owner changes, so
+    /// transfers move as they were (paused, since the partition switch
+    /// paused them). Where both already hold the same video, one copy stays
+    /// (see `plan_adoption`) and the other is removed like any download.
+    pub async fn adopt_account(
+        self: &Arc<Self>,
+        from: String,
+        to: String,
+    ) -> Result<Vec<DownloadView>, String> {
+        let from = fingerprint(&from);
+        let to = fingerprint(&to);
+        let losers = {
+            let mut inner = self.inner.lock().await;
+            let plan = plan_adoption(&inner.entries, &from, &to);
+            let now = now_ms();
+            for job_id in &plan.rekey {
+                if let Some(entry) = inner.entries.get_mut(job_id) {
+                    entry.account_key = to.clone();
+                    entry.updated_at = now;
+                }
+            }
+            plan.discard
+                .iter()
+                .filter_map(|job_id| inner.entries.get(job_id).cloned())
+                .collect::<Vec<_>>()
+        };
+        self.persist().await?;
+        for loser in losers {
+            self.stop_job(&loser.job_id).await;
+            // A file that cannot be deleted now is retried on the next launch
+            // (the record stays a tombstone), so adoption itself still holds.
+            let _ = self.discard(&loser, None).await;
+            self.emit_removed(&loser.job_id);
+        }
+        self.kick();
+        Ok(self.inner.lock().await.visible_views())
     }
 
     pub async fn list(&self) -> Vec<DownloadView> {
@@ -2283,6 +2373,87 @@ mod tests {
         let directory = std::env::temp_dir().join(format!("halo-download-{name}-{}", new_job_id()));
         fs::create_dir_all(&directory).unwrap();
         directory
+    }
+
+    fn owned(job_id: &str, account: &str, video_id: &str, status: DownloadStatus) -> DownloadRecord {
+        let mut entry = record("C:\\Downloads".into());
+        entry.job_id = job_id.into();
+        entry.account_key = account.into();
+        entry.media.video_id = video_id.into();
+        entry.status = status;
+        entry
+    }
+
+    fn entries(records: Vec<DownloadRecord>) -> HashMap<String, DownloadRecord> {
+        records.into_iter().map(|entry| (entry.job_id.clone(), entry)).collect()
+    }
+
+    #[test]
+    fn adoption_moves_every_download_without_a_duplicate() {
+        let plan = plan_adoption(
+            &entries(vec![
+                owned("d1", "device", "movie:1", DownloadStatus::Done),
+                owned("d2", "device", "movie:2", DownloadStatus::Paused),
+                owned("a1", "account", "movie:3", DownloadStatus::Done),
+                owned("o1", "other", "movie:1", DownloadStatus::Done),
+            ]),
+            "device",
+            "account",
+        );
+        assert_eq!(plan.rekey, vec!["d1".to_string(), "d2".to_string()]);
+        assert!(plan.discard.is_empty());
+    }
+
+    #[test]
+    fn adoption_keeps_the_finished_copy_of_a_duplicate() {
+        let plan = plan_adoption(
+            &entries(vec![
+                // The device finished, the account did not: the device copy wins.
+                owned("d1", "device", "movie:1", DownloadStatus::Done),
+                owned("a1", "account", "movie:1", DownloadStatus::Paused),
+                // Both finished: the account keeps its own.
+                owned("d2", "device", "movie:2", DownloadStatus::Done),
+                owned("a2", "account", "movie:2", DownloadStatus::Done),
+                // Neither finished: the account keeps its own.
+                owned("d3", "device", "movie:3", DownloadStatus::Failed),
+                owned("a3", "account", "movie:3", DownloadStatus::Queued),
+            ]),
+            "device",
+            "account",
+        );
+        assert_eq!(plan.rekey, vec!["d1".to_string()]);
+        assert_eq!(
+            plan.discard,
+            vec!["a1".to_string(), "d2".to_string(), "d3".to_string()]
+        );
+    }
+
+    #[test]
+    fn adoption_discards_a_losing_downloads_backup_with_it() {
+        let mut replacing = owned("d1", "device", "movie:1", DownloadStatus::Paused);
+        let backup = owned("d0", "device", "movie:1", DownloadStatus::Done);
+        replacing.replacement = Some(ReplacementBackup::of(&backup));
+        let plan = plan_adoption(
+            &entries(vec![
+                replacing,
+                backup,
+                owned("a1", "account", "movie:1", DownloadStatus::Done),
+            ]),
+            "device",
+            "account",
+        );
+        assert!(plan.rekey.is_empty());
+        assert_eq!(plan.discard, vec!["d0".to_string(), "d1".to_string()]);
+    }
+
+    #[test]
+    fn adopting_into_the_same_partition_changes_nothing() {
+        let plan = plan_adoption(
+            &entries(vec![owned("d1", "device", "movie:1", DownloadStatus::Done)]),
+            "device",
+            "device",
+        );
+        assert_eq!(plan, AdoptionPlan::default());
     }
 
     #[test]

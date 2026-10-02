@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { ContextMenuHost } from './components/ContextMenu'
 import { DialogHost } from './components/Dialog'
@@ -18,6 +18,7 @@ import { Settings } from './settings/Settings'
 import { SourcesSheet } from './sources/SourcesSheet'
 import { useWindowFullscreen } from './window'
 import { getDeviceProfile, getServerUrl, getSessionDownloadOwner, setSessionDownloadOwner } from './api'
+import { moveDeviceDataIntoAccount } from './device/deviceDataMove'
 import { deviceDownloadOwner } from './device/deviceStore'
 import { setDownloadsAccount, clearDownloadsAccount, opaqueDownloadOwner } from './downloads/downloadsStore'
 import { useLocalPrefs } from './localPrefs'
@@ -36,6 +37,7 @@ function Routes() {
   return (
     <NavProvider>
       <DownloadsAccountBinding />
+      <DeviceDataMoveRetry />
       <PresencePreferenceBinding />
       <Shell />
     </NavProvider>
@@ -61,6 +63,24 @@ function DownloadsAccountBinding() {
       return setDownloadsAccount(owner)
     }).catch(() => undefined)
   }, [me])
+  return null
+}
+
+/**
+ * Finishes moving this PC's data into the account when a sign-in could not
+ * (offline, or the account's id was not known yet). Tried once per launch;
+ * the data stays on the PC until a move succeeds.
+ */
+function DeviceDataMoveRetry() {
+  const { state } = useSession()
+  const { data: me } = useMe()
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    if (state !== 'authenticated' || !me || !getDeviceProfile()) return
+    void moveDeviceDataIntoAccount(me.id).then((moved) => {
+      if (moved) void queryClient.invalidateQueries()
+    })
+  }, [state, me, queryClient])
   return null
 }
 

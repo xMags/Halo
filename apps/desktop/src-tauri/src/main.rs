@@ -241,6 +241,15 @@ async fn downloads_clear_account(
 }
 
 #[tauri::command]
+async fn downloads_adopt_account(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    from_account_key: String,
+    to_account_key: String,
+) -> Result<Vec<downloads::DownloadView>, String> {
+    state.adopt_account(from_account_key, to_account_key).await
+}
+
+#[tauri::command]
 async fn downloads_list(
     state: State<'_, Arc<downloads::DownloadManager>>,
 ) -> Result<Vec<downloads::DownloadView>, String> {
@@ -458,6 +467,7 @@ fn main() {
             device_store_clear,
             downloads_set_account,
             downloads_clear_account,
+            downloads_adopt_account,
             downloads_list,
             downloads_start,
             downloads_pause,
