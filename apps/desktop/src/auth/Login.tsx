@@ -8,6 +8,7 @@ import { activateSession, getClient, getServerUrl, seedDefaultAddons, type Sessi
 import { FluentIcon } from '../components/FluentIcon'
 import { ProgressBar, ProgressRing } from '../components/ProgressRing'
 import { TitleBar } from '../components/TitleBar'
+import { accountLabel } from './accountLabel'
 import { signInWithPassword } from './localAuth'
 import { cancelBrowserSignIn } from './loopbackSignIn'
 import { signInWithOidc } from './oidc'
@@ -30,7 +31,7 @@ type Step =
   | { kind: 'browser'; method: BrowserMethod; error: string | null }
   | { kind: 'waiting'; local: true }
   | { kind: 'waiting'; local: false; method: BrowserMethod; authUrl: string | null }
-  | { kind: 'signedIn'; name: string }
+  | { kind: 'signedIn'; name: string; label: string }
   | { kind: 'declined'; method: BrowserMethod }
   | { kind: 'expired'; method: BrowserMethod }
 
@@ -86,7 +87,7 @@ export function Login() {
       .getMe()
       .catch(() => null)
     if (id !== attempt.current) return
-    setStep({ kind: 'signedIn', name: me?.username ?? '' })
+    setStep({ kind: 'signedIn', name: me?.username ?? '', label: accountLabel(me ?? undefined) })
     // A first sign-in seeds the default addons; Home must not draw before they exist.
     await Promise.all([seedDefaultAddons(), delay(SIGNED_IN_DWELL_MS)])
     if (id === attempt.current) signedIn(kind)
@@ -274,7 +275,7 @@ export function Login() {
                 <img className="auth-avatar" src={avatar} alt="" draggable={false} />
                 <div className="auth-account-text">
                   {step.name && <div className="auth-name">{step.name}</div>}
-                  <div className="mono">HALO ACCOUNT</div>
+                  <div className="mono">{step.label}</div>
                 </div>
               </div>
               <div className="auth-sub" style={{ marginTop: 18 }}>

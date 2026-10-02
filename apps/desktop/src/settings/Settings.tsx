@@ -20,6 +20,7 @@ import {
   useSetAddons,
   useSetGlobalAddons,
 } from '../queries'
+import { accountLabel } from '../auth/accountLabel'
 import { describeStatus, useServerStatus } from '../auth/serverStatus'
 import { RAIL_ANCHOR_FRACTION, activeSettingsSection, isScrolledToEnd } from './settingsRail'
 import {
@@ -802,7 +803,7 @@ function AccountSection() {
         <img className="set-avatar" src={avatar} alt="" draggable={false} />
         <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ fontSize: 14, fontWeight: 600 }}>{me ? displayName(me.username) : '…'}</span>
-          <span className="mono">{me?.isAdmin ? 'ADMIN · HALO ACCOUNT' : 'HALO ACCOUNT'}</span>
+          <span className="mono">{accountLabel(me)}</span>
         </span>
         <span className={`status-pill status-pill-${statusTone}`}>{statusLine}</span>
       </div>
