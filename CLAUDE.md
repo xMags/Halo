@@ -49,7 +49,10 @@ different server is wiped locally at startup, so back up the WebView2 profile's
   HWND, not an intermediate child; and the `transparent: true` window config
   requires the `DwmEnableBlurBehindWindow(fEnable: FALSE)` counter-call in
   setup. Non-player screens keep an opaque HTML background — mpv paints the
-  whole window behind the webview.
+  whole window behind the webview. The process refuses extension-point DLLs
+  (`injection_guard.rs`) so overlay hooks such as RivaTuner's cannot load
+  where mpv renders; it only works as the first thing `main()` does, before
+  any window exists.
 - **Sync is last-write-wins by `updatedAt` everywhere** (watch-state, library,
   settings). Clients send their timestamp; server upserts only strictly-newer
   (`setWhere: excluded.updated_at > …`). Library removals are tombstones

@@ -24,10 +24,11 @@ windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Securit
 # Discord artwork URL checks; already in the build through Tauri.
 url = "2"
 tauri-plugin-dialog = "2"
-# COM access to this process's Windows audio session (audio_session.rs) and the
-# window's icons (window_icon.rs); the version Tauri already depends on, so it
-# adds no new crate to the build.
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Media_Audio", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+# COM access to this process's Windows audio session (audio_session.rs), the
+# window's icons (window_icon.rs) and the process mitigation that keeps overlay
+# hook DLLs out (injection_guard.rs); the version Tauri already depends on, so
+# it adds no new crate to the build.
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Media_Audio", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
 
 [profile.dev]
 opt-level = 1
