@@ -14,6 +14,7 @@ mod injection_guard;
 mod mpv;
 mod oauth;
 mod scrub_preview;
+mod secure_fs;
 mod webview_recovery;
 mod window_icon;
 mod window_menu;
