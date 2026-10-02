@@ -22,5 +22,6 @@ interface SecureStorage {
  */
 object AuthStorageKeys {
     const val LocalSession = "halo.localSession"
+    const val AddonSession = "halo.addonSession"
     const val ServerUrl = "halo.serverUrl"
 }

@@ -7,7 +7,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-enum class SessionKind { Local, Oidc }
+enum class SessionKind { Local, Oidc, Addon }
 
 sealed interface SessionState {
     /** Persisted-session lookup has not completed; render nothing auth-dependent yet. */
@@ -25,12 +25,15 @@ fun interface LocalAuthenticator {
  * App-level session authority: restore on launch, sign-in, sign-out, and the
  * [TokenProvider] the API client draws bearer tokens from.
  *
- * Two arms, matching the server's deployment-exclusive auth modes. The local
- * arm lives entirely here ([LocalSessionManager]); the OIDC arm's wire and
+ * Three arms: the server's two built-in auth modes, plus a sign-in add-on's
+ * ([SignInAddon]) for any other mode this build carries. The local and add-on
+ * arms live entirely here ([LocalSessionManager], [AddonSessionManager]; an
+ * add-on borrows only the platform's browser); the OIDC arm's wire and
  * persistence live with the native host behind [OidcSessionPort], and this
- * controller only folds its outcomes into state. Both arms share the
+ * controller only folds its outcomes into state. All arms share the
  * invariant: a session ends ONLY on the server's definitive rejection (local
- * refresh 401 / OIDC `invalid_grant`), never on a transport failure.
+ * refresh 401 / OIDC `invalid_grant` / the server refusing an add-on session
+ * on recheck), never on a transport failure.
  */
 class SessionController(
     private val storage: SecureStorage,
@@ -38,12 +41,21 @@ class SessionController(
     clock: EpochClock,
     private val scope: CoroutineScope,
     private val oidcPort: OidcSessionPort = NoOidcSessionPort,
-) : LocalAuthenticator {
+    private val addons: List<SignInAddon> = emptyList(),
+    private val browserSignIn: BrowserSignInPort = NoBrowserSignIn,
+    sessionRecheck: HaloSessionRecheck = NoHaloSessionRecheck,
+) : LocalAuthenticator, AddonAuthenticator {
 
     val localSessions = LocalSessionManager(
         storage = storage,
         gateway = gateway,
         clock = clock,
+        scope = scope,
+    )
+
+    val addonSessions = AddonSessionManager(
+        storage = storage,
+        recheck = sessionRecheck,
         scope = scope,
     )
 
@@ -89,12 +101,14 @@ class SessionController(
         override suspend fun accessToken(): String? = when (currentKind()) {
             SessionKind.Local -> localSessions.accessToken()
             SessionKind.Oidc -> oidcPort.accessToken(forceRefresh = false)
+            SessionKind.Addon -> addonSessions.accessToken()
             null -> null
         }
 
         override suspend fun refreshAccessToken(): String? = when (currentKind()) {
             SessionKind.Local -> localSessions.refreshAccessToken()
             SessionKind.Oidc -> oidcPort.accessToken(forceRefresh = true)
+            SessionKind.Addon -> addonSessions.refreshAccessToken()
             null -> null
         }
     }
@@ -113,6 +127,11 @@ class SessionController(
             publish(SessionState.SignedIn(SessionKind.Local, local.serverUrl))
             return
         }
+        val addon = addonSessions.restore()
+        if (addon != null) {
+            publish(SessionState.SignedIn(SessionKind.Addon, addon.serverUrl))
+            return
+        }
         val oidcServerUrl = oidcPort.restoreSession()
         publish(
             when (oidcServerUrl) {
@@ -129,6 +148,22 @@ class SessionController(
         storage.write(AuthStorageKeys.ServerUrl, serverUrl)
         _loginNotice.value = null
         publish(SessionState.SignedIn(SessionKind.Local, serverUrl))
+    }
+
+    /**
+     * The whole add-on sign-in: the add-on's own flow (the platform's browser
+     * step included), then persistence. Throws on failure and leaves no
+     * session behind; [SignInAddonException] carries a message meant for the user.
+     */
+    override suspend fun signInWithAddon(serverUrl: String, config: AuthConfig.Addon) {
+        val signedIn = config.addon.signIn(serverUrl, config.fields, browserSignIn)
+        addonSessions.establish(
+            AddonSession(mode = config.addon.mode, serverUrl = serverUrl, token = signedIn.token, extras = signedIn.extras),
+        )
+        // Survives sign-out on purpose: the login form prefills the last server.
+        storage.write(AuthStorageKeys.ServerUrl, serverUrl)
+        _loginNotice.value = null
+        publish(SessionState.SignedIn(SessionKind.Addon, serverUrl))
     }
 
     /**
@@ -161,14 +196,19 @@ class SessionController(
     }
 
     /**
-     * Clears both arms unconditionally — this backs the explicit sign-out
-     * button and the automation reset hatch, and neither may leave the other
-     * arm restorable. The OIDC side goes through its port off-path (revoke is
-     * network best-effort and must not block the state flip).
+     * Clears every arm unconditionally. This backs the explicit sign-out
+     * button and the automation reset hatch, and neither may leave another
+     * arm restorable. The OIDC side goes through its port off-path, and an
+     * add-on session is ended with its add-on off-path too: both are network
+     * best-effort and must not block the state flip.
      */
     fun signOut() {
         localSessions.clear()
         scope.launch { runCatching { oidcPort.signOut(endIdpSession = true) } }
+        addonSessions.clearAndTake()?.let { ended ->
+            val addon = addons.firstOrNull { it.mode == ended.mode }
+            if (addon != null) scope.launch { runCatching { addon.signOut(ended) } }
+        }
         _loginNotice.value = null
         publish(SessionState.SignedOut)
     }
@@ -189,6 +229,7 @@ class SessionController(
             when (signedIn.kind) {
                 SessionKind.Local -> localSessions.clear()
                 SessionKind.Oidc -> oidcPort.signOut(endIdpSession = false)
+                SessionKind.Addon -> addonSessions.clear()
             }
             // OIDC clearing is suspendable. A newer session may have landed
             // while it completed, and its state must win.
@@ -207,6 +248,7 @@ class SessionController(
      */
     suspend fun resetPersistedSessions() {
         localSessions.clear()
+        addonSessions.clear()
         runCatching { oidcPort.signOut(endIdpSession = false) }
         _loginNotice.value = null
         publish(SessionState.SignedOut)

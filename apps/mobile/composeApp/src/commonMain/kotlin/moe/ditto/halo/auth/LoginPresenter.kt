@@ -15,6 +15,13 @@ sealed interface LoginPhase {
     data class OidcRequested(val request: OidcHostRequest) : LoginPhase
     data class OidcSucceeded(val request: OidcHostRequest, val tokenProof: String) : LoginPhase
     data class OidcFailed(val request: OidcHostRequest, val reason: String) : LoginPhase
+
+    /** The server's mode is a sign-in add-on's; waiting for the user to start its sign-in. */
+    data class AddonReady(val serverUrl: String, val config: AuthConfig.Addon) : LoginPhase
+
+    /** The add-on's sign-in is running, its browser step included. */
+    data class AddonSigningIn(val serverUrl: String, val config: AuthConfig.Addon) : LoginPhase
+    data class AddonSignedIn(val serverUrl: String) : LoginPhase
 }
 
 data class LoginState(
@@ -24,7 +31,8 @@ data class LoginState(
     val phase: LoginPhase = LoginPhase.Server,
     val error: String? = null,
 ) {
-    val isBusy: Boolean = phase == LoginPhase.Discovering || phase is LoginPhase.LocalSubmitting
+    val isBusy: Boolean =
+        phase == LoginPhase.Discovering || phase is LoginPhase.LocalSubmitting || phase is LoginPhase.AddonSigningIn
     val showsCredentials: Boolean = phase is LoginPhase.LocalCredentials || phase is LoginPhase.LocalSubmitting
     val canContinue: Boolean = serverUrl.isNotBlank() && !isBusy
     val canSubmitCredentials: Boolean =
@@ -42,6 +50,9 @@ class LoginPresenter(
     private val nativeHostRequests: NativeHostRequests,
     private val localAuthenticator: LocalAuthenticator,
     private val localCredentialsPrefill: LoginCredentialsPrefill? = null,
+    private val addonAuthenticator: AddonAuthenticator = AddonAuthenticator { _, _ ->
+        throw SignInAddonException("This device cannot sign in this way")
+    },
 ) {
     var state: LoginState = LoginState()
         private set
@@ -97,7 +108,59 @@ class LoginPresenter(
                 )
                 startOidc(request)
             }
+            is AuthConfig.Addon -> {
+                // Unlike OIDC the browser does not open by itself: the user
+                // starts it, so the screen can first say which account opens.
+                state = state.copy(phase = LoginPhase.AddonReady(normalizedUrl, config))
+            }
         }
+    }
+
+    /**
+     * Starts the add-on sign-in. Returns the in-flight phase for the caller to
+     * render before awaiting [completeAddon] with it; null when there is
+     * nothing to start.
+     */
+    fun beginAddon(): LoginPhase.AddonSigningIn? {
+        val ready = state.phase as? LoginPhase.AddonReady ?: return null
+        val signingIn = LoginPhase.AddonSigningIn(ready.serverUrl, ready.config)
+        state = state.copy(phase = signingIn, error = null)
+        return signingIn
+    }
+
+    /**
+     * Runs the sign-in [beginAddon] started. A failure returns to
+     * [LoginPhase.AddonReady] with its message; an outcome that lands after
+     * the user cancelled, retried or edited the server URL is dropped by
+     * identity, the same rule as the local form.
+     */
+    suspend fun completeAddon(attempt: LoginPhase.AddonSigningIn) {
+        val failure = try {
+            addonAuthenticator.signInWithAddon(attempt.serverUrl, attempt.config)
+            null
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            error
+        }
+        if (state.phase !== attempt) return
+        state = when {
+            failure == null -> state.copy(phase = LoginPhase.AddonSignedIn(attempt.serverUrl))
+            failure is SignInAddonException -> state.copy(
+                phase = LoginPhase.AddonReady(attempt.serverUrl, attempt.config),
+                error = failure.message,
+            )
+            else -> state.copy(
+                phase = LoginPhase.AddonReady(attempt.serverUrl, attempt.config),
+                error = failure.message ?: "Could not reach the sign-in service",
+            )
+        }
+    }
+
+    /** Abandons an in-flight add-on sign-in, for when the browser was closed without finishing. */
+    fun cancelAddon() {
+        val attempt = state.phase as? LoginPhase.AddonSigningIn ?: return
+        state = state.copy(phase = LoginPhase.AddonReady(attempt.serverUrl, attempt.config), error = null)
     }
 
     /**

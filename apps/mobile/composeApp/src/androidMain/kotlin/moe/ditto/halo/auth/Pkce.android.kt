@@ -1,0 +1,7 @@
+package moe.ditto.halo.auth
+
+import java.security.SecureRandom
+
+private val secureRandom = SecureRandom()
+
+internal actual fun secureRandomBytes(count: Int): ByteArray = ByteArray(count).also(secureRandom::nextBytes)

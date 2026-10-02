@@ -24,6 +24,10 @@ import UIKit
 /// `tokenProof` in the success event is the access token, surfaced for the
 /// debug gate/fixture suites as round-trip evidence; production UI never
 /// renders it.
+///
+/// It also lends the sign-in add-ons their browser sheet (`authorizeInBrowser`).
+/// That is the only add-on step in Swift; PKCE, the state check, the code
+/// exchange and the session all live in Kotlin.
 final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresentationContextProviding {
     let hostId = UUID().uuidString
     private(set) var oidcRequestCount: Int64 = 0
@@ -37,6 +41,9 @@ final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresenta
     // dismisses its own sheet immediately (the classic ASWebAuthenticationSession
     // "nothing happens" bug).
     private var authSession: ASWebAuthenticationSession?
+    // The add-on sign-in sheet, retained for the same reason and kept apart
+    // from the OIDC one so neither flow can release the other's sheet.
+    private var browserSession: ASWebAuthenticationSession?
 
     // Session state is confined to this serial queue: the persisted session,
     // the single-flight refresh latch, and the generation counter that lets a
@@ -75,6 +82,54 @@ final class OidcAuthHost: NSObject, HaloIosAuthHost, ASWebAuthenticationPresenta
 
     func setAuthEventSink(sink: HaloIosAuthEventSink?) {
         eventSink = sink
+    }
+
+    /// Opens an add-on's sign-in in a sheet and reports the callback URL it was
+    /// sent back to as `(callbackUrl, nil)`, or `(nil, reason)`. Not
+    /// ephemeral, unlike the OIDC sheet: Safari's own session with the
+    /// provider carries over, so signing in again after a session expires is
+    /// usually one tap.
+    func authorizeInBrowser(
+        url: String,
+        callbackScheme: String,
+        completion: @escaping (String?, String?) -> Void
+    ) {
+        // ASWebAuthenticationSession must be created and started on main.
+        DispatchQueue.main.async {
+            guard let authorizeURL = URL(string: url) else {
+                completion(nil, "Invalid sign-in URL")
+                return
+            }
+            let session = ASWebAuthenticationSession(
+                url: authorizeURL,
+                callbackURLScheme: callbackScheme
+            ) { [weak self] callbackURL, error in
+                self?.browserSession = nil
+                if let error = error {
+                    if let asError = error as? ASWebAuthenticationSessionError, asError.code == .canceledLogin {
+                        completion(nil, "Sign-in was cancelled")
+                    } else {
+                        completion(nil, "Browser sign-in failed: \(error.localizedDescription)")
+                    }
+                    return
+                }
+                guard let callbackURL = callbackURL else {
+                    completion(nil, "No callback URL was returned")
+                    return
+                }
+                completion(callbackURL.absoluteString, nil)
+            }
+            session.presentationContextProvider = self
+            session.prefersEphemeralWebBrowserSession = false
+            // A newer sign-in replaces an abandoned one; cancelling reports
+            // the old one as cancelled through its own completion.
+            self.browserSession?.cancel()
+            self.browserSession = session
+            if !session.start() {
+                self.browserSession = nil
+                completion(nil, "Could not present the sign-in browser")
+            }
+        }
     }
 
     /// Reads `{serverUrl}/auth/config` off the main thread and returns the raw

@@ -8,6 +8,7 @@ import kotlinx.coroutines.yield
 import moe.ditto.halo.auth.AuthConfig
 import moe.ditto.halo.auth.AuthEvent
 import moe.ditto.halo.auth.OidcHostRequest
+import moe.ditto.halo.auth.SignInAddonException
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerTrack
@@ -52,11 +53,38 @@ class IosHostBridgeTest {
 
             override fun signOutOidc(endIdpSession: Boolean, completion: () -> Unit) = completion()
             override fun setAuthEventSink(sink: HaloIosAuthEventSink?) = Unit
+            override fun authorizeInBrowser(url: String, callbackScheme: String, completion: (String?, String?) -> Unit) =
+                completion(null, "no browser")
         }
         val adapter = IosAuthHostAdapter(host)
 
         val error = assertFailsWith<IllegalStateException> { adapter.fetch("https://halo.example") }
         assertEquals("boom", error.message)
+    }
+
+    @Test
+    fun browserSignInOpensTheSheetForTheCallbackSchemeAndReturnsTheCallback() = runTest {
+        val host = RecordingAuthHost()
+        host.nextCallbackUrl = "halo://oauth/addon?code=c1&state=s1"
+        val browser = IosBrowserSignIn(host)
+
+        val callback = browser.authorize("https://sso.example/authorize?client_id=halo-ios", "halo://oauth/addon")
+
+        assertEquals("halo://oauth/addon?code=c1&state=s1", callback)
+        assertEquals("https://sso.example/authorize?client_id=halo-ios", host.browserUrl)
+        assertEquals("halo", host.browserCallbackScheme)
+        assertEquals("ios", browser.platform)
+    }
+
+    @Test
+    fun browserSignInReportsAClosedSheetAsARefusedSignIn() = runTest {
+        val host = RecordingAuthHost()
+        host.nextBrowserError = "Sign-in was cancelled"
+
+        val error = assertFailsWith<SignInAddonException> {
+            IosBrowserSignIn(host).authorize("https://sso.example/authorize", "halo://oauth/addon")
+        }
+        assertEquals("Sign-in was cancelled", error.message)
     }
 
     @Test
@@ -284,6 +312,12 @@ class IosHostBridgeTest {
             private set
         var lastEndIdpSession: Boolean? = null
             private set
+        var nextCallbackUrl: String? = null
+        var nextBrowserError: String? = null
+        var browserUrl: String? = null
+            private set
+        var browserCallbackScheme: String? = null
+            private set
 
         override fun fetchAuthConfig(serverUrl: String, completion: (String?, String?) -> Unit) =
             completion("""{"mode":"local"}""", null)
@@ -316,6 +350,12 @@ class IosHostBridgeTest {
         }
 
         override fun setAuthEventSink(sink: HaloIosAuthEventSink?) = Unit
+
+        override fun authorizeInBrowser(url: String, callbackScheme: String, completion: (String?, String?) -> Unit) {
+            browserUrl = url
+            browserCallbackScheme = callbackScheme
+            completion(nextCallbackUrl, if (nextCallbackUrl == null) nextBrowserError ?: "no browser" else null)
+        }
     }
 
     private class RecordingPlayerHost : HaloIosPlayerHost {
