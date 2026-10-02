@@ -38,6 +38,16 @@ export interface LocalAuthConfig {
 /** How the server at /auth/config says it authenticates. */
 export type AuthConfig = OidcAuthConfig | LocalAuthConfig
 
+/**
+ * A sign-in mode this library does not know. An app may handle it with a
+ * sign-in add-on; its fields are whatever the server sends for that mode, so
+ * they are untrusted until the add-on has checked them.
+ */
+export interface OtherAuthConfig {
+  mode: string
+  [field: string]: unknown
+}
+
 /** Session token minted by a local-mode server (login and refresh both return this). */
 export interface LocalSessionToken {
   token: string
@@ -132,9 +142,9 @@ export class HaloClient {
     return (await res.json()) as T
   }
 
-  /** Public endpoint: which IdP to authenticate against and as which client. */
-  getAuthConfig(): Promise<AuthConfig> {
-    return this.request<AuthConfig>('GET', '/auth/config')
+  /** Public endpoint: which IdP to authenticate against and as which client, or a mode only an add-on knows. */
+  getAuthConfig(): Promise<AuthConfig | OtherAuthConfig> {
+    return this.request<AuthConfig | OtherAuthConfig>('GET', '/auth/config')
   }
 
   /** The authenticated user incl. admin status; drives admin-only UI. */

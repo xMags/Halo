@@ -26,7 +26,19 @@ export type SignInFailure =
   | { kind: 'refused'; message: string }
   | { kind: 'unreachable'; detail: string }
 
-/** The OIDC library's own refusal, recognised by name. */
+/**
+ * A provider that answered with a refusal (a disabled account, a bad request)
+ * rather than failing to answer. Sign-in add-ons throw this, or a subclass,
+ * so the screen shows the provider's reason.
+ */
+export class SignInRefusedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SignInRefusedError'
+  }
+}
+
+/** The OIDC library's own refusal, recognised by name: it does not extend SignInRefusedError. */
 const REFUSAL_ERRORS = new Set(['TokenEndpointError'])
 
 function messageOf(err: unknown): string {
@@ -53,16 +65,16 @@ export function callbackFailure(params: Record<string, string>): BrowserSignInEr
 }
 
 /**
- * Any failed browser sign-in. A code that reached the token exchange too
- * late (`invalid_grant`) is an expired request, and a provider's own refusal
- * keeps its reason. Everything else reads as "can't connect", with the error
- * kept as the technical detail, as the native app does.
+ * Any failed browser sign-in (OIDC or a sign-in add-on). A code that reached the token
+ * exchange too late (`invalid_grant`) is an expired request, and a provider's
+ * own refusal keeps its reason. Everything else reads as "can't connect",
+ * with the error kept as the technical detail, as the native app does.
  */
 export function classifySignInFailure(err: unknown): SignInFailure {
   if (err instanceof BrowserSignInError) return { kind: err.reason }
   const shape = err as { code?: unknown; name?: unknown } | null
   if (shape?.code === 'invalid_grant') return { kind: 'expired' }
-  if (typeof shape?.name === 'string' && REFUSAL_ERRORS.has(shape.name)) {
+  if (err instanceof SignInRefusedError || (typeof shape?.name === 'string' && REFUSAL_ERRORS.has(shape.name))) {
     return { kind: 'refused', message: messageOf(err) }
   }
   return { kind: 'unreachable', detail: messageOf(err) }

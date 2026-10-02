@@ -13,6 +13,9 @@ build/
 # local-only documentation and notes; never committed
 /docs/
 
+# local-only sign-in add-ons the apps bundle when present; never committed
+/local/
+
 # env & data
 .env
 .env.*

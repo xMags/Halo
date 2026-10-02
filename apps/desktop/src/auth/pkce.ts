@@ -1,5 +1,6 @@
 /**
- * PKCE and callback helpers shared by the browser sign-ins.
+ * PKCE and callback helpers shared by the browser sign-ins (OIDC and the
+ * sign-in add-ons).
  * Pure WebCrypto, no Tauri, so the sign-in logic built on them stays testable
  * under Node.
  */

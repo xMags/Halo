@@ -39,7 +39,14 @@ export { isVtt, srtToVtt } from './subtitles/srtToVtt'
 export { LANGUAGE_OPTIONS, languageLabel, languageMatches } from './subtitles/languages'
 
 export { HaloApiError, HaloClient } from './api/client'
-export type { AuthConfig, HaloClientOptions, LocalAuthConfig, LocalSessionToken, OidcAuthConfig } from './api/client'
+export type {
+  AuthConfig,
+  HaloClientOptions,
+  LocalAuthConfig,
+  LocalSessionToken,
+  OidcAuthConfig,
+  OtherAuthConfig,
+} from './api/client'
 export type {
   AddonEntry,
   AddonError,

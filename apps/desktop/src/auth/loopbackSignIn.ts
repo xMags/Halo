@@ -7,7 +7,8 @@ import { callbackFailure, loopbackWaitFailure } from './signInFailure'
 /**
  * The browser half of an RFC 8252 sign-in: the Rust side listens on a fixed
  * localhost port, the default browser opens the sign-in page, and the
- * redirect lands on the listener. Shared by every browser sign-in.
+ * redirect lands on the listener. Shared by the OIDC sign-in and the sign-in
+ * add-ons.
  */
 
 /** Must match CALLBACK_PORT in src-tauri/src/oauth.rs and the redirect URI each provider registers. */
