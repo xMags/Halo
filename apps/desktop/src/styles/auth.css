@@ -1,4 +1,4 @@
-/* ── Auth (Login / Connect) ────────────────────────────────────────────── */
+/* ── Auth (Login) ────────────────────────────────────────────────────── */
 .auth-screen {
   position: fixed;
   inset: 0;
@@ -47,12 +47,6 @@
   color: var(--t1);
   text-align: center;
 }
-.auth-host {
-  margin-top: 10px;
-  text-align: center;
-  font: 400 12px/1.3 var(--mono);
-  color: var(--ac);
-}
 .auth-sub {
   margin-top: 14px;
   text-align: center;
@@ -81,4 +75,95 @@
   align-self: center;
   font-size: 14px;
   color: var(--ac);
+}
+/* The native LoginBody without its own top margin (inside cards). */
+.auth-body {
+  text-align: center;
+  font-size: 15px;
+  color: var(--t2);
+}
+.auth-center {
+  text-align: center;
+}
+.auth-ring {
+  display: flex;
+  justify-content: center;
+}
+/* Waiting for the browser: HaloCardBrush on HaloCardStrokeBrush, radius 6. */
+.auth-card {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: var(--cd);
+  border: 1px solid var(--cs);
+  border-radius: 6px;
+}
+.auth-status {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.auth-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--ac);
+}
+.auth-account {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+}
+.auth-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+.auth-account-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.auth-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.auth-setup {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--t3);
+}
+.auth-setup button {
+  color: var(--ac);
+}
+.auth-details-toggle {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--t3);
+}
+.auth-details {
+  margin-top: 4px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: var(--cd);
+  border: 1px solid var(--cs);
+  border-radius: 4px;
+}
+.auth-details-error {
+  font: 400 12px/1.4 var(--mono);
+  color: var(--cr);
+  overflow-wrap: anywhere;
 }

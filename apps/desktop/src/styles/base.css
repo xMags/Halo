@@ -164,3 +164,54 @@ a {
   animation: haloSpin 0.7s linear infinite;
   vertical-align: -1px;
 }
+
+/* WinUI's indeterminate ProgressRing (components/ProgressRing.tsx). */
+.progress-ring {
+  display: block;
+  animation: haloSpin 1.4s linear infinite;
+}
+.progress-ring circle {
+  fill: none;
+  stroke: var(--ac);
+  stroke-width: 4;
+  stroke-linecap: round;
+  animation: haloRingArc 1.4s ease-in-out infinite;
+}
+@keyframes haloRingArc {
+  0% {
+    stroke-dasharray: 1 132;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 90 132;
+    stroke-dashoffset: -30;
+  }
+  100% {
+    stroke-dasharray: 90 132;
+    stroke-dashoffset: -131;
+  }
+}
+/* WinUI's indeterminate ProgressBar: Height 3, an accent segment sliding across. */
+.progress-bar {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 1.5px;
+}
+.progress-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  border-radius: 1.5px;
+  background: var(--ac);
+  animation: haloBarSlide 1.6s ease-in-out infinite;
+}
+@keyframes haloBarSlide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}

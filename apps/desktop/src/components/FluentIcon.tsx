@@ -41,6 +41,7 @@ const GLYPHS = {
   unfavorite: '',
   undo: '',
   checkList: '',
+  openInNewWindow: '',
 } as const
 
 export type FluentGlyph = keyof typeof GLYPHS

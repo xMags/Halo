@@ -4,7 +4,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import mark from '../assets/halo-mark.png'
 import avatar from '../assets/user-avatar.png'
 import { RELEASES_URL, useBuildInfo } from './about'
-import { getServerUrl } from '../api'
 import { ComboBox } from '../components/ComboBox'
 import { FluentIcon } from '../components/FluentIcon'
 import { Segmented } from '../components/Segmented'
@@ -787,9 +786,6 @@ function AccountSection() {
     statusTone === 'connected' ? 'var(--su)' : statusTone === 'checking' ? 'var(--t3)' : 'var(--cr)'
 
   const rows: Array<{ label: string; value: string; color?: string }> = [
-    // The full URL, not just the host: http vs https is the difference
-    // between a working self-hosted server and a confusing failure.
-    { label: 'Server', value: getServerUrl() ?? status.host },
     { label: 'Signed in as', value: me?.username ?? '…' },
     { label: 'Status', value: statusLine, color: statusColor },
     { label: 'Version', value: `v${build?.app ?? '…'} · mpv ${build?.mpv ?? '…'}` },

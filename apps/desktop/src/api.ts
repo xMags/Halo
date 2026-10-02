@@ -1,5 +1,6 @@
 import { DEFAULT_ADDON_URLS, HaloClient } from '@halo/core'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
+import { parseServerUrl } from './serverUrl'
 import { clearLocalSession, getLocalAccessToken, loadLocalSession, refreshLocalToken } from './auth/localAuth'
 import { clearOidcSession, getOidcAccessToken, loadOidcSession, refreshOidcToken } from './auth/oidc'
 
@@ -9,10 +10,12 @@ import { clearOidcSession, getOidcAccessToken, loadOidcSession, refreshOidcToken
  * self-hosted server without a CORS allowlist deploy, and it matches how
  * subtitle hashing must fetch stream bytes anyway.
  */
-const SERVER_KEY = 'halo.serverUrl'
 
-/** Production server prefilled for first-run setup, matching the native mobile app. */
-export const DEFAULT_SERVER_URL = 'https://halo.ditto.moe'
+/** The server this build signs in to, fixed at build time (see serverUrl.ts). */
+const SERVER_URL = parseServerUrl(import.meta.env.VITE_HALO_SERVER_URL)
+
+/** Which server the persisted session was issued for. */
+const SESSION_SERVER_KEY = 'halo.serverUrl'
 
 /** Which auth flavor the active session uses; drives token providers and sign-out. */
 export type SessionKind = 'oidc' | 'local'
@@ -30,18 +33,20 @@ if (import.meta.env.DEV) {
   })
 }
 
-export function getServerUrl(): string | null {
-  return localStorage.getItem(SERVER_KEY)
+export function getServerUrl(): string {
+  return SERVER_URL
 }
 
-export function setServerUrl(url: string): void {
-  localStorage.setItem(SERVER_KEY, url.replace(/\/$/, ''))
-}
-
-export function clearServerUrl(): void {
-  localStorage.removeItem(SERVER_KEY)
-  client = null
-  sessionKind = null
+/**
+ * A session persisted by a build for another server (the same machine ran a
+ * build for a different one) must never reach this server. It is wiped
+ * locally only: signing out of the other server is not this build's call.
+ */
+function forgetSessionsFromAnotherServer(): void {
+  if (localStorage.getItem(SESSION_SERVER_KEY) === SERVER_URL) return
+  clearOidcSession()
+  clearLocalSession()
+  localStorage.setItem(SESSION_SERVER_KEY, SERVER_URL)
 }
 
 /** The app-level sign-out reaction; session.tsx installs it. */
@@ -59,7 +64,7 @@ const providers = {
  * Returns the kind, or null when a fresh login is needed.
  */
 export function restoreSession(): SessionKind | null {
-  if (!getServerUrl()) return null
+  forgetSessionsFromAnotherServer()
   if (loadOidcSession()) return activateSession('oidc')
   if (loadLocalSession()) return activateSession('local')
   return null
@@ -70,7 +75,7 @@ export function activateSession(kind: SessionKind): SessionKind {
   const tokens = providers[kind]
   sessionKind = kind
   client = new HaloClient({
-    baseUrl: getServerUrl()!,
+    baseUrl: SERVER_URL,
     fetch: nativeFetch,
     getAccessToken: tokens.get,
     refreshAccessToken: tokens.refresh,
