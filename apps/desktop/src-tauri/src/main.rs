@@ -9,6 +9,7 @@
 mod audio_session;
 mod discord;
 mod downloads;
+mod injection_guard;
 mod mpv;
 mod oauth;
 mod scrub_preview;
@@ -402,6 +403,8 @@ async fn scrub_preview_request(
 }
 
 fn main() {
+    // Before any window exists, or an overlay's hook DLL is already in.
+    injection_guard::refuse_extension_points();
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
