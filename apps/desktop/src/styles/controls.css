@@ -334,11 +334,6 @@
   font-size: 16px;
   padding: 0 11px;
 }
-.field-mono {
-  font-family: var(--mono);
-  font-size: 13px;
-}
-
 .select {
   height: 32px;
   padding: 0 9px;

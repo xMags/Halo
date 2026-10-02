@@ -7,7 +7,6 @@ import { TitleBar } from './components/TitleBar'
 import { NavProvider, useNav } from './nav'
 import { SessionProvider, useSession } from './auth/session'
 import { Catalog } from './browse/Catalog'
-import { Connect } from './auth/Connect'
 import { Detail } from './browse/Detail'
 import { Downloads } from './downloads/Downloads'
 import { Home } from './home/Home'
@@ -34,7 +33,6 @@ const queryClient = new QueryClient({
 
 function Routes() {
   const { state } = useSession()
-  if (state === 'unconfigured') return <Connect />
   if (state === 'unauthenticated') return <Login />
   return (
     <NavProvider>
@@ -54,9 +52,7 @@ function DownloadsAccountBinding() {
   }, [])
   useEffect(() => {
     if (!me) return
-    const server = getServerUrl()
-    if (!server) return
-    void opaqueDownloadOwner(server, me.id).then((owner) => {
+    void opaqueDownloadOwner(getServerUrl(), me.id).then((owner) => {
       if (getSessionKind() === 'oidc') setOidcDownloadOwner(owner)
       else setLocalDownloadOwner(owner)
       return setDownloadsAccount(owner)

@@ -136,8 +136,11 @@ async function fetchDiscovery(issuer: string): Promise<DiscoveryDocument> {
   return (await res.json()) as DiscoveryDocument
 }
 
-/** Browser-based PKCE sign-in against the IdP the Halo server names. */
-export async function signInWithOidc(config: OidcAuthConfig): Promise<void> {
+/**
+ * Browser-based PKCE sign-in against the IdP the Halo server names.
+ * `onOpened` hears the authorize URL once the browser has it.
+ */
+export async function signInWithOidc(config: OidcAuthConfig, onOpened?: (authUrl: string) => void): Promise<void> {
   const discovery = await fetchDiscovery(config.issuer)
   if (!discovery.authorization_endpoint || !discovery.token_endpoint) {
     throw new Error('IdP discovery document is missing OAuth endpoints')
@@ -161,7 +164,7 @@ export async function signInWithOidc(config: OidcAuthConfig): Promise<void> {
     ;(window as Window & { __haloOidcDebug?: unknown }).__haloOidcDebug = { state, authUrl }
   }
 
-  const params = await signInInBrowser(authUrl)
+  const params = await signInInBrowser(authUrl, onOpened)
 
   if (params.error) throw new Error(params.error_description || `Sign-in failed: ${params.error}`)
   if (!params.code) throw new Error('Sign-in failed: no authorization code returned')

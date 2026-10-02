@@ -28,6 +28,14 @@ which is what makes the picker→player path exercisable). Addons are injected
 through `createApp`'s `safeFetch` because the SSRF guard rejects loopback with
 no override — so a fake addon cannot simply be hosted on the dev machine.
 
+The desktop app has no server screen: like the native app's
+`ServerConfig.local.h`, its server is built in from `VITE_HALO_SERVER_URL`
+(git-ignored `apps/desktop/.env.local`, from `.env.example`), and Vite refuses
+to start without a valid one. Point a run at the fixture server by setting
+that variable in the environment, which beats the file. A session saved for a
+different server is wiped locally at startup, so back up the WebView2 profile's
+`Local Storage` before a fixture run and restore it after.
+
 ## Architecture invariants
 
 - **Desktop is a thin client over mpv, Stremio-style.** All resolution via

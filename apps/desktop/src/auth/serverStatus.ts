@@ -21,17 +21,13 @@ export interface ServerStatus {
   state: ReachState
   /** Round-trip milliseconds of the last successful probe. */
   latencyMs: number | null
-  /** Host without scheme — what the rail and the sign-in screen display. */
-  host: string
 }
 
 export function useServerStatus(): ServerStatus {
   const serverUrl = getServerUrl()
-  const host = serverUrl?.replace(/^https?:\/\//, '') ?? ''
 
   const { data, isPending } = useQuery({
     queryKey: ['serverStatus', serverUrl],
-    enabled: !!serverUrl,
     refetchInterval: PROBE_INTERVAL_MS,
     refetchOnWindowFocus: true,
     retry: false,
@@ -47,10 +43,9 @@ export function useServerStatus(): ServerStatus {
     },
   })
 
-  if (!serverUrl) return { state: 'unreachable', latencyMs: null, host }
-  if (isPending) return { state: 'probing', latencyMs: null, host }
-  if (data === undefined) return { state: 'unreachable', latencyMs: null, host }
-  return { state: 'connected', latencyMs: data, host }
+  if (isPending) return { state: 'probing', latencyMs: null }
+  if (data === undefined) return { state: 'unreachable', latencyMs: null }
+  return { state: 'connected', latencyMs: data }
 }
 
 /** Settings' status line, in the native app's words: `CONNECTED · 12 MS`, or why not. */
