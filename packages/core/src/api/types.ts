@@ -50,6 +50,8 @@ export interface Me {
   username: string
   isAdmin: boolean
   createdAt: number
+  /** The account's tier, e.g. `premium`, from a server that has tiers; absent otherwise. */
+  plan?: string
 }
 
 export interface LibraryItem {

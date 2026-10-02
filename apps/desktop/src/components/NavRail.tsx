@@ -1,4 +1,5 @@
 import avatar from '../assets/user-avatar.png'
+import { accountLabel } from '../auth/accountLabel'
 import { useTitleMenu } from '../browse/titleMenu'
 import { useDownloads } from '../downloads/downloadsStore'
 import { useContinueShelf } from '../home/continueShelf'
@@ -57,7 +58,7 @@ export function NavRail({ open, onToggle }: NavRailProps) {
   // The first entries of Home's continue shelf, as the native pane reads them.
   const { cards } = useContinueShelf({ enabled: open })
   const jump = open ? cards.slice(0, JUMP_LIMIT) : []
-  const role = me?.isAdmin ? 'ADMIN · HALO ACCOUNT' : 'HALO ACCOUNT'
+  const role = accountLabel(me)
 
   return (
     <nav className={`nav ${open ? '' : 'nav-compact'}`}>
