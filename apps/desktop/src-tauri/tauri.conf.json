@@ -26,5 +26,22 @@
       }
     ]
   },
-  "bundle": { "active": false }
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "lastprojects",
+    "icon": ["icons/icon.ico"],
+    "licenseFile": "../../../LICENSE",
+    "resources": {
+      "../vendor/mpv/libmpv-2.dll": "libmpv-2.dll",
+      "../fonts/": "fonts/"
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "nsis": {
+        "installMode": "perMachine",
+        "installerIcon": "icons/icon.ico"
+      }
+    }
+  }
 }
