@@ -4,7 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import mark from '../assets/halo-mark.png'
 import avatar from '../assets/user-avatar.png'
-import { activateSession, addonSessionKind, getClient, getServerUrl, seedDefaultAddons, type SessionKind } from '../api'
+import { activateSession, addonSessionKind, getAccountClient, getServerUrl, seedDefaultAddons, type SessionKind } from '../api'
 import { FluentIcon } from '../components/FluentIcon'
 import { ProgressBar, ProgressRing } from '../components/ProgressRing'
 import { TitleBar } from '../components/TitleBar'
@@ -39,6 +39,7 @@ type Step =
   | { kind: 'signedIn'; name: string; label: string }
   | { kind: 'declined'; method: BrowserMethod }
   | { kind: 'expired'; method: BrowserMethod }
+  | { kind: 'preparing' }
 
 function isOidcConfig(config: AuthConfig | OtherAuthConfig): config is OidcAuthConfig {
   return config.mode === 'oidc'
@@ -61,15 +62,33 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
+ * Steps that leave Halo usable without an account. The others are mid sign-in
+ * (credentials sent, or tokens already being saved), where leaving would
+ * abandon a session halfway.
+ */
+const NO_ACCOUNT_STEPS: ReadonlySet<Step['kind']> = new Set([
+  'discovering',
+  'unreachable',
+  'unsupported',
+  'local',
+  'browser',
+  'declined',
+  'expired',
+])
+
+/**
  * The sign-in screen, matching the native app's LoginPage: the server is
  * built in, so it opens by asking that server how it signs people in, then
- * offers exactly that one way. Every async step is tagged with an attempt
- * number so a cancelled or superseded attempt can never overwrite a newer one.
+ * offers exactly that one way, beside using Halo without an account (which
+ * also covers a server that cannot be reached). Every async step is tagged
+ * with an attempt number so a cancelled or superseded attempt can never
+ * overwrite a newer one.
  */
 export function Login() {
-  const { signedIn } = useSession()
+  const { state, signedIn, continueWithoutAccount, cancelSignIn } = useSession()
   const serverUrl = getServerUrl()
   const [step, setStep] = useState<Step>({ kind: 'discovering' })
+  const [deviceError, setDeviceError] = useState<string | null>(null)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -98,9 +117,7 @@ export function Login() {
   /** Binds the new session, shows "You're all set" while the account gets ready, then opens the app. */
   async function finish(kind: SessionKind, id: number) {
     activateSession(kind)
-    const me = await getClient()
-      .getMe()
-      .catch(() => null)
+    const me = await (getAccountClient()?.getMe() ?? Promise.resolve(null)).catch(() => null)
     if (id !== attempt.current) return
     setStep({ kind: 'signedIn', name: me?.username ?? '', label: accountLabel(me ?? undefined) })
     // A first sign-in seeds the default addons; Home must not draw before they exist.
@@ -162,6 +179,21 @@ export function Login() {
     attempt.current++
     cancelBrowserSignIn()
     setStep({ kind: 'browser', method, error: null })
+  }
+
+  /** Opens Halo on this PC; on success the session leaves this screen. */
+  async function continueOnDevice() {
+    const id = ++attempt.current
+    const previous = step
+    setDeviceError(null)
+    setStep({ kind: 'preparing' })
+    try {
+      await continueWithoutAccount()
+    } catch (err) {
+      if (id !== attempt.current) return
+      setDeviceError(`Halo could not set up on this PC: ${err instanceof Error ? err.message : String(err)}`)
+      setStep(previous)
+    }
   }
 
   return (
@@ -365,6 +397,16 @@ export function Login() {
             </>
           )}
 
+          {step.kind === 'preparing' && (
+            <>
+              <div className="auth-title">Setting up Halo</div>
+              <div className="auth-ring" style={{ marginTop: 22 }}>
+                <ProgressRing size={22} />
+              </div>
+              <div className="auth-sub">Getting Halo ready on this PC.</div>
+            </>
+          )}
+
           {step.kind === 'unreachable' && (
             <>
               <div className="auth-title">Can’t connect to Halo</div>
@@ -401,6 +443,29 @@ export function Login() {
               )}
             </>
           )}
+
+          {NO_ACCOUNT_STEPS.has(step.kind) &&
+            (state === 'device' ? (
+              <div className="auth-alt">
+                <button type="button" className="btn h36 btn-block" onClick={cancelSignIn}>
+                  Back to Halo
+                </button>
+                <div className="auth-alt-note">Keep using Halo on this PC without an account.</div>
+              </div>
+            ) : (
+              <div className="auth-alt">
+                <button type="button" className="btn h36 btn-block" onClick={() => void continueOnDevice()}>
+                  Continue without an account
+                </button>
+                {deviceError ? (
+                  <div className="auth-error">{deviceError}</div>
+                ) : (
+                  <div className="auth-alt-note">
+                    Your library, history and addons stay on this PC. Sign in any time to sync them.
+                  </div>
+                )}
+              </div>
+            ))}
         </div>
       </div>
     </div>

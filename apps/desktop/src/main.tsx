@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { loadStartupDeviceProfile } from './auth/session'
 import { applyStoredTheme } from './localPrefs'
 import './styles/index.css'
 
@@ -8,7 +9,8 @@ applyStoredTheme()
 
 // No StrictMode on purpose: its dev-mode double-mount would fire duplicated
 // mpv side effects (loadfile, observers, watch-state reports) in the player.
-createRoot(document.getElementById('root')!).render(<App />)
+// The device profile decides the first screen, so it is read first.
+void loadStartupDeviceProfile().then(() => createRoot(document.getElementById('root')!).render(<App />))
 
 // Dev-only: expose the mpv channel for scripts/cdp.mjs driving.
 if (import.meta.env.DEV) {

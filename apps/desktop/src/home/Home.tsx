@@ -20,6 +20,7 @@ import {
   type HomeFilter,
 } from './homeRows'
 import { useNav } from '../nav'
+import { useSession } from '../auth/session'
 import {
   browsableCatalogs,
   catalogQuery,
@@ -59,6 +60,7 @@ function typeLabel(type: string): string {
 }
 
 export function Home() {
+  const { state } = useSession()
   const [filter, setFilter] = useState<HomeFilter>('all')
   const { setRoot, push } = useNav()
   const query = useSearchQuery()
@@ -73,7 +75,8 @@ export function Home() {
   // narrows the posters it shows.
   const libraryAll = buildLibraryRow(library, null)
   const libraryShown = libraryAll.filter((meta) => matchesHomeFilter(filter, meta.type))
-  const librarySource = `SYNCED · ${libraryAll.length}`
+  // Without an account the library is kept on this PC, not synced anywhere.
+  const librarySource = `${state === 'device' ? 'ON THIS PC' : 'SYNCED'} · ${libraryAll.length}`
   const continueSource = `${continueCards.length} IN PROGRESS`
 
   return (

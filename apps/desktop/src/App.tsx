@@ -17,7 +17,8 @@ import { Search } from './search/Search'
 import { Settings } from './settings/Settings'
 import { SourcesSheet } from './sources/SourcesSheet'
 import { useWindowFullscreen } from './window'
-import { getServerUrl, getSessionDownloadOwner, setSessionDownloadOwner } from './api'
+import { getDeviceProfile, getServerUrl, getSessionDownloadOwner, setSessionDownloadOwner } from './api'
+import { deviceDownloadOwner } from './device/deviceStore'
 import { setDownloadsAccount, clearDownloadsAccount, opaqueDownloadOwner } from './downloads/downloadsStore'
 import { useLocalPrefs } from './localPrefs'
 import { presenceSetEnabled } from './player/presence'
@@ -30,8 +31,8 @@ const queryClient = new QueryClient({
 })
 
 function Routes() {
-  const { state } = useSession()
-  if (state === 'unauthenticated') return <Login />
+  const { state, signingIn } = useSession()
+  if (state === 'chooser' || signingIn) return <Login />
   return (
     <NavProvider>
       <DownloadsAccountBinding />
@@ -42,12 +43,17 @@ function Routes() {
 }
 
 function DownloadsAccountBinding() {
+  const { state } = useSession()
   const { data: me } = useMe()
   useEffect(() => {
-    const owner = getSessionDownloadOwner()
+    // Without an account, downloads belong to this PC's profile. Signed in, a
+    // previous launch's derived owner binds before `me` arrives.
+    const profile = state === 'device' ? getDeviceProfile() : null
+    if (profile) void deviceDownloadOwner(profile).then(setDownloadsAccount).catch(() => undefined)
+    const owner = state === 'device' ? null : getSessionDownloadOwner()
     if (owner) void setDownloadsAccount(owner).catch(() => undefined)
     return () => { void clearDownloadsAccount().catch(() => undefined) }
-  }, [])
+  }, [state])
   useEffect(() => {
     if (!me) return
     void opaqueDownloadOwner(getServerUrl(), me.id).then((owner) => {
