@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { LibraryItem, WatchState } from '@halo/core'
 import {
   buildContinueShelf,
+  isHomeCatalogType,
   itemMetaId,
   itemType,
   selectFeatured,
@@ -162,4 +163,13 @@ test('featured honours the filter, treating anything but a series as a film', ()
   ]
   assert.deepEqual(selectFeatured('movie', candidates, 5), [1, 2])
   assert.deepEqual(selectFeatured('series', candidates, 5), [0])
+})
+
+test('Home shows only film and series catalogs', () => {
+  assert.equal(isHomeCatalogType('movie'), true)
+  assert.equal(isHomeCatalogType('series'), true)
+  // TorBox publishes the account's torrent list as `other`.
+  assert.equal(isHomeCatalogType('other'), false)
+  assert.equal(isHomeCatalogType('channel'), false)
+  assert.equal(isHomeCatalogType('tv'), false)
 })

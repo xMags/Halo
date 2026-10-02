@@ -13,6 +13,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { getClient } from './api'
+import { isHomeCatalogType } from './home/homeRows'
 
 /**
  * Data layer, ported from the former Expo client's queries.ts (same query keys and
@@ -107,14 +108,16 @@ export interface BrowsableCatalog {
 
 /**
  * Catalogs the Home screen can fetch bare: no required extras (genre pickers,
- * search) — those need input the row UI doesn't collect. Hidden catalogs never
- * appear here; the server strips them from the wire manifest.
+ * search), since those need input the row UI doesn't collect, and only films
+ * and series (`isHomeCatalogType`). Hidden catalogs never appear here; the server
+ * strips them from the wire manifest.
  */
 export function browsableCatalogs(addons: AddonEntry[]): BrowsableCatalog[] {
   return addons.flatMap((addon) =>
     addon.manifest.catalogs
       .filter(
         (c) =>
+          isHomeCatalogType(c.type) &&
           !(c.extra ?? []).some((e) => e.isRequired) &&
           (c.extraRequired ?? []).length === 0,
       )

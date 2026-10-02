@@ -166,6 +166,16 @@ export function buildLibraryRow(
     }))
 }
 
+/**
+ * Whether a catalog of this type belongs on Home. Only films and series do:
+ * addons also publish account listings under other types (TorBox's torrent
+ * list is `other`), whose entries are raw release names and hashes with no
+ * artwork, not titles to browse.
+ */
+export function isHomeCatalogType(type: string): boolean {
+  return type === 'movie' || type === 'series'
+}
+
 /** Home's kind filter. Anything that is not a series counts as a movie, as natively. */
 export type HomeFilter = 'all' | 'movie' | 'series'
 
