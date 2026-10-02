@@ -305,6 +305,19 @@ export async function setDownloadsAccount(accountKey: string): Promise<DownloadV
   return downloads
 }
 
+/**
+ * Moves the downloads of one owner to another, for a sign-in from Halo
+ * without an account. The engine answers with its active owner's list, which
+ * is shown only when that owner is the one bound here.
+ */
+export async function adoptDownloads(fromAccountKey: string, toAccountKey: string): Promise<void> {
+  ensureStarted()
+  const downloads = await invoke<DownloadView[]>('downloads_adopt_account', { fromAccountKey, toAccountKey })
+  if (boundAccount !== toAccountKey) return
+  setRecords(downloads)
+  publish({ loading: false })
+}
+
 export async function clearDownloadsAccount(): Promise<void> {
   await invoke('downloads_clear_account')
   resetForAccount(null)

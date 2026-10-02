@@ -33,12 +33,18 @@ import { FIXTURE_ADDONS, FIXTURE_TITLES, fixtureAddonFetch } from './fixtureAddo
  * addon. It is served beside the API rather than through it: a player follows
  * the URL with no Authorization header, so the route must not be behind auth,
  * and keeping it outside `createApp` means it cannot alter the API under test.
+ *
+ * The canned addons are also served over plain HTTP at
+ * `/dev/addons/{catalogs,streams,subs,cloud}/manifest.json`, for a client that
+ * asks addons directly, as Halo does without an account. The API never
+ * fetches these: its SSRF guard refuses this machine.
  */
 
 const DEFAULT_PORT = 18790
 const ADMIN_PASSWORD = 'fixture-pass'
 const MEDIA_PATH = '/dev/media'
 const SUBTITLE_PATH = '/dev/subtitle'
+const ADDONS_PATH = '/dev/addons'
 
 /**
  * A canned subtitle track, generated rather than stored: it exists so the
@@ -121,6 +127,9 @@ function main(): void {
         headers: { 'content-type': 'application/x-subrip; charset=utf-8' },
       })
     }
+    if (url.pathname.startsWith(`${ADDONS_PATH}/`)) {
+      return requestOrigin.run(url.origin, () => hostedAddonResponse(url, localFixtureFetch))
+    }
     return requestOrigin.run(url.origin, () => app.fetch(request))
   }
 
@@ -135,8 +144,32 @@ function main(): void {
         ? `${mediaFile} at ${MEDIA_PATH}`
         : 'none (stream URLs are unreachable)'
     console.log(`  media       ${mediaDescription}`)
+    console.log(`  addons/http http://127.0.0.1:${info.port}${ADDONS_PATH}/{${FIXTURE_ADDONS.map(hostedAddonName).join(',')}}/manifest.json`)
     console.log(`  android     adb reverse tcp:${info.port} tcp:${info.port}`)
   })
+}
+
+/** A canned addon's name in its hosted URL: the first label of its fixture host. */
+function hostedAddonName(addon: { base: string }): string {
+  return new URL(addon.base).hostname.split('.')[0]!
+}
+
+/**
+ * Answers `/dev/addons/{name}/...` as the canned addon `name` answers its own
+ * URLs, so media and subtitle URLs in the answers name the host the client
+ * reached.
+ */
+function hostedAddonResponse(url: URL, addonFetch: typeof fetch): Response | Promise<Response> {
+  const rest = url.pathname.slice(ADDONS_PATH.length + 1)
+  const slash = rest.indexOf('/')
+  const addon = slash < 0 ? undefined : FIXTURE_ADDONS.find((entry) => hostedAddonName(entry) === rest.slice(0, slash))
+  if (!addon) {
+    return new Response(JSON.stringify({ error: 'no such addon' }), {
+      status: 404,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+  return addonFetch(`${addon.base}${rest.slice(slash)}${url.search}`)
 }
 
 interface Options {

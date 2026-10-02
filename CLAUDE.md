@@ -13,7 +13,7 @@ no build orchestration on purpose.
 
 | Path | What | Verify with |
 | --- | --- | --- |
-| `packages/core` | Addon protocol client, subtitle utils (OpenSubtitles hash, srt→vtt, languages), typed API client | `pnpm --filter @halo/core typecheck` |
+| `packages/core` | Addon protocol client, addon resolvers shared by the API and the on-device backend, subtitle utils (OpenSubtitles hash, srt→vtt, languages), typed API client and `DeviceBackend` | `pnpm --filter @halo/core typecheck` + `pnpm --filter @halo/core test` |
 | `apps/api` | Hono + Drizzle/better-sqlite3 sync backend | `pnpm --filter @halo/api test` (vitest), then curl |
 | `apps/mobile` | Compose Multiplatform client (iOS-first, Android kept compiling) over libmpv. Standalone Gradle project outside the pnpm workspace; its `README.md` is the guide | `.\gradlew.bat :composeApp:compileCommonMainKotlinMetadata` and `:composeApp:compileTestKotlinIosSimulatorArm64` (Apple framework and XCUITests need macOS) |
 | `apps/desktop` | Tauri v2 client (Windows-first), React UI over mpv, device-local downloads. `src/` is grouped by feature (auth, home, search, browse, sources, player, downloads, settings); styles are `src/styles/` partials | typecheck + `pnpm --filter @halo/desktop test` + `cargo build` in `src-tauri` (needs `vendor/mpv/libmpv-2.dll`, see `vendor/README.md`) |
@@ -26,7 +26,10 @@ in-memory DB and canned addons, seeded with addons, a library and watch history
 one video with byte ranges beside the API and points every canned stream at it,
 which is what makes the picker→player path exercisable). Addons are injected
 through `createApp`'s `safeFetch` because the SSRF guard rejects loopback with
-no override — so a fake addon cannot simply be hosted on the dev machine.
+no override — so a fake addon cannot simply be hosted on the dev machine. The
+same canned addons are also served over plain HTTP at
+`/dev/addons/{catalogs,streams,subs,cloud}/manifest.json`, for Halo without an
+account, which asks addons directly and has no such guard.
 
 The desktop app has no server screen: like the native app's
 `ServerConfig.local.h`, its server is built in from `VITE_HALO_SERVER_URL`
@@ -38,13 +41,19 @@ different server is wiped locally at startup, so back up the WebView2 profile's
 
 ## Architecture invariants
 
-- **Desktop is a thin client over mpv, Stremio-style.** All resolution via
-  the fat-server endpoints
-  (`HaloClient` + tauri-plugin-http native fetch — no CORS allowlisting);
-  playback via a generic mpv channel (`mpv_cmd`/`mpv_set`/`mpv_get`/
-  `mpv_observe` + `mpv-prop`/`mpv-event` events), never a typed player API
-  across the JS↔Rust boundary. Downloads are the one thing it does locally
-  (see the downloads invariant below). Two Windows compositing invariants (each broke
+- **Desktop is a thin client over mpv, Stremio-style.** Screens talk to one
+  `HaloBackend` (`getClient()` in `src/api.ts`). Signed in, that is
+  `HaloClient`, and all resolution goes through the fat-server endpoints
+  (tauri-plugin-http native fetch, so no CORS allowlisting). Without an
+  account it is `@halo/core`'s `DeviceBackend`: the resolvers the API itself
+  runs (`packages/core/src/addon/resolve.ts`, shared so the two cannot drift),
+  asking the addons directly, with the addon list, library, history and
+  settings kept on the PC (`src-tauri/src/device_store.rs`, the addon list
+  DPAPI-protected). Signing in moves that data into the account
+  (`src/device/`). Playback via a generic mpv channel (`mpv_cmd`/`mpv_set`/
+  `mpv_get`/`mpv_observe` + `mpv-prop`/`mpv-event` events), never a typed
+  player API across the JS↔Rust boundary. Downloads are always local (see the
+  downloads invariant below). Two Windows compositing invariants (each broke
   video invisibly when violated): mpv's `wid` must be the top-level window
   HWND, not an intermediate child; and the `transparent: true` window config
   requires the `DwmEnableBlurBehindWindow(fEnable: FALSE)` counter-call in
@@ -129,8 +138,10 @@ different server is wiped locally at startup, so back up the WebView2 profile's
     renders `download-changed` events. The index never holds a source URL or
     header: those live DPAPI-encrypted in a per-job request vault. Interrupted
     transfers re-queue on launch and resume by `Range` + `If-Range` only when
-    the source gave a validator. Behaviour and UI mirror the native WinUI Halo
-    Desktop's download engine and Downloads page.
+    the source gave a validator. Records are partitioned by an opaque owner
+    per account; Halo without an account has its own, which the account
+    adopts on sign-in (`adopt_account`). Behaviour and UI mirror the native
+    WinUI Halo Desktop's download engine and Downloads page.
 
 ## Workspace gotchas
 
