@@ -3,20 +3,20 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { z } from 'zod'
 import {
-  addonSupportsResource,
-  getCatalog,
-  getMeta,
-  getStreams,
-  getSubtitles,
-  nextVideo,
-  transportBase,
+  catalogExtraProblem,
+  fetchCatalog,
+  fetchManifests,
+  MAX_BINGE_GROUP_LENGTH,
+  resolveMeta,
+  resolveNextEpisode,
+  resolveStreams,
+  resolveSubtitles,
+  RESOLVE_TIMEOUT_MS,
+  subtitleQueryProblem,
   type AddonEntry,
-  type AddonError,
   type LibraryItem,
   type Manifest,
-  type MetaResponse,
-  type Stream,
-  type Subtitle,
+  type ResolveContext,
   type WatchState,
 } from '@halo/core'
 import { randomUUID } from 'node:crypto'
@@ -34,14 +34,7 @@ import {
 } from './auth'
 import type { Db } from './db'
 import { globalAddons, libraryItems, userAddons, users, userSettings, watchStates } from './schema'
-import {
-  addonError,
-  logAddonFailure,
-  normalizeStreamsResponse,
-  normalizeSubtitlesResponse,
-  safeAddonName,
-  type AddonFailureLogger,
-} from './addonResolution'
+import { logAddonFailure, type AddonFailureLogger } from './addonResolution'
 import { ProxyTargetError } from './proxyGuard'
 import { safeFetch } from './safeFetch'
 
@@ -75,19 +68,6 @@ const createUserSchema = z.object({
   password: z.string().min(8),
   isAdmin: z.boolean().optional(),
 })
-
-// Loose on purpose: manifests come from third-party addons and only these
-// fields are load-bearing for Halo; everything else passes through untouched.
-const manifestSchema = z
-  .object({
-    id: z.string().min(1),
-    version: z.string(),
-    name: z.string().min(1),
-    resources: z.array(z.union([z.string(), z.object({ name: z.string() }).passthrough()])),
-    types: z.array(z.string()),
-    catalogs: z.array(z.object({ type: z.string(), id: z.string() }).passthrough()),
-  })
-  .passthrough()
 
 // Client sends only transport URLs (array order = priority; the server derives
 // positions from it). Manifests are always fetched and stored server-side, so a
@@ -155,6 +135,11 @@ export function createApp(config: AppConfig) {
   const { db } = config
   const doSafeFetch = config.safeFetch ?? safeFetch
   const writeAddonFailure: AddonFailureLogger = config.addonFailureLogger ?? ((event) => console.warn('[addon-resolution]', event))
+  const resolveContext: ResolveContext = {
+    fetch: doSafeFetch,
+    timeoutMs: RESOLVE_TIMEOUT_MS,
+    onFailure: (route, error, durationMs) => logAddonFailure(writeAddonFailure, route, error, durationMs),
+  }
   const app = new Hono()
 
   app.use(
@@ -314,7 +299,7 @@ export function createApp(config: AppConfig) {
     const existing = new Set(
       db.select({ transportUrl: userAddons.transportUrl }).from(userAddons).where(eq(userAddons.userId, user.id)).all().map((r) => r.transportUrl),
     )
-    const resolved = await resolveManifests(urls.filter((u) => !existing.has(u)), doSafeFetch)
+    const resolved = await fetchManifests(urls.filter((u) => !existing.has(u)), { fetch: doSafeFetch })
     if ('error' in resolved) return c.json({ error: resolved.error }, 400)
     const fetched = new Map(resolved.entries.map((e) => [e.transportUrl, e.manifest]))
     const now = Date.now()
@@ -376,7 +361,7 @@ export function createApp(config: AppConfig) {
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
     const urls = body.data
     const existing = new Set(db.select({ transportUrl: globalAddons.transportUrl }).from(globalAddons).all().map((r) => r.transportUrl))
-    const resolved = await resolveManifests(urls.filter((u) => !existing.has(u)), doSafeFetch)
+    const resolved = await fetchManifests(urls.filter((u) => !existing.has(u)), { fetch: doSafeFetch })
     if ('error' in resolved) return c.json({ error: resolved.error }, 400)
     const fetched = new Map(resolved.entries.map((e) => [e.transportUrl, e.manifest]))
     const now = Date.now()
@@ -533,11 +518,8 @@ export function createApp(config: AppConfig) {
       if (key === 'addon' || key === 'type' || key === 'id') continue
       extra[key] = value
     }
-    const extraKeys = Object.keys(extra)
-    if (extraKeys.length > 8) return c.json({ error: 'too many extra params' }, 400)
-    if (extraKeys.some((k) => k.length > 64) || Object.values(extra).some((v) => v.length > 256)) {
-      return c.json({ error: 'extra param too long' }, 400)
-    }
+    const extraProblem = catalogExtraProblem(extra)
+    if (extraProblem) return c.json({ error: extraProblem }, 400)
     // `addon` is the opaque entry id — the transport URL never round-trips
     // through clients (global URLs can embed secrets). Looked up across every
     // installed addon, personal copies of globals included: their catalogs
@@ -547,40 +529,23 @@ export function createApp(config: AppConfig) {
     const entry = [...global, ...own].map(toAddonEntry).find((a) => a.id === addon)
     if (!entry) return c.json({ error: 'addon not installed' }, 403)
     try {
-      const res = await getCatalog(entry.transportUrl, type, id, extra, { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) })
-      return c.json(res)
+      return c.json(await fetchCatalog(entry, type, id, extra, resolveContext))
     } catch {
       return c.json({ error: 'catalog fetch failed' }, 502)
     }
   })
 
-  /** First effective addon that can describe this type/id wins; null if none. */
-  const resolveMeta = async (addons: EffectiveAddon[], type: string, id: string): Promise<MetaResponse | null> => {
-    for (const addon of addons) {
-      if (!addonSupportsResource(addon.manifest, 'meta', type, id)) continue
-      try {
-        return await getMeta(addon.transportUrl, type, id, { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) })
-      } catch {
-        // Try the next addon that can describe this id.
-      }
-    }
-    return null
-  }
-
   authed.get('/meta', async (c) => {
     const type = c.req.query('type')
     const id = c.req.query('id')
     if (!type || !id) return c.json({ error: 'type and id are required' }, 400)
-    const res = await resolveMeta(effectiveAddons(c.get('user').id), type, id)
+    const res = await resolveMeta(effectiveAddons(c.get('user').id), type, id, resolveContext)
     if (!res) return c.json({ error: 'no metadata found' }, 404)
     return c.json(res)
   })
 
-  // Binge continuation: the episode after `videoId` in `metaId`'s ordering,
-  // plus — when the addon that served the current stream still exists — that
-  // addon's stream for the next episode with the same bingeGroup. Matching is
-  // Stremio's rule exactly: same addon, exact group equality, no fuzzy tier.
-  // `stream: null` means "fall back to the stream picker".
+  // Binge continuation (see `resolveNextEpisode`): the next episode, plus the
+  // same addon's stream for it with the same bingeGroup when there is one.
   authed.get('/next-episode', async (c) => {
     const type = c.req.query('type')
     const metaId = c.req.query('metaId')
@@ -588,110 +553,42 @@ export function createApp(config: AppConfig) {
     if (!type || !metaId || !videoId) return c.json({ error: 'type, metaId and videoId are required' }, 400)
     const addonId = c.req.query('addon')
     const bingeGroup = c.req.query('bingeGroup')
-    if (bingeGroup !== undefined && bingeGroup.length > 512) return c.json({ error: 'bingeGroup too long' }, 400)
+    if (bingeGroup !== undefined && bingeGroup.length > MAX_BINGE_GROUP_LENGTH) return c.json({ error: 'bingeGroup too long' }, 400)
 
-    const addons = effectiveAddons(c.get('user').id)
-    const meta = await resolveMeta(addons, type, metaId)
-    if (!meta) return c.json({ error: 'no metadata found' }, 404)
-    const next = nextVideo(meta.meta.videos ?? [], videoId)
-    if (!next) return c.json({ video: null, stream: null })
-
-    // A missing addon id is benign — the addon was uninstalled mid-playback.
-    // The next episode is still reported, just without a matched stream.
-    const entry = addonId ? addons.find((a) => a.id === addonId) : undefined
-    let stream: Stream | null = null
-    if (entry && bingeGroup && addonSupportsResource(entry.manifest, 'stream', type, next.id)) {
-      const startedAt = Date.now()
-      try {
-        const res = await getStreams(entry.transportUrl, type, next.id, { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) })
-        stream = normalizeStreamsResponse(res).find((s) => s.behaviorHints?.bingeGroup === bingeGroup) ?? null
-      } catch (reason) {
-        const error = addonError(entry.id, entry.manifest.name, reason)
-        logAddonFailure(writeAddonFailure, '/next-episode', error, Date.now() - startedAt)
-        // Best-effort: an unreachable addon degrades to the picker, not a 5xx.
-      }
-    }
-    return c.json({ video: next, stream })
+    const result = await resolveNextEpisode(
+      effectiveAddons(c.get('user').id),
+      { type, metaId, videoId, addonId, bingeGroup },
+      resolveContext,
+    )
+    if (!result) return c.json({ error: 'no metadata found' }, 404)
+    return c.json(result)
   })
 
   authed.get('/streams', async (c) => {
     const type = c.req.query('type')
     const videoId = c.req.query('videoId')
     if (!type || !videoId) return c.json({ error: 'type and videoId are required' }, 400)
-    const capable = effectiveAddons(c.get('user').id).filter((a) => addonSupportsResource(a.manifest, 'stream', type, videoId))
-    const startedAt = capable.map(() => Date.now())
-    const settled = await Promise.allSettled(
-      capable.map(async (a) => {
-        const res = await getStreams(a.transportUrl, type, videoId, { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) })
-        return normalizeStreamsResponse(res)
-      }),
-    )
-    const results: Array<{ addon: { id: string; name: string }; streams: Stream[] }> = []
-    const errors: AddonError[] = []
-    settled.forEach((r, i) => {
-      const a = capable[i]!
-      if (r.status === 'fulfilled') {
-        if (r.value.length > 0) results.push({ addon: { id: a.id, name: safeAddonName(a.manifest.name) }, streams: r.value })
-      } else {
-        const error = addonError(a.id, a.manifest.name, r.reason)
-        errors.push(error)
-        logAddonFailure(writeAddonFailure, '/streams', error, Date.now() - startedAt[i]!)
-      }
-    })
-    return c.json({ results, errors })
+    return c.json(await resolveStreams(effectiveAddons(c.get('user').id), type, videoId, resolveContext))
   })
 
   authed.get('/subtitles', async (c) => {
     const type = c.req.query('type')
     const videoId = c.req.query('videoId')
     if (!type || !videoId) return c.json({ error: 'type and videoId are required' }, 400)
-    const videoHash = c.req.query('videoHash')
-    if (videoHash !== undefined && !/^[0-9a-fA-F]{16}$/.test(videoHash)) {
-      return c.json({ error: 'videoHash must be 16 hex chars' }, 400)
-    }
-    let videoSize: number | undefined
     const rawSize = c.req.query('videoSize')
-    if (rawSize !== undefined) {
-      const n = Number(rawSize)
-      if (!Number.isInteger(n) || n <= 0) return c.json({ error: 'videoSize must be a positive integer' }, 400)
-      videoSize = n
+    const query = {
+      videoHash: c.req.query('videoHash'),
+      videoSize: rawSize === undefined ? undefined : Number(rawSize),
+      filename: c.req.query('filename'),
     }
-    const filename = c.req.query('filename')
-    if (filename !== undefined && filename.length > 1_024) return c.json({ error: 'filename too long' }, 400)
-    const capable = effectiveAddons(c.get('user').id).filter((a) => addonSupportsResource(a.manifest, 'subtitles', type, videoId))
-    const startedAt = capable.map(() => Date.now())
-    const settled = await Promise.allSettled(
-      capable.map(async (a) => {
-        const res = await getSubtitles(
-          a.transportUrl,
-          type,
-          videoId,
-          { videoHash, videoSize, filename },
-          { fetch: doSafeFetch, signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) },
-        )
-        return normalizeSubtitlesResponse(res)
-      }),
-    )
-    const results: Array<{ addon: { id: string; name: string }; subtitles: Subtitle[] }> = []
-    const errors: AddonError[] = []
-    settled.forEach((r, i) => {
-      const a = capable[i]!
-      if (r.status === 'fulfilled') {
-        results.push({ addon: { id: a.id, name: safeAddonName(a.manifest.name) }, subtitles: r.value })
-      } else {
-        const error = addonError(a.id, a.manifest.name, r.reason)
-        errors.push(error)
-        logAddonFailure(writeAddonFailure, '/subtitles', error, Date.now() - startedAt[i]!)
-      }
-    })
-    return c.json({ results, errors, hashMatched: videoHash !== undefined })
+    const problem = subtitleQueryProblem(query)
+    if (problem) return c.json({ error: problem }, 400)
+    return c.json(await resolveSubtitles(effectiveAddons(c.get('user').id), type, videoId, query, resolveContext))
   })
 
   app.route('/', authed)
   return app
 }
-
-const RESOLVE_TIMEOUT_MS = 10_000
 
 function rowToLibraryItem(r: typeof libraryItems.$inferSelect): LibraryItem {
   return {
@@ -759,34 +656,3 @@ function toAddonEntry(r: {
     ...(r.hideCatalogs ? { hideCatalogs: true } : {}),
   }
 }
-
-interface ResolvedAddon {
-  transportUrl: string
-  manifest: Manifest
-}
-
-/**
- * Fetches and validates the manifest for every URL, all-or-nothing. Returns the
- * resolved entries or the first failing transportUrl. Fetches run concurrently.
- */
-async function resolveManifests(
-  urls: string[],
-  doSafeFetch: (url: string) => Promise<Response>,
-): Promise<{ entries: ResolvedAddon[] } | { error: string }> {
-  const results = await Promise.all(
-    urls.map(async (transportUrl) => {
-      try {
-        const res = await doSafeFetch(`${transportBase(transportUrl)}/manifest.json`)
-        if (!res.ok) return { transportUrl, manifest: null }
-        const parsed = manifestSchema.safeParse(await res.json())
-        return { transportUrl, manifest: parsed.success ? (parsed.data as Manifest) : null }
-      } catch {
-        return { transportUrl, manifest: null }
-      }
-    }),
-  )
-  const failed = results.find((r) => r.manifest === null)
-  if (failed) return { error: `could not fetch a valid manifest for ${failed.transportUrl}` }
-  return { entries: results.map((r) => ({ transportUrl: r.transportUrl, manifest: r.manifest! })) }
-}
-
