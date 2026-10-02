@@ -32,6 +32,35 @@ export type { AddonFetchOptions } from './addon/client'
 
 export { CINEMETA_URL, DEFAULT_ADDON_URLS, OPENSUBTITLES_URL } from './addon/constants'
 export { nextVideo } from './addon/nextVideo'
+export { parseManifest } from './addon/manifest'
+export {
+  addonError,
+  AddonTargetBlockedError,
+  InvalidAddonResponseError,
+  normalizeStreamsResponse,
+  normalizeSubtitlesResponse,
+  safeAddonName,
+} from './addon/normalize'
+export {
+  catalogExtraProblem,
+  fetchCatalog,
+  fetchManifests,
+  MAX_BINGE_GROUP_LENGTH,
+  resolveMeta,
+  resolveNextEpisode,
+  resolveStreams,
+  resolveSubtitles,
+  RESOLVE_TIMEOUT_MS,
+  subtitleQueryProblem,
+} from './addon/resolve'
+export type {
+  NextEpisodeQuery,
+  ResolutionRoute,
+  ResolvableAddon,
+  ResolvedManifest,
+  ResolveContext,
+  SubtitleQuery,
+} from './addon/resolve'
 
 export { computeVideoHash, computeVideoHashFromChunks, VIDEO_HASH_CHUNK_BYTES } from './subtitles/hash'
 export type { VideoHashResult } from './subtitles/hash'

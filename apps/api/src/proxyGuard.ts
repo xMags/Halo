@@ -1,5 +1,6 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
+import { AddonTargetBlockedError } from '@halo/core'
 
 /**
  * SSRF guard for every server-side addon fetch: /addon-proxy, manifest
@@ -90,7 +91,8 @@ export async function assertSafeProxyTarget(raw: string): Promise<URL> {
   return url
 }
 
-export class ProxyTargetError extends Error {
+/** Extends core's blocked-target error so addon failures it causes classify as `blocked_target`. */
+export class ProxyTargetError extends AddonTargetBlockedError {
   constructor(message: string) {
     super(message)
     this.name = 'ProxyTargetError'
