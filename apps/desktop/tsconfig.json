@@ -12,5 +12,6 @@
     "isolatedModules": true,
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  // The git-ignored local sign-in add-on, typechecked with the app when it is there.
+  "include": ["src", "../../local/desktop/*.ts"]
 }

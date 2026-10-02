@@ -1,17 +1,19 @@
-import { HaloClient, type AuthConfig, type OidcAuthConfig } from '@halo/core'
+import { HaloClient, type AuthConfig, type OidcAuthConfig, type OtherAuthConfig } from '@halo/core'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import mark from '../assets/halo-mark.png'
 import avatar from '../assets/user-avatar.png'
-import { activateSession, getClient, getServerUrl, seedDefaultAddons, type SessionKind } from '../api'
+import { activateSession, addonSessionKind, getClient, getServerUrl, seedDefaultAddons, type SessionKind } from '../api'
 import { FluentIcon } from '../components/FluentIcon'
 import { ProgressBar, ProgressRing } from '../components/ProgressRing'
 import { TitleBar } from '../components/TitleBar'
 import { accountLabel } from './accountLabel'
+import { signInAddonFor } from './installedAddons'
 import { signInWithPassword } from './localAuth'
 import { cancelBrowserSignIn } from './loopbackSignIn'
 import { signInWithOidc } from './oidc'
+import type { SignInAddon } from './signInAddons'
 import { useSession } from './session'
 import { classifySignInFailure, localSignInMessage } from './signInFailure'
 
@@ -20,13 +22,16 @@ const SIGNED_IN_DWELL_MS = 1200
 const HELP_URL = 'https://github.com/xMags/Halo/issues'
 const SETUP_GUIDE_URL = 'https://github.com/xMags/Halo#readme'
 
-/** A browser sign-in: the server's OIDC provider. */
-type BrowserMethod = { kind: 'oidc'; config: OidcAuthConfig }
+/** A browser sign-in: the server's OIDC provider, or the sign-in add-on for the server's mode. */
+type BrowserMethod =
+  | { kind: 'oidc'; config: OidcAuthConfig }
+  | { kind: 'addon'; addon: SignInAddon; config: OtherAuthConfig }
 
 /** The native sign-in page's steps (LoginViewModel), one panel each. */
 type Step =
   | { kind: 'discovering' }
   | { kind: 'unreachable'; detail: string }
+  | { kind: 'unsupported'; mode: string }
   | { kind: 'local'; error: string | null }
   | { kind: 'browser'; method: BrowserMethod; error: string | null }
   | { kind: 'waiting'; local: true }
@@ -35,10 +40,20 @@ type Step =
   | { kind: 'declined'; method: BrowserMethod }
   | { kind: 'expired'; method: BrowserMethod }
 
-/** The panel the server's auth mode opens on: the account form, or the browser button. */
-function readyStep(config: AuthConfig): Step {
+function isOidcConfig(config: AuthConfig | OtherAuthConfig): config is OidcAuthConfig {
+  return config.mode === 'oidc'
+}
+
+/** OIDC and local accounts are built in; any other mode needs this build to carry its add-on. */
+function readyStep(config: AuthConfig | OtherAuthConfig): Step {
   if (config.mode === 'local') return { kind: 'local', error: null }
-  return { kind: 'browser', method: { kind: 'oidc', config }, error: null }
+  if (isOidcConfig(config)) return { kind: 'browser', method: { kind: 'oidc', config }, error: null }
+  // Neither built-in mode, so its fields are the add-on's to read. (A plain
+  // `mode: string` member defeats narrowing, hence the explicit type.)
+  const other = config as OtherAuthConfig
+  const addon = signInAddonFor(other.mode)
+  if (addon) return { kind: 'browser', method: { kind: 'addon', addon, config: other }, error: null }
+  return { kind: 'unsupported', mode: other.mode }
 }
 
 function delay(ms: number): Promise<void> {
@@ -118,7 +133,8 @@ export function Login() {
       setStep((current) => (current.kind === 'waiting' && !current.local ? { ...current, authUrl } : current))
     }
     try {
-      await signInWithOidc(method.config, onOpened)
+      if (method.kind === 'oidc') await signInWithOidc(method.config, onOpened)
+      else await method.addon.signIn(serverUrl, method.config, onOpened)
     } catch (err) {
       if (id !== attempt.current) return
       const failure = classifySignInFailure(err)
@@ -139,7 +155,7 @@ export function Login() {
           return
       }
     }
-    await finish('oidc', id)
+    await finish(method.kind === 'oidc' ? 'oidc' : addonSessionKind(method.addon), id)
   }
 
   function cancelBrowser(method: BrowserMethod) {
@@ -221,7 +237,7 @@ export function Login() {
                 onClick={() => void startBrowser(step.method)}
               >
                 <FluentIcon glyph="openInNewWindow" size={15} />
-                Continue in browser
+                {step.method.kind === 'addon' ? step.method.addon.buttonLabel : 'Continue in browser'}
               </button>
               <button
                 type="button"
@@ -320,6 +336,31 @@ export function Login() {
                 onClick={() => void startBrowser(step.method)}
               >
                 Start again
+              </button>
+            </>
+          )}
+
+          {step.kind === 'unsupported' && (
+            <>
+              <div className="auth-title">This build can’t sign in here</div>
+              <div className="auth-sub" style={{ marginTop: 8 }}>
+                This server signs in with “{step.mode}”, which this build of Halo doesn’t include.
+              </div>
+              <button
+                type="button"
+                className="btn-accent h36 btn-block"
+                style={{ marginTop: 24 }}
+                onClick={() => void discover()}
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                className="auth-help"
+                title="Open Halo support"
+                onClick={() => void openUrl(HELP_URL).catch(() => undefined)}
+              >
+                Having trouble signing in?
               </button>
             </>
           )}

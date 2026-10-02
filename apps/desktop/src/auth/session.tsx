@@ -5,6 +5,7 @@ import {
   getSessionKind,
   onUnauthorized,
   restoreSession,
+  sessionAddon,
   type SessionKind,
 } from '../api'
 import { signOutLocal } from './localAuth'
@@ -16,9 +17,10 @@ import { clearDownloadsAccount } from '../downloads/downloadsStore'
  * built in (serverUrl.ts), so there are two states:
  *   no session → 'unauthenticated' (Login, branched by the server's auth mode)
  *   session present → 'authenticated'
- * Only a definitive rejection (OIDC invalid_grant / local refresh 401) signs
- * the device out; network failures never do (that policy lives in the auth
- * modules and HaloClient).
+ * Only a definitive rejection (OIDC invalid_grant / local refresh 401 / a
+ * sign-in add-on's session refused by the server) signs the device out;
+ * network failures never do (that policy lives in the auth modules, the
+ * add-ons and HaloClient).
  */
 export type SessionState = 'unauthenticated' | 'authenticated'
 
@@ -50,8 +52,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(() => {
     void clearDownloadsAccount().catch(() => undefined)
-    if (getSessionKind() === 'oidc') void signOutOidc()
-    else signOutLocal()
+    const kind = getSessionKind()
+    if (kind === 'oidc') void signOutOidc()
+    else if (kind === 'local') signOutLocal()
+    else void sessionAddon(kind)?.signOut()
     deactivateSession()
     setState('unauthenticated')
   }, [])

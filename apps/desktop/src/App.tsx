@@ -17,10 +17,8 @@ import { Search } from './search/Search'
 import { Settings } from './settings/Settings'
 import { SourcesSheet } from './sources/SourcesSheet'
 import { useWindowFullscreen } from './window'
-import { getServerUrl, getSessionKind } from './api'
+import { getServerUrl, getSessionDownloadOwner, setSessionDownloadOwner } from './api'
 import { setDownloadsAccount, clearDownloadsAccount, opaqueDownloadOwner } from './downloads/downloadsStore'
-import { getLocalDownloadOwner, setLocalDownloadOwner } from './auth/localAuth'
-import { getOidcDownloadOwner, setOidcDownloadOwner } from './auth/oidc'
 import { useLocalPrefs } from './localPrefs'
 import { presenceSetEnabled } from './player/presence'
 import { useMe } from './queries'
@@ -46,15 +44,14 @@ function Routes() {
 function DownloadsAccountBinding() {
   const { data: me } = useMe()
   useEffect(() => {
-    const owner = getSessionKind() === 'oidc' ? getOidcDownloadOwner() : getLocalDownloadOwner()
+    const owner = getSessionDownloadOwner()
     if (owner) void setDownloadsAccount(owner).catch(() => undefined)
     return () => { void clearDownloadsAccount().catch(() => undefined) }
   }, [])
   useEffect(() => {
     if (!me) return
     void opaqueDownloadOwner(getServerUrl(), me.id).then((owner) => {
-      if (getSessionKind() === 'oidc') setOidcDownloadOwner(owner)
-      else setLocalDownloadOwner(owner)
+      setSessionDownloadOwner(owner)
       return setDownloadsAccount(owner)
     }).catch(() => undefined)
   }, [me])

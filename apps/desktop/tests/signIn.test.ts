@@ -6,6 +6,7 @@ import {
   classifySignInFailure,
   localSignInMessage,
   loopbackWaitFailure,
+  SignInRefusedError,
 } from '../src/auth/signInFailure'
 import { parseServerUrl } from '../src/serverUrl'
 
@@ -62,13 +63,23 @@ test('only access_denied in the callback counts as declined', () => {
   assert.equal(callbackFailure({ code: 'c', state: 's' }), null)
 })
 
-test('a code redeemed too late reads as an expired request', () => {
+test('a code redeemed too late reads as an expired request, from any provider', () => {
   // OIDC's token endpoint error carries the OAuth code.
   const oidc = Object.assign(new Error('Code is expired'), { name: 'TokenEndpointError', code: 'invalid_grant' })
   assert.deepEqual(classifySignInFailure(oidc), { kind: 'expired' })
+  // So may an add-on's refusal; the expiry wins over the refusal's message.
+  const addon = Object.assign(new SignInRefusedError('That sign-in expired.'), { code: 'invalid_grant' })
+  assert.deepEqual(classifySignInFailure(addon), { kind: 'expired' })
 })
 
 test("a provider's refusal keeps its reason instead of reading as can't connect", () => {
+  assert.deepEqual(classifySignInFailure(new SignInRefusedError('This account is disabled.')), {
+    kind: 'refused',
+    message: 'This account is disabled.',
+  })
+  // A subclass, as an add-on's own error type, counts the same.
+  class ProviderError extends SignInRefusedError {}
+  assert.deepEqual(classifySignInFailure(new ProviderError('Not allowed here.')), { kind: 'refused', message: 'Not allowed here.' })
   // OIDC's library refusal is recognised by name.
   const oidc = Object.assign(new Error('invalid_client'), { name: 'TokenEndpointError' })
   assert.deepEqual(classifySignInFailure(oidc), { kind: 'refused', message: 'invalid_client' })
