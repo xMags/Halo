@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import moe.ditto.halo.auth.AndroidBrowserSignIn
 import moe.ditto.halo.auth.AndroidSecureStorage
 import moe.ditto.halo.auth.KtorAndroidOidcWire
 import moe.ditto.halo.auth.KtorAuthConfigSource
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var playerHost: AndroidMpvPlayerHost
     private lateinit var playerSystemPort: AndroidPlayerSystemPort
     private lateinit var authHost: AndroidOidcAuthHost
+    private lateinit var browserSignIn: AndroidBrowserSignIn
     private lateinit var authHttpClient: HttpClient
     private val openDownloads = Channel<Unit>(Channel.UNLIMITED)
     private val notificationPermission = registerForActivityResult(
@@ -61,6 +63,7 @@ class MainActivity : ComponentActivity() {
             storage = secureStorage,
             wire = KtorAndroidOidcWire(authHttpClient),
         )
+        browserSignIn = AndroidBrowserSignIn(this)
         playerHost = AndroidMpvPlayerHost(applicationContext)
         playerSystemPort = AndroidPlayerSystemPort(this)
         val haloApplication = application as HaloApplication
@@ -104,6 +107,7 @@ class MainActivity : ComponentActivity() {
             bundledSubtitleFonts = SubtitleFontLibrary.bundledFamilies(),
             playerEvents = playerHost.playerEvents,
             oidcSessionPort = authHost,
+            browserSignIn = browserSignIn,
             authEvents = authHost.events,
             openDownloadsEvents = openDownloads.receiveAsFlow(),
             nativePlayerSurface = AndroidNativePlayerSurface(playerHost),
@@ -117,14 +121,14 @@ class MainActivity : ComponentActivity() {
             HaloApp(dependencies)
         }
 
-        authHost.handleIntent(intent)
+        handleAuthIntent(intent)
         handleDownloadNavigation(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        authHost.handleIntent(intent)
+        handleAuthIntent(intent)
         handleDownloadNavigation(intent)
     }
 
@@ -155,6 +159,11 @@ class MainActivity : ComponentActivity() {
             return
         }
         notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    /** Add-on sign-in first: its callback path is its own, and the OIDC host need never see it. */
+    private fun handleAuthIntent(intent: Intent?) {
+        if (!browserSignIn.handleIntent(intent)) authHost.handleIntent(intent)
     }
 
     private fun handleDownloadNavigation(intent: Intent?) {

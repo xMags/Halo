@@ -82,9 +82,11 @@ different server is wiped locally at startup, so back up the WebView2 profile's
   - **Other modes** are for sign-in add-ons, not this server. An app can
     bundle one for a further `/auth/config` mode from the git-ignored `local/`
     folder at the repo root: desktop loads `local/desktop/signInAddons.ts`
-    (`src/auth/installedAddons.ts`). Public builds carry none and report such
-    a server as unsupported. An add-on runs its browser sign-in and hands back
-    a bearer token; the app keeps that session, and its post-401 hook asks the
+    (`src/auth/installedAddons.ts`), mobile builds `local/mobile` in place of
+    `src/signInAddons` and takes its Android callback path from there
+    (`build.gradle.kts`). Public builds carry none and report such a server
+    as unsupported. An add-on runs its browser sign-in and hands back a bearer
+    token; the app keeps that session, and its post-401 hook asks the
     server's `/auth/me` (accepted keeps it, 401 signs out, anything else
     keeps it).
 - **Server-side addon fetches are SSRF-guarded, not origin-allowlisted**: the

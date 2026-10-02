@@ -12,9 +12,11 @@ import moe.ditto.halo.auth.AuthConfig
 import moe.ditto.halo.auth.AuthConfigParser
 import moe.ditto.halo.auth.AuthConfigSource
 import moe.ditto.halo.auth.AuthEvent
+import moe.ditto.halo.auth.BrowserSignInPort
 import moe.ditto.halo.auth.NativeHostRequests
 import moe.ditto.halo.auth.OidcHostRequest
 import moe.ditto.halo.auth.OidcSessionPort
+import moe.ditto.halo.auth.SignInAddonException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -79,6 +81,15 @@ interface HaloIosAuthHost {
 
     /** Registers the sink the host pushes OIDC outcomes into. */
     fun setAuthEventSink(sink: HaloIosAuthEventSink?)
+
+    /**
+     * The browser step of a sign-in add-on: opens [url] in an authentication
+     * sheet and reports `(callbackUrl, errorMessage)` with exactly one
+     * argument non-null, once the provider sends the sheet to a
+     * [callbackScheme] URL or the user closes it. Everything else in that
+     * sign-in (PKCE, the state check, the code exchange) runs in Kotlin.
+     */
+    fun authorizeInBrowser(url: String, callbackScheme: String, completion: (String?, String?) -> Unit)
 }
 
 /**
@@ -311,6 +322,26 @@ internal class IosOidcSessionPort(
             }
         }
     }
+}
+
+/** Bridges the common [BrowserSignInPort] onto the Swift host's browser sheet. */
+internal class IosBrowserSignIn(
+    private val host: HaloIosAuthHost,
+) : BrowserSignInPort {
+    override val platform: String = "ios"
+
+    override suspend fun authorize(url: String, callbackUrl: String): String =
+        suspendCancellableCoroutine { continuation ->
+            host.authorizeInBrowser(url, callbackUrl.substringBefore("://")) { received, error ->
+                when {
+                    !continuation.isActive -> Unit
+                    received != null -> continuation.resume(received)
+                    else -> continuation.resumeWithException(
+                        SignInAddonException(error ?: "Browser sign-in failed"),
+                    )
+                }
+            }
+        }
 }
 
 internal class IosAuthHostAdapter(

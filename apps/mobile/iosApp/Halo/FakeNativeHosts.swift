@@ -45,4 +45,14 @@ final class FakeAuthHost: NSObject, HaloIosAuthHost {
     func signOutOidc(endIdpSession _: Bool, completion: @escaping () -> Void) {
         completion()
     }
+
+    // No browser here either: an add-on sign-in fails at once instead of
+    // waiting on a sheet that never appears.
+    func authorizeInBrowser(
+        url _: String,
+        callbackScheme _: String,
+        completion: @escaping (String?, String?) -> Void
+    ) {
+        completion(nil, "The test host has no browser")
+    }
 }

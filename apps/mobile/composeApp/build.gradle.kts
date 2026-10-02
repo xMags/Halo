@@ -2,6 +2,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.TaskAction
+import java.util.Properties
 
 abstract class ValidateReleaseSigningTask : DefaultTask() {
     @get:Input
@@ -55,6 +56,17 @@ val releaseSigningProblems = buildList {
 }
 val releaseSigningReady = releaseSigningProblems.isEmpty()
 
+// Sign-in add-ons (auth/SignInAddon.kt): a local build's own, from the
+// git-ignored local/mobile folder at the repository root, or none. That folder
+// replaces src/signInAddons with its commonMain, adds its commonTest, and names
+// its Android callback path in signin-addon.properties.
+val localSignInAddons = rootProject.file("../../local/mobile")
+val hasLocalSignInAddons = localSignInAddons.resolve("commonMain").isDirectory
+val signInAddonCallbackPath = localSignInAddons.resolve("signin-addon.properties")
+    .takeIf { hasLocalSignInAddons && it.isFile }
+    ?.let { file -> Properties().apply { file.inputStream().use { load(it) } }.getProperty("callbackPath") }
+    ?: "/addon"
+
 val validateReleaseSigning = tasks.register<ValidateReleaseSigningTask>("validateReleaseSigning") {
     validationProblems.set(releaseSigningProblems)
 }
@@ -95,6 +107,14 @@ kotlin {
     }
 
     sourceSets {
+        commonMain {
+            kotlin.srcDir(if (hasLocalSignInAddons) localSignInAddons.resolve("commonMain") else file("src/signInAddons/kotlin"))
+        }
+        if (hasLocalSignInAddons && localSignInAddons.resolve("commonTest").isDirectory) {
+            commonTest {
+                kotlin.srcDir(localSignInAddons.resolve("commonTest"))
+            }
+        }
         commonMain.dependencies {
             implementation("org.jetbrains.compose.runtime:runtime:1.11.1")
             implementation("org.jetbrains.compose.foundation:foundation:1.11.1")
@@ -170,6 +190,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["signInAddonCallbackPath"] = signInAddonCallbackPath
         // Emulator is x86_64; keep arm64 so an eventual device install works.
         ndk {
             abiFilters += listOf("x86_64", "arm64-v8a")

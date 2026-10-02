@@ -49,20 +49,23 @@ import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import moe.ditto.halo.auth.AddonAuthenticator
 import moe.ditto.halo.auth.AuthEvent
+import moe.ditto.halo.auth.KtorHaloSessionRecheck
 import moe.ditto.halo.auth.KtorLocalAuthGateway
 import moe.ditto.halo.auth.LocalAuthenticator
 import moe.ditto.halo.auth.LoginCredentialsPrefill
 import moe.ditto.halo.auth.LoginPhase
 import moe.ditto.halo.auth.LoginPresenter
 import moe.ditto.halo.auth.SessionController
-import moe.ditto.halo.auth.SessionKind
 import moe.ditto.halo.auth.SessionState
 import moe.ditto.halo.auth.SystemEpochClock
+import moe.ditto.halo.auth.installedSignInAddons
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlaybackStatus
 import moe.ditto.halo.player.PlayerState
@@ -103,12 +106,16 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
     HaloTheme {
         val playback = remember(dependencies) { PlaybackHost(dependencies.playerPort) }
         val sessionController = remember(dependencies) {
+            val authHttpClient = HttpClient()
             SessionController(
                 storage = dependencies.secureStorage,
-                gateway = KtorLocalAuthGateway(HttpClient()),
+                gateway = KtorLocalAuthGateway(authHttpClient),
                 clock = SystemEpochClock,
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
                 oidcPort = dependencies.oidcSessionPort,
+                addons = installedSignInAddons,
+                browserSignIn = dependencies.browserSignIn,
+                sessionRecheck = KtorHaloSessionRecheck(authHttpClient),
             )
         }
         var screen by remember { mutableStateOf(ShellScreen.Login) }
@@ -230,6 +237,7 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                 ShellScreen.Login -> LoginScreen(
                     dependencies = dependencies,
                     localAuthenticator = sessionController,
+                    addonAuthenticator = sessionController,
                     authEvents = loginAuthEvents,
                     initialServerUrl = remember(sessionController) {
                         dependencies.initialServerUrl.takeIf { it != PlatformDependencies.DefaultServerUrl }
@@ -284,6 +292,7 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
 private fun LoginScreen(
     dependencies: PlatformDependencies,
     localAuthenticator: LocalAuthenticator,
+    addonAuthenticator: AddonAuthenticator,
     authEvents: Flow<AuthEvent>,
     initialServerUrl: String,
     notice: String?,
@@ -298,12 +307,16 @@ private fun LoginScreen(
             localCredentialsPrefill = DebugLocalCredentials.takeIf {
                 dependencies.diagnosticsEnabled && !dependencies.resetPersistedSession
             },
+            addonAuthenticator = addonAuthenticator,
         ).also {
             it.editServerUrl(initialServerUrl)
         }
     }
     var state by remember { mutableStateOf(presenter.state) }
     val scope = rememberCoroutineScope()
+    // The running add-on sign-in, so Cancel can stop it waiting on a browser
+    // the user closed without finishing.
+    var addonJob by remember { mutableStateOf<Job?>(null) }
 
     // The native OIDC host reports its terminal outcome here (re-fanned through
     // the app-level shared flow). The login screen stays composed for the whole
@@ -334,10 +347,13 @@ private fun LoginScreen(
                 letterSpacing = 1.sp,
             )
             Text(
-                text = if (state.showsCredentials) {
-                    "This server uses local accounts. Sign in with your Halo username and password."
-                } else {
-                    "Your Halo server decides whether the native host starts OIDC or reveals local credentials."
+                text = when (val phase = state.phase) {
+                    is LoginPhase.LocalCredentials, is LoginPhase.LocalSubmitting ->
+                        "This server uses local accounts. Sign in with your Halo username and password."
+                    is LoginPhase.AddonReady -> phase.config.addon.description
+                    is LoginPhase.AddonSigningIn -> phase.config.addon.description
+                    else ->
+                        "Your Halo server decides whether the native host starts OIDC or reveals local credentials."
                 },
                 style = HaloType.Body.copy(color = HaloColors.TextDim, textAlign = TextAlign.Center),
             )
@@ -451,6 +467,42 @@ private fun LoginScreen(
                         Text(text = "Signed in", color = HaloColors.Success, style = HaloType.Callout)
                         GateShortcut(dependencies.diagnosticsEnabled, onOpenGate)
                     }
+                    is LoginPhase.AddonReady -> {
+                        HaloButton(
+                            label = phase.config.addon.buttonLabel,
+                            onClick = {
+                                val attempt = presenter.beginAddon() ?: return@HaloButton
+                                state = presenter.state
+                                addonJob?.cancel()
+                                addonJob = scope.launch {
+                                    presenter.completeAddon(attempt)
+                                    state = presenter.state
+                                }
+                            },
+                        )
+                        GateShortcut(dependencies.diagnosticsEnabled, onOpenGate)
+                    }
+                    is LoginPhase.AddonSigningIn -> {
+                        Text(
+                            text = phase.config.addon.waitingText,
+                            color = HaloColors.TextDim,
+                            style = HaloType.Callout,
+                            textAlign = TextAlign.Center,
+                        )
+                        HaloButton(
+                            label = "Cancel",
+                            onClick = {
+                                addonJob?.cancel()
+                                addonJob = null
+                                presenter.cancelAddon()
+                                state = presenter.state
+                            },
+                        )
+                    }
+                    is LoginPhase.AddonSignedIn -> {
+                        Text(text = "Signed in", color = HaloColors.Success, style = HaloType.Callout)
+                        GateShortcut(dependencies.diagnosticsEnabled, onOpenGate)
+                    }
                     else -> Unit
                 }
             }
@@ -516,7 +568,7 @@ private fun GateScreen(
             Text(
                 text = "Session: " + when (sessionState) {
                     is SessionState.SignedIn ->
-                        "${if (sessionState.kind == SessionKind.Oidc) "oidc" else "local"} · ${sessionState.serverUrl}"
+                        "${sessionState.kind.name.lowercase()} · ${sessionState.serverUrl}"
                     SessionState.SignedOut -> "signed out"
                     SessionState.Restoring -> "restoring"
                 },

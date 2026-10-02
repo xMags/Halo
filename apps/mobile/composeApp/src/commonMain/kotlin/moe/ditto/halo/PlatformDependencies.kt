@@ -4,7 +4,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import moe.ditto.halo.auth.AuthConfigSource
 import moe.ditto.halo.auth.AuthEvent
+import moe.ditto.halo.auth.BrowserSignInPort
 import moe.ditto.halo.auth.NativeHostRequests
+import moe.ditto.halo.auth.NoBrowserSignIn
 import moe.ditto.halo.auth.NoOidcSessionPort
 import moe.ditto.halo.auth.OidcSessionPort
 import moe.ditto.halo.auth.SecureStorage
@@ -49,6 +51,11 @@ internal data class PlatformDependencies(
      * no OIDC host yet (Android until its port, fakes in tests).
      */
     val oidcSessionPort: OidcSessionPort = NoOidcSessionPort,
+    /**
+     * The browser step of a sign-in add-on's sign-in; the rest of it runs in
+     * common code. [NoBrowserSignIn] where the platform has none (fakes in tests).
+     */
+    val browserSignIn: BrowserSignInPort = NoBrowserSignIn,
     val playerPort: PlayerPort,
     /**
      * Brightness, volume, orientation and the sleep timer. Separate from

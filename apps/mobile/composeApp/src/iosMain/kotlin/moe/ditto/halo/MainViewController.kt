@@ -82,6 +82,7 @@ fun MainViewController(
         // the wrong answer, and so a release framework has no way to say yes.
         diagnosticsEnabled = Platform.isDebugBinary,
         oidcSessionPort = IosOidcSessionPort(authHost),
+        browserSignIn = IosBrowserSignIn(authHost),
         playerPort = IosPlayerHostAdapter(playerHost),
         playerSystemPort = IosPlayerSystemPort(playerSystemHost),
         videoFrameSource = IosVideoFrameSource,
