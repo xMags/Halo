@@ -1,5 +1,6 @@
 import avatar from '../assets/user-avatar.png'
-import { accountLabel } from '../auth/accountLabel'
+import { accountLabel, DEVICE_ACCOUNT_LABEL, DEVICE_ACCOUNT_NAME } from '../auth/accountLabel'
+import { useSession } from '../auth/session'
 import { useTitleMenu } from '../browse/titleMenu'
 import { useDownloads } from '../downloads/downloadsStore'
 import { useContinueShelf } from '../home/continueShelf'
@@ -47,6 +48,7 @@ interface NavRailProps {
  */
 export function NavRail({ open, onToggle }: NavRailProps) {
   const { section, push, setRoot } = useNav()
+  const { state } = useSession()
   const { data: me } = useMe()
   const { downloads } = useDownloads()
   const titleMenu = useTitleMenu()
@@ -58,7 +60,9 @@ export function NavRail({ open, onToggle }: NavRailProps) {
   // The first entries of Home's continue shelf, as the native pane reads them.
   const { cards } = useContinueShelf({ enabled: open })
   const jump = open ? cards.slice(0, JUMP_LIMIT) : []
-  const role = accountLabel(me)
+  const onDevice = state === 'device'
+  const name = onDevice ? DEVICE_ACCOUNT_NAME : me?.username ?? ''
+  const role = onDevice ? DEVICE_ACCOUNT_LABEL : accountLabel(me)
 
   return (
     <nav className={`nav ${open ? '' : 'nav-compact'}`}>
@@ -122,12 +126,12 @@ export function NavRail({ open, onToggle }: NavRailProps) {
       <button
         type="button"
         className="account-row"
-        title={open ? 'Server & account' : me?.username ?? 'Server & account'}
+        title={open || !name ? 'Server & account' : name}
         onClick={() => setRoot('settings')}
       >
         <img className="account-avatar" src={avatar} alt="" draggable={false} />
         <span className="nav-lines account-lines">
-          <span className="account-name ellipsis">{me?.username ?? ''}</span>
+          <span className="account-name ellipsis">{name}</span>
           <span className="account-role ellipsis">{role}</span>
         </span>
       </button>

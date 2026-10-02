@@ -1,4 +1,4 @@
-import { DEFAULT_ADDON_URLS, HaloClient } from '@halo/core'
+import { DEFAULT_ADDON_URLS, DeviceBackend, HaloClient, type HaloBackend } from '@halo/core'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { parseServerUrl } from './serverUrl'
 import {
@@ -19,12 +19,18 @@ import {
 } from './auth/oidc'
 import { installedSignInAddons, signInAddonFor } from './auth/installedAddons'
 import type { SignInAddon } from './auth/signInAddons'
+import { nativeDeviceStore, type DeviceProfile } from './device/deviceStore'
 
 /**
  * All API traffic goes through the shell's native fetch (tauri-plugin-http →
  * reqwest), never the webview's — that's what lets the app talk to any
  * self-hosted server without a CORS allowlist deploy, and it matches how
- * subtitle hashing must fetch stream bytes anyway.
+ * subtitle hashing must fetch stream bytes anyway. Without an account the
+ * same fetch reaches the addons directly.
+ *
+ * Screens talk to one `HaloBackend`: the account's `HaloClient` when signed
+ * in, or a `DeviceBackend` that keeps everything on this PC when Halo is used
+ * without an account.
  */
 
 /** The server this build signs in to, fixed at build time (see serverUrl.ts). */
@@ -39,15 +45,20 @@ const SESSION_SERVER_KEY = 'halo.serverUrl'
  */
 export type SessionKind = 'oidc' | 'local' | `addon:${string}`
 
+/** The signed-in account's client; null without an account. */
 let client: HaloClient | null = null
+/** What every screen asks: the account's client, or this PC's backend. */
+let backend: HaloBackend | null = null
 let sessionKind: SessionKind | null = null
+/** Set while Halo is used without an account on this PC. */
+let deviceProfile: DeviceProfile | null = null
 let unauthorizedHandler: (() => void) | null = null
 
 // Dev-only hook so scripts/cdp.mjs can exercise the API without OS input
 // (same precedent as nav.tsx's __haloNav).
 if (import.meta.env.DEV) {
   Object.defineProperty(window, '__haloClient', {
-    get: () => client,
+    get: () => backend,
     configurable: true,
   })
 }
@@ -149,11 +160,36 @@ export function activateSession(kind: SessionKind): SessionKind {
       // session is dead, not merely stale.
       tokens.clear()
       client = null
+      backend = null
       sessionKind = null
       unauthorizedHandler?.()
     },
   })
+  backend = client
   return kind
+}
+
+/** Answers every screen from this PC, for Halo without an account. */
+export function activateDevice(profile: DeviceProfile): void {
+  client = null
+  sessionKind = null
+  deviceProfile = profile
+  backend = new DeviceBackend({ fetch: nativeFetch, store: nativeDeviceStore })
+}
+
+/** Holds on to a profile whose data still has to move into the signed-in account, without using it. */
+export function rememberDeviceProfile(profile: DeviceProfile): void {
+  deviceProfile = profile
+}
+
+/** The profile of Halo without an account, while that mode is in use or its data awaits a move into an account. */
+export function getDeviceProfile(): DeviceProfile | null {
+  return deviceProfile
+}
+
+/** Called once the device data has moved into an account and been cleared. */
+export function forgetDeviceProfile(): void {
+  deviceProfile = null
 }
 
 export function getSessionKind(): SessionKind | null {
@@ -171,15 +207,22 @@ export function setSessionDownloadOwner(downloadOwner: string): void {
 
 export function deactivateSession(): void {
   client = null
+  backend = null
   sessionKind = null
 }
 
-export function getClient(): HaloClient {
-  if (!client) throw new Error('HaloClient not initialized — user is not signed in')
+/** The backend every screen uses: the account's, or this PC's without one. */
+export function getClient(): HaloBackend {
+  if (!backend) throw new Error('No backend: Halo is neither signed in nor used without an account')
+  return backend
+}
+
+/** Account-only calls (who is signed in, the admin's global addons); null without an account. */
+export function getAccountClient(): HaloClient | null {
   return client
 }
 
-/** First boot: install Cinemeta + OpenSubtitles so the app isn't empty. */
+/** First boot of an account or of this PC: install Cinemeta + OpenSubtitles so the app isn't empty. */
 export async function seedDefaultAddons(): Promise<void> {
   try {
     const existing = await getClient().getAddons()

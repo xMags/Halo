@@ -12,7 +12,8 @@ import {
 } from '@halo/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
-import { getClient } from './api'
+import { getAccountClient, getClient } from './api'
+import { useSession } from './auth/session'
 import { isHomeCatalogType } from './home/homeRows'
 
 /**
@@ -27,6 +28,13 @@ export function sortSubtitlesByPreference(subs: Subtitle[], preferredLang?: stri
     (a, b) =>
       Number(languageMatches(b.lang, preferredLang)) - Number(languageMatches(a.lang, preferredLang)),
   )
+}
+
+/** Account-only calls; screens offer them only when signed in. */
+function accountClient() {
+  const client = getAccountClient()
+  if (!client) throw new Error('Sign in to an account for this.')
+  return client
 }
 
 /** Raw addon split: `{ global, user }`. Use in the settings screen. */
@@ -65,7 +73,7 @@ export function useSetAddons() {
 export function useSetGlobalAddons() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (transportUrls: string[]) => getClient().putGlobalAddons(transportUrls),
+    mutationFn: (transportUrls: string[]) => accountClient().putGlobalAddons(transportUrls),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['addons'] }),
   })
 }
@@ -85,16 +93,18 @@ export function usePatchGlobalAddon() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ addonId, hideCatalogs }: { addonId: string; hideCatalogs: boolean }) =>
-      getClient().patchGlobalAddon(addonId, { hideCatalogs }),
+      accountClient().patchGlobalAddon(addonId, { hideCatalogs }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['addons'] }),
   })
 }
 
-/** The current user incl. admin status (server-computed); gates admin-only UI. */
+/** The current user incl. admin status (server-computed); gates admin-only UI. Without an account there is none. */
 export function useMe() {
+  const { state } = useSession()
   return useQuery({
     queryKey: ['me'],
-    queryFn: () => getClient().getMe(),
+    queryFn: () => accountClient().getMe(),
+    enabled: state === 'authenticated',
     staleTime: Infinity,
   })
 }

@@ -20,7 +20,7 @@ import {
   useSetAddons,
   useSetGlobalAddons,
 } from '../queries'
-import { accountLabel } from '../auth/accountLabel'
+import { accountLabel, DEVICE_ACCOUNT_LABEL, DEVICE_ACCOUNT_NAME } from '../auth/accountLabel'
 import { describeStatus, useServerStatus } from '../auth/serverStatus'
 import { RAIL_ANCHOR_FRACTION, activeSettingsSection, isScrolledToEnd } from './settingsRail'
 import {
@@ -775,6 +775,49 @@ function displayName(username: string): string {
 }
 
 function AccountSection() {
+  const { state } = useSession()
+  return state === 'device' ? <DeviceAccountSection /> : <SignedInAccountSection />
+}
+
+/** Halo used without an account: nothing to sign out of, and signing in is the way to sync. */
+function DeviceAccountSection() {
+  const { startSignIn } = useSession()
+  const { data: build } = useBuildInfo()
+
+  return (
+    <Section
+      id="account"
+      gap={12}
+      title="Server & account"
+      sub="Your library, watch progress and addons are kept on this PC. Sign in to sync them across your devices."
+    >
+      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 13, padding: 14 }}>
+        <img className="set-avatar" src={avatar} alt="" draggable={false} />
+        <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>{DEVICE_ACCOUNT_NAME}</span>
+          <span className="mono">{DEVICE_ACCOUNT_LABEL}</span>
+        </span>
+      </div>
+
+      <div className="list-card">
+        <div className="list-row">
+          <span className="spacer opt-label">Version</span>
+          <span className="mono" style={{ fontSize: 13, color: 'var(--t2)' }}>
+            {`v${build?.app ?? '…'} · mpv ${build?.mpv ?? '…'}`}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button type="button" className="btn-accent btn-body" onClick={startSignIn}>
+          Sign in to sync
+        </button>
+      </div>
+    </Section>
+  )
+}
+
+function SignedInAccountSection() {
   const { data: me } = useMe()
   const { signOut } = useSession()
   const { data: build } = useBuildInfo()

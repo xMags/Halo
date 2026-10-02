@@ -8,6 +8,7 @@
 
 mod audio_session;
 mod crash_log;
+mod device_store;
 mod discord;
 mod downloads;
 mod injection_guard;
@@ -200,6 +201,28 @@ async fn oauth_wait_callback() -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(oauth::wait_for_callback)
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn device_store_read(
+    state: State<'_, device_store::DeviceStore>,
+    collection: device_store::DeviceCollection,
+) -> Result<Option<String>, String> {
+    state.read(collection).await
+}
+
+#[tauri::command]
+async fn device_store_write(
+    state: State<'_, device_store::DeviceStore>,
+    collection: device_store::DeviceCollection,
+    contents: String,
+) -> Result<(), String> {
+    state.write(collection, &contents).await
+}
+
+#[tauri::command]
+async fn device_store_clear(state: State<'_, device_store::DeviceStore>) -> Result<(), String> {
+    state.clear().await
 }
 
 #[tauri::command]
@@ -430,6 +453,9 @@ fn main() {
             discord_presence_set_media,
             discord_presence_update,
             discord_presence_clear,
+            device_store_read,
+            device_store_write,
+            device_store_clear,
             downloads_set_account,
             downloads_clear_account,
             downloads_list,
@@ -511,6 +537,11 @@ fn main() {
 
             let download_manager = Arc::new(downloads::load_manager(&app.handle())?);
             app.manage(download_manager);
+
+            // Halo without an account keeps its data beside the downloads index.
+            app.manage(device_store::DeviceStore::new(
+                app.path().app_local_data_dir()?.join("device"),
+            ));
 
             let pump = mpv.clone();
             let events = app.handle().clone();
