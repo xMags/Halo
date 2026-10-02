@@ -1513,6 +1513,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tokio",
  "url",
+ "webview2-com",
  "windows",
  "windows-sys 0.59.0",
 ]

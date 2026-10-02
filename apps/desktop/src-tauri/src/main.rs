@@ -7,12 +7,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod audio_session;
+mod crash_log;
 mod discord;
 mod downloads;
 mod injection_guard;
 mod mpv;
 mod oauth;
 mod scrub_preview;
+mod webview_recovery;
 mod window_icon;
 mod window_menu;
 
@@ -449,6 +451,11 @@ fn main() {
             scrub_preview_request
         ])
         .setup(|app| {
+            // Release builds have no console, so panics and WebView2 process
+            // failures are written to the app's log folder (crash_log.rs).
+            let crash_log = Arc::new(crash_log::CrashLog::new(&app.path().app_log_dir()?));
+            crash_log::record_panics(crash_log.clone());
+
             let window = app.get_webview_window("main").expect("main window");
             let hwnd = window.hwnd()?.0 as isize;
 
@@ -529,6 +536,12 @@ fn main() {
                     Event::Shutdown => {}
                 });
             });
+
+            // A WebView2 process that dies takes the UI with it; reload or
+            // restart instead of leaving a dead window (webview_recovery.rs).
+            if let Err(error) = webview_recovery::watch(&window, mpv.clone(), crash_log.clone()) {
+                crash_log.record(&format!("could not watch WebView2 processes: {error}"));
+            }
 
             app.manage(PlayerState { mpv });
             Ok(())

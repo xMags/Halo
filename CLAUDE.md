@@ -52,7 +52,10 @@ different server is wiped locally at startup, so back up the WebView2 profile's
   whole window behind the webview. The process refuses extension-point DLLs
   (`injection_guard.rs`) so overlay hooks such as RivaTuner's cannot load
   where mpv renders; it only works as the first thing `main()` does, before
-  any window exists.
+  any window exists. WebView2's own processes stay exposed, so a dead one is
+  recovered (`webview_recovery.rs`: page reload, app restart, or a message
+  and exit when it keeps failing), and these failures and Rust panics go to
+  `crash.log` in the app's log folder (`crash_log.rs`).
 - **Sync is last-write-wins by `updatedAt` everywhere** (watch-state, library,
   settings). Clients send their timestamp; server upserts only strictly-newer
   (`setWhere: excluded.updated_at > …`). Library removals are tombstones
