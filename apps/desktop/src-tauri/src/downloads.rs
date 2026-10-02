@@ -10,6 +10,7 @@ mod rate;
 mod redirect;
 mod relocate;
 
+use crate::secure_fs::{atomic_replace, os_error_code, protect, unprotect};
 use containment::{is_within_approved_root, resolve_roots, same_path, strip_verbatim};
 use futures_util::StreamExt;
 use naming::{download_file_name, is_safe_file_name, safe_language, subtitle_extension};
@@ -1779,7 +1780,12 @@ impl DownloadManager {
     }
     fn write_request(&self, job_id: &str, request: &ProtectedRequest) -> Result<(), String> {
         let raw = serde_json::to_vec(request).map_err(|e| e.to_string())?;
-        let encrypted = protect(&raw)?;
+        let encrypted = protect(&raw).map_err(|e| {
+            format!(
+                "Windows could not protect the download request (error {}).",
+                os_error_code(&e)
+            )
+        })?;
         let path = request_path(&self.vault_dir, job_id);
         let tmp = path.with_extension("tmp");
         fs::write(&tmp, encrypted).map_err(|e| e.to_string())?;
@@ -1787,7 +1793,12 @@ impl DownloadManager {
     }
     fn read_request(&self, job_id: &str) -> Result<ProtectedRequest, String> {
         let raw = fs::read(request_path(&self.vault_dir, job_id)).map_err(|e| e.to_string())?;
-        let clear = unprotect(&raw)?;
+        let clear = unprotect(&raw).map_err(|e| {
+            format!(
+                "Windows could not read the protected download request (error {}).",
+                os_error_code(&e)
+            )
+        })?;
         serde_json::from_slice(&clear).map_err(|e| e.to_string())
     }
     fn delete_request(&self, job_id: &str) {
@@ -2196,39 +2207,6 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     atomic_replace(&tmp, path)
 }
 
-#[cfg(windows)]
-fn atomic_replace(source: &Path, target: &Path) -> Result<(), String> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{
-        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-    };
-    let source_wide: Vec<u16> = source
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-    let target_wide: Vec<u16> = target
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-    let result = unsafe {
-        MoveFileExW(
-            source_wide.as_ptr(),
-            target_wide.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    };
-    if result == 0 {
-        return Err(std::io::Error::last_os_error().to_string());
-    }
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn atomic_replace(source: &Path, target: &Path) -> Result<(), String> {
-    fs::rename(source, target).map_err(|error| error.to_string())
-}
 fn load_index(path: &Path) -> Result<HashMap<String, DownloadRecord>, String> {
     if !path.exists() {
         return Ok(HashMap::new());
@@ -2255,86 +2233,6 @@ fn is_safe_record_path(entry: &DownloadRecord) -> bool {
     Path::new(&entry.root_path).is_absolute() && is_safe_file_name(&entry.file_name)
 }
 
-#[cfg(windows)]
-fn protect(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    use std::slice;
-    use windows_sys::Win32::Foundation::{GetLastError, LocalFree};
-    use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CRYPT_INTEGER_BLOB};
-    let input = CRYPT_INTEGER_BLOB {
-        cbData: bytes.len() as u32,
-        pbData: bytes.as_ptr() as *mut u8,
-    };
-    let mut output = CRYPT_INTEGER_BLOB {
-        cbData: 0,
-        pbData: std::ptr::null_mut(),
-    };
-    let ok = unsafe {
-        CryptProtectData(
-            &input,
-            std::ptr::null(),
-            std::ptr::null(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            0x1,
-            &mut output,
-        )
-    };
-    if ok == 0 {
-        return Err(format!(
-            "Windows could not protect the download request (error {}).",
-            unsafe { GetLastError() }
-        ));
-    }
-    let result = unsafe { slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec() };
-    unsafe {
-        LocalFree(output.pbData as *mut std::ffi::c_void);
-    }
-    Ok(result)
-}
-#[cfg(windows)]
-fn unprotect(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    use std::slice;
-    use windows_sys::Win32::Foundation::{GetLastError, LocalFree};
-    use windows_sys::Win32::Security::Cryptography::{CryptUnprotectData, CRYPT_INTEGER_BLOB};
-    let input = CRYPT_INTEGER_BLOB {
-        cbData: bytes.len() as u32,
-        pbData: bytes.as_ptr() as *mut u8,
-    };
-    let mut output = CRYPT_INTEGER_BLOB {
-        cbData: 0,
-        pbData: std::ptr::null_mut(),
-    };
-    let ok = unsafe {
-        CryptUnprotectData(
-            &input,
-            std::ptr::null_mut(),
-            std::ptr::null(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            0x1,
-            &mut output,
-        )
-    };
-    if ok == 0 {
-        return Err(format!(
-            "Windows could not read the protected download request (error {}).",
-            unsafe { GetLastError() }
-        ));
-    }
-    let result = unsafe { slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec() };
-    unsafe {
-        LocalFree(output.pbData as *mut std::ffi::c_void);
-    }
-    Ok(result)
-}
-#[cfg(not(windows))]
-fn protect(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    Ok(bytes.to_vec())
-}
-#[cfg(not(windows))]
-fn unprotect(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    Ok(bytes.to_vec())
-}
 
 #[cfg(test)]
 mod tests {
