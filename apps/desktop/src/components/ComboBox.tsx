@@ -6,6 +6,7 @@ import {
   useState,
   type KeyboardEvent,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { FluentIcon } from './FluentIcon'
 
 export interface ComboBoxOption<T extends string | number> {
@@ -17,11 +18,27 @@ export interface ComboBoxOption<T extends string | number> {
 const ITEM_PITCH = 36
 /** Border plus the list's 4px inset plus the first item's top margin. */
 const FIRST_ITEM_TOP = 7
+/** The least gap the open list keeps from the window's edges. */
+const WINDOW_MARGIN = 8
+
+/** Where the open list sits, in window coordinates. */
+interface ListPlacement {
+  top: number
+  left: number
+  minWidth: number
+  /** The title page is dark in both themes; the list must match the box. */
+  dark: boolean
+}
 
 /**
  * WinUI's ComboBox. Closed, it is a control-fill box with the value and a
  * small chevron; open, a list drawn over the box so the chosen item sits where
  * the value was, as WinUI positions its drop-down.
+ *
+ * The open list is drawn at the document root in window coordinates, not
+ * inside the box's own subtree, because the cards the box sits in clip their
+ * overflow and would cut it off. Being detached, it closes when anything
+ * scrolls or the window resizes, as it would otherwise drift off the box.
  *
  * Keyboard follows WinUI: while closed, Up/Down/Home/End change the value in
  * place and Enter, Space, F4 or Alt+Down open the list; while open, the arrows
@@ -45,7 +62,7 @@ export function ComboBox<T extends string | number>({
 }) {
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(0)
-  const [offset, setOffset] = useState(0)
+  const [placement, setPlacement] = useState<ListPlacement | null>(null)
   const anchor = useRef<HTMLDivElement>(null)
   const box = useRef<HTMLButtonElement>(null)
   const list = useRef<HTMLDivElement>(null)
@@ -63,8 +80,15 @@ export function ComboBox<T extends string | number>({
   }
 
   const openList = () => {
+    const rect = box.current?.getBoundingClientRect()
+    if (!rect) return
     setHighlight(selectedIndex)
-    setOffset(-(FIRST_ITEM_TOP + selectedIndex * ITEM_PITCH))
+    setPlacement({
+      top: rect.top - (FIRST_ITEM_TOP + selectedIndex * ITEM_PITCH),
+      left: rect.left,
+      minWidth: rect.width,
+      dark: Boolean(box.current?.closest('.theme-dark')),
+    })
     setOpen(true)
   }
 
@@ -78,11 +102,24 @@ export function ComboBox<T extends string | number>({
   useEffect(() => {
     if (!open) return
     const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Node && anchor.current?.contains(event.target)) return
+      const target = event.target
+      if (target instanceof Node && (anchor.current?.contains(target) || list.current?.contains(target))) return
       setOpen(false)
     }
+    // Scrolling the list itself is fine; any other scroll moves the box away.
+    const onScroll = (event: Event) => {
+      if (event.target instanceof Node && list.current?.contains(event.target)) return
+      setOpen(false)
+    }
+    const onResize = () => setOpen(false)
     window.addEventListener('pointerdown', onPointerDown, true)
-    return () => window.removeEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onResize)
+    }
   }, [open])
 
   // Keep the open list inside the window. It first opens with the chosen item
@@ -91,13 +128,18 @@ export function ComboBox<T extends string | number>({
   useLayoutEffect(() => {
     if (!open || !list.current) return
     const rect = list.current.getBoundingClientRect()
-    const margin = 8
-    let shift = 0
-    if (rect.top < margin) shift = margin - rect.top
-    else if (rect.bottom > window.innerHeight - margin) {
-      shift = window.innerHeight - margin - rect.bottom
+    let dy = 0
+    if (rect.top < WINDOW_MARGIN) dy = WINDOW_MARGIN - rect.top
+    else if (rect.bottom > window.innerHeight - WINDOW_MARGIN) {
+      dy = window.innerHeight - WINDOW_MARGIN - rect.bottom
     }
-    if (shift !== 0) setOffset((previous) => previous + shift)
+    // A wide list from a box near the right edge would run off the window.
+    const dx = Math.min(0, window.innerWidth - WINDOW_MARGIN - rect.right)
+    if (dy !== 0 || dx !== 0) {
+      setPlacement((previous) =>
+        previous ? { ...previous, top: previous.top + dy, left: previous.left + dx } : previous,
+      )
+    }
     const item = list.current.children[selectedIndex]
     if (item instanceof HTMLElement) item.scrollIntoView({ block: 'nearest' })
     // Placement is decided once per opening, not on every highlight move, so
@@ -179,36 +221,45 @@ export function ComboBox<T extends string | number>({
           <FluentIcon glyph="chevronDownSmall" size={9} />
         </span>
       </button>
-      {open && (
-        <div
-          ref={list}
-          id={listId}
-          role="listbox"
-          className="combo-popup"
-          style={{ top: offset, minWidth: '100%', maxHeight: 360, overflowY: 'auto' }}
-        >
-          {options.map((option, index) => (
-            <button
-              key={String(option.value)}
-              id={`${listId}-${index}`}
-              type="button"
-              role="option"
-              tabIndex={-1}
-              aria-selected={index === selectedIndex}
-              className={`combo-item ellipsis ${index === selectedIndex ? 'combo-item-selected' : ''} ${
-                index === highlight && index !== selectedIndex ? 'combo-item-active' : ''
-              }`}
-              onPointerEnter={() => setHighlight(index)}
-              onClick={() => {
-                commit(index)
-                close(true)
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {open &&
+        placement &&
+        createPortal(
+          <div
+            ref={list}
+            id={listId}
+            role="listbox"
+            className={`combo-popup ${placement.dark ? 'theme-dark' : ''}`}
+            style={{
+              top: placement.top,
+              left: placement.left,
+              minWidth: placement.minWidth,
+              maxHeight: 360,
+              overflowY: 'auto',
+            }}
+          >
+            {options.map((option, index) => (
+              <button
+                key={String(option.value)}
+                id={`${listId}-${index}`}
+                type="button"
+                role="option"
+                tabIndex={-1}
+                aria-selected={index === selectedIndex}
+                className={`combo-item ellipsis ${index === selectedIndex ? 'combo-item-selected' : ''} ${
+                  index === highlight && index !== selectedIndex ? 'combo-item-active' : ''
+                }`}
+                onPointerEnter={() => setHighlight(index)}
+                onClick={() => {
+                  commit(index)
+                  close(true)
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
