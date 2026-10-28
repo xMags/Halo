@@ -39,7 +39,7 @@ import { LoadingIndicator, useLoadingIndicator } from './LoadingIndicator'
 import { ScrubPreviewCard, useScrubPreview } from './ScrubPreviewCard'
 import { SubtitlePreview } from './SubtitlePreview'
 import { useAppVolume } from './useAppVolume'
-import { setLocalPrefs, useLocalPrefs } from '../localPrefs'
+import { getLocalPrefs, setLocalPrefs, useLocalPrefs } from '../localPrefs'
 import { useAddonSubtitles, useReportWatchState } from '../queries'
 import { useSettings, useSettingsLoaded, useUpdateSettings } from '../settings/syncedSettings'
 import { presenceClear, presenceSetMedia, presenceUpdate } from './presence'
@@ -208,8 +208,8 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const [dolbyVision, setDolbyVision] = useState(false)
   const [railTab, setRailTab] = useState<RailTab | null>(null)
   const [subTab, setSubTab] = useState<SubTab>('tracks')
-  /** mpv `panscan`: 1 crops the picture to fill the window, 0 letterboxes. */
-  const [fill, setFill] = useState(false)
+  /** mpv `panscan`: 1 crops the picture to fill the window, 0 letterboxes. Kept per device. */
+  const fill = prefs.fillPicture
   const [controlsVisible, setControlsVisible] = useState(true)
   const { fullscreen, setFullscreen, toggleFullscreen: toggleNativeFullscreen } = windowFullscreen
   const [playerError, setPlayerError] = useState<string | null>(null)
@@ -595,6 +595,8 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const loadingVisible = useLoadingIndicator(stalled, firstFrameReady)
 
   const togglePause = useCallback(() => void mpvCmd('cycle', 'pause'), [])
+  // Read from the store, not render state: the key handler outlives renders.
+  const toggleFill = useCallback(() => setLocalPrefs({ fillPicture: !getLocalPrefs().fillPicture }), [])
   const seekBy = useCallback((secs: number) => void mpvCmd('seek', secs, 'relative'), [])
   const seekTo = useCallback((secs: number) => void mpvCmd('seek', secs, 'absolute'), [])
   const leaveFullscreenThen = useCallback(
@@ -672,11 +674,9 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     video.season != null && video.episode != null
       ? `S${String(video.season).padStart(2, '0')}E${String(video.episode).padStart(2, '0')}`
       : null
-  const nextEpisodeTitle = (video: MetaVideo) => {
-    const show = params.showName ?? params.title
-    const tag = tagFor(video)
-    return tag ? `${show} — ${tag}` : (video.title ?? video.name ?? show)
-  }
+  // The episode's own name, as Detail and the continue shelf title it; the
+  // SxxEyy tag travels separately as `episodeLabel`, so it is not baked in.
+  const nextEpisodeTitle = (video: MetaVideo) => video.title ?? video.name ?? params.showName ?? params.title
 
   const nextOfflineDownload = nextDownloadedEpisode(
     params.videoId,
@@ -811,7 +811,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       else if (shortcut === 'seek-back') seekBy(-10)
       else if (shortcut === 'seek-forward') seekBy(10)
       else if (shortcut === 'toggle-fullscreen') toggleFullscreen()
-      else if (shortcut === 'toggle-fill') setFill((value) => !value)
+      else if (shortcut === 'toggle-fill') toggleFill()
       else if (shortcut === 'volume-up' || shortcut === 'volume-down') {
         const from = muted ? 0 : appVolumeLevel
         const step = shortcut === 'volume-up' ? VOLUME_KEY_STEP : -VOLUME_KEY_STEP
@@ -827,7 +827,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [togglePause, seekBy, toggleFullscreen, back, poke, railTab, fullscreen, muted, appVolumeLevel, changeVolume])
+  }, [togglePause, toggleFill, seekBy, toggleFullscreen, back, poke, railTab, fullscreen, muted, appVolumeLevel, changeVolume])
 
   const selectEmbeddedSub = async (id: number | 'no'): Promise<boolean> => {
     setControlNotice(null)
@@ -1267,7 +1267,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
               className="psquare"
               style={{ marginLeft: 10 }}
               title={fill ? 'Fit the whole picture' : 'Crop to fill the window'}
-              onClick={() => setFill((value) => !value)}
+              onClick={toggleFill}
             >
               <Icon name={fill ? 'fitFill' : 'fitContain'} size={15} />
             </button>
