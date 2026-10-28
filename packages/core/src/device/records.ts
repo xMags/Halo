@@ -66,6 +66,7 @@ export function settingsProblem(value: unknown, updatedAt: unknown): string | nu
     ['subtitleShadow', optional(s.subtitleShadow, (v) => typeof v === 'boolean')],
     ['playbackRate', optional(s.playbackRate, (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0.25 && v <= 4)],
     ['autoplayNextEpisode', optional(s.autoplayNextEpisode, (v) => typeof v === 'boolean')],
+    ['catalogLanguage', optional(s.catalogLanguage, (v) => typeof v === 'string' && v.length >= 1 && v.length <= 64)],
   ]
   const invalid = checks.find(([, ok]) => !ok)
   return invalid ? `invalid setting: ${invalid[0]}` : null
