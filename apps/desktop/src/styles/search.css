@@ -34,16 +34,70 @@
   line-height: 1.45;
   color: var(--t2);
 }
+.recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.recent-clear {
+  padding: 0 2px;
+  font-size: 13px;
+}
+/* The row opens its term; the remove button over its time column appears on hover or focus. */
 .recent-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.recent-row:hover {
+  background: var(--tt);
+}
+.recent-open {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
-  width: 100%;
+  color: var(--t3);
+  text-align: left;
+}
+.recent-when {
+  color: var(--t4);
+}
+.recent-remove {
+  position: absolute;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--cd);
+  color: var(--t2);
+  opacity: 0;
+}
+.recent-row:hover .recent-remove,
+.recent-remove:focus-visible {
+  opacity: 1;
+}
+.recent-row:hover .recent-when {
+  visibility: hidden;
+}
+.recent-remove:hover {
+  background: var(--tt);
+  color: var(--t1);
+}
+.search-note {
+  margin-top: 14px;
+  font-size: 13px;
   color: var(--t3);
 }
-.recent-row:hover {
-  background: var(--tt);
+.search-note-pending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 var(--gu);
 }
 .recent-term {
   flex: 1;
