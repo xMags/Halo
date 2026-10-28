@@ -12,6 +12,7 @@ import {
   formatDownloadEta,
   isNewLinePeak,
   isPausedAll,
+  mergeListRead,
   nextDownloadedEpisode,
   opaqueDownloadOwner,
   planPauseAll,
@@ -197,6 +198,16 @@ let pausedByBulk = new Set<string>()
 let boundAccount: string | null = null
 /** Bumped on every account change so a late answer for the old one is dropped. */
 let accountVersion = 0
+/**
+ * Engine events are newer than any list read that was already under way when
+ * they arrived. Each event stamps its job with the next sequence number, so a
+ * late list keeps what the events said for those jobs instead of undoing it
+ * (a removed row coming back, progress going backwards).
+ */
+let eventSeq = 0
+const lastEventSeq = new Map<string, number>()
+/** Only the newest list read applies; an older one landing after it is dropped. */
+let refreshSeq = 0
 let started = false
 let sampler: number | null = null
 const unlisteners: Array<() => void> = []
@@ -226,17 +237,27 @@ function setRecords(downloads: DownloadView[]): void {
   lookUpArtwork(downloads)
 }
 
+function markEvent(jobId: string): void {
+  eventSeq += 1
+  lastEventSeq.set(jobId, eventSeq)
+}
+
 function applyChanged(view: DownloadView): void {
+  markEvent(view.job_id)
   // One download per video: a replacement stands in for what it replaced.
-  const others = snapshot.downloads.filter(
-    (item) => item.job_id !== view.job_id && item.media.video_id !== view.media.video_id,
-  )
+  const others = snapshot.downloads.filter((item) => {
+    if (item.job_id === view.job_id) return false
+    if (item.media.video_id !== view.media.video_id) return true
+    markEvent(item.job_id)
+    return false
+  })
   setRecords([...others, view].sort(byCreation))
   // Progress ticks leave the disk alone; every other change may have moved it.
   if (view.status !== 'downloading') void refreshDirectory()
 }
 
 function applyRemoved(jobId: string): void {
+  markEvent(jobId)
   pausedByBulk.delete(jobId)
   setRecords(snapshot.downloads.filter((item) => item.job_id !== jobId))
   void refreshDirectory()
@@ -269,18 +290,21 @@ function resetForAccount(account: string | null): void {
   pausedByBulk = new Set()
   artworkRequested.clear()
   metaRequests.clear()
+  lastEventSeq.clear()
   publish({ downloads: [], throughput: [], actionError: null, error: null })
 }
 
 export async function refreshDownloads(): Promise<void> {
   const version = accountVersion
+  const request = ++refreshSeq
+  const since = eventSeq
   try {
     const downloads = await listDownloads()
-    if (version !== accountVersion) return
-    setRecords(downloads)
+    if (version !== accountVersion || request !== refreshSeq) return
+    setRecords(mergeListRead(downloads, snapshot.downloads, lastEventSeq, since))
     publish({ loading: false, error: null })
   } catch (value) {
-    if (version !== accountVersion) return
+    if (version !== accountVersion || request !== refreshSeq) return
     publish({ loading: false, error: errorText(value) })
   }
   void refreshDirectory()

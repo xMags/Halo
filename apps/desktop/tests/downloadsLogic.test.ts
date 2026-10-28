@@ -9,6 +9,7 @@ import {
   formatDownloadEta,
   isNewLinePeak,
   isPausedAll,
+  mergeListRead,
   nextDownloadedEpisode,
   opaqueDownloadOwner,
   planPauseAll,
@@ -149,4 +150,26 @@ test('only a clearly faster line reading is recorded', () => {
   assert.equal(isNewLinePeak(111, 100), true)
   assert.equal(isNewLinePeak(0, 0), false)
   assert.equal(isNewLinePeak(Number.POSITIVE_INFINITY, 0), false)
+})
+
+test('a late list read keeps what newer engine events said', () => {
+  const row = (job_id: string, created_at: number, downloaded_bytes: number) => ({ job_id, created_at, downloaded_bytes })
+  // The list was read at event 4; jobs b (progress), c (removed) and d (new) changed after it.
+  const listed = [row('a', 1, 10), row('b', 2, 50), row('c', 3, 0)]
+  const current = [row('a', 1, 5), row('b', 2, 80), row('d', 4, 0)]
+  const events = new Map([
+    ['a', 3],
+    ['b', 6],
+    ['c', 7],
+    ['d', 8],
+  ])
+  assert.deepEqual(mergeListRead(listed, current, events, 4), [row('a', 1, 10), row('b', 2, 80), row('d', 4, 0)])
+})
+
+test('a list read with no newer events is taken as is', () => {
+  const listed = [{ job_id: 'b', created_at: 2 }, { job_id: 'a', created_at: 1 }]
+  assert.deepEqual(mergeListRead(listed, [], new Map(), 0), [
+    { job_id: 'a', created_at: 1 },
+    { job_id: 'b', created_at: 2 },
+  ])
 })
