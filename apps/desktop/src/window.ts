@@ -75,6 +75,8 @@ export function useWindowFullscreen(): WindowFullscreenController {
   const fullscreenRef = useRef(false)
   const mountedRef = useRef(true)
   const transitionRef = useRef<Promise<unknown>>(Promise.resolve())
+  /** Fullscreen was entered from a maximized window, which leaving it restores. */
+  const restoreMaximizedRef = useRef(false)
 
   const store = useCallback((value: boolean) => {
     fullscreenRef.current = value
@@ -110,11 +112,25 @@ export function useWindowFullscreen(): WindowFullscreenController {
   const setFullscreen = useCallback(
     (next: boolean): Promise<boolean> => {
       const transition = transitionRef.current.then(async () => {
+        const win = getCurrentWindow()
         // Square the DWM clip before entering fullscreen so no desktop pixels
         // flash through its corners. Restore rounding only after leaving.
         if (next) await applyFullscreenStyle(true)
+        // A maximized window keeps its maximized flag through tao's fullscreen
+        // switch, and Windows holds a maximized window to the work area, so
+        // fullscreen would stop short of the taskbar. Leave maximized first and
+        // put it back on the way out.
+        if (next && !fullscreenRef.current) {
+          const wasMaximized = await win.isMaximized().catch(() => false)
+          restoreMaximizedRef.current = wasMaximized
+          if (wasMaximized) await win.unmaximize().catch(() => undefined)
+        }
         try {
-          await getCurrentWindow().setFullscreen(next)
+          await win.setFullscreen(next)
+          if (!next && restoreMaximizedRef.current) {
+            restoreMaximizedRef.current = false
+            await win.maximize().catch(() => undefined)
+          }
         } catch {
           const actual = await readNative().catch(() => fullscreenRef.current)
           await applyFullscreenStyle(actual)
