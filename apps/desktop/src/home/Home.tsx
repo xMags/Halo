@@ -287,13 +287,11 @@ function FeaturedHero({ catalogs, filter }: { catalogs: BrowsableCatalog[]; filt
     setAutoAdvance(true)
   }, [previewsKey])
 
-  useEffect(() => {
-    if (!autoAdvance || hovered || previews.length <= 1) return
-    const timer = window.setTimeout(() => {
-      setFeaturedIndex((current) => (current + 1) % previews.length)
-    }, HERO_DWELL_MS)
-    return () => window.clearTimeout(timer)
-  }, [autoAdvance, hovered, previews.length, previewsKey, safeIndex])
+  // The active pip's fill animation is the carousel's clock: it runs for one
+  // dwell, pauses under the pointer and resumes where it stopped, and its end
+  // moves the carousel on. One clock means the fill can never disagree with
+  // when the title actually changes.
+  const advance = () => setFeaturedIndex((current) => (current + 1) % previews.length)
 
   if (!settled) return <HeroSkeleton />
   if (!featured) return null
@@ -339,25 +337,29 @@ function FeaturedHero({ catalogs, filter }: { catalogs: BrowsableCatalog[]; filt
       onMouseLeave={() => setHovered(false)}
       onContextMenu={(event) => titleMenu.forPoster(event, featured)}
     >
-      <div className="art" style={{ position: 'absolute', inset: 0 }} aria-hidden>
-        <div className="art-label">BACKDROP</div>
+      {/* The picture layers fade out at the bottom into the page; the text
+          and pips stay outside the mask. While a backdrop loads, the bare
+          placeholder shows behind the title the body already prints. */}
+      <div className="hero-media" aria-hidden>
+        <div className="art hero-placeholder" />
+        {previews.map((item, index) => {
+          const artwork = item.background ?? item.poster
+          if (!artwork) return null
+          return (
+            <div
+              key={`${item.type}:${item.id}:${index}`}
+              className={`hero-art ${index === safeIndex ? 'hero-art-active' : ''}`}
+              style={{ backgroundImage: `url(${artwork})` }}
+            />
+          )
+        })}
+        <div className="hero-scrim" />
       </div>
-      {previews.map((item, index) => {
-        const artwork = item.background ?? item.poster
-        if (!artwork) return null
-        return (
-          <div
-            key={`${item.type}:${item.id}:${index}`}
-            className={`hero-art ${index === safeIndex ? 'hero-art-active' : ''}`}
-            style={{ backgroundImage: `url(${artwork})` }}
-            aria-hidden
-          />
-        )
-      })}
-      <div className="hero-scrim" />
-      <div className="hero-body">
+      {/* Keyed by title so the text fades in with its backdrop instead of
+          swapping ahead of it. */}
+      <div className="hero-body hero-body-enter" key={itemId}>
         <div className="kicker kicker-accent">FEATURED</div>
-        <div className="hero-title">{featured.name}</div>
+        <FeaturedTitle name={featured.name} logo={featured.logo} />
         <div className="hero-facts">
           {rating && <span className="hero-rating">{rating}</span>}
           {rating && featured.releaseInfo && <span className="dot-sep">·</span>}
@@ -402,12 +404,58 @@ function FeaturedHero({ catalogs, filter }: { catalogs: BrowsableCatalog[]; filt
                   setFeaturedIndex(index)
                   setAutoAdvance(false)
                 }}
-              />
+              >
+                {active && (
+                  // Keyed by position so each title's dwell restarts the fill.
+                  // Once the user has picked a title the fill sits full: the
+                  // carousel has stopped.
+                  <span
+                    key={`${previewsKey}:${safeIndex}`}
+                    className={`pip-fill ${autoAdvance ? 'pip-fill-running' : ''}`}
+                    style={
+                      autoAdvance
+                        ? {
+                            animationDuration: `${HERO_DWELL_MS}ms`,
+                            animationPlayState: hovered ? 'paused' : 'running',
+                          }
+                        : undefined
+                    }
+                    onAnimationEnd={autoAdvance ? advance : undefined}
+                  />
+                )}
+              </button>
             )
           })}
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * The featured title's logo art when its addon has one, else the name in the
+ * display face; a logo that fails to load falls back to the name. Both are
+ * rendered and the stylesheet picks one, because logos are drawn for dark
+ * backdrops: over the light theme's pale scrim most would vanish, so the
+ * light theme always shows the name.
+ */
+function FeaturedTitle({ name, logo }: { name: string; logo: string | undefined }) {
+  const [failed, setFailed] = useState(false)
+  const showLogo = Boolean(logo) && !failed
+  return (
+    <>
+      {showLogo && (
+        <img
+          className="hero-logo"
+          src={logo}
+          alt={name}
+          title={name}
+          draggable={false}
+          onError={() => setFailed(true)}
+        />
+      )}
+      <div className={`hero-title ${showLogo ? 'hero-title-behind-logo' : ''}`}>{name}</div>
+    </>
   )
 }
 
