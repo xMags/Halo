@@ -51,7 +51,7 @@ internal class AndroidDownloadNotifications(private val context: Context) {
 
     fun foreground(jobId: String, downloadedBytes: Long, totalBytes: Long): ForegroundInfo {
         val notification = NotificationCompat.Builder(context, ProgressChannel)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_halo)
             .setContentTitle("Downloading for offline playback")
             .setContentText(progressText(downloadedBytes, totalBytes))
             .setContentIntent(openDownloadsIntent(jobId))
@@ -95,7 +95,7 @@ internal class AndroidDownloadNotifications(private val context: Context) {
     private fun notifyResult(jobId: String, title: String, message: String) {
         if (!notificationsAllowed()) return
         val notification = NotificationCompat.Builder(context, ResultChannel)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_halo)
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
