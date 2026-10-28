@@ -75,7 +75,7 @@ class DirectionAUiInstrumentedTest {
             position = 0,
         )
         val state = SettingsUiState(
-            serverUrl = "https://halo.example",
+            latencyMillis = 42,
             addons = AddonsResponse(user = listOf(addon)),
             account = Me("user-1", "dev", isAdmin = false, createdAt = 17),
             settings = UserSettings.Empty.withAutoplayNextEpisode(true),
