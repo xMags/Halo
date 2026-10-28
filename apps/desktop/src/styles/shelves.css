@@ -40,16 +40,16 @@
 /* Fades the edges that still hide cards, so a cut-off card reads as "more
    this way" rather than as clipped. */
 .shelf-fade-end {
-  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 16px), transparent);
-  mask-image: linear-gradient(90deg, #000 calc(100% - 16px), transparent);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent);
 }
 .shelf-fade-start {
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px);
-  mask-image: linear-gradient(90deg, transparent, #000 16px);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px);
+  mask-image: linear-gradient(90deg, transparent, #000 12px);
 }
 .shelf-fade-both {
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 16px), transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 16px), transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
 }
 
 /* ── Poster and continue cards ─────────────────────────────────────────── */
