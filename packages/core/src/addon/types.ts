@@ -91,6 +91,10 @@ export interface MetaDetail extends MetaPreview {
   released?: string
   /** Local certificate such as `U/A 13+` (TMDB). */
   ageRating?: string
+  /** YouTube trailers, as `{ ytId }` (Cinemeta, TMDB). */
+  trailerStreams?: Array<{ title?: string; ytId?: string }>
+  /** The older trailer list: `{ source: <YouTube id>, type: 'Trailer' }`. */
+  trailers?: Array<{ source?: string; type?: string }>
   /** Extras beyond the core spec; TMDB puts the cast with photos here. */
   app_extras?: { cast?: MetaPerson[] }
   runtime?: string

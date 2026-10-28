@@ -8,6 +8,7 @@ import {
   formatRuntime,
   personSearchUrl,
   summarizeAvailability,
+  trailerUrl,
 } from '../src/browse/detail/detailFacts.ts'
 
 const stream = (title: string, langs: string[] = []): Stream => ({
@@ -68,6 +69,16 @@ test('credits prefer the pictured cast, close with directors, and never repeat a
 
 test('a cast card searches IMDb people for the name', () => {
   assert.equal(personSearchUrl(' Aneet Padda '), 'https://www.imdb.com/find/?q=Aneet%20Padda&s=nm')
+})
+
+test('the trailer links to YouTube, from either trailer list, and only for a real id', () => {
+  assert.equal(trailerUrl({ trailerStreams: [{ ytId: 'PLl99DlL6b4' }] }), 'https://www.youtube.com/watch?v=PLl99DlL6b4')
+  assert.equal(
+    trailerUrl({ trailers: [{ source: 'clip123456', type: 'Clip' }, { source: 'xyXX8LXiNJ4', type: 'Trailer' }] }),
+    'https://www.youtube.com/watch?v=xyXX8LXiNJ4',
+  )
+  assert.equal(trailerUrl({ trailerStreams: [{ ytId: 'x&list=evil' }] }), null)
+  assert.equal(trailerUrl({}), null)
 })
 
 test('credits fall back to the plain cast names', () => {

@@ -98,6 +98,25 @@ export function personSearchUrl(name: string): string {
   return `https://www.imdb.com/find/?q=${encodeURIComponent(name.trim())}&s=nm`
 }
 
+/** A YouTube video id as YouTube issues them; anything else is not linked to. */
+const YOUTUBE_ID = /^[A-Za-z0-9_-]{6,20}$/
+
+/**
+ * The title's trailer on YouTube, from the addon's trailer streams or its
+ * older trailer list; null when it sends none. The id comes from an addon, so
+ * it is checked before it becomes a URL the browser opens.
+ */
+export function trailerUrl(meta: Pick<MetaDetail, 'trailerStreams' | 'trailers'>): string | null {
+  const candidates = [
+    ...(meta.trailerStreams ?? []).map((trailer) => trailer.ytId),
+    ...(meta.trailers ?? [])
+      .filter((trailer) => !trailer.type || trailer.type.toLowerCase() === 'trailer')
+      .map((trailer) => trailer.source),
+  ]
+  const id = candidates.find((candidate): candidate is string => Boolean(candidate && YOUTUBE_ID.test(candidate)))
+  return id ? `https://www.youtube.com/watch?v=${id}` : null
+}
+
 /** `18 July 2025` from an ISO date; null when there is none or it does not parse. */
 export function formatReleaseDate(released: string | undefined): string | null {
   if (!released) return null
