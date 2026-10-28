@@ -57,6 +57,9 @@
   /* WinUI control strokes: strong (progress track) and the button bottom edge. */
   --cst: rgba(255, 255, 255, 0.545);
   --ces: rgba(255, 255, 255, 0.094);
+  /* A hovered poster or continue card: its art's stroke and shadow. */
+  --chs: rgba(255, 255, 255, 0.3);
+  --chsh: rgba(0, 0, 0, 0.6);
   /* WinUI text boxes: the focused fill (ControlFillColorInputActive) and the
      placeholder ink at rest and while focused (TextFillColorSecondary and
      TextFillColorTertiary). */
@@ -140,6 +143,8 @@
   --bmf: rgba(0, 0, 0, 0.078);
   --cst: rgba(0, 0, 0, 0.447);
   --ces: rgba(0, 0, 0, 0.161);
+  --chs: rgba(0, 0, 0, 0.22);
+  --chsh: rgba(0, 0, 0, 0.3);
   --tfa: #ffffff;
   --tps: rgba(0, 0, 0, 0.62);
   --tpt: rgba(0, 0, 0, 0.447);

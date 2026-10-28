@@ -22,6 +22,10 @@
 .shelf-chevron {
   color: var(--t2);
 }
+/* The chevron toward an end already in view: drawn, but plainly inert. */
+.shelf-chevron:disabled {
+  opacity: 0.4;
+}
 /* The top padding is the band the cards lift into on hover; the native shelf
    pulls its row up by the same 4px so the band does not widen the gap under
    the header. */
@@ -32,6 +36,20 @@
   overflow-y: hidden;
   margin-top: -4px;
   padding-top: 4px;
+}
+/* Fades the edges that still hide cards, so a cut-off card reads as "more
+   this way" rather than as clipped. */
+.shelf-fade-end {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent);
+}
+.shelf-fade-start {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 64px);
+  mask-image: linear-gradient(90deg, transparent, #000 64px);
+}
+.shelf-fade-both {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 64px, #000 calc(100% - 64px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 64px, #000 calc(100% - 64px), transparent);
 }
 
 /* ── Poster and continue cards ─────────────────────────────────────────── */
@@ -49,6 +67,17 @@
   aspect-ratio: 2 / 3;
   border: 1px solid var(--cs);
   border-radius: 8px;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+/* The lift alone is easy to miss, so the hovered card's art also takes a
+   stronger edge and a shadow. The negative spread keeps the shadow off the
+   strip's clipped sides. */
+.poster:hover .poster-art,
+.cw-card:hover .cw-art {
+  border-color: var(--chs);
+  box-shadow: 0 8px 16px -6px var(--chsh);
 }
 .poster-badge {
   position: absolute;
@@ -89,6 +118,9 @@
   aspect-ratio: 16 / 9;
   border: 1px solid var(--cs);
   border-radius: 8px;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .cw-tag {
   position: absolute;

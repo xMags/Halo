@@ -23,6 +23,7 @@
  *   --ds   sheet + menu surface   --ib/--is   info fill / stroke
  *   --fl   flyout (dialog surface) --crb       critical background (InfoBar)
  *   --chd  chart dim              --hs1/--hs2 hero scrim stops
+ *   --chs/--chsh  hovered card stroke / shadow (no native brush)
  *
  * The player overlay is pinned to dark in both themes and uses literal
  * colours, not these tokens; see `styles/player.css`.
