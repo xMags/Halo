@@ -166,7 +166,9 @@ function Stack() {
     case 'settings':
       return <Settings />
     case 'detail':
-      return <Detail type={screen.type} id={screen.id} />
+      // Keyed by title: opening one title from another's page (the rail, a
+      // context menu) must start fresh, not inherit its season and scroll.
+      return <Detail key={`${screen.type}:${screen.id}`} type={screen.type} id={screen.id} />
     case 'catalog':
       return <Catalog title={screen.title} source={screen.source} items={screen.items} />
     case 'player':
