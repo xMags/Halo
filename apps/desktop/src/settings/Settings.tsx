@@ -404,6 +404,40 @@ function AddonsSection() {
   }
 
   /**
+   * An admin shares one of their own addons with every user: it joins the end
+   * of the global list, then leaves their own list, where it would only sit
+   * shadowed by the global copy. A built-in stays in their list (it cannot be
+   * removed there), shadowed until the global copy goes.
+   */
+  const makeGlobal = async (item: AddonEntry) => {
+    const transportUrl = item.transportUrl
+    if (!isAdmin || listBusy || !transportUrl) return
+    if (globalAddons.some((a) => a.transportUrl === transportUrl)) return
+    // The server sends global URLs to admins; without them the list cannot be re-sent whole.
+    const globalUrls = globalAddons.map((a) => a.transportUrl)
+    if (globalUrls.some((url) => !url)) {
+      setListError('The global addon list could not be read in full. Refresh and try again.')
+      return
+    }
+    if (!window.confirm(`Install “${item.manifest.name}” for every user?`)) return
+    setListError(null)
+    try {
+      await setGlobalAddons.mutateAsync([...(globalUrls as string[]), transportUrl])
+    } catch {
+      setListError(`“${item.manifest.name}” could not be installed for every user. Try again.`)
+      return
+    }
+    if (isBuiltInAddon(item, 'yours')) return
+    try {
+      await setAddons.mutateAsync(
+        userAddons.filter((a) => a.transportUrl !== transportUrl).map((a) => a.transportUrl!),
+      )
+    } catch {
+      setListError(`“${item.manifest.name}” is now global, but your own copy could not be removed. Remove it below.`)
+    }
+  }
+
+  /**
    * Order is priority: the first addon that can answer a resolution request
    * wins, so dragging a row is a real setting, not decoration. Only rows
    * within one scope reorder against each other: the server keeps the global
@@ -503,15 +537,28 @@ function AddonsSection() {
         ) : (
           <span />
         )}
-        <button
-          type="button"
-          className="icon-btn icon-btn-bare icon-btn-28"
-          title={lockTitle ?? 'Remove addon'}
-          disabled={lockTitle !== null || listBusy}
-          onClick={() => remove(item, scope)}
-        >
-          <FluentIcon glyph="delete" size={14} />
-        </button>
+        <span className="addon-actions">
+          {scope === 'yours' && isAdmin && !shadowed && (
+            <button
+              type="button"
+              className="icon-btn icon-btn-bare icon-btn-28"
+              title="Install for every user"
+              disabled={listBusy}
+              onClick={() => void makeGlobal(item)}
+            >
+              <FluentIcon glyph="globe" size={14} />
+            </button>
+          )}
+          <button
+            type="button"
+            className="icon-btn icon-btn-bare icon-btn-28"
+            title={lockTitle ?? 'Remove addon'}
+            disabled={lockTitle !== null || listBusy}
+            onClick={() => remove(item, scope)}
+          >
+            <FluentIcon glyph="delete" size={14} />
+          </button>
+        </span>
       </div>
     )
   }
