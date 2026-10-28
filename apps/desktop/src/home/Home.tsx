@@ -37,11 +37,13 @@ import { setSearchQuery, useSearchQuery } from '../search/searchQuery'
 import { HERO_DWELL_MS } from '../theme'
 
 /**
- * The native catalog cap: the first eight browsable catalogs across the
- * addons, in addon order, whatever the filter. The filter then narrows the
- * titles inside each shelf, and a shelf left with none disappears.
+ * The catalog cap: the first sixteen browsable catalogs across the addons, in
+ * addon order, whatever the filter. The filter then narrows the titles inside
+ * each shelf, and a shelf left with none disappears. Twice the native app's
+ * eight, so a second catalog addon (TMDB beside Cinemeta) is not cut off
+ * after its first rows; still bounded, since every shelf is fetched at once.
  */
-const MAX_SHELVES = 8
+const MAX_SHELVES = 16
 /** How many catalog entries a single shelf shows. */
 const SHELF_LIMIT = 30
 /** The native carousel's length. */
