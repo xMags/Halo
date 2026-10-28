@@ -87,7 +87,10 @@ export function Search() {
   return (
     <div className="view">
       <SectionHeader title="Search" />
-      <div style={{ display: 'flex', flexDirection: 'column', padding: '8px var(--gu) 0' }}>
+      {/* Recent searches get their own column from the search box down, so
+          they never make the top match's row taller than the card itself. */}
+      <div className={`search-head ${recent.length > 0 ? 'search-head-recent' : ''}`}>
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <SearchBox
           large
           autoFocus
@@ -118,18 +121,47 @@ export function Search() {
           ))}
         </div>
 
-        {(topMatch || recent.length > 0) && (
-          <div className="search-cols">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
-              {topMatch && (
-                <>
-                  <div className="kicker">TOP MATCH</div>
-                  <TopMatchCard meta={topMatch} onOpen={() => recordTerm(query)} />
-                </>
-              )}
-            </div>
+        {topMatch && (
+          <div className="search-top">
+            <div className="kicker">TOP MATCH</div>
+            <TopMatchCard meta={topMatch} onOpen={() => recordTerm(query)} />
+          </div>
+        )}
+        {waiting && !topMatch && (
+          <div className="search-top">
+            <div className="kicker">TOP MATCH</div>
+            <TopMatchSkeleton />
+          </div>
+        )}
+        {active && failedNames.length > 0 && (
+          <div className="search-note" role="status">
+            {failed.length === total
+              ? 'Search could not reach your addons. Check your connection and try again.'
+              : `${failedNames.join(', ')} did not answer, so ${failedNames.length === 1 ? 'its' : 'their'} results are missing.`}
+          </div>
+        )}
+        {active && total > 0 && pending === 0 && groups.length === 0 && failed.length < total && (
+          <div className="state-note" style={{ paddingLeft: 0, textAlign: 'center', marginTop: 30 }}>
+            No matching titles.
+          </div>
+        )}
+        {active && total === 0 && (
+          <div className="state-note" style={{ paddingLeft: 0, textAlign: 'center', marginTop: 30 }}>
+            None of your addons can search. Add one that can, such as Cinemeta, in Settings.
+          </div>
+        )}
+        {active && groups.length > 0 && shown.length === 0 && pending === 0 && (
+          <div className="state-note" style={{ paddingLeft: 0, textAlign: 'center', marginTop: 30 }}>
+            No {filterLabel} match {'“'}{query}{'”'}.{' '}
+            <button type="button" className="btn-link" onClick={() => setTypeFilter(null)}>
+              Show all results
+            </button>
+          </div>
+        )}
+        </div>
+
             {recent.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 232, flexShrink: 0 }}>
+              <div className="search-recent">
                 <div className="recent-head">
                   <div className="kicker">RECENT</div>
                   <button type="button" className="btn-link recent-clear" onClick={forgetAll}>
@@ -162,43 +194,6 @@ export function Search() {
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {waiting && !topMatch && (
-          <div className="search-cols" style={{ marginTop: 14 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
-              <div className="kicker">TOP MATCH</div>
-              <TopMatchSkeleton />
-            </div>
-          </div>
-        )}
-        {active && failedNames.length > 0 && (
-          <div className="search-note" role="status">
-            {failed.length === total
-              ? 'Search could not reach your addons. Check your connection and try again.'
-              : `${failedNames.join(', ')} did not answer, so ${failedNames.length === 1 ? 'its' : 'their'} results are missing.`}
-          </div>
-        )}
-        {active && total > 0 && pending === 0 && groups.length === 0 && failed.length < total && (
-          <div className="state-note" style={{ paddingLeft: 0, textAlign: 'center', marginTop: 30 }}>
-            No matching titles.
-          </div>
-        )}
-        {active && total === 0 && (
-          <div className="state-note" style={{ paddingLeft: 0, textAlign: 'center', marginTop: 30 }}>
-            None of your addons can search. Add one that can, such as Cinemeta, in Settings.
-          </div>
-        )}
-        {active && groups.length > 0 && shown.length === 0 && pending === 0 && (
-          <div className="state-note" style={{ paddingLeft: 0, textAlign: 'center', marginTop: 30 }}>
-            No {filterLabel} match {'\u201c'}{query}{'\u201d'}.{' '}
-            <button type="button" className="btn-link" onClick={() => setTypeFilter(null)}>
-              Show all results
-            </button>
-          </div>
-        )}
-
       </div>
 
       {waiting && shown.length === 0 && (

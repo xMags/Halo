@@ -1,10 +1,25 @@
 /* ── Search ────────────────────────────────────────────────────────────── */
-.search-cols {
+/* Search box, filters and top match on the left; Recent beside them from the top. */
+.search-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 232px;
-  gap: 16px;
-  margin-top: 22px;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 24px;
   align-items: start;
+  padding: 8px var(--gu) 0;
+}
+.search-head-recent {
+  grid-template-columns: minmax(0, 1fr) 232px;
+}
+.search-top {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 22px;
+}
+.search-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .top-match {
   display: grid;
