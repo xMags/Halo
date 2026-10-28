@@ -11,9 +11,8 @@ import { Shelf } from '../components/Shelf'
 import { HeroSkeleton, PosterCardSkeleton, ShelfSkeleton } from '../components/Skeleton'
 import { movieVideoId, playableFromPreview } from '../browse/playableVideo'
 import { useTitleMenu } from '../browse/titleMenu'
-import { ComboBox } from '../components/ComboBox'
-import { useSettings, useUpdateSettings } from '../settings/syncedSettings'
-import { catalogExtra, languageChoices } from './catalogLanguage'
+import { useSettings } from '../settings/syncedSettings'
+import { catalogExtra } from './catalogLanguage'
 import { continueSheetParams, useContinueShelf } from './continueShelf'
 import { formatClock, videoIdTag } from '../format'
 import {
@@ -434,8 +433,6 @@ function CatalogShelf({ shelf, filter }: { shelf: BrowsableCatalog; filter: Home
       title={title}
       source={source}
       action={
-        <>
-        <LanguagePicker shelf={shelf} chosen={extra.genre} />
         <button
           type="button"
           className="btn-link"
@@ -444,7 +441,6 @@ function CatalogShelf({ shelf, filter }: { shelf: BrowsableCatalog; filter: Home
         >
           See all
         </button>
-        </>
       }
     >
       {items.slice(0, SHELF_LIMIT).map((meta) => (
@@ -453,26 +449,5 @@ function CatalogShelf({ shelf, filter }: { shelf: BrowsableCatalog; filter: Home
       {isLoading &&
         Array.from({ length: 6 }).map((_, index) => <PosterCardSkeleton key={`skeleton-${index}`} />)}
     </Shelf>
-  )
-}
-
-/**
- * The language a language catalog (TMDB's "Language" row) shows, chosen per
- * account: it syncs with the other settings, so the row follows the person to
- * every device. Nothing for any other catalog.
- */
-function LanguagePicker({ shelf, chosen }: { shelf: BrowsableCatalog; chosen: string | undefined }) {
-  const updateSettings = useUpdateSettings()
-  const choices = languageChoices(shelf.catalog)
-  if (!choices || choices.length === 0) return null
-  return (
-    <ComboBox
-      options={choices.map((language) => ({ value: language, label: language }))}
-      value={chosen ?? choices[0]!}
-      width="auto"
-      minWidth={120}
-      ariaLabel={`Language for ${shelf.catalog.name ?? shelf.addonName}`}
-      onChange={(language) => updateSettings.mutate({ catalogLanguage: String(language) })}
-    />
   )
 }
