@@ -24,6 +24,7 @@ import {
 import { accountLabel, DEVICE_ACCOUNT_LABEL, DEVICE_ACCOUNT_NAME } from '../auth/accountLabel'
 import { describeStatus, useServerStatus } from '../auth/serverStatus'
 import { RAIL_ANCHOR_FRACTION, activeSettingsSection, isScrolledToEnd } from './settingsRail'
+import { languageChoices } from '../home/catalogLanguage'
 import {
   SETTINGS_SECTIONS,
   clearSettingsSectionRequest,
@@ -644,7 +645,46 @@ function AddonsSection() {
         </div>
       )}
       {body}
+      <CatalogLanguageRow addons={all} />
     </Section>
+  )
+}
+
+/** The value standing for "no choice": the catalog asks for its own default. */
+const ADDON_DEFAULT = ''
+
+/**
+ * The account's language for Home's language rows (TMDB's "Language" row),
+ * offered only when an installed addon has such a row. The choices are that
+ * row's own list, which names languages Halo's player lists do not (Tamil,
+ * Telugu); the setting syncs with the account.
+ */
+function CatalogLanguageRow({ addons }: { addons: AddonEntry[] }) {
+  const settings = useSettings()
+  const updateSettings = useUpdateSettings()
+  const choices = addons
+    .flatMap((addon) => addon.manifest.catalogs)
+    .map((catalog) => languageChoices(catalog))
+    .find((list): list is string[] => list !== null && list.length > 0)
+  if (!choices) return null
+  return (
+    <div className="list-card">
+      <SettingRow label="Language rows on Home" hint="Rows such as TMDB's Language row show titles in this language">
+        <ComboBox
+          options={[
+            { value: ADDON_DEFAULT, label: 'Addon default' },
+            ...choices.map((language) => ({ value: language, label: language })),
+          ]}
+          value={settings.catalogLanguage ?? ADDON_DEFAULT}
+          width="auto"
+          minWidth={148}
+          ariaLabel="Language rows on Home"
+          onChange={(value) =>
+            updateSettings.mutate({ catalogLanguage: value === ADDON_DEFAULT ? undefined : String(value) })
+          }
+        />
+      </SettingRow>
+    </div>
   )
 }
 
