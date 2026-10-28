@@ -86,6 +86,27 @@ class CatalogRowsTest {
     }
 
     @Test
+    fun keepsOnlyMovieAndSeriesCatalogs() {
+        // TorBox's "other" catalog lists the account's raw torrents, not titles.
+        val rows = catalogRows(
+            listOf(
+                addon(
+                    "torbox",
+                    "TorBox",
+                    listOf(
+                        catalog("movie", "torbox-movies", "TorBox Movies"),
+                        catalog("other", "torbox-torrents", "TorBox Torrents"),
+                        catalog("series", "torbox-series", "TorBox Series"),
+                        catalog("channel", "torbox-channels", "TorBox Channels"),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(listOf("torbox/movie/torbox-movies", "torbox/series/torbox-series"), rows.map { it.key })
+    }
+
+    @Test
     fun anUnnamedCatalogBorrowsItsAddonName() {
         val rows = catalogRows(listOf(addon("torbox", "TorBox", listOf(catalog("movie", "torbox-movies")))))
 
