@@ -437,6 +437,9 @@
 .watch-browse {
   margin-top: 16px;
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   height: 40px;
   border-radius: 10px;
   border: 1px solid var(--glass-edge);
