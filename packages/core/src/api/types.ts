@@ -90,6 +90,11 @@ export interface UserSettings {
   playbackRate?: number
   /** Auto-advance to the next episode when one ends; unset = on. */
   autoplayNextEpisode?: boolean
+  /**
+   * The language Home's language catalogs (TMDB's "Language" row) are asked
+   * for, as the catalog names it ("Hindi"); unset = the catalog's default.
+   */
+  catalogLanguage?: string
 }
 
 export interface SettingsPayload {

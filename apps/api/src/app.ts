@@ -111,6 +111,7 @@ const settingsSchema = z.object({
       subtitleShadow: z.boolean().optional(),
       playbackRate: z.number().min(0.25).max(4).optional(),
       autoplayNextEpisode: z.boolean().optional(),
+      catalogLanguage: z.string().min(1).max(64).optional(),
     })
     .passthrough(),
   updatedAt: z.number().int().positive(),

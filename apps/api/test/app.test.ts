@@ -207,6 +207,15 @@ describe('settings LWW', () => {
     expect(body.updatedAt).toBe(2000)
   })
 
+  it('keeps a bounded catalog language', async () => {
+    const ok = await app.request('/settings', authed(token, { value: { catalogLanguage: 'Hindi' }, updatedAt: 3000 }))
+    expect(((await ok.json()) as { value: { catalogLanguage: string } }).value.catalogLanguage).toBe('Hindi')
+    for (const catalogLanguage of ['', 'x'.repeat(65), 7]) {
+      const res = await app.request('/settings', authed(token, { value: { catalogLanguage }, updatedAt: 4000 }))
+      expect(res.status).toBe(400)
+    }
+  })
+
   it('round-trips validated player preferences', async () => {
     const value = {
       videoFitMode: 'cover',
