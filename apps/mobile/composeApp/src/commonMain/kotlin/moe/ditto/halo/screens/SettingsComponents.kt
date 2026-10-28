@@ -176,6 +176,9 @@ internal fun AddonRow(
     onToggleCatalogs: (AddonEntry, AddonOwnership) -> Unit,
     onRemove: (AddonEntry, AddonOwnership) -> Unit,
 ) {
+    // A personal copy the global entry stands in for: still removable, but its
+    // catalogs belong to the global copy, so there is nothing to show or hide.
+    val shadowed = ownership == AddonOwnership.User && addon.providedGlobally
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = HaloSpacing.Sm + 4.dp, vertical = HaloSpacing.Sm + 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -196,7 +199,7 @@ internal fun AddonRow(
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Xs)) {
                 Text(
                     text = addon.manifest.name,
-                    color = HaloColors.Text,
+                    color = if (shadowed) HaloColors.TextDim else HaloColors.Text,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -205,7 +208,8 @@ internal fun AddonRow(
                 )
                 Text("v${addon.manifest.version}", color = HaloColors.TextDim, fontSize = 12.sp)
             }
-            addon.manifest.description?.let { description ->
+            val detail = if (shadowed) "Provided globally, so this copy is not used" else addon.manifest.description
+            detail?.let { description ->
                 Text(
                     text = description,
                     color = HaloColors.TextDim,
@@ -219,7 +223,7 @@ internal fun AddonRow(
         if (busy) {
             CircularProgressIndicator(color = HaloColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
         } else if (enabled) {
-            if (addon.manifest.catalogs.isNotEmpty() || addon.hideCatalogs) {
+            if (!shadowed && (addon.manifest.catalogs.isNotEmpty() || addon.hideCatalogs)) {
                 Text(
                     text = if (addon.hideCatalogs) "Show" else "Hide",
                     color = if (addon.hideCatalogs) HaloColors.TextDim else HaloColors.Accent,

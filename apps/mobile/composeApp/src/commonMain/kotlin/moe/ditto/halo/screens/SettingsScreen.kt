@@ -108,7 +108,9 @@ internal fun SettingsScreen(
             mutationError = "Wait for the addon list to finish loading."
             return
         }
-        if (addons.effective.any { it.transportUrl == url }) {
+        // Every installed entry, not just the effective ones: a personal copy
+        // of a global addon is installed even though it is not in use.
+        if ((addons.global + addons.user).any { it.transportUrl == url }) {
             mutationError = "That addon is already installed."
             return
         }
