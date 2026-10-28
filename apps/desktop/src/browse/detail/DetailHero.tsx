@@ -1,10 +1,11 @@
 import type { MetaDetail } from '@halo/core'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useMemo, useState, type RefObject } from 'react'
 import { FluentIcon } from '../../components/FluentIcon'
 import { QualityBadge } from '../../components/QualityBadge'
 import { formatTimeLeft } from '../../format'
 import { useStreams } from '../../queries'
-import { summarizeAvailability, formatRuntime, type Availability } from './detailFacts'
+import { formatRuntime, summarizeAvailability, trailerUrl, type Availability } from './detailFacts'
 
 /** What the page's main button plays, shared by the hero and the compact bar. */
 export interface PlayTarget {
@@ -50,6 +51,7 @@ export function DetailHero({
 }) {
   const availability = useAvailability(type, play.videoId)
   const best = availability.summary.groups[0]
+  const trailer = trailerUrl(meta)
   const runtime = seasons > 0 ? `${seasons} season${seasons === 1 ? '' : 's'}` : formatRuntime(meta.runtime)
   const facts = [meta.releaseInfo, runtime, (meta.genres ?? []).slice(0, 3).join(', ') || null].filter(
     (fact): fact is string => Boolean(fact),
@@ -109,6 +111,17 @@ export function DetailHero({
               <FluentIcon glyph="downloads" size={18} />
               <span className="dh-tip">Download</span>
             </button>
+            {trailer && (
+              <button
+                type="button"
+                className="glass-round dh-round"
+                aria-label="Watch the trailer on YouTube"
+                onClick={() => void openUrl(trailer).catch(() => undefined)}
+              >
+                <FluentIcon glyph="video" size={18} />
+                <span className="dh-tip">Trailer on YouTube</span>
+              </button>
+            )}
           </div>
 
           <div className="dh-progress">
