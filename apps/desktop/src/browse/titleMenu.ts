@@ -17,6 +17,7 @@ import {
   watchedRowsInOrder,
   type WatchMarkTarget,
 } from './watchMarks'
+import { movieVideoId, playableFromPreview } from './playableVideo'
 
 type MenuEvent = MouseEvent<HTMLElement>
 type MaybeEntry = ContextMenuEntry | null | false
@@ -189,8 +190,11 @@ export function useTitleMenu() {
     const isSeries = meta.type === 'series'
     const cached = cachedMeta(meta.type, meta.id)
     const minutes = runtimeMinutes(cached?.runtime)
+    // The full details, once loaded, may name the video the card does not.
+    const videoId = movieVideoId(cached ?? meta)
+    const playable = videoId !== meta.id || playableFromPreview(meta)
     // A series' own id is never a video, so it has no download of its own.
-    const saved = isSeries ? { play: null, manage: [] } : downloadEntries(meta.id, onBeforeOpen)
+    const saved = isSeries ? { play: null, manage: [] } : downloadEntries(videoId, onBeforeOpen)
     show(event, [
       !isSeries && {
         kind: 'item',
@@ -198,9 +202,11 @@ export function useTitleMenu() {
         glyph: 'play',
         onSelect: () => {
           onBeforeOpen?.()
+          // Without a video id the addons know, the title page finds it.
+          if (!playable) return push({ name: 'detail', type: meta.type, id: meta.id })
           openSheet({
             type: meta.type,
-            videoId: meta.id,
+            videoId,
             itemId,
             metaId: meta.id,
             title: meta.name,
@@ -222,7 +228,7 @@ export function useTitleMenu() {
       },
       SEPARATOR,
       !isSeries &&
-        watchedEntry({ videoId: meta.id, itemId, name: meta.name, ...(meta.poster ? { poster: meta.poster } : {}) }, cached?.runtime),
+        watchedEntry({ videoId, itemId, name: meta.name, ...(meta.poster ? { poster: meta.poster } : {}) }, cached?.runtime),
       libraryEntry(meta),
       ...saved.manage,
     ])
