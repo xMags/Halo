@@ -145,26 +145,29 @@ export function browsableCatalogs(addons: AddonEntry[]): BrowsableCatalog[] {
  * featured picker, which reads every shelf's catalog at once: one key and one
  * fetch for both.
  */
-export function catalogQuery(addonId: string, type: string, id: string) {
+export function catalogQuery(addonId: string, type: string, id: string, extra: Record<string, string> = {}) {
+  // A plain catalog keeps its original key, so nothing cached under it moves.
+  const narrowed = Object.keys(extra).length > 0
   return {
-    queryKey: ['catalog', addonId, type, id] as const,
-    queryFn: async () => (await getClient().getCatalog(addonId, type, id)).metas,
+    queryKey: narrowed ? (['catalog', addonId, type, id, extra] as const) : (['catalog', addonId, type, id] as const),
+    queryFn: async () => (await getClient().getCatalog(addonId, type, id, narrowed ? extra : undefined)).metas,
     staleTime: 10 * 60_000,
   }
 }
 
 /** One catalog, resolved server-side. `addonId` is the opaque `AddonEntry.id`. */
-export function useCatalog(addonId: string, type: string, id: string, opts?: { enabled?: boolean }) {
-  return useQuery({ ...catalogQuery(addonId, type, id), enabled: opts?.enabled ?? true })
+export function useCatalog(
+  addonId: string,
+  type: string,
+  id: string,
+  opts?: { enabled?: boolean; extra?: Record<string, string> },
+) {
+  return useQuery({ ...catalogQuery(addonId, type, id, opts?.extra), enabled: opts?.enabled ?? true })
 }
 
 /** One catalog narrowed to a genre (the catalog must declare a `genre` extra). */
 export function useGenreCatalog(addonId: string, type: string, id: string, genre: string) {
-  return useQuery({
-    queryKey: ['catalog', addonId, type, id, { genre }] as const,
-    queryFn: async () => (await getClient().getCatalog(addonId, type, id, { genre })).metas,
-    staleTime: 10 * 60_000,
-  })
+  return useQuery(catalogQuery(addonId, type, id, { genre }))
 }
 
 /** Meta resolved server-side: first effective addon that can describe this type/id wins. */
