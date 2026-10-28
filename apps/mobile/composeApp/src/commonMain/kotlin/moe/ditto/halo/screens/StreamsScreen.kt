@@ -19,12 +19,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,10 +42,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.chrisbanes.haze.rememberHazeState
+import kotlinx.coroutines.launch
 import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.api.AddonError
 import moe.ditto.halo.api.AddonSource
 import moe.ditto.halo.api.AddonStreams
-import moe.ditto.halo.api.AddonError
 import moe.ditto.halo.api.HaloApiException
 import moe.ditto.halo.api.MalformedResponseException
 import moe.ditto.halo.api.SessionRejectedException
@@ -54,19 +57,20 @@ import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.downloads.DownloadEntry
 import moe.ditto.halo.downloads.DownloadMedia
 import moe.ditto.halo.downloads.DownloadStartResult
-import moe.ditto.halo.downloads.sourceFingerprint
 import moe.ditto.halo.downloads.DownloadStatus
+import moe.ditto.halo.downloads.sourceFingerprint
+import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.HaloType
-import moe.ditto.halo.ui.CenterMessage
+import moe.ditto.halo.ui.LocalHazeState
 import moe.ditto.halo.ui.SelectOption
 import moe.ditto.halo.ui.SelectSheet
 import moe.ditto.halo.ui.formatBytes
+import moe.ditto.halo.ui.glassSource
 import moe.ditto.halo.ui.rememberResponsive
-import kotlinx.coroutines.launch
 
 /**
  * Where a title's playable sources are chosen, grouped by the addon that
@@ -173,55 +177,62 @@ internal fun SourcesPicker(
     // replacement throws away bytes someone waited for. Asked, never assumed.
     var pendingReplacement by remember { mutableStateOf<DownloadMedia?>(null) }
 
-    Box(modifier) {
-        StreamsContent(
-            query = streams,
-            onRetry = { scope.launch { graph.browse.retryStreams(type, videoId) } },
-            onPlay = onPlay,
-            download = download,
-            // No column at all where the device has nowhere to keep downloads,
-            // rather than a glyph that cannot do anything.
-            downloadsAvailable = graph.downloads.isAvailable,
-            onDownload = { addon, stream ->
-                val url = stream.url
-                if (url != null) {
-                    val media = downloadMedia(addon, stream, url)
-                    if (download != null && download.media.sourceFingerprint != sourceFingerprint(url)) {
-                        pendingReplacement = media
-                    } else {
-                        scope.launch { refusal = beginDownload(graph, media) }
-                    }
-                }
-            },
-            refusal = refusal,
-            contentPadding = contentPadding,
-            modifier = Modifier.fillMaxSize(),
-        )
+    // The replacement sheet frosts the source list, so the list is this
+    // screen's own blur source; a sheet inside a source it samples comes out
+    // clear. See `LocalHazeState`.
+    val bodyHaze = rememberHazeState()
 
-        val replacement = pendingReplacement
-        SelectSheet(
-            visible = replacement != null,
-            title = "Replace the download?",
-            description = "This video is already downloaded from another source.",
-            options = listOf(
-                SelectOption(
-                    key = ReplaceKey,
-                    label = "Download this source instead",
-                    detail = "The file already on the device is deleted first.",
-                    destructive = true,
-                ),
-            ),
-            onSelect = {
-                val media = replacement
-                pendingReplacement = null
-                if (media != null) {
-                    scope.launch {
-                        refusal = beginReplacement(graph, media)
+    CompositionLocalProvider(LocalHazeState provides bodyHaze) {
+        Box(modifier) {
+            StreamsContent(
+                query = streams,
+                onRetry = { scope.launch { graph.browse.retryStreams(type, videoId) } },
+                onPlay = onPlay,
+                download = download,
+                // No column at all where the device has nowhere to keep downloads,
+                // rather than a glyph that cannot do anything.
+                downloadsAvailable = graph.downloads.isAvailable,
+                onDownload = { addon, stream ->
+                    val url = stream.url
+                    if (url != null) {
+                        val media = downloadMedia(addon, stream, url)
+                        if (download != null && download.media.sourceFingerprint != sourceFingerprint(url)) {
+                            pendingReplacement = media
+                        } else {
+                            scope.launch { refusal = beginDownload(graph, media) }
+                        }
                     }
-                }
-            },
-            onClose = { pendingReplacement = null },
-        )
+                },
+                refusal = refusal,
+                contentPadding = contentPadding,
+                modifier = Modifier.fillMaxSize().glassSource(bodyHaze),
+            )
+
+            val replacement = pendingReplacement
+            SelectSheet(
+                visible = replacement != null,
+                title = "Replace the download?",
+                description = "This video is already downloaded from another source.",
+                options = listOf(
+                    SelectOption(
+                        key = ReplaceKey,
+                        label = "Download this source instead",
+                        detail = "The file already on the device is deleted first.",
+                        destructive = true,
+                    ),
+                ),
+                onSelect = {
+                    val media = replacement
+                    pendingReplacement = null
+                    if (media != null) {
+                        scope.launch {
+                            refusal = beginReplacement(graph, media)
+                        }
+                    }
+                },
+                onClose = { pendingReplacement = null },
+            )
+        }
     }
 }
 

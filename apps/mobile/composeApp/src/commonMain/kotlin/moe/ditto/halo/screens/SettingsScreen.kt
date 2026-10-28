@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -13,6 +14,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import dev.chrisbanes.haze.rememberHazeState
 import io.ktor.http.URLProtocol
 import io.ktor.http.Url
 import kotlinx.coroutines.CancellationException
@@ -24,8 +26,11 @@ import moe.ditto.halo.api.UserSettings
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.LanguageOptions
+import moe.ditto.halo.ui.LocalHazeState
 import moe.ditto.halo.ui.SelectOption
 import moe.ditto.halo.ui.SelectSheet
+import moe.ditto.halo.ui.glassSource
+import moe.ditto.halo.ui.rememberResponsive
 import kotlin.time.TimeSource
 
 private const val NoLanguage = "none"
@@ -197,75 +202,86 @@ internal fun SettingsScreen(
         mutationError = mutationError,
     )
 
-    Box(modifier.fillMaxSize().background(HaloColors.Background)) {
-        SettingsContent(
-            state = uiState,
-            userAddonUrl = userAddonUrl,
-            globalAddonUrl = globalAddonUrl,
-            onUserAddonUrlChange = { userAddonUrl = it },
-            onGlobalAddonUrlChange = { globalAddonUrl = it },
-            onAddAddon = ::addAddon,
-            onToggleCatalogs = ::toggleCatalogs,
-            onRemoveAddon = { entry, ownership -> overlay = SettingsOverlay.Remove(entry, ownership) },
-            onOpenLanguage = { overlay = SettingsOverlay.Language(it) },
-            onAutoplayChange = ::updateAutoplay,
-            onSignOut = onSignOut,
-            onOpenDebugGate = onOpenDebugGate,
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
+    // The sheets frost this screen, so the blur source is the screen's own
+    // body: a sheet inside the shell's navigation-host source samples nothing
+    // and comes out clear. See `LocalHazeState`.
+    val bodyHaze = rememberHazeState()
+    val responsive = rememberResponsive()
 
-        when (val activeOverlay = overlay) {
-            is SettingsOverlay.Language -> {
-                val settings = settingsState.value ?: UserSettings.Empty
-                val selected = if (activeOverlay.kind == SettingsLanguageKind.Audio) {
-                    settings.preferredAudioLang
-                } else {
-                    settings.preferredSubtitleLang
-                }
-                SelectSheet(
-                    visible = true,
-                    title = if (activeOverlay.kind == SettingsLanguageKind.Audio) {
-                        "Default audio language"
-                    } else {
-                        "Default subtitles"
-                    },
-                    options = listOf(
-                        SelectOption(
-                            key = NoLanguage,
-                            label = if (activeOverlay.kind == SettingsLanguageKind.Audio) {
-                                "Auto (first track)"
-                            } else {
-                                "Off"
-                            },
-                            selected = selected == null,
-                        ),
-                    ) + LanguageOptions.map { language ->
-                        SelectOption(
-                            key = language.code,
-                            label = language.label,
-                            selected = selected == language.code,
-                        )
-                    },
-                    onSelect = { key -> updateLanguage(activeOverlay.kind, key.takeUnless { it == NoLanguage }) },
-                    onClose = { overlay = null },
+    CompositionLocalProvider(LocalHazeState provides bodyHaze) {
+        Box(modifier.fillMaxSize().background(HaloColors.Background)) {
+            Box(Modifier.fillMaxSize().glassSource(bodyHaze), contentAlignment = Alignment.TopCenter) {
+                SettingsContent(
+                    state = uiState,
+                    userAddonUrl = userAddonUrl,
+                    globalAddonUrl = globalAddonUrl,
+                    onUserAddonUrlChange = { userAddonUrl = it },
+                    onGlobalAddonUrlChange = { globalAddonUrl = it },
+                    onAddAddon = ::addAddon,
+                    onToggleCatalogs = ::toggleCatalogs,
+                    onRemoveAddon = { entry, ownership -> overlay = SettingsOverlay.Remove(entry, ownership) },
+                    onOpenLanguage = { overlay = SettingsOverlay.Language(it) },
+                    onAutoplayChange = ::updateAutoplay,
+                    onSignOut = onSignOut,
+                    onOpenDebugGate = onOpenDebugGate,
                 )
             }
-            is SettingsOverlay.Remove -> SelectSheet(
-                visible = true,
-                title = "Remove addon?",
-                description = activeOverlay.entry.manifest.name,
-                options = listOf(
-                    SelectOption(
-                        key = RemoveAddon,
-                        label = "Remove addon",
-                        detail = "This removes it from ${if (activeOverlay.ownership == AddonOwnership.Global) "every user" else "your account"}.",
-                        destructive = true,
+
+            when (val activeOverlay = overlay) {
+                is SettingsOverlay.Language -> {
+                    val settings = settingsState.value ?: UserSettings.Empty
+                    val selected = if (activeOverlay.kind == SettingsLanguageKind.Audio) {
+                        settings.preferredAudioLang
+                    } else {
+                        settings.preferredSubtitleLang
+                    }
+                    SelectSheet(
+                        visible = true,
+                        title = if (activeOverlay.kind == SettingsLanguageKind.Audio) {
+                            "Default audio language"
+                        } else {
+                            "Default subtitles"
+                        },
+                        options = listOf(
+                            SelectOption(
+                                key = NoLanguage,
+                                label = if (activeOverlay.kind == SettingsLanguageKind.Audio) {
+                                    "Auto (first track)"
+                                } else {
+                                    "Off"
+                                },
+                                selected = selected == null,
+                            ),
+                        ) + LanguageOptions.map { language ->
+                            SelectOption(
+                                key = language.code,
+                                label = language.label,
+                                selected = selected == language.code,
+                            )
+                        },
+                        onSelect = { key -> updateLanguage(activeOverlay.kind, key.takeUnless { it == NoLanguage }) },
+                        onClose = { overlay = null },
+                    bottomClearance = responsive.floatingBarClearance,
+                    )
+                }
+                is SettingsOverlay.Remove -> SelectSheet(
+                    visible = true,
+                    title = "Remove addon?",
+                    description = activeOverlay.entry.manifest.name,
+                    options = listOf(
+                        SelectOption(
+                            key = RemoveAddon,
+                            label = "Remove addon",
+                            detail = "This removes it from ${if (activeOverlay.ownership == AddonOwnership.Global) "every user" else "your account"}.",
+                            destructive = true,
+                        ),
                     ),
-                ),
-                onSelect = { removeAddon(activeOverlay.entry, activeOverlay.ownership) },
-                onClose = { overlay = null },
-            )
-            null -> Unit
+                    onSelect = { removeAddon(activeOverlay.entry, activeOverlay.ownership) },
+                    onClose = { overlay = null },
+                    bottomClearance = responsive.floatingBarClearance,
+                )
+                null -> Unit
+            }
         }
     }
 }
