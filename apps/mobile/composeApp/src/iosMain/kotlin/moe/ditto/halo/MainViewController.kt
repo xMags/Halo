@@ -94,6 +94,10 @@ fun MainViewController(
         mediaHttpBase = mediaHttpBase,
         mediaLocalBase = mediaLocalBase,
         resetPersistedSession = resetPersistedSession,
+        // Every XCUITest suite sets HALO_RESET_SESSION, and each relaunch that
+        // drops it keeps HALO_SERVER_URL; a normal launch carries neither.
+        automationLaunch = Platform.isDebugBinary &&
+            (initialServerUrl != PlatformDependencies.DefaultServerUrl || resetPersistedSession),
     )
     return ComposeUIViewController {
         HaloApp(dependencies = dependencies)

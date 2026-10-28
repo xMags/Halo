@@ -65,6 +65,7 @@ import moe.ditto.halo.auth.LoginPresenter
 import moe.ditto.halo.auth.SessionController
 import moe.ditto.halo.auth.SessionState
 import moe.ditto.halo.auth.SystemEpochClock
+import moe.ditto.halo.auth.builtInServerUrl
 import moe.ditto.halo.auth.installedSignInAddons
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlaybackStatus
@@ -76,6 +77,7 @@ import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.screens.player.PlayerScenePreviewScreen
+import moe.ditto.halo.screens.signin.SignInScreen
 import moe.ditto.halo.ui.HaloTheme
 import moe.ditto.halo.ui.HaloType
 import moe.ditto.halo.ui.haloImageLoader
@@ -234,22 +236,48 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                         },
                     )
                 }
-                ShellScreen.Login -> LoginScreen(
-                    dependencies = dependencies,
-                    localAuthenticator = sessionController,
-                    addonAuthenticator = sessionController,
-                    authEvents = loginAuthEvents,
-                    initialServerUrl = remember(sessionController) {
-                        dependencies.initialServerUrl.takeIf { it != PlatformDependencies.DefaultServerUrl }
-                            ?: sessionController.storedServerUrl()
-                            ?: PlatformDependencies.DefaultServerUrl
-                    },
-                    notice = loginNotice,
-                    onOpenGate = {
-                        refreshHostSnapshot()
-                        screen = ShellScreen.Gate
-                    },
-                )
+                // The UI suites drive the diagnostics form by its labels, so a
+                // test launch keeps it; everything else gets the sign-in screen.
+                ShellScreen.Login -> if (dependencies.automationLaunch) {
+                    LoginScreen(
+                        dependencies = dependencies,
+                        localAuthenticator = sessionController,
+                        addonAuthenticator = sessionController,
+                        authEvents = loginAuthEvents,
+                        initialServerUrl = remember(sessionController) {
+                            dependencies.initialServerUrl.takeIf { it != PlatformDependencies.DefaultServerUrl }
+                                ?: sessionController.storedServerUrl()
+                                ?: PlatformDependencies.DefaultServerUrl
+                        },
+                        notice = loginNotice,
+                        onOpenGate = {
+                            refreshHostSnapshot()
+                            screen = ShellScreen.Gate
+                        },
+                    )
+                } else {
+                    val rememberedServerUrl = remember(sessionController) { sessionController.storedServerUrl() }
+                    SignInScreen(
+                        dependencies = dependencies,
+                        localAuthenticator = sessionController,
+                        addonAuthenticator = sessionController,
+                        authEvents = loginAuthEvents,
+                        // This build's own server first; the one last used
+                        // otherwise. A self-hosted one is offered again in the
+                        // username & password form, prefilled.
+                        serverUrl = builtInServerUrl ?: rememberedServerUrl ?: PlatformDependencies.DefaultServerUrl,
+                        rememberedServerUrl = rememberedServerUrl,
+                        notice = loginNotice,
+                        onOpenGate = if (dependencies.diagnosticsEnabled) {
+                            {
+                                refreshHostSnapshot()
+                                screen = ShellScreen.Gate
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                }
                 ShellScreen.Gate -> GateScreen(
                     hostSnapshot = hostSnapshot,
                     sessionState = sessionState,

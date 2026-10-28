@@ -110,6 +110,43 @@ class LoginPresenterTest {
     }
 
     @Test
+    fun oidcDiscoveryCanWaitForTheUserBeforeOpeningTheBrowser() = runTest {
+        val config = AuthConfig.Oidc(
+            issuer = "https://auth.example/",
+            clientId = "halo",
+            scopes = listOf("openid"),
+        )
+        val host = RecordingNativeHost()
+        val presenter = presenter(config, host)
+        presenter.editServerUrl("https://halo.example/")
+
+        presenter.continueFromServer(startOidc = false)
+
+        val ready = assertIs<LoginPhase.OidcReady>(presenter.state.phase)
+        assertEquals(0, host.requestCount)
+
+        presenter.beginOidc()
+
+        val requested = assertIs<LoginPhase.OidcRequested>(presenter.state.phase)
+        assertEquals(ready.request, requested.request)
+        assertEquals(requested.request, host.request)
+        assertEquals(1, host.requestCount)
+    }
+
+    @Test
+    fun beginOidcDoesNothingOutsideTheReadyPhase() = runTest {
+        val host = RecordingNativeHost()
+        val presenter = presenter(AuthConfig.Local, host)
+        presenter.editServerUrl("https://halo.local")
+        presenter.continueFromServer(startOidc = false)
+
+        presenter.beginOidc()
+
+        assertIs<LoginPhase.LocalCredentials>(presenter.state.phase)
+        assertEquals(0, host.requestCount)
+    }
+
+    @Test
     fun oidcSuccessEventTransitionsToSucceeded() = runTest {
         val presenter = oidcPresenterAfterRequest()
 
