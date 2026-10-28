@@ -1,4 +1,4 @@
-import mark from '../assets/halo-mark.png'
+import { HaloMark } from './HaloMark'
 import { showWindowMenu } from '../window'
 import { WindowButtons } from './WindowButtons'
 
@@ -27,7 +27,7 @@ export function TitleBar() {
       }}
     >
       <div className="titlebar-brand">
-        <img className="brand-mark" src={mark} alt="" />
+        <HaloMark className="brand-mark" size={16} />
         <span className="brand-word">Halo</span>
       </div>
       <div className="spacer" />

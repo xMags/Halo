@@ -1,12 +1,12 @@
 import { DEFAULT_ADDON_URLS, LANGUAGE_OPTIONS, type AddonEntry } from '@halo/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import mark from '../assets/halo-mark.png'
 import avatar from '../assets/user-avatar.png'
 import { RELEASES_URL, useBuildInfo } from './about'
 import { ComboBox } from '../components/ComboBox'
 import { showDialog } from '../components/Dialog'
 import { FluentIcon } from '../components/FluentIcon'
+import { HaloMark } from '../components/HaloMark'
 import { Segmented } from '../components/Segmented'
 import { Slider } from '../components/Slider'
 import { Toggle } from '../components/Toggle'
@@ -149,7 +149,7 @@ export function Settings() {
 
           <div className="about-card">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <img src={mark} alt="" style={{ width: 20, height: 20 }} />
+              <HaloMark size={20} />
               <span style={{ fontSize: 14, fontWeight: 600 }}>Halo Desktop</span>
             </div>
             <button
