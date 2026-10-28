@@ -111,6 +111,18 @@ function isInteractivePlayerTarget(target: EventTarget | null): boolean {
 }
 
 /**
+ * Chromium leaves focus on a control after a mouse click, and a focused
+ * control owns the keyboard (see resolvePlayerShortcut), so one click on
+ * "Forward 10 s" would turn every later Space into another skip. A pointer
+ * press hands the keys back to the player; Tab focus still owns them.
+ */
+function releasePointerFocus(target: EventTarget | null): void {
+  if (!(target instanceof Element)) return
+  const control = target.closest('button, a, [role="slider"], input[type="range"]')
+  if (control instanceof HTMLElement && control === document.activeElement) control.blur()
+}
+
+/**
  * One row per language, preferred language first then alphabetical. Addons
  * return dozens of same-language variants ranked by their own scoring (hash
  * matches first), so variant order within a language is preserved — the first
@@ -1032,7 +1044,6 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   )
 
   const shown = dragValue ?? Math.min(position, duration || position)
-  const total = Math.max(duration, 1)
   const subtitleChipValue = activeExternalSub
     ? languageLabel(activeExternalSub.lang)
     : activeSub
@@ -1053,6 +1064,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
         className={`player-root ${fullscreen ? '' : 'player-root-windowed'}`}
         style={{ cursor: chromeVisible ? 'default' : 'none' }}
         onMouseMove={poke}
+        onPointerUp={(e) => releasePointerFocus(e.target)}
         onDoubleClick={(e) => {
           if (e.target !== e.currentTarget) return
           if (videoClickTimer.current) clearTimeout(videoClickTimer.current)
@@ -1171,7 +1183,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
 
           <Scrubber
             position={shown}
-            duration={total}
+            duration={duration}
             bufferedTo={bufferedTo}
             onHoverChange={seekHoverChange}
             onPreview={setDragValue}
@@ -1704,6 +1716,9 @@ function Scrubber({
   const hovering = preview.hover !== null
   useEffect(() => onHoverChange(hovering), [hovering, onHoverChange])
 
+  // Until mpv reports a length (still loading, or a live stream that never
+  // does) the bar has no scale, so it shows empty and ignores seeks.
+  const seekable = duration > 0
   const valueAt = (clientX: number): number => {
     const el = track.current
     if (!el) return position
@@ -1711,10 +1726,11 @@ function Scrubber({
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
     return ratio * duration
   }
-  const percent = (value: number) => `${Math.min(100, Math.max(0, (value / duration) * 100))}%`
+  const percent = (value: number) =>
+    seekable ? `${Math.min(100, Math.max(0, (value / duration) * 100))}%` : '0%'
   const followPointer = (clientX: number) => {
     const el = track.current
-    if (!el || !(duration > 0)) return
+    if (!el || !seekable) return
     const rect = el.getBoundingClientRect()
     preview.track(valueAt(clientX), clientX - rect.left, rect.width)
   }
@@ -1728,7 +1744,9 @@ function Scrubber({
       aria-valuenow={Math.round(position)}
       aria-valuemin={0}
       aria-valuemax={Math.round(duration)}
+      aria-disabled={!seekable}
       onKeyDown={(event) => {
+        if (!seekable) return
         if (event.key === 'ArrowLeft') onCommit(Math.max(0, position - 10))
         else if (event.key === 'ArrowRight') onCommit(Math.min(duration, position + 10))
         else return
@@ -1739,6 +1757,7 @@ function Scrubber({
         className="seek-track"
         ref={track}
         onPointerDown={(event) => {
+          if (event.button !== 0 || !seekable) return
           event.currentTarget.setPointerCapture(event.pointerId)
           onPreview(valueAt(event.clientX))
           followPointer(event.clientX)
@@ -1750,9 +1769,15 @@ function Scrubber({
           }
         }}
         onPointerUp={(event) => {
-          event.currentTarget.releasePointerCapture(event.pointerId)
+          // Only a press that began on the bar seeks; releasing a drag from
+          // elsewhere over it must not.
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
           onCommit(valueAt(event.clientX))
+          event.currentTarget.releasePointerCapture(event.pointerId)
         }}
+        // A capture lost without a release (pointercancel, focus change)
+        // drops the drag so its preview cannot pin the controls.
+        onLostPointerCapture={() => onPreview(null)}
         onPointerLeave={preview.leave}
       >
         <ScrubPreviewCard preview={preview} />
