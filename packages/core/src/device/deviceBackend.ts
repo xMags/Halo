@@ -3,7 +3,7 @@ import {
   fetchCatalog,
   fetchManifests,
   MAX_BINGE_GROUP_LENGTH,
-  resolveMeta,
+  resolveMetaWithCast,
   resolveNextEpisode,
   resolveStreams,
   resolveSubtitles,
@@ -175,7 +175,7 @@ export class DeviceBackend implements HaloBackend {
 
   async getMeta(type: string, id: string, opts?: RequestOptions): Promise<MetaResponse> {
     if (!type || !id) throw apiError(400, 'type and id are required')
-    const meta = await resolveMeta(await this.readAddons(), type, id, this.context(opts))
+    const meta = await resolveMetaWithCast(await this.readAddons(), type, id, this.context(opts))
     throwIfCancelled(opts)
     if (!meta) throw apiError(404, 'no metadata found')
     return meta
