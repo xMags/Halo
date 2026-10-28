@@ -11,6 +11,13 @@ sealed interface LoginPhase {
     data class LocalSubmitting(val serverUrl: String) : LoginPhase
     data class LocalSignedIn(val serverUrl: String) : LoginPhase
 
+    /**
+     * The server signs in with OIDC, discovered without opening the browser
+     * (see [LoginPresenter.continueFromServer]); [LoginPresenter.beginOidc]
+     * starts it.
+     */
+    data class OidcReady(val request: OidcHostRequest) : LoginPhase
+
     /** Browser + token exchange handed to the native host; awaiting an [AuthEvent]. */
     data class OidcRequested(val request: OidcHostRequest) : LoginPhase
     data class OidcSucceeded(val request: OidcHostRequest, val tokenProof: String) : LoginPhase
@@ -71,7 +78,13 @@ class LoginPresenter(
         state = state.copy(password = value, error = null)
     }
 
-    suspend fun continueFromServer() {
+    /**
+     * Asks the server how it signs in. An OIDC server opens the browser at once
+     * when [startOidc] is set, the original flow behind an explicit Continue;
+     * a screen that discovers by itself as it opens passes false and lands on
+     * [LoginPhase.OidcReady], so the browser waits for the user's tap.
+     */
+    suspend fun continueFromServer(startOidc: Boolean = true) {
         if (state.phase != LoginPhase.Server || state.serverUrl.isBlank()) return
 
         val normalizedUrl = state.serverUrl.trim().trimEnd('/')
@@ -106,7 +119,7 @@ class LoginPresenter(
                     clientId = config.clientId,
                     scopes = config.scopes,
                 )
-                startOidc(request)
+                if (startOidc) startOidc(request) else state = state.copy(phase = LoginPhase.OidcReady(request))
             }
             is AuthConfig.Addon -> {
                 // Unlike OIDC the browser does not open by itself: the user
@@ -210,6 +223,12 @@ class LoginPresenter(
             // Session lifecycle, not sign-in outcome — SessionController owns it.
             AuthEvent.OidcSessionInvalidated -> state
         }
+    }
+
+    /** Opens the browser for an OIDC server discovered with `startOidc = false`. */
+    fun beginOidc() {
+        val ready = state.phase as? LoginPhase.OidcReady ?: return
+        startOidc(ready.request)
     }
 
     /** Re-runs the browser flow after a failure without re-discovering config. */

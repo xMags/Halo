@@ -76,12 +76,16 @@ class MainActivity : ComponentActivity() {
 
         // Automation may point at a fixture and reset the session. A release
         // build ignores these extras, since any app can start this activity.
+        val serverUrlExtra = intent?.getStringExtra("serverUrl")
+        val resetSessionExtra = intent?.getBooleanExtra("resetSession", false) ?: false
         val launch = LaunchOverrides.resolve(
             diagnosticsEnabled = diagnosticsEnabled,
-            serverUrl = intent?.getStringExtra("serverUrl"),
+            serverUrl = serverUrlExtra,
             mediaHttpBase = intent?.getStringExtra("mediaHttpBase"),
-            resetSession = intent?.getBooleanExtra("resetSession", false) ?: false,
+            resetSession = resetSessionExtra,
         )
+        // Every instrumented suite launches with a fixture server or a reset.
+        val automationLaunch = diagnosticsEnabled && (serverUrlExtra != null || resetSessionExtra)
 
         val dependencies = PlatformDependencies(
             authConfigSource = KtorAuthConfigSource(authHttpClient),
@@ -115,6 +119,7 @@ class MainActivity : ComponentActivity() {
             initialServerUrl = launch.serverUrl,
             mediaHttpBase = launch.mediaHttpBase,
             resetPersistedSession = launch.resetSession,
+            automationLaunch = automationLaunch,
         )
 
         setContent {

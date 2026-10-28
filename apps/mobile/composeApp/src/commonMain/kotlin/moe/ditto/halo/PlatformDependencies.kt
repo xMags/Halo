@@ -115,6 +115,14 @@ internal data class PlatformDependencies(
      * and would otherwise strand every UI suite that expects the login form.
      */
     val resetPersistedSession: Boolean = false,
+    /**
+     * A UI-test launch: a debuggable build started with a fixture server or a
+     * session reset. It keeps the diagnostics login form, the one the XCUITest
+     * and instrumented suites drive by its labels, in place of the product
+     * sign-in screen. Hosts derive it only from debug-only launch values, so a
+     * shipped build is never one.
+     */
+    val automationLaunch: Boolean = false,
 ) {
     companion object {
         const val DefaultServerUrl = "https://halo.ditto.moe"
