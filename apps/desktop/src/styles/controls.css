@@ -381,11 +381,12 @@
   flex-shrink: 0;
 }
 /* The open list: the flyout surface with WinUI's 4px inset, items 5px in from
-   its sides, and the accent pill marking the chosen one. */
+   its sides, and the accent pill marking the chosen one. Drawn at the document
+   root in window coordinates (see ComboBox), at the right-click menu's layer:
+   above sheets and the player chrome, below a dialog. */
 .combo-popup {
-  position: absolute;
-  left: 0;
-  z-index: 20;
+  position: fixed;
+  z-index: 45;
   /* A flex column, so the items' 2px margins add up to WinUI's 36px pitch
      instead of collapsing. */
   display: flex;
