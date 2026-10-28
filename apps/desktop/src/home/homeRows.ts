@@ -182,31 +182,83 @@ const KIND_WORDS: Readonly<Record<string, RegExp>> = {
   series: /\b(series|shows?|tv)\b/i,
 }
 
-/** The kind as a shelf title spells it. */
-function kindLabel(type: string): string {
-  if (type === 'movie') return 'Movies'
-  if (type === 'series') return 'Series'
-  return type.charAt(0).toUpperCase() + type.slice(1)
+/** The kind as a shelf title spells it, plural ("Popular Movies") and singular ("Latest Movie Releases"). */
+function kindLabels(type: string): { plural: string; singular: string } {
+  if (type === 'movie') return { plural: 'Movies', singular: 'Movie' }
+  if (type === 'series') return { plural: 'Series', singular: 'Series' }
+  const word = type.charAt(0).toUpperCase() + type.slice(1)
+  return { plural: word, singular: word }
+}
+
+/**
+ * Plural nouns a catalog name can end on, where the kind reads as a modifier
+ * in front ("Latest Movie Releases") rather than tacked on behind ("Latest
+ * Releases Movies").
+ */
+const TRAILING_NOUNS = new Set([
+  'additions',
+  'arrivals',
+  'favorites',
+  'favourites',
+  'gems',
+  'hits',
+  'picks',
+  'premieres',
+  'releases',
+  'titles',
+])
+
+/** "TMDB - Latest", "TMDB: Latest", "TMDB | Latest": a prefix and the rest. */
+const NAME_PREFIX = /^(.+?)(?:\s+[-–—|]\s+|:\s+)(.+)$/
+/** A short all-caps token such as TMDB or IMDB. */
+const ACRONYM = /^[A-Z0-9]{2,6}$/
+/** "Addon" or "Add-on" ending an addon's name, which says nothing on a shelf. */
+const ADDON_SUFFIX = /\s*\badd-?on$/i
+
+/**
+ * Addons often prefix their catalogs with their own name ("TMDB - Latest
+ * Releases"), which the source line beside the title already gives. The
+ * prefix goes when it is an acronym or the addon's own name or first word;
+ * anything else could be part of the title and stays.
+ */
+function splitAddonPrefix(name: string, addonName: string): { rest: string; acronym: string | null } {
+  const match = NAME_PREFIX.exec(name)
+  if (!match) return { rest: name, acronym: null }
+  const prefix = match[1]!.trim()
+  const rest = match[2]!.trim()
+  if (ACRONYM.test(prefix)) return { rest, acronym: prefix }
+  const addon = addonName.replace(ADDON_SUFFIX, '').trim().toLowerCase()
+  const lower = prefix.toLowerCase()
+  if (lower === addon || lower === addon.split(/\s+/)[0]) return { rest, acronym: null }
+  return { rest: name, acronym: null }
 }
 
 /**
  * How a catalog shelf is labelled: the catalog's name with its kind
  * ("Popular Movies"), and the addon it comes from as the mono line beside it
  * ("CINEMETA"). A name that already says its kind ("Trending Movies", "Top
- * TV") is kept as it is, and a catalog with no name is titled by its kind.
+ * TV") is kept as it is, one ending on a plural noun takes the kind in front
+ * ("Latest Movie Releases"), and a catalog with no name is titled by its
+ * kind. The addon's own prefix leaves the title for the source line, as its
+ * short form when it has one ("TMDB" over "The Movie Database Addon").
  */
 export function catalogShelfLabels(
   catalogName: string | undefined,
   type: string,
   addonName: string,
 ): { title: string; source: string } {
-  const kind = kindLabel(type)
-  const name = catalogName?.trim() ?? ''
+  const kind = kindLabels(type)
+  const { rest: name, acronym } = splitAddonPrefix(catalogName?.trim() ?? '', addonName)
+  const source = (acronym ?? addonName.replace(ADDON_SUFFIX, '').trim()).toUpperCase()
+  if (!name) return { title: kind.plural, source }
   const saysKind = KIND_WORDS[type]?.test(name) ?? name.toLowerCase().includes(type.toLowerCase())
-  let title = `${name} ${kind}`
-  if (!name) title = kind
-  else if (saysKind) title = name
-  return { title, source: addonName.trim().toUpperCase() }
+  if (saysKind) return { title: name, source }
+  const words = name.split(/\s+/)
+  const last = words[words.length - 1]!
+  if (words.length > 1 && TRAILING_NOUNS.has(last.toLowerCase())) {
+    return { title: [...words.slice(0, -1), kind.singular, last].join(' '), source }
+  }
+  return { title: `${name} ${kind.plural}`, source }
 }
 
 /** Home's kind filter. Anything that is not a series counts as a movie, as natively. */
