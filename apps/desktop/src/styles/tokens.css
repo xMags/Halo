@@ -1,6 +1,9 @@
 /* ── Tokens: dark (default) ────────────────────────────────────────────── */
+/* `.theme-dark` re-scopes a subtree to this palette whatever the app theme:
+   the title page sits on the title's own dark art in both themes. */
 :root,
-:root[data-theme='dark'] {
+:root[data-theme='dark'],
+.theme-dark {
   --m: #202020;
   --ly: rgba(58, 58, 58, 0.302);
   /* WinUI's NavigationView content grid: LayerFillColorDefault and
