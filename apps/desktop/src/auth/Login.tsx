@@ -2,10 +2,10 @@ import { HaloClient, type AuthConfig, type OidcAuthConfig, type OtherAuthConfig 
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import mark from '../assets/halo-mark.png'
 import avatar from '../assets/user-avatar.png'
 import { activateSession, addonSessionKind, getAccountClient, getDeviceProfile, getServerUrl, seedDefaultAddons, type SessionKind } from '../api'
 import { FluentIcon } from '../components/FluentIcon'
+import { HaloMark } from '../components/HaloMark'
 import { ProgressBar, ProgressRing } from '../components/ProgressRing'
 import { TitleBar } from '../components/TitleBar'
 import { moveDeviceDataIntoAccount } from '../device/deviceDataMove'
@@ -219,7 +219,7 @@ export function Login() {
         <div className="auth-col">
           {/* The lockup is identical in every state, so it lives outside them. */}
           <div className="logo-lockup">
-            <img className="logo-mark" src={mark} alt="" />
+            <HaloMark className="logo-mark" size={26} />
             <div className="logo-word">HALO</div>
           </div>
 
