@@ -1,11 +1,12 @@
-import { useState, type KeyboardEvent, type Ref } from 'react'
+import { useRef, type KeyboardEvent, type Ref } from 'react'
 import { FluentIcon } from './FluentIcon'
 
 /**
  * WinUI's AutoSuggestBox as the native Home and Search pages draw it: a text
- * box with a Find query glyph at its right edge and, while it has focus and
- * text, the Clear button beside it. Clearing keeps focus in the box, as the
- * native delete button does.
+ * box with a Find query glyph at its right edge and, whenever it holds text,
+ * a Clear button beside it. Unlike the native box the button does not wait
+ * for focus, so clicking a filter or a result never hides it. Clearing puts
+ * the caret back in the box.
  */
 export function SearchBox({
   value,
@@ -23,30 +24,35 @@ export function SearchBox({
   autoFocus?: boolean
   inputRef?: Ref<HTMLInputElement>
 }) {
-  const [focused, setFocused] = useState(false)
+  const ownRef = useRef<HTMLInputElement | null>(null)
+  const setRefs = (node: HTMLInputElement | null) => {
+    ownRef.current = node
+    if (typeof inputRef === 'function') inputRef(node)
+    else if (inputRef) inputRef.current = node
+  }
 
   return (
     <div className={`search-box ${large ? 'search-box-lg' : ''}`}>
       <input
-        ref={inputRef}
+        ref={setRefs}
         placeholder="Search movies and series"
         value={value}
         autoFocus={autoFocus}
         spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
       />
-      {focused && value && (
+      {value && (
         <button
           type="button"
           className="search-box-btn"
           aria-label="Clear"
-          // Pressing must not take focus from the input: the box keeps its
-          // caret, and the button would otherwise hide itself mid-click.
+          // Pressing must not take focus from the input, so the box keeps its caret.
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => onChange('')}
+          onClick={() => {
+            onChange('')
+            ownRef.current?.focus()
+          }}
         >
           <FluentIcon glyph="clear" size={12} />
         </button>
