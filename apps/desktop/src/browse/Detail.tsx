@@ -3,12 +3,16 @@ import { useMemo, useState, type MouseEvent } from 'react'
 import { ArtImage } from '../components/ArtImage'
 import { ComboBox } from '../components/ComboBox'
 import { FluentIcon } from '../components/FluentIcon'
+import { PosterCard } from '../components/PosterCard'
+import { Shelf } from '../components/Shelf'
 import { DetailSkeleton } from '../components/Skeleton'
 import { useDownloads, type DownloadView } from '../downloads/downloadsStore'
 import { airYear, episodeTag, formatAirDate, formatTimeLeft, runtimeMinutes } from '../format'
 import { useNav, type StreamsParams } from '../nav'
 import {
   libraryItemFromMeta,
+  useEffectiveAddons,
+  useGenreCatalog,
   useLibrary,
   useMeta,
   useStreams,
@@ -16,6 +20,7 @@ import {
   useWatchStates,
 } from '../queries'
 import { parseStreamInfo, qualityRank, type Quality } from '../sources/streamInfo'
+import { pickGenreCatalog, type GenreCatalog } from './similarTitles'
 import { useTitleMenu } from './titleMenu'
 import { hasWatchProgress } from './watchMarks'
 
@@ -180,14 +185,25 @@ export function Detail({ type, id }: { type: string; id: string }) {
 
             <div className="detail-head">
               <div className="kicker kicker-accent">{kicker}</div>
-              <div className="detail-title ellipsis">{meta.name}</div>
+              <HeroTitle name={meta.name} logo={meta.logo} />
               <div className="detail-meta ellipsis">{metaLine}</div>
               <div className="detail-actions">
                 <button
                   type="button"
-                  className="btn-accent h36"
+                  className="btn-accent h36 detail-play"
                   onClick={() => openStreams(targetVideo)}
                 >
+                  {resumeState && (
+                    <span className="detail-play-progress" aria-hidden>
+                      <span
+                        style={{
+                          width: `${Math.round(
+                            Math.min(1, resumeState.positionSec / resumeState.durationSec) * 100,
+                          )}%`,
+                        }}
+                      />
+                    </span>
+                  )}
                   <FluentIcon glyph="play" size={14} />
                   <span>
                     {resumeLabel}
@@ -275,6 +291,8 @@ export function Detail({ type, id }: { type: string; id: string }) {
               />
             </aside>
           </div>
+
+          <MoreLikeThis type={type} id={id} genres={meta.genres ?? []} />
         </div>
 
         <button type="button" className="detail-back" title="Back" onClick={pop}>
@@ -353,10 +371,14 @@ function SynopsisCard({ meta }: { meta: MetaDetail }) {
     const text = Array.isArray(value) ? value.slice(0, 3).join(', ') : value
     if (text) facts.push(`${key} · ${text.toUpperCase()}`)
   }
-  add('DIRECTOR', meta.director ?? meta.writer)
+  add('DIRECTOR', meta.director)
+  add('WRITER', meta.writer)
   add('CAST', meta.cast)
   add('GENRE', meta.genres)
+  add('RELEASED', formatAirDate(meta.released))
   add('COUNTRY', meta.country)
+  add('LANGUAGE', meta.language)
+  add('AWARDS', meta.awards)
 
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -364,7 +386,7 @@ function SynopsisCard({ meta }: { meta: MetaDetail }) {
       <div style={{ fontSize: 15, lineHeight: 1.45, color: 'var(--t2)', textWrap: 'pretty' }}>
         {meta.description ?? 'No description from this addon.'}
       </div>
-      {facts.slice(0, 4).map((fact) => (
+      {facts.map((fact) => (
         <div key={fact} className="fact-line ellipsis" title={fact}>
           {fact}
         </div>
@@ -407,8 +429,10 @@ function AvailabilityCard({
           qualityRank(a[0] === 'OTHER' ? null : (a[0] as Quality)) -
           qualityRank(b[0] === 'OTHER' ? null : (b[0] as Quality)),
       )
-      .map(([quality, count]) => `${quality.toUpperCase()} · ${count} SOURCES`)
-    if (languages.size > 0) rows.push(`SUBTITLES · ${languages.size} LANGUAGES`)
+      .map(([quality, count]) => `${quality.toUpperCase()} · ${count} SOURCE${count === 1 ? '' : 'S'}`)
+    if (languages.size > 0) {
+      rows.push(`SUBTITLES · ${languages.size} LANGUAGE${languages.size === 1 ? '' : 'S'}`)
+    }
     return rows
   }, [data])
 
@@ -442,3 +466,61 @@ function AvailabilityCard({
     </div>
   )
 }
+
+/**
+ * The title's logo art when its addon has one, else the name in the display
+ * face. A logo that fails to load falls back to the name, never a gap.
+ */
+function HeroTitle({ name, logo }: { name: string; logo: string | undefined }) {
+  const [failed, setFailed] = useState(false)
+  if (!logo || failed) return <div className="detail-title ellipsis">{name}</div>
+  return (
+    <img
+      className="detail-logo"
+      src={logo}
+      alt={name}
+      title={name}
+      draggable={false}
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
+/**
+ * Titles of the same type that share this one's genre, from the first addon
+ * catalog that can filter by it. Drawn only once there is something to show:
+ * no such catalog, a failed request or an empty answer leave no trace.
+ */
+function MoreLikeThis({ type, id, genres }: { type: string; id: string; genres: string[] }) {
+  const { data: addons } = useEffectiveAddons()
+  const source = addons ? pickGenreCatalog(addons, type, genres) : null
+  if (!source) return null
+  return <GenreShelf source={source} type={type} excludeId={id} />
+}
+
+function GenreShelf({ source, type, excludeId }: { source: GenreCatalog; type: string; excludeId: string }) {
+  const { data } = useGenreCatalog(source.addonId, type, source.catalogId, source.genre)
+  const seen = new Set<string>([`${type}:${excludeId}`])
+  const metas = (data ?? [])
+    .filter((meta) => {
+      // Catalogs can repeat a title; a shelf must not draw it twice.
+      const key = `${meta.type}:${meta.id}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .slice(0, SIMILAR_LIMIT)
+  if (metas.length === 0) return null
+  return (
+    <div className="card detail-more">
+      <Shelf title="More like this" source={`${source.genre.toUpperCase()} · ${source.addonName.toUpperCase()}`}>
+        {metas.map((meta) => (
+          <PosterCard key={`${meta.type}:${meta.id}`} meta={meta} />
+        ))}
+      </Shelf>
+    </div>
+  )
+}
+
+/** One shelf's worth: enough to page through, not a whole catalog. */
+const SIMILAR_LIMIT = 20

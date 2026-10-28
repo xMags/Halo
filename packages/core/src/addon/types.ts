@@ -79,6 +79,8 @@ export interface MetaVideo {
 
 export interface MetaDetail extends MetaPreview {
   videos?: MetaVideo[]
+  /** ISO date of the first release (Cinemeta), finer than `releaseInfo`'s year. */
+  released?: string
   runtime?: string
   language?: string
   country?: string

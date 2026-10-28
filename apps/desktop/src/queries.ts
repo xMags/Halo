@@ -158,6 +158,15 @@ export function useCatalog(addonId: string, type: string, id: string, opts?: { e
   return useQuery({ ...catalogQuery(addonId, type, id), enabled: opts?.enabled ?? true })
 }
 
+/** One catalog narrowed to a genre (the catalog must declare a `genre` extra). */
+export function useGenreCatalog(addonId: string, type: string, id: string, genre: string) {
+  return useQuery({
+    queryKey: ['catalog', addonId, type, id, { genre }] as const,
+    queryFn: async () => (await getClient().getCatalog(addonId, type, id, { genre })).metas,
+    staleTime: 10 * 60_000,
+  })
+}
+
 /** Meta resolved server-side: first effective addon that can describe this type/id wins. */
 export function useMeta(type: string, id: string, opts?: { enabled?: boolean }) {
   return useQuery({
