@@ -181,11 +181,52 @@
   font-size: 36px;
   font-weight: 600;
   line-height: 1.1;
-  color: var(--t1);
+}
+/* The hero sits on the backdrop's dark scrim in both themes, so its text is
+   always the dark palette's: the light theme's near-black text and deep
+   accent disappear into the art. */
+.detail-head .detail-title {
+  color: #ffffff;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.55);
+}
+.detail-head .kicker-accent {
+  color: #60cdff;
 }
 .detail-meta {
   font-size: 16px;
-  color: var(--t2);
+  color: rgba(255, 255, 255, 0.82);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+}
+/* Logo art in place of the name: bounded both ways, since addons ship them
+   anywhere from square marks to long wordmarks. */
+.detail-logo {
+  display: block;
+  max-width: min(440px, 100%);
+  max-height: 104px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: left bottom;
+  margin-bottom: 4px;
+  filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.5));
+}
+/* How far into the title Resume picks up, along the button's foot. */
+.detail-play {
+  position: relative;
+  overflow: hidden;
+}
+.detail-play-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.detail-play-progress > span {
+  display: block;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.85);
 }
 .detail-actions {
   display: flex;
@@ -215,6 +256,14 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 292px;
   align-items: start;
+}
+
+.detail-more {
+  margin: 26px var(--gu) 0;
+  max-width: var(--set-page);
+}
+.detail-more .shelf {
+  margin: 0;
 }
 
 .ep-row {
