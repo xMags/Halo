@@ -5,6 +5,23 @@ import { getClient } from '../api'
 const MIRROR_KEY = 'halo.settings.v1'
 const QUERY_KEY = ['settings'] as const
 
+/**
+ * Bumped whenever the backend changes (sign-in, sign-out, Halo without an
+ * account), so a read or save still in flight for the previous one cannot
+ * land in the new session's cache or mirror.
+ */
+let backendGeneration = 0
+
+/**
+ * The mirror belongs to one account (or this PC): another must never fall
+ * back to it, and a save from it would overwrite that account's real
+ * settings. Called on every change of backend.
+ */
+export function resetSettingsMirror(): void {
+  backendGeneration += 1
+  localStorage.removeItem(MIRROR_KEY)
+}
+
 /** Merge a patch into current settings; explicit undefined means "clear this preference". */
 function applyPatch(current: UserSettings, patch: Partial<UserSettings>): UserSettings {
   const merged: UserSettings = { ...current, ...patch }
@@ -23,9 +40,10 @@ const settingsQuery = {
   queryKey: QUERY_KEY,
   staleTime: 60_000,
   queryFn: async (): Promise<SettingsPayload> => {
+    const generation = backendGeneration
     try {
       const payload = await getClient().getSettings()
-      localStorage.setItem(MIRROR_KEY, JSON.stringify(payload))
+      if (generation === backendGeneration) localStorage.setItem(MIRROR_KEY, JSON.stringify(payload))
       return payload
     } catch (err) {
       const mirror = localStorage.getItem(MIRROR_KEY)
@@ -65,15 +83,20 @@ export function useUpdateSettings() {
         updatedAt: Date.now(),
       })
     },
-    mutationFn: async (_patch: Partial<UserSettings>) => {
+    mutationFn: async (_patch: Partial<UserSettings>): Promise<SettingsPayload | null> => {
+      const generation = backendGeneration
       const merged = queryClient.getQueryData<SettingsPayload>(QUERY_KEY)?.value ?? {}
       const payload = await getClient().putSettings(merged, Date.now())
+      // Saved to a backend that is no longer the active one: its echo is not
+      // this session's settings.
+      if (generation !== backendGeneration) return null
       localStorage.setItem(MIRROR_KEY, JSON.stringify(payload))
       return payload
     },
     // A newer optimistic write may already be in the cache; never let an older
     // server echo roll it back.
     onSuccess: (payload) => {
+      if (payload === null) return
       queryClient.setQueryData<SettingsPayload>(QUERY_KEY, (old) =>
         old && old.updatedAt > payload.updatedAt ? old : payload,
       )

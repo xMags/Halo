@@ -348,6 +348,7 @@ function AddonsSection() {
   const [url, setUrl] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+  const [listError, setListError] = useState<string | null>(null)
   const [dragKey, setDragKey] = useState<string | null>(null)
   const [overKey, setOverKey] = useState<string | null>(null)
 
@@ -355,10 +356,23 @@ function AddonsSection() {
   const globalAddons = addons?.global ?? []
   const userAddons = addons?.user ?? []
   const all = [...globalAddons, ...userAddons]
+  // One list save at a time: each sends the whole list as this render saw it,
+  // so a second one started before the first is refetched would undo it.
+  const listBusy = setAddons.isPending || setGlobalAddons.isPending
+
+  const saveList = async (scope: 'yours' | 'global', urls: string[], failure: string) => {
+    if (listBusy) return
+    setListError(null)
+    try {
+      await (scope === 'global' ? setGlobalAddons : setAddons).mutateAsync(urls)
+    } catch {
+      setListError(failure)
+    }
+  }
 
   const add = async () => {
     const transportUrl = url.trim()
-    if (!transportUrl || adding) return
+    if (!transportUrl || adding || listBusy) return
     if (all.some((a) => a.transportUrl === transportUrl)) {
       setAddError('Already installed.')
       return
@@ -378,7 +392,7 @@ function AddonsSection() {
   }
 
   const remove = (item: AddonEntry, scope: 'yours' | 'global') => {
-    if (isBuiltInAddon(item, scope)) return
+    if (isBuiltInAddon(item, scope) || listBusy) return
     const question =
       scope === 'global'
         ? `Remove “${item.manifest.name}” for every user?`
@@ -386,7 +400,7 @@ function AddonsSection() {
     if (!window.confirm(question)) return
     const list = scope === 'global' ? globalAddons : userAddons
     const urls = list.filter((a) => a.transportUrl !== item.transportUrl).map((a) => a.transportUrl!)
-    void (scope === 'global' ? setGlobalAddons.mutateAsync(urls) : setAddons.mutateAsync(urls))
+    void saveList(scope, urls, `“${item.manifest.name}” could not be removed. Try again.`)
   }
 
   /**
@@ -403,7 +417,7 @@ function AddonsSection() {
     const next = [...list]
     next.splice(to, 0, ...next.splice(from, 1))
     const urls = next.map((a) => a.transportUrl!)
-    void (scope === 'global' ? setGlobalAddons.mutateAsync(urls) : setAddons.mutateAsync(urls))
+    void saveList(scope, urls, 'The new addon order could not be saved. Try again.')
   }
 
   const row = (item: AddonEntry, scope: 'yours' | 'global') => {
@@ -415,7 +429,7 @@ function AddonsSection() {
     // nothing.
     const shadowed = scope === 'yours' && item.providedGlobally === true
     const builtIn = isBuiltInAddon(item, scope)
-    const movable = editable && !shadowed
+    const movable = editable && !shadowed && !listBusy
     // A hidden addon comes back with a stripped manifest, so the flag is the
     // only way to know the switch should still be drawn.
     const hasCatalogs = !shadowed && (item.manifest.catalogs.length > 0 || item.hideCatalogs)
@@ -478,7 +492,13 @@ function AddonsSection() {
             label={`Show ${item.manifest.name} catalogs on Home`}
             on={!item.hideCatalogs}
             disabled={!editable}
-            onChange={(next) => patch.mutate({ addonId: item.id, hideCatalogs: !next })}
+            onChange={(next) => {
+              setListError(null)
+              patch.mutate(
+                { addonId: item.id, hideCatalogs: !next },
+                { onError: () => setListError(`“${item.manifest.name}” catalogs could not be changed. Try again.`) },
+              )
+            }}
           />
         ) : (
           <span />
@@ -487,7 +507,7 @@ function AddonsSection() {
           type="button"
           className="icon-btn icon-btn-bare icon-btn-28"
           title={lockTitle ?? 'Remove addon'}
-          disabled={lockTitle !== null}
+          disabled={lockTitle !== null || listBusy}
           onClick={() => remove(item, scope)}
         >
           <FluentIcon glyph="delete" size={14} />
@@ -539,7 +559,11 @@ function AddonsSection() {
           placeholder="https://addon.example.com/manifest.json"
           value={url}
           spellCheck={false}
-          onChange={(e) => setUrl(e.target.value)}
+          onChange={(e) => {
+            setUrl(e.target.value)
+            // The message was about the URL that was there; editing it moves on.
+            setAddError(null)
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') void add()
           }}
@@ -548,13 +572,18 @@ function AddonsSection() {
           type="button"
           className="btn-accent btn-body"
           style={{ paddingInline: 18 }}
-          disabled={adding || !url.trim()}
+          disabled={adding || listBusy || !url.trim()}
           onClick={() => void add()}
         >
           {adding ? 'Adding…' : 'Add'}
         </button>
       </div>
       {addError && <div className="error-text">{addError}</div>}
+      {listError && (
+        <div className="error-text" role="alert">
+          {listError}
+        </div>
+      )}
       {body}
     </Section>
   )

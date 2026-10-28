@@ -16,6 +16,7 @@ import {
 import { signOutLocal } from './localAuth'
 import { signOutOidc } from './oidc'
 import { clearDownloadsAccount } from '../downloads/downloadsStore'
+import { resetSettingsMirror } from '../settings/syncedSettings'
 import { createDeviceProfile, readDeviceProfile, type DeviceProfile } from '../device/deviceStore'
 
 /**
@@ -83,6 +84,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const switchTo = useCallback(
     (next: SessionState) => {
       queryClient.clear()
+      resetSettingsMirror()
       setSigningIn(false)
       setState(next)
     },
