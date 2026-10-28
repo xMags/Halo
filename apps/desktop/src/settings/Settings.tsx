@@ -5,6 +5,7 @@ import mark from '../assets/halo-mark.png'
 import avatar from '../assets/user-avatar.png'
 import { RELEASES_URL, useBuildInfo } from './about'
 import { ComboBox } from '../components/ComboBox'
+import { showDialog } from '../components/Dialog'
 import { FluentIcon } from '../components/FluentIcon'
 import { Segmented } from '../components/Segmented'
 import { Slider } from '../components/Slider'
@@ -391,13 +392,18 @@ function AddonsSection() {
     }
   }
 
-  const remove = (item: AddonEntry, scope: 'yours' | 'global') => {
+  const remove = async (item: AddonEntry, scope: 'yours' | 'global') => {
     if (isBuiltInAddon(item, scope) || listBusy) return
-    const question =
-      scope === 'global'
-        ? `Remove “${item.manifest.name}” for every user?`
-        : `Remove “${item.manifest.name}”?`
-    if (!window.confirm(question)) return
+    const confirmed = await showDialog({
+      title: scope === 'global' ? 'Remove for every user?' : 'Remove addon?',
+      body:
+        scope === 'global'
+          ? `“${item.manifest.name}” will be removed for everyone on this server.`
+          : `“${item.manifest.name}” will be removed from your addons.`,
+      primary: 'Remove',
+      close: 'Cancel',
+    })
+    if (!confirmed) return
     const list = scope === 'global' ? globalAddons : userAddons
     const urls = list.filter((a) => a.transportUrl !== item.transportUrl).map((a) => a.transportUrl!)
     void saveList(scope, urls, `“${item.manifest.name}” could not be removed. Try again.`)
@@ -419,7 +425,13 @@ function AddonsSection() {
       setListError('The global addon list could not be read in full. Refresh and try again.')
       return
     }
-    if (!window.confirm(`Install “${item.manifest.name}” for every user?`)) return
+    const confirmed = await showDialog({
+      title: 'Install for every user?',
+      body: `“${item.manifest.name}” will be added to every account on this server, and your own copy will be replaced by it.`,
+      primary: 'Install for everyone',
+      close: 'Cancel',
+    })
+    if (!confirmed) return
     setListError(null)
     try {
       await setGlobalAddons.mutateAsync([...(globalUrls as string[]), transportUrl])
@@ -554,7 +566,7 @@ function AddonsSection() {
             className="icon-btn icon-btn-bare icon-btn-28"
             title={lockTitle ?? 'Remove addon'}
             disabled={lockTitle !== null || listBusy}
-            onClick={() => remove(item, scope)}
+            onClick={() => void remove(item, scope)}
           >
             <FluentIcon glyph="delete" size={14} />
           </button>
@@ -943,7 +955,14 @@ function SignedInAccountSection() {
           type="button"
           className="btn-danger btn-body"
           onClick={() => {
-            if (window.confirm('Sign out of this server?')) signOut()
+            void showDialog({
+              title: 'Sign out?',
+              body: 'You will need to sign in again to use this server.',
+              primary: 'Sign out',
+              close: 'Cancel',
+            }).then((confirmed) => {
+              if (confirmed) signOut()
+            })
           }}
         >
           Sign out
