@@ -1,12 +1,14 @@
 import type { MetaDetail, MetaPreview } from '@halo/core'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { useState } from 'react'
+import { FluentIcon } from '../../components/FluentIcon'
 import { ScrollRow } from '../../components/ScrollRow'
 import { initials } from '../../format'
 import { useNav } from '../../nav'
 import { useEffectiveAddons, useGenreCatalog } from '../../queries'
 import { pickGenreCatalog, type GenreCatalog } from '../similarTitles'
 import { useTitleMenu } from '../titleMenu'
-import { aboutRows, creditsOf, type Credit } from './detailFacts'
+import { aboutRows, creditsOf, personSearchUrl, type Credit } from './detailFacts'
 
 /** One shelf's worth: enough to page through, not a whole catalog. */
 const SIMILAR_LIMIT = 20
@@ -50,13 +52,24 @@ export function CastPanel({ meta }: { meta: MetaDetail }) {
   )
 }
 
+/** A person's card; pressing it looks them up on IMDb in the browser. */
 function CreditCard({ credit }: { credit: Credit }) {
   return (
-    <div className="credit" title={credit.role ? `${credit.name} · ${credit.role}` : credit.name}>
-      <FadeArt src={credit.photo} fallback={initials(credit.name)} />
-      <div className="credit-name ellipsis">{credit.name}</div>
-      {credit.role && <div className="credit-role ellipsis">{credit.role}</div>}
-    </div>
+    <button
+      type="button"
+      className="credit"
+      title={`Look up ${credit.name} on IMDb`}
+      onClick={() => void openUrl(personSearchUrl(credit.name)).catch(() => undefined)}
+    >
+      <span className="credit-art">
+        <FadeArt src={credit.photo} fallback={initials(credit.name)} />
+        <span className="credit-open" aria-hidden>
+          <FluentIcon glyph="openInNewWindow" size={12} />
+        </span>
+      </span>
+      <span className="credit-name ellipsis">{credit.name}</span>
+      {credit.role && <span className="credit-role ellipsis">{credit.role}</span>}
+    </button>
   )
 }
 

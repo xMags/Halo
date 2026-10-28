@@ -6,6 +6,7 @@ import {
   creditsOf,
   formatReleaseDate,
   formatRuntime,
+  personSearchUrl,
   summarizeAvailability,
 } from '../src/browse/detail/detailFacts.ts'
 
@@ -63,6 +64,10 @@ test('credits prefer the pictured cast, close with directors, and never repeat a
     { name: 'Aneet Padda', role: 'Vaani Batra', photo: null },
     { name: 'Mohit Suri', role: 'Director', photo: null },
   ])
+})
+
+test('a cast card searches IMDb people for the name', () => {
+  assert.equal(personSearchUrl(' Aneet Padda '), 'https://www.imdb.com/find/?q=Aneet%20Padda&s=nm')
 })
 
 test('credits fall back to the plain cast names', () => {
