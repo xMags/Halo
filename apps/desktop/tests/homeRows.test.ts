@@ -196,3 +196,36 @@ test('a catalog with no name is titled by its kind', () => {
   assert.equal(catalogShelfLabels(undefined, 'movie', 'Addon').title, 'Movies')
   assert.equal(catalogShelfLabels('   ', 'series', 'Addon').title, 'Series')
 })
+
+test("an addon's own prefix moves from the title to the source line", () => {
+  assert.deepEqual(catalogShelfLabels('TMDB - Latest Releases', 'movie', 'The Movie Database Addon'), {
+    title: 'Latest Movie Releases',
+    source: 'TMDB',
+  })
+  assert.deepEqual(catalogShelfLabels('TMDB: Popular', 'series', 'The Movie Database Addon'), {
+    title: 'Popular Series',
+    source: 'TMDB',
+  })
+  assert.deepEqual(catalogShelfLabels('Cinemeta - Popular', 'movie', 'Cinemeta'), {
+    title: 'Popular Movies',
+    source: 'CINEMETA',
+  })
+})
+
+test('a prefix that is not the addon stays in the title', () => {
+  assert.equal(catalogShelfLabels('Star Wars - Saga', 'movie', 'Collections').title, 'Star Wars - Saga Movies')
+  // No spaces around the hyphen: part of a word, not a separator.
+  assert.equal(catalogShelfLabels('Spider-Man Picks', 'movie', 'Fan Lists').title, 'Spider-Man Movie Picks')
+})
+
+test("the source line drops a trailing 'Addon'", () => {
+  assert.equal(catalogShelfLabels('Popular', 'movie', 'The Movie Database Addon').source, 'THE MOVIE DATABASE')
+  assert.equal(catalogShelfLabels('Popular', 'movie', 'Streaming Catalogs Add-on').source, 'STREAMING CATALOGS')
+})
+
+test('a name ending on a plural noun takes the kind in front of it', () => {
+  assert.equal(catalogShelfLabels('Latest Releases', 'movie', 'Addon').title, 'Latest Movie Releases')
+  assert.equal(catalogShelfLabels('New Arrivals', 'series', 'Addon').title, 'New Series Arrivals')
+  // A single word is the whole name; the kind goes behind it as usual.
+  assert.equal(catalogShelfLabels('Releases', 'movie', 'Addon').title, 'Releases Movies')
+})
