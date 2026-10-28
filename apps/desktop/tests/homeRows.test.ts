@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { LibraryItem, WatchState } from '@halo/core'
 import {
   buildContinueShelf,
+  catalogShelfLabels,
   isHomeCatalogType,
   itemMetaId,
   itemType,
@@ -172,4 +173,26 @@ test('Home shows only film and series catalogs', () => {
   assert.equal(isHomeCatalogType('other'), false)
   assert.equal(isHomeCatalogType('channel'), false)
   assert.equal(isHomeCatalogType('tv'), false)
+})
+
+test('a catalog shelf is titled by name and kind, with its addon beside it', () => {
+  assert.deepEqual(catalogShelfLabels('Popular', 'movie', 'Cinemeta'), { title: 'Popular Movies', source: 'CINEMETA' })
+  assert.deepEqual(catalogShelfLabels('Featured', 'series', ' Cinemeta '), { title: 'Featured Series', source: 'CINEMETA' })
+})
+
+test('a catalog name that already says its kind is not doubled', () => {
+  assert.equal(catalogShelfLabels('Trending Movies', 'movie', 'TMDB').title, 'Trending Movies')
+  assert.equal(catalogShelfLabels('Top Films', 'movie', 'TMDB').title, 'Top Films')
+  assert.equal(catalogShelfLabels('Popular TV Shows', 'series', 'TMDB').title, 'Popular TV Shows')
+  assert.equal(catalogShelfLabels('Anime Series', 'series', 'Kitsu').title, 'Anime Series')
+})
+
+test('a word that only contains a kind word still gets the kind', () => {
+  // "Showcase" holds "show" but does not say the catalog is of shows.
+  assert.equal(catalogShelfLabels('Showcase', 'series', 'Addon').title, 'Showcase Series')
+})
+
+test('a catalog with no name is titled by its kind', () => {
+  assert.equal(catalogShelfLabels(undefined, 'movie', 'Addon').title, 'Movies')
+  assert.equal(catalogShelfLabels('   ', 'series', 'Addon').title, 'Series')
 })

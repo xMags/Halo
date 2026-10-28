@@ -17,6 +17,7 @@ import { continueSheetParams, useContinueShelf } from './continueShelf'
 import { formatClock, videoIdTag } from '../format'
 import {
   buildLibraryRow,
+  catalogShelfLabels,
   matchesHomeFilter,
   selectFeatured,
   type ContinueCard,
@@ -56,13 +57,6 @@ const FILTERS: ReadonlyArray<{ value: HomeFilter; label: string }> = [
   { value: 'movie', label: 'Movies' },
   { value: 'series', label: 'Series' },
 ]
-
-/** The native shelf's kind label, printed beside the catalog's own name. */
-function typeLabel(type: string): string {
-  if (type === 'movie') return 'Movies'
-  if (type === 'series') return 'Series'
-  return type
-}
 
 export function Home() {
   const { state } = useSession()
@@ -460,8 +454,8 @@ function FeaturedTitle({ name, logo }: { name: string; logo: string | undefined 
 }
 
 /**
- * One catalog as a shelf: the catalog's own name with the kind label beside
- * it, as the native shelf titles it, and only the titles the filter keeps.
+ * One catalog as a shelf, titled by its name and kind with the addon beside it
+ * (`catalogShelfLabels`), holding only the titles the filter keeps.
  */
 function CatalogShelf({ shelf, filter }: { shelf: BrowsableCatalog; filter: HomeFilter }) {
   const { push } = useNav()
@@ -474,8 +468,7 @@ function CatalogShelf({ shelf, filter }: { shelf: BrowsableCatalog; filter: Home
   // doesn't earn a shelf.
   if (!isLoading && items.length === 0) return null
 
-  const title = shelf.catalog.name ?? shelf.addonName
-  const source = typeLabel(shelf.catalog.type)
+  const { title, source } = catalogShelfLabels(shelf.catalog.name, shelf.catalog.type, shelf.addonName)
   return (
     <Shelf
       title={title}

@@ -176,6 +176,39 @@ export function isHomeCatalogType(type: string): boolean {
   return type === 'movie' || type === 'series'
 }
 
+/** Words that already say what kind a catalog holds, so the kind is not added twice. */
+const KIND_WORDS: Readonly<Record<string, RegExp>> = {
+  movie: /\b(movies?|films?|cinema)\b/i,
+  series: /\b(series|shows?|tv)\b/i,
+}
+
+/** The kind as a shelf title spells it. */
+function kindLabel(type: string): string {
+  if (type === 'movie') return 'Movies'
+  if (type === 'series') return 'Series'
+  return type.charAt(0).toUpperCase() + type.slice(1)
+}
+
+/**
+ * How a catalog shelf is labelled: the catalog's name with its kind
+ * ("Popular Movies"), and the addon it comes from as the mono line beside it
+ * ("CINEMETA"). A name that already says its kind ("Trending Movies", "Top
+ * TV") is kept as it is, and a catalog with no name is titled by its kind.
+ */
+export function catalogShelfLabels(
+  catalogName: string | undefined,
+  type: string,
+  addonName: string,
+): { title: string; source: string } {
+  const kind = kindLabel(type)
+  const name = catalogName?.trim() ?? ''
+  const saysKind = KIND_WORDS[type]?.test(name) ?? name.toLowerCase().includes(type.toLowerCase())
+  let title = `${name} ${kind}`
+  if (!name) title = kind
+  else if (saysKind) title = name
+  return { title, source: addonName.trim().toUpperCase() }
+}
+
 /** Home's kind filter. Anything that is not a series counts as a movie, as natively. */
 export type HomeFilter = 'all' | 'movie' | 'series'
 
