@@ -11,6 +11,7 @@
 .player-root-windowed {
   top: var(--titlebar);
 }
+/* The bar's ink is pinned dark too (TitleBar's `dark`), so it reads on this. */
 body.player-active .titlebar {
   background: #050507;
 }
