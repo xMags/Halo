@@ -17,6 +17,9 @@ import type { ThemeChoice } from './theme'
  *                         source's bitrate against it (0 = never measured)
  *   discordPresence       whether this machine's Discord shows what is
  *                         playing; on by default, as in the native app
+ *   fillPicture           the player crops to fill the window (mpv
+ *                         `panscan`); a fit for this screen's shape, so it
+ *                         holds from one video to the next
  *
  * Everything account-shaped (languages, subtitle size/font/outline/shadow,
  * autoplay) stays in `settings/syncedSettings.ts`, which syncs last-write-wins.
@@ -35,6 +38,7 @@ export interface LocalPrefs {
   subtitleTrackStyling: boolean
   measuredLineMbps: number
   discordPresence: boolean
+  fillPicture: boolean
 }
 
 const DEFAULTS: LocalPrefs = {
@@ -44,6 +48,7 @@ const DEFAULTS: LocalPrefs = {
   subtitleTrackStyling: true,
   measuredLineMbps: 0,
   discordPresence: true,
+  fillPicture: false,
 }
 
 function isThemeChoice(value: unknown): value is ThemeChoice {
@@ -75,6 +80,7 @@ function read(): LocalPrefs {
           : DEFAULTS.measuredLineMbps,
       discordPresence:
         typeof row.discordPresence === 'boolean' ? row.discordPresence : DEFAULTS.discordPresence,
+      fillPicture: typeof row.fillPicture === 'boolean' ? row.fillPicture : DEFAULTS.fillPicture,
     }
   } catch {
     // A blocked or corrupt store must not stop the app booting.
