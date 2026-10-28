@@ -217,3 +217,28 @@ export function isNewLinePeak(sampleMbps: number, currentMbps: number): boolean 
   if (!Number.isFinite(sampleMbps) || sampleMbps <= 0) return false
   return Math.min(sampleMbps, MAX_LINE_MBPS) > currentMbps * 1.1
 }
+
+export interface ListedRecord {
+  job_id: string
+  created_at: number
+}
+
+/**
+ * A list read merged with the engine events that arrived while it ran. For any
+ * job an event touched after `since`, the current records (which applied that
+ * event) win, including the job's absence after a removal; the list answers
+ * for every other job. Ordered by creation, like the engine's index.
+ */
+export function mergeListRead<T extends ListedRecord>(
+  listed: readonly T[],
+  current: readonly T[],
+  lastEventSeq: ReadonlyMap<string, number>,
+  since: number,
+): T[] {
+  const newer = (jobId: string) => (lastEventSeq.get(jobId) ?? 0) > since
+  const kept = listed.filter((item) => !newer(item.job_id))
+  const fromEvents = current.filter((item) => newer(item.job_id))
+  return [...kept, ...fromEvents].sort(
+    (left, right) => left.created_at - right.created_at || left.job_id.localeCompare(right.job_id),
+  )
+}
