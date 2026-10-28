@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import moe.ditto.halo.SignedInGraph
 import moe.ditto.halo.api.MetaCard
+import moe.ditto.halo.api.MetaPreview
 import moe.ditto.halo.browse.CatalogRowSpec
 import moe.ditto.halo.browse.ContinueEntry
 import moe.ditto.halo.browse.catalogRows
@@ -142,6 +143,14 @@ internal fun HomeScreen(
 
     val gutter = responsive.gutter
     val rowGap = responsive.pick(HaloSpacing.Lg, 26.dp)
+    // Each catalog row's last result, by row key, for as long as Home is up.
+    // The list disposes a row once it scrolls away, and the cache only hands
+    // the result back a coroutine hop after the row reappears, so without this
+    // a returning row spends a frame as a full-height skeleton before an empty
+    // or failed catalog collapses it. Scrolling back up crossed one such row
+    // after another, and their vanishing height ate the gesture: the list would
+    // barely move towards the top. Read and written only on the main thread.
+    val knownCatalogs = remember(graph) { HashMap<String, List<MetaPreview>>() }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -263,6 +272,8 @@ internal fun HomeScreen(
                 gutter = gutter,
                 gap = responsive.catalogRowGap,
                 bottomPadding = rowGap,
+                known = knownCatalogs[spec.key],
+                onKnown = { knownCatalogs[spec.key] = it },
                 onOpenDetail = onOpenDetail,
             )
         }
@@ -339,11 +350,15 @@ private fun HomeCatalogRow(
     gutter: Dp,
     gap: Dp,
     bottomPadding: Dp,
+    /** This row's result from an earlier pass, so it reappears at its settled height. */
+    known: List<MetaPreview>?,
+    onKnown: (List<MetaPreview>) -> Unit,
     onOpenDetail: (MetaRef) -> Unit,
 ) {
     val state by remember(graph, spec.key) {
         graph.browse.catalog(spec.addonId, spec.type, spec.catalogId)
-    }.collectAsState(QueryState())
+    }.collectAsState(QueryState(value = known))
+    LaunchedEffect(state.value) { state.value?.let(onKnown) }
 
     val metas = state.value
     CatalogRow(
