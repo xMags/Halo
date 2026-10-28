@@ -10,11 +10,19 @@ import {
   type Subtitle,
   type WatchState,
 } from '@halo/core'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
+import { useMemo } from 'react'
 import { getAccountClient, getClient } from './api'
 import { useSession } from './auth/session'
 import { isHomeCatalogType } from './home/homeRows'
+import {
+  searchProgress,
+  uniqueMetas,
+  type SearchProgress,
+  type SearchTarget,
+  type TargetState,
+} from './search/searchResults'
 
 /**
  * Data layer, ported from the former Expo client's queries.ts (same query keys and
@@ -261,40 +269,21 @@ export function useAddonSubtitles(opts: SubtitleOptions) {
   })
 }
 
-/** One search row per responding catalog, titled with the catalog's own name. */
-export interface SearchResultGroup {
-  key: string
-  title: string
-  /** Owning addon, shown as the shelf's mono source line. */
-  addonName: string
-  type: string
-  metas: MetaPreview[]
-}
-
-export interface SearchOutcome {
-  groups: SearchResultGroup[]
-}
-
 /**
  * Fan-out search across every installed catalog that supports the `search`
- * extra (Cinemeta's do). Each catalog keeps its own result group, in addon
- * order; groups that error or come back empty are dropped. Duplicates are
- * possible across groups (two addons can know the same title) — that mirrors
- * Stremio, where every catalog owns its row.
- *
- * The fan-out is timed because the search screen reports it: a slow addon is
- * the usual reason results feel late, and the number makes that visible
- * instead of leaving the user guessing.
+ * extra (Cinemeta's do). Each catalog is its own query, so its row shows as
+ * soon as it answers instead of waiting for the slowest addon, and a catalog
+ * that fails is reported rather than silently dropped. Duplicates are
+ * possible across rows (two addons can know the same title), as in Stremio,
+ * where every catalog owns its row.
  */
-export function useSearch(term: string) {
+export function useSearch(term: string): SearchProgress {
   const { data: addons } = useEffectiveAddons()
   const trimmed = term.trim()
-  return useQuery({
-    queryKey: ['search', trimmed],
-    enabled: !!addons && trimmed.length >= 2,
-    staleTime: 60_000,
-    queryFn: async (): Promise<SearchOutcome> => {
-      const targets = (addons ?? []).flatMap((addon) =>
+  const enabled = !!addons && trimmed.length >= 2
+  const targets = useMemo(
+    (): SearchTarget[] =>
+      (addons ?? []).flatMap((addon) =>
         addon.manifest.catalogs
           .filter(
             (c) =>
@@ -302,40 +291,35 @@ export function useSearch(term: string) {
               (c.extraSupported ?? []).includes('search'),
           )
           .map((c) => ({
+            key: `${addon.id}/${c.type}/${c.id}`,
             addonId: addon.id,
             addonName: addon.manifest.name,
             type: c.type,
             id: c.id,
             title: c.name ?? addon.manifest.name,
           })),
-      )
-      const results = await Promise.allSettled(
-        targets.map((t) => getClient().getCatalog(t.addonId, t.type, t.id, { search: trimmed })),
-      )
-      const groups = targets.flatMap((t, i): SearchResultGroup[] => {
-        const r = results[i]!
-        if (r.status !== 'fulfilled') return []
-        const seen = new Set<string>()
-        const metas = (r.value.metas ?? []).filter((meta) => {
-          const key = `${meta.type}:${meta.id}`
-          if (seen.has(key)) return false
-          seen.add(key)
-          return true
-        })
-        if (metas.length === 0) return []
-        return [
-          {
-            key: `${t.addonId}/${t.type}/${t.id}`,
-            title: t.title,
-            addonName: t.addonName,
-            type: t.type,
-            metas,
-          },
-        ]
-      })
-      return { groups }
-    },
+      ),
+    [addons],
+  )
+  const results = useQueries({
+    queries: targets.map((t) => ({
+      queryKey: ['search', trimmed, t.addonId, t.type, t.id] as const,
+      enabled,
+      staleTime: 60_000,
+      // One failed catalog is reported at once; a retry would hold its row's
+      // fate back for seconds while the rest have answered.
+      retry: false,
+      queryFn: async () =>
+        uniqueMetas((await getClient().getCatalog(t.addonId, t.type, t.id, { search: trimmed })).metas ?? []),
+    })),
   })
+  if (!enabled) return searchProgress([], [])
+  return searchProgress(
+    targets,
+    results.map((r): TargetState =>
+      r.isSuccess ? { status: 'done', metas: r.data } : r.isError ? { status: 'failed' } : { status: 'pending' },
+    ),
+  )
 }
 
 export function useLibrary() {

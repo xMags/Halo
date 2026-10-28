@@ -11,10 +11,25 @@ import { formatRelative } from '../format'
 import { useNav } from '../nav'
 import { useLibrary, useSearch } from '../queries'
 import { setSearchQuery, useSearchQuery } from './searchQuery'
-import { addSearchTerm, getSearchHistory, type SearchHistoryEntry } from './searchHistory'
+import {
+  addSearchTerm,
+  clearSearchHistory,
+  getSearchHistory,
+  removeSearchTerm,
+  type SearchHistoryEntry,
+} from './searchHistory'
 
 const DEBOUNCE_MS = 350
 const MIN_QUERY = 2
+/** Recent searches shown beside the top match; more would push the results down. */
+const RECENT_SHOWN = 6
+
+/** A row's kind, printed before its addon so two "Popular" rows read apart. */
+function kindLabel(type: string): string {
+  if (type === 'movie') return 'Movies'
+  if (type === 'series') return 'Series'
+  return type.charAt(0).toUpperCase() + type.slice(1)
+}
 
 const FILTERS = [
   { value: null, label: 'All' },
@@ -35,10 +50,10 @@ export function Search() {
     return () => clearTimeout(timer)
   }, [term])
 
-  const { data, isFetching } = useSearch(debounced)
+  const { groups, topMatch, pending, failed, total } = useSearch(debounced)
   const query = debounced.trim()
   const active = query.length >= MIN_QUERY
-  const groups = data?.groups ?? []
+  const waiting = active && pending > 0
 
   // History records only deliberate acts — submitting the query or opening a
   // result — never the debounced keystroke stream (mobile parity).
@@ -52,6 +67,10 @@ export function Search() {
     inputRef.current?.focus()
   }
 
+  const forget = (value: string) => setHistory(removeSearchTerm(value))
+  const forgetAll = () => setHistory(clearSearchHistory())
+  const recent = history.slice(0, RECENT_SHOWN)
+
   const shown = useMemo(() => {
     return groups.flatMap((group) => {
       const metas = typeFilter ? group.metas.filter((m) => m.type === typeFilter) : group.metas
@@ -60,9 +79,10 @@ export function Search() {
     })
   }, [groups, typeFilter])
 
-  // The best guess for the query itself, so the kind filter does not move it
-  // (the native page picks it before filtering too).
-  const topMatch = groups[0]?.metas[0]
+  // The top match is the best guess for the query itself, picked before the
+  // kind filter so the filter does not move it (the native page does too).
+  const filterLabel = typeFilter === 'movie' ? 'movies' : typeFilter === 'series' ? 'series' : 'titles'
+  const failedNames = [...new Set(failed.map((target) => target.addonName))]
 
   return (
     <div className="view">
@@ -98,7 +118,7 @@ export function Search() {
           ))}
         </div>
 
-        {(topMatch || history.length > 0) && (
+        {(topMatch || recent.length > 0) && (
           <div className="search-cols">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
               {topMatch && (
@@ -108,25 +128,36 @@ export function Search() {
                 </>
               )}
             </div>
-            {history.length > 0 && (
+            {recent.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 232, flexShrink: 0 }}>
-                <div className="kicker">RECENT</div>
+                <div className="recent-head">
+                  <div className="kicker">RECENT</div>
+                  <button type="button" className="btn-link recent-clear" onClick={forgetAll}>
+                    Clear
+                  </button>
+                </div>
                 <div className="list-card">
-                  {history.map((entry) => (
-                    <button
-                      key={entry.term}
-                      type="button"
-                      className="recent-row"
-                      onClick={() => searchAgain(entry.term)}
-                    >
-                      <span style={{ color: 'var(--t3)', display: 'flex', flex: '0 0 15px' }}>
-                        <FluentIcon glyph="clock" size={15} />
-                      </span>
-                      <span className="recent-term ellipsis">{entry.term}</span>
-                      <span className="mono" style={{ color: 'var(--t4)' }}>
-                        {entry.at ? formatRelative(entry.at).toUpperCase() : 'RECENT'}
-                      </span>
-                    </button>
+                  {recent.map((entry) => (
+                    <div key={entry.term} className="recent-row">
+                      <button type="button" className="recent-open" onClick={() => searchAgain(entry.term)}>
+                        <span style={{ color: 'var(--t3)', display: 'flex', flex: '0 0 15px' }}>
+                          <FluentIcon glyph="clock" size={15} />
+                        </span>
+                        <span className="recent-term ellipsis">{entry.term}</span>
+                        <span className="mono recent-when">
+                          {entry.at ? formatRelative(entry.at).toUpperCase() : 'RECENT'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="recent-remove"
+                        aria-label={`Remove ${entry.term} from recent searches`}
+                        title="Remove"
+                        onClick={() => forget(entry.term)}
+                      >
+                        <FluentIcon glyph="close" size={10} />
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -134,7 +165,7 @@ export function Search() {
           </div>
         )}
 
-        {active && isFetching && groups.length === 0 && (
+        {waiting && !topMatch && (
           <div className="search-cols" style={{ marginTop: 14 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
               <div className="kicker">TOP MATCH</div>
@@ -142,15 +173,35 @@ export function Search() {
             </div>
           </div>
         )}
-        {active && !isFetching && shown.length === 0 && (
+        {active && failedNames.length > 0 && (
+          <div className="search-note" role="status">
+            {failed.length === total
+              ? 'Search could not reach your addons. Check your connection and try again.'
+              : `${failedNames.join(', ')} did not answer, so ${failedNames.length === 1 ? 'its' : 'their'} results are missing.`}
+          </div>
+        )}
+        {active && total > 0 && pending === 0 && groups.length === 0 && failed.length < total && (
           <div className="state-note" style={{ paddingLeft: 0, textAlign: 'center', marginTop: 30 }}>
             No matching titles.
+          </div>
+        )}
+        {active && total === 0 && (
+          <div className="state-note" style={{ paddingLeft: 0, textAlign: 'center', marginTop: 30 }}>
+            None of your addons can search. Add one that can, such as Cinemeta, in Settings.
+          </div>
+        )}
+        {active && groups.length > 0 && shown.length === 0 && pending === 0 && (
+          <div className="state-note" style={{ paddingLeft: 0, textAlign: 'center', marginTop: 30 }}>
+            No {filterLabel} match {'\u201c'}{query}{'\u201d'}.{' '}
+            <button type="button" className="btn-link" onClick={() => setTypeFilter(null)}>
+              Show all results
+            </button>
           </div>
         )}
 
       </div>
 
-      {active && isFetching && groups.length === 0 && (
+      {waiting && shown.length === 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 26, padding: '26px 0 0' }}>
           <ShelfSkeleton titleWidth={160} count={6} />
           <ShelfSkeleton titleWidth={140} count={6} />
@@ -172,7 +223,7 @@ export function Search() {
             <Shelf
               key={group.key}
               title={group.title}
-              source={group.addonName}
+              source={`${kindLabel(group.type)} · ${group.addonName}`}
               action={
                 <button
                   type="button"
@@ -182,7 +233,7 @@ export function Search() {
                     push({
                       name: 'catalog',
                       title: group.title,
-                      source: group.addonName,
+                      source: `${kindLabel(group.type)} · ${group.addonName}`,
                       items: group.metas.map((meta) => ({ meta })),
                     })
                   }
@@ -201,6 +252,11 @@ export function Search() {
             </Shelf>
           )
         })}
+        {waiting && shown.length > 0 && (
+          <div className="search-note search-note-pending" role="status">
+            <span className="spinner" /> Still asking {pending} more {pending === 1 ? 'catalog' : 'catalogs'}…
+          </div>
+        )}
       </div>
     </div>
   )
