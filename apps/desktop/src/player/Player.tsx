@@ -6,7 +6,7 @@ import {
   type Subtitle,
   type WatchState,
 } from '@halo/core'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getClient } from '../api'
 import { ArtImage } from '../components/ArtImage'
@@ -551,14 +551,11 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.url, params.videoId, params.sourceKind, params.downloadId])
 
-  useEffect(() => {
-    const syncVideoMargin = () => {
-      const ratio = videoTopMarginRatio(fullscreen, window.innerHeight, TITLE_BAR_HEIGHT)
-      void mpvSet('video-margin-ratio-top', String(ratio))
-    }
-    syncVideoMargin()
-    window.addEventListener('resize', syncVideoMargin)
-    return () => window.removeEventListener('resize', syncVideoMargin)
+  // The shell keeps the title bar's strip in step with every resize
+  // (main.rs, on_window_event); this sets it for the player's first frame and
+  // whenever fullscreen flips, in a layout effect so it lands with the chrome.
+  useLayoutEffect(() => {
+    void mpvSet('video-margin-ratio-top', String(videoTopMarginRatio(fullscreen, window.innerHeight, TITLE_BAR_HEIGHT)))
   }, [fullscreen])
 
   // Controls auto-hide while playing, unless something pins them (see

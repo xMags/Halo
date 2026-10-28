@@ -19,6 +19,7 @@ mod secure_fs;
 mod webview_recovery;
 mod window_icon;
 mod window_menu;
+mod window_placement;
 
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
@@ -40,6 +41,8 @@ const DWMWA_BORDER_COLOR: u32 = 34;
 const DWMWCP_DONOTROUND: u32 = 1;
 const DWMWCP_ROUND: u32 = 2;
 const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
+/// A BOOL: while set, DWM skips the window's minimize/maximize/restore animations.
+const DWMWA_TRANSITIONS_FORCEDISABLED: u32 = 3;
 
 #[link(name = "dwmapi")]
 extern "system" {
@@ -84,6 +87,19 @@ fn find_fonts_dir() -> Option<std::path::PathBuf> {
 
 struct PlayerState {
     mpv: Arc<Mpv>,
+}
+
+/// The app-drawn title bar's height in CSS pixels (TITLE_BAR_HEIGHT in theme.ts).
+const TITLE_BAR_HEIGHT: f64 = 32.0;
+
+/// mpv's `video-margin-ratio-top` for a window `height_px` physical pixels
+/// tall: mpv paints the whole window, so windowed playback reserves the title
+/// bar; fullscreen has none.
+fn video_top_margin_ratio(fullscreen: bool, height_px: u32, scale_factor: f64) -> f64 {
+    if fullscreen || height_px == 0 {
+        return 0.0;
+    }
+    (TITLE_BAR_HEIGHT * scale_factor / f64::from(height_px)).min(1.0)
 }
 
 fn corner_preference(fullscreen: bool) -> u32 {
@@ -154,6 +170,57 @@ fn window_set_fullscreen_style(app: tauri::AppHandle, fullscreen: bool) -> Resul
         .ok_or_else(|| "main window is unavailable".to_string())?;
     let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as isize;
     set_corner_preference(hwnd, fullscreen)
+}
+
+fn main_window_hwnd(app: &tauri::AppHandle) -> Result<isize, String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window is unavailable".to_string())?;
+    Ok(window.hwnd().map_err(|error| error.to_string())?.0 as isize)
+}
+
+/// Before fullscreen: leaves maximized without moving (window_placement.rs).
+/// Returns whether the window was maximized.
+#[tauri::command]
+fn window_unmaximize_in_place(
+    app: tauri::AppHandle,
+    placement: State<window_placement::FullscreenPlacement>,
+) -> Result<bool, String> {
+    placement.unmaximize_in_place(main_window_hwnd(&app)?)
+}
+
+/// After fullscreen: maximized again where it stands, if it was before.
+#[tauri::command]
+fn window_remaximize(
+    app: tauri::AppHandle,
+    placement: State<window_placement::FullscreenPlacement>,
+) -> Result<(), String> {
+    placement.remaximize(main_window_hwnd(&app)?)
+}
+
+/// Switches the main window's DWM transition animations. A fullscreen switch
+/// from a maximized window has to restore it first (see window.ts), and the
+/// restore and re-maximize would otherwise each play Windows' shrinking,
+/// cross-fading animation on the way in and out of fullscreen.
+#[tauri::command]
+fn window_set_transitions(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window is unavailable".to_string())?;
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as isize;
+    let disabled: u32 = if enabled { 0 } else { 1 };
+    let result = unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_TRANSITIONS_FORCEDISABLED,
+            &disabled,
+            std::mem::size_of::<u32>() as u32,
+        )
+    };
+    if result < 0 {
+        return Err(format!("DWM transitions switch failed (HRESULT {result:#x})"));
+    }
+    Ok(())
 }
 
 /// Right-click on the app-drawn title bar opens the Windows window menu
@@ -444,6 +511,7 @@ fn main() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(window_placement::FullscreenPlacement::default())
         .manage(discord::PresenceService::new(
             false,
             Box::new(discord::NamedPipeTransport::default()),
@@ -456,6 +524,9 @@ fn main() {
             mpv_observe,
             mpv_unobserve_all,
             window_set_fullscreen_style,
+            window_set_transitions,
+            window_unmaximize_in_place,
+            window_remaximize,
             window_show_system_menu,
             oauth_wait_callback,
             discord_presence_set_enabled,
@@ -588,6 +659,22 @@ fn main() {
             app.manage(PlayerState { mpv });
             Ok(())
         })
+        // The title bar's strip follows the window from here rather than from
+        // the webview: mpv takes the new size from Windows directly, and a
+        // margin that arrived a few frames later (after the webview had heard
+        // of the resize and asked) made the picture resize twice and visibly
+        // shake on the way out of fullscreen.
+        .on_window_event(|window, event| {
+            let tauri::WindowEvent::Resized(size) = event else { return };
+            if window.label() != "main" {
+                return;
+            }
+            let Some(player) = window.try_state::<PlayerState>() else { return };
+            let fullscreen = window.is_fullscreen().unwrap_or(false);
+            let scale = window.scale_factor().unwrap_or(1.0);
+            let ratio = video_top_margin_ratio(fullscreen, size.height, scale);
+            let _ = player.mpv.set_str("video-margin-ratio-top", &ratio.to_string());
+        })
         .build(tauri::generate_context!())
         .expect("tauri build")
         .run(|app, event| {
@@ -601,7 +688,16 @@ fn main() {
 
 #[cfg(test)]
 mod window_style_tests {
-    use super::{corner_preference, DWMWCP_DONOTROUND, DWMWCP_ROUND};
+    use super::{corner_preference, video_top_margin_ratio, DWMWCP_DONOTROUND, DWMWCP_ROUND};
+
+    #[test]
+    fn title_bar_margin_scales_with_the_window_and_vanishes_in_fullscreen() {
+        assert_eq!(video_top_margin_ratio(false, 1000, 1.0), 0.032);
+        assert_eq!(video_top_margin_ratio(false, 1000, 1.25), 0.04);
+        assert_eq!(video_top_margin_ratio(true, 1000, 1.25), 0.0);
+        assert_eq!(video_top_margin_ratio(false, 0, 1.25), 0.0);
+        assert_eq!(video_top_margin_ratio(false, 10, 2.0), 1.0);
+    }
 
     #[test]
     fn fullscreen_corners_are_square_and_windowed_corners_are_round() {
