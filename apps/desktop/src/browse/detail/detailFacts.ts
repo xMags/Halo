@@ -89,6 +89,15 @@ export function creditsOf(meta: Pick<MetaDetail, 'cast' | 'director' | 'app_extr
   })
 }
 
+/**
+ * Where a cast card leads: IMDb's people search for the name. Addons send no
+ * person id, so a search is the honest link; IMDb because its ratings are the
+ * ones the page shows.
+ */
+export function personSearchUrl(name: string): string {
+  return `https://www.imdb.com/find/?q=${encodeURIComponent(name.trim())}&s=nm`
+}
+
 /** `18 July 2025` from an ISO date; null when there is none or it does not parse. */
 export function formatReleaseDate(released: string | undefined): string | null {
   if (!released) return null

@@ -616,6 +616,42 @@
 .credit {
   flex: 0 0 128px;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+.credit-art {
+  position: relative;
+  display: block;
+}
+/* Says the card leaves the app before it is pressed. */
+.credit-open {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(10, 10, 12, 0.7);
+  backdrop-filter: blur(8px);
+  color: var(--ink);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+.credit:hover .credit-open,
+.credit:focus-visible .credit-open {
+  opacity: 1;
+  transform: none;
+}
+.credit:hover .credit-name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(245, 245, 247, 0.4);
 }
 .credit .fade-art {
   width: 128px;
@@ -628,12 +664,14 @@
   transform: scale(1.04);
 }
 .credit-name {
+  display: block;
   margin-top: 10px;
   font-size: 14px;
   font-weight: 500;
   color: var(--ink);
 }
 .credit-role {
+  display: block;
   margin-top: 3px;
   font-size: 13px;
   color: rgba(245, 245, 247, 0.5);
