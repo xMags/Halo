@@ -47,8 +47,12 @@ fun savedSearchMatches(library: List<LibraryItem>?, term: String): List<LibraryI
         .sortedByDescending { it.addedAt }
 }
 
+/** The type debrid addons (TorBox) give the catalogs that list an account's files. */
+const val FileListingCatalogType = "other"
+
 /**
- * Every catalog that advertises the `search` extra, in resolution order.
+ * Every catalog that advertises the `search` extra, in resolution order,
+ * except file listings ([FileListingCatalogType]).
  *
  * Results are deliberately not merged into one list. A catalog is a curated
  * view, so "Popular – Movie" and "Top – Series" answering the same query are
@@ -57,7 +61,9 @@ fun savedSearchMatches(library: List<LibraryItem>?, term: String): List<LibraryI
  */
 fun searchTargets(addons: List<AddonEntry>): List<SearchTarget> = addons.flatMap { addon ->
     addon.manifest.catalogs
-        .filter { it.supportsSearch }
+        // A debrid addon's "other" catalog searches the account's raw
+        // torrents and downloads, not titles. Anime and other real kinds stay.
+        .filter { it.supportsSearch && it.type != FileListingCatalogType }
         .map { catalog ->
             SearchTarget(
                 key = "${addon.id}/${catalog.type}/${catalog.id}",

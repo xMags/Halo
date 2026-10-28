@@ -25,12 +25,18 @@ data class CatalogRowSpec(
  * gate are checked because addons use either: the `extra` array's `isRequired`
  * flag, and the older parallel `extraRequired` list.
  *
+ * Only movie and series catalogs make rows, as on the desktop app. Debrid
+ * addons also publish catalogs of their own types (TorBox's "other" lists the
+ * account's raw torrents and downloads), which are file listings rather than
+ * titles to browse and never belong on Home.
+ *
  * Addons whose catalogs the user hid need no handling here. The server strips
  * those from the manifest before it reaches this client, so they are already
  * absent rather than filtered.
  */
 fun catalogRows(addons: List<AddonEntry>): List<CatalogRowSpec> = addons.flatMap { addon ->
     addon.manifest.catalogs
+        .filter { catalog -> isHomeCatalogType(catalog.type) }
         .filter { catalog -> catalog.extra.none { it.isRequired } && catalog.extraRequired.isEmpty() }
         .map { catalog ->
             CatalogRowSpec(
@@ -45,6 +51,8 @@ fun catalogRows(addons: List<AddonEntry>): List<CatalogRowSpec> = addons.flatMap
             )
         }
 }
+
+fun isHomeCatalogType(type: String): Boolean = type == "movie" || type == "series"
 
 /**
  * Plural label for a whole shelf ("Movies"). An unrecognised type is shown as
