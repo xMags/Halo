@@ -55,6 +55,11 @@ export interface MetaPreview {
   id: string
   type: string
   name: string
+  /**
+   * `defaultVideoId` names the video a film plays as when that differs from
+   * its id: the TMDB addon lists films as `tmdb:…` but plays them by IMDb id.
+   */
+  behaviorHints?: { defaultVideoId?: string | null; hasScheduledVideos?: boolean }
   poster?: string
   posterShape?: 'square' | 'poster' | 'landscape'
   background?: string

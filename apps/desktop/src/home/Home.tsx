@@ -9,6 +9,7 @@ import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { Shelf } from '../components/Shelf'
 import { HeroSkeleton, PosterCardSkeleton, ShelfSkeleton } from '../components/Skeleton'
+import { movieVideoId, playableFromPreview } from '../browse/playableVideo'
 import { useTitleMenu } from '../browse/titleMenu'
 import { continueSheetParams, useContinueShelf } from './continueShelf'
 import { formatClock, videoIdTag } from '../format'
@@ -299,10 +300,11 @@ function FeaturedHero({ catalogs, filter }: { catalogs: BrowsableCatalog[]; filt
   // The native primary action: a series needs an episode chosen, and Detail is
   // the picker; a film goes straight to its sources.
   const play = () => {
-    if (isSeries) return openDetail()
+    // A film listed under an id stream addons do not know is found from its title page.
+    if (isSeries || !playableFromPreview(featured)) return openDetail()
     openSheet({
       type: featured.type,
-      videoId: featured.id,
+      videoId: movieVideoId(featured),
       itemId,
       metaId: featured.id,
       title: featured.name,

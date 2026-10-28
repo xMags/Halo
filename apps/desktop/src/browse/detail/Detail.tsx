@@ -6,6 +6,7 @@ import { useDownloads } from '../../downloads/downloadsStore'
 import { episodeTag, runtimeMinutes } from '../../format'
 import { useNav, type StreamsParams } from '../../nav'
 import { libraryItemFromMeta, useLibrary, useMeta, useUpsertLibrary, useWatchStates } from '../../queries'
+import { movieVideoId } from '../playableVideo'
 import { useTitleMenu } from '../titleMenu'
 import { hasWatchProgress } from '../watchMarks'
 import { AboutPanel, CastPanel, MoreLikeThis } from './DetailPanels'
@@ -96,7 +97,7 @@ export function Detail({ type, id }: { type: string; id: string }) {
     const minutes = runtimeMinutes(meta.runtime)
     return {
       type,
-      videoId: video?.id ?? id,
+      videoId: video?.id ?? movieVideoId(meta),
       itemId,
       metaId: id,
       title: video ? (video.title ?? video.name ?? meta.name) : meta.name,
@@ -130,7 +131,7 @@ export function Detail({ type, id }: { type: string; id: string }) {
     progress: resumeState
       ? { positionSec: resumeState.positionSec, durationSec: resumeState.durationSec }
       : null,
-    videoId: targetVideo?.id ?? id,
+    videoId: targetVideo?.id ?? movieVideoId(meta),
     open: () => openStreams(targetVideo),
   }
 
