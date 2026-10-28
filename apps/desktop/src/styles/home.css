@@ -6,6 +6,19 @@
   border-radius: 8px;
   overflow: hidden;
 }
+/* Masked rather than overlaid with the page colour, so the fade reveals
+   whatever is really behind the hero (the shell's glows included) in both
+   themes. */
+.hero-media {
+  position: absolute;
+  inset: 0;
+  -webkit-mask-image: linear-gradient(180deg, #000 50%, transparent);
+  mask-image: linear-gradient(180deg, #000 50%, transparent);
+}
+.hero-placeholder {
+  position: absolute;
+  inset: 0;
+}
 .hero-art {
   position: absolute;
   inset: 0;
@@ -41,6 +54,45 @@
   letter-spacing: -0.36px;
   line-height: 1.1;
   color: var(--t1);
+}
+/* Matches the backdrop's crossfade, so a new title's text arrives with its
+   picture. */
+.hero-body-enter {
+  animation: heroBodyIn 0.4s ease both;
+}
+@keyframes heroBodyIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-body-enter {
+    animation: none;
+  }
+}
+/* The title page's logo treatment, sized for the shorter hero. */
+.hero-logo {
+  display: block;
+  max-width: min(380px, 100%);
+  max-height: calc(var(--ht) * 2.4);
+  object-fit: contain;
+  object-position: left bottom;
+  filter: drop-shadow(0 4px 24px rgba(0, 0, 0, 0.5));
+}
+.hero-title-behind-logo {
+  display: none;
+}
+/* Logos are drawn for dark art; the light theme's scrim is pale. */
+:root[data-theme='light'] .hero-logo {
+  display: none;
+}
+:root[data-theme='light'] .hero-title-behind-logo {
+  display: block;
 }
 .hero-facts {
   display: flex;
@@ -83,13 +135,43 @@
    pale end of the light theme's hero scrim, where white is invisible. In dark
    the token lands on the same value the design specifies. */
 .pip {
-  width: 6px;
+  position: relative;
+  width: 8px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: 3px;
+  background: var(--t4);
+  overflow: hidden;
+  transition: width 0.3s ease;
+}
+.pip:hover {
+  background: var(--t3);
+}
+/* The current title's pip widens into a track its fill crosses over one
+   dwell (see FeaturedHero, where that animation is the carousel's clock). */
+.pip-active,
+.pip-active:hover {
+  width: 28px;
   background: var(--t4);
 }
-.pip-active {
-  width: 7px;
-  height: 7px;
+.pip-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
   background: var(--t1);
+}
+/* Not exempted under reduced motion: it is a slow linear meter, and the
+   carousel needs its end to move on. */
+.pip-fill-running {
+  animation-name: pipFill;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  transform-origin: left center;
+}
+@keyframes pipFill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
