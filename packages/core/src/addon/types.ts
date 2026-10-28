@@ -77,10 +77,22 @@ export interface MetaVideo {
   episode?: number
 }
 
+/** One credited person, as addons that send pictures (TMDB) describe them. */
+export interface MetaPerson {
+  name: string
+  /** The part played; absent for crew. */
+  character?: string
+  photo?: string
+}
+
 export interface MetaDetail extends MetaPreview {
   videos?: MetaVideo[]
   /** ISO date of the first release (Cinemeta), finer than `releaseInfo`'s year. */
   released?: string
+  /** Local certificate such as `U/A 13+` (TMDB). */
+  ageRating?: string
+  /** Extras beyond the core spec; TMDB puts the cast with photos here. */
+  app_extras?: { cast?: MetaPerson[] }
   runtime?: string
   language?: string
   country?: string

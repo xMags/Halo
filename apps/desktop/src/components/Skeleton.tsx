@@ -138,39 +138,23 @@ export function HeroSkeleton() {
 /** Full-screen detail placeholder matching `.detail-view` with full-page background. */
 export function DetailSkeleton() {
   return (
-    <div className="view detail-screen detail-skeleton" aria-hidden>
-      <div className="art detail-bg">
-        <div className="detail-bg-scrim" />
-      </div>
+    <div className="view detail-screen detail-skeleton theme-dark" aria-hidden>
       <div className="detail-view">
-        <div style={{ position: 'relative', zIndex: 1, paddingBottom: 48 }}>
-          <div style={{ height: 268 }} />
-          <div className="detail-grid detail-grid-movie">
-            <div className="art detail-poster skeleton" />
-            <div className="detail-head">
-              <div className="skeleton skeleton-text" style={{ width: 90, height: 12, marginBottom: 8 }} />
-              <div
-                className="skeleton skeleton-text"
-                style={{ width: '70%', maxWidth: 420, height: 36, borderRadius: 6, marginBottom: 10 }}
-              />
-              <div className="skeleton skeleton-text" style={{ width: 260, height: 15, marginBottom: 16 }} />
-              <div className="detail-actions" style={{ marginBottom: 20 }}>
-                <div className="skeleton" style={{ width: 130, height: 36, borderRadius: 4 }} />
-                <div className="skeleton" style={{ width: 120, height: 36, borderRadius: 4 }} />
-              </div>
-            </div>
-            <div className="detail-aside">
-              <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div className="skeleton skeleton-text" style={{ width: 80, height: 12 }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div className="skeleton skeleton-text" style={{ width: '100%', height: 14 }} />
-                  <div className="skeleton skeleton-text" style={{ width: '95%', height: 14 }} />
-                  <div className="skeleton skeleton-text" style={{ width: '65%', height: 14 }} />
-                </div>
+        <section className="dh">
+          <div className="dh-inner">
+            <div className="dh-body" style={{ width: 560 }}>
+              <div className="skeleton" style={{ width: 340, height: 72, borderRadius: 8 }} />
+              <div className="skeleton skeleton-text" style={{ width: 300, height: 14, marginTop: 20 }} />
+              <div className="skeleton skeleton-text" style={{ width: '100%', height: 14, marginTop: 18 }} />
+              <div className="skeleton skeleton-text" style={{ width: '80%', height: 14, marginTop: 8 }} />
+              <div className="dh-actions">
+                <div className="skeleton" style={{ width: 140, height: 46, borderRadius: 10 }} />
+                <div className="skeleton" style={{ width: 46, height: 46, borderRadius: 23 }} />
+                <div className="skeleton" style={{ width: 46, height: 46, borderRadius: 23 }} />
               </div>
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   )

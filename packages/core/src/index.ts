@@ -5,6 +5,7 @@ export type {
   ManifestCatalog,
   ManifestResource,
   MetaDetail,
+  MetaPerson,
   MetaPreview,
   MetaResponse,
   MetaVideo,
