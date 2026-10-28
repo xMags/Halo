@@ -48,6 +48,8 @@ export {
   fetchManifests,
   MAX_BINGE_GROUP_LENGTH,
   resolveMeta,
+  resolveMetaWithCast,
+  sanitizeCast,
   resolveNextEpisode,
   resolveStreams,
   resolveSubtitles,

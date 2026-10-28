@@ -7,7 +7,7 @@ import {
   fetchCatalog,
   fetchManifests,
   MAX_BINGE_GROUP_LENGTH,
-  resolveMeta,
+  resolveMetaWithCast,
   resolveNextEpisode,
   resolveStreams,
   resolveSubtitles,
@@ -539,7 +539,7 @@ export function createApp(config: AppConfig) {
     const type = c.req.query('type')
     const id = c.req.query('id')
     if (!type || !id) return c.json({ error: 'type and id are required' }, 400)
-    const res = await resolveMeta(effectiveAddons(c.get('user').id), type, id, resolveContext)
+    const res = await resolveMetaWithCast(effectiveAddons(c.get('user').id), type, id, resolveContext)
     if (!res) return c.json({ error: 'no metadata found' }, 404)
     return c.json(res)
   })

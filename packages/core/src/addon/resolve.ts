@@ -3,7 +3,7 @@ import { addonSupportsResource, getCatalog, getMeta, getStreams, getSubtitles, t
 import { parseManifest } from './manifest'
 import { nextVideo } from './nextVideo'
 import { addonError, normalizeStreamsResponse, normalizeSubtitlesResponse, safeAddonName } from './normalize'
-import type { CatalogResponse, Manifest, MetaResponse, Stream } from './types'
+import type { CatalogResponse, Manifest, MetaDetail, MetaPerson, MetaResponse, Stream } from './types'
 
 /**
  * Addon resolution: which installed addons to ask, in what order, and how
@@ -98,6 +98,93 @@ export async function resolveMeta(
     }
   }
   return null
+}
+
+/**
+ * Addons that answer an IMDb id with a pictured cast (`app_extras.cast`),
+ * by manifest id. The TMDB addon does, though its manifest only claims its
+ * own `tmdb:` ids, so resolution would never otherwise ask it.
+ */
+const PICTURED_CAST_ADDONS: ReadonlySet<string> = new Set(['tmdb-addon'])
+const IMDB_ID = /^tt\d{1,10}$/
+const MAX_CAST = 40
+const MAX_CAST_TEXT = 200
+const MAX_PHOTO_URL = 1_000
+
+/**
+ * The title page's meta: `resolveMeta`, plus the cast with photos from an
+ * installed TMDB addon when the answering addon sent none (Cinemeta sends
+ * names only). Both requests run at once; the cast is best-effort, so its
+ * failure never fails the meta.
+ */
+export async function resolveMetaWithCast(
+  addons: readonly ResolvableAddon[],
+  type: string,
+  id: string,
+  ctx: ResolveContext,
+): Promise<MetaResponse | null> {
+  const castSource = IMDB_ID.test(id)
+    ? addons.find((a) => PICTURED_CAST_ADDONS.has(a.manifest.id) && addonSupportsResource(a.manifest, 'meta', type))
+    : undefined
+  const [res, cast] = await Promise.all([
+    resolveMeta(addons, type, id, ctx),
+    castSource ? fetchPicturedCast(castSource, type, id, ctx) : Promise.resolve(null),
+  ])
+  if (!res || !cast || hasPicturedCast(res.meta)) return res
+  return { ...res, meta: { ...res.meta, app_extras: { ...res.meta.app_extras, cast } } }
+}
+
+function hasPicturedCast(meta: MetaDetail): boolean {
+  return (meta.app_extras?.cast ?? []).some((person) => Boolean(person.photo))
+}
+
+async function fetchPicturedCast(
+  addon: ResolvableAddon,
+  type: string,
+  id: string,
+  ctx: ResolveContext,
+): Promise<MetaPerson[] | null> {
+  try {
+    const res = await getMeta(addon.transportUrl, type, id, { fetch: ctx.fetch, signal: requestSignal(ctx) })
+    return sanitizeCast(res?.meta?.app_extras?.cast)
+  } catch {
+    return null
+  }
+}
+
+/** Addon output is untrusted: names and parts as bounded text, photos only as https URLs. */
+export function sanitizeCast(raw: unknown): MetaPerson[] | null {
+  if (!Array.isArray(raw)) return null
+  const cast: MetaPerson[] = []
+  for (const entry of raw) {
+    if (cast.length >= MAX_CAST) break
+    if (!entry || typeof entry !== 'object') continue
+    const { name, character, photo } = entry as Record<string, unknown>
+    const cleanName = boundedText(name)
+    if (!cleanName) continue
+    const person: MetaPerson = { name: cleanName }
+    const part = boundedText(character)
+    if (part) person.character = part
+    const picture = httpsUrl(photo)
+    if (picture) person.photo = picture
+    cast.push(person)
+  }
+  return cast.some((person) => person.photo) ? cast : null
+}
+
+function boundedText(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const text = value.trim()
+  return text && text.length <= MAX_CAST_TEXT ? text : null
+}
+
+function httpsUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > MAX_PHOTO_URL) return null
+  try {
+    return new URL(value).protocol === 'https:' ? value : null
+  } catch {
+    return null
+  }
 }
 
 /** Asks every stream-capable addon at once; playable streams grouped by addon, plus each failure. */
