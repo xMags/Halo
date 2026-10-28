@@ -13,11 +13,15 @@ import { WindowButtons } from './WindowButtons'
  * The design reserves 138px at the end for the system caption buttons. This
  * window is undecorated, so the app's own three live inside that reservation
  * and the measurement still holds.
+ *
+ * `dark` pins the bar to the dark palette whatever the theme, for the player,
+ * whose bar is near-black in both themes: in the light theme the light
+ * palette's ink would vanish into it.
  */
-export function TitleBar() {
+export function TitleBar({ dark = false }: { dark?: boolean }) {
   return (
     <div
-      className="titlebar"
+      className={`titlebar ${dark ? 'theme-dark' : ''}`}
       data-tauri-drag-region
       // Anywhere on the bar, the caption buttons included, as on a system
       // title bar.

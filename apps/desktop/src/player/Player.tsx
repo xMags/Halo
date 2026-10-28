@@ -1059,7 +1059,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
 
   return (
     <>
-      {!fullscreen && <TitleBar />}
+      {!fullscreen && <TitleBar dark />}
       <div
         className={`player-root ${fullscreen ? '' : 'player-root-windowed'}`}
         style={{ cursor: chromeVisible ? 'default' : 'none' }}
