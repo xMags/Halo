@@ -40,7 +40,8 @@ internal enum class AddonOwnership {
 }
 
 internal data class SettingsUiState(
-    val serverUrl: String,
+    /** The last measured round trip to the server; null until one has completed. */
+    val latencyMillis: Long? = null,
     val addons: AddonsResponse? = null,
     val account: Me? = null,
     val settings: UserSettings? = null,
@@ -225,7 +226,7 @@ internal fun SettingsContent(
         item(key = "server-card") {
             val connected = state.account != null || state.addons != null || state.settings != null
             SettingsCard {
-                StaticSettingRow(label = "Server", value = displayServer(state.serverUrl))
+                StaticSettingRow(label = "Latency", value = state.latencyMillis?.let { "$it ms" } ?: "...")
                 SettingsDivider()
                 StatusRow(connected = connected)
             }
@@ -257,6 +258,3 @@ internal fun SettingsContent(
         }
     }
 }
-
-private fun displayServer(serverUrl: String): String =
-    serverUrl.removePrefix("https://").removePrefix("http://").trimEnd('/')

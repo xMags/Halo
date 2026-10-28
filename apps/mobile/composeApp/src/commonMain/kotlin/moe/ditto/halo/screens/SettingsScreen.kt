@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -15,6 +16,7 @@ import androidx.compose.ui.Modifier
 import io.ktor.http.URLProtocol
 import io.ktor.http.Url
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.ditto.halo.SignedInGraph
 import moe.ditto.halo.api.AddonEntry
@@ -24,9 +26,11 @@ import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.LanguageOptions
 import moe.ditto.halo.ui.SelectOption
 import moe.ditto.halo.ui.SelectSheet
+import kotlin.time.TimeSource
 
 private const val NoLanguage = "none"
 private const val RemoveAddon = "remove"
+private const val LatencyProbeIntervalMillis = 15_000L
 
 private sealed interface SettingsOverlay {
     data class Language(val kind: SettingsLanguageKind) : SettingsOverlay
@@ -50,6 +54,25 @@ internal fun SettingsScreen(
     var pendingAction by remember { mutableStateOf<String?>(null) }
     var mutationError by remember { mutableStateOf<String?>(null) }
     var overlay by remember { mutableStateOf<SettingsOverlay?>(null) }
+    var latencyMillis by remember { mutableStateOf<Long?>(null) }
+
+    // Settings shows how quick the server is rather than where it lives. A
+    // small authenticated request is timed end to end, the same path every
+    // screen's calls take, and re-measured while the screen stays open. A
+    // failed probe keeps the last reading: the Status row reports outages.
+    LaunchedEffect(graph) {
+        while (true) {
+            val started = TimeSource.Monotonic.markNow()
+            try {
+                graph.client.getMe()
+                latencyMillis = started.elapsedNow().inWholeMilliseconds
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+            }
+            delay(LatencyProbeIntervalMillis)
+        }
+    }
 
     fun launchMutation(key: String, failureMessage: String, action: suspend () -> Unit) {
         if (pendingAction != null) return
@@ -159,7 +182,7 @@ internal fun SettingsScreen(
     }
 
     val uiState = SettingsUiState(
-        serverUrl = graph.client.baseUrl,
+        latencyMillis = latencyMillis,
         addons = addonsState.value,
         account = accountState.value,
         settings = settingsState.value,
