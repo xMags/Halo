@@ -23,6 +23,22 @@ class AddonsRepositoryTest {
     }
 
     @Test
+    fun leavesOutPersonalCopiesOfAGlobalAddon() = runTest {
+        // Both copies listed would put each of the addon's catalogs on Home twice.
+        val api = browseApi {
+            addonsJson(
+                global = listOf(addon("cinemeta-global")),
+                user = listOf(addon("cinemeta-own").copy(providedGlobally = true), addon("torbox")),
+            )
+        }
+        val repository = AddonsRepository(api.client, QueryCache(backgroundScope, FakeClock()))
+
+        val effective = repository.observeEffective().first { it.value != null }.value
+
+        assertEquals(listOf("cinemeta-global", "torbox"), effective?.map { it.id })
+    }
+
+    @Test
     fun readsTheAddonListOnceForCallersThatCannotWait() = runTest {
         // Search resolves the list inside its own fetch, so a cold cache must
         // not turn every query into a second round trip.

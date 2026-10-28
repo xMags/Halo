@@ -44,6 +44,13 @@ data class AddonEntry(
      * only lets settings tell "hidden" apart from "has no catalogs".
      */
     val hideCatalogs: Boolean = false,
+    /**
+     * Set on a personal entry whose transport URL a global entry also uses.
+     * The global copy answers for everyone, so the server skips this one when
+     * resolving and clients leave it out of [AddonsResponse.effective]; it
+     * stays installed and comes back into use if the global entry is removed.
+     */
+    val providedGlobally: Boolean = false,
 )
 
 @Serializable
@@ -51,9 +58,13 @@ data class AddonsResponse(
     val global: List<AddonEntry> = emptyList(),
     val user: List<AddonEntry> = emptyList(),
 ) {
-    /** Resolution order: global addons first, then the caller's own. */
+    /**
+     * Resolution order: global addons first, then the caller's own, without
+     * personal copies of a global addon. Listing both would put every one of
+     * that addon's catalogs on Home twice.
+     */
     val effective: List<AddonEntry>
-        get() = global + user
+        get() = global + user.filterNot { it.providedGlobally }
 }
 
 @Serializable
