@@ -313,6 +313,8 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const priorStateRef = useRef<WatchState | null>(null)
   /** End-of-file behavior; a ref because the observers mount before the next-episode prefetch resolves. */
   const onEndRef = useRef<() => void>(() => {})
+  /** This file's end has been acted on; re-armed by a new file or a seek back from the end. */
+  const endHandledRef = useRef(false)
 
   const refreshTracks = useCallback(async () => {
     const raw = await mpvGet('track-list').catch(() => null)
@@ -340,6 +342,16 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       }
       unlisteners.push(unlisten)
       return true
+    }
+
+    // mpv runs with keep-open, so a file that plays out pauses on its last
+    // frame and raises `eof-reached` instead of ending; `end-file` with eof
+    // only comes without keep-open. Either signal ends the file, once.
+    const handleEnd = () => {
+      if (endHandledRef.current) return
+      endHandledRef.current = true
+      setFileEnded(true)
+      onEndRef.current()
     }
 
     const setup = async () => {
@@ -380,6 +392,10 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
               // This libmpv build reports Dolby Vision as a colour matrix; it
               // has no dolby-vision-profile field to read.
               setDolbyVision(value === 'dolbyvision')
+            } else if (name === 'eof-reached') {
+              if (value === true) handleEnd()
+              // Seeking back from the end lets the end play out again.
+              else if (value === false) endHandledRef.current = false
             }
           }),
         ))
@@ -399,6 +415,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
               void syncAppVolume()
             }
             if (kind === 'file-loaded') {
+              endHandledRef.current = false
               setFileSerial((serial) => serial + 1)
               setFileEnded(false)
               setFileLoaded(true)
@@ -442,12 +459,12 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       if (
         !(await keepListener(
           onMpvEndFile(({ reason, error }) => {
-            if (reason === 'eof' || reason === 'error') setFileEnded(true)
             if (reason === 'eof') {
-              onEndRef.current()
+              handleEnd()
               return
             }
             if (reason === 'error') {
+              setFileEnded(true)
               setBuffering(false)
               setPlayerError(error ? `Playback failed: ${error}.` : 'Playback failed for this source.')
             }
@@ -472,6 +489,8 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
         ['video-params/dh', 'double'],
         ['video-params/gamma', 'string'],
         ['video-params/colormatrix', 'string'],
+        // Where a played-out file stops, under keep-open (see handleEnd).
+        ['eof-reached', 'flag'],
       ] as const
       for (const [name, format] of observations) {
         await mpvObserve(name, format)
