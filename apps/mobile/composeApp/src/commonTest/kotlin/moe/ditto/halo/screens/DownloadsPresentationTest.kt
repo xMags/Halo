@@ -1,9 +1,12 @@
 package moe.ditto.halo.screens
 
+import androidx.compose.ui.unit.dp
+import kotlinx.datetime.TimeZone
 import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.downloads.DownloadEntry
 import moe.ditto.halo.downloads.DownloadMedia
 import moe.ditto.halo.downloads.DownloadStatus
+import moe.ditto.halo.downloads.DownloadSubtitle
 import moe.ditto.halo.downloads.StorageSpace
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -56,28 +59,165 @@ class DownloadsPresentationTest {
     }
 
     @Test
-    fun onlyAnEpisodeCarriesASecondLine() {
-        assertEquals("A Show", downloadRowSubtitle(episode("s1e1", tag = "S01E01")))
-        // A film's name is already the title line; repeating it says nothing.
-        assertNull(downloadRowSubtitle(entry("f")))
+    fun aQueueRowSplitsAnEpisodeIntoTagShowAndName() {
+        val named = episode("s1e5", tag = "S01E05").let { base ->
+            base.copy(media = base.media.copy(episodeName = "Zombies"))
+        }
+
+        assertEquals(QueueRowTitles("S01E05", "A Show", "Zombies"), queueRowTitles(named))
+        // A film is only its title: no tag, and nothing dimmed after it.
+        assertEquals(QueueRowTitles(null, "A Film", null), queueRowTitles(entry("f")))
     }
 
     @Test
-    fun theRateSlotSaysWhyThereIsNoRate() {
+    fun aGridCardNamesAnEpisodeByItsShowAndItsOwnName() {
+        val named = episode("s1e4", tag = "S01E04").let { base ->
+            base.copy(media = base.media.copy(episodeName = "Lost His Heart"))
+        }
+
+        assertEquals("A Show · Lost His Heart", downloadCardTitle(named))
+        assertEquals("A Show", downloadCardTitle(episode("s1e1", tag = "S01E01")))
+        assertEquals("A Film", downloadCardTitle(entry("f")))
+    }
+
+    @Test
+    fun cardsUseTheEpisodeStillBeforeAnyPoster() {
+        val still = episode("s1e1", tag = "S01E01").let { base ->
+            base.copy(media = base.media.copy(episodeThumbnail = "https://art.test/still.jpg"))
+        }
+        val sections = downloadSections(listOf(still, entry("f")))
+
+        assertEquals("https://art.test/still.jpg", downloadArt(still, sections))
+        assertNull(downloadArt(sections.ready.single { it.videoId == "f" }, sections))
+    }
+
+    @Test
+    fun theRateIsSplitIntoItsFigureAndItsUnit() {
+        assertEquals("12" to "MB/s", rateParts(12_400_000))
+        assertEquals("4.8" to "MB/s", rateParts(5_000_000))
+        // A stopped link holds the figure's place with a zero.
+        assertEquals("0.0" to "MB/s", rateParts(0))
+    }
+
+    @Test
+    fun theSummaryCountsEachStateAndLeavesOutTheEmptyOnes() {
+        assertEquals("", downloadsSummary(emptyList()))
         assertEquals(
-            "12 MB/s",
-            downloadRateLabel(entry("a", status = DownloadStatus.Downloading, rate = 12_400_000)),
+            "1 downloading · 1 waiting · 3 ready",
+            downloadsSummary(
+                listOf(
+                    entry("a", status = DownloadStatus.Downloading),
+                    entry("b", status = DownloadStatus.Queued),
+                ) + List(3) { entry("r$it") },
+            ),
         )
         assertEquals(
-            "4.8 MB/s",
-            downloadRateLabel(entry("a", status = DownloadStatus.Downloading, rate = 5_000_000)),
+            "2 paused · 1 failed",
+            downloadsSummary(
+                listOf(
+                    entry("a", status = DownloadStatus.Paused),
+                    entry("b", status = DownloadStatus.Paused),
+                    entry("c", status = DownloadStatus.Failed),
+                ),
+            ),
         )
-        // A transfer that has started but has not been measured yet holds the
-        // slot with a zero rather than jumping in from nothing.
-        assertEquals("0.0 MB/s", downloadRateLabel(entry("a", status = DownloadStatus.Downloading)))
-        assertEquals("Queued", downloadRateLabel(entry("a", status = DownloadStatus.Queued, rate = 999)))
-        assertEquals("Paused", downloadRateLabel(entry("a", status = DownloadStatus.Paused)))
-        assertEquals("Failed", downloadRateLabel(entry("a", status = DownloadStatus.Failed)))
+    }
+
+    @Test
+    fun theConnectionCountIsKnownOnlyWhileEveryRunningTransferReportsOne() {
+        assertNull(aggregateConnections(emptyList()))
+        // Nothing running: a paused entry cannot be receiving over anything.
+        assertNull(aggregateConnections(listOf(entry("a", status = DownloadStatus.Paused).copy(connections = 4))))
+        assertEquals(
+            6,
+            aggregateConnections(
+                listOf(
+                    entry("a", status = DownloadStatus.Downloading).copy(connections = 6),
+                    entry("b", status = DownloadStatus.Queued),
+                ),
+            ),
+        )
+        // iOS never says, and unknown must not read as zero.
+        assertNull(aggregateConnections(listOf(entry("a", status = DownloadStatus.Downloading))))
+        assertNull(aggregateConnections(listOf(entry("a", status = DownloadStatus.Downloading).copy(connections = 0))))
+    }
+
+    @Test
+    fun theConnectionPillCountsInTheSingularAndThePlural() {
+        assertEquals("1 connection", connectionsLabel(1))
+        assertEquals("6 connections", connectionsLabel(6))
+    }
+
+    @Test
+    fun aQueueRowSaysHowFarHowMuchAndHowLong() {
+        val running = entry(
+            "a",
+            status = DownloadStatus.Downloading,
+            total = 1_610_612_736,
+            done = 536_870_912,
+            rate = 12_400_000,
+        )
+
+        assertEquals(listOf("512 MB of 1.5 GB", "33%", "2 min left"), queueRowMeta(running))
+        // Started, but nothing has arrived and no size was declared.
+        assertEquals(listOf("Starting…"), queueRowMeta(entry("a", status = DownloadStatus.Downloading, total = 0, done = 0)))
+        assertEquals(
+            listOf("Paused", "512 MB of 1.5 GB", "33%"),
+            queueRowMeta(running.copy(status = DownloadStatus.Paused)),
+        )
+        assertEquals(listOf("Failed", "512 MB"), queueRowMeta(entry("a", status = DownloadStatus.Failed, total = 0, done = 536_870_912)))
+        assertEquals(emptyList(), queueRowMeta(running.copy(status = DownloadStatus.Queued)))
+    }
+
+    @Test
+    fun onlyAQueuedRowIsCaptionedUpNext() {
+        assertEquals("Up next", queueRowCaption(entry("a", status = DownloadStatus.Queued)))
+        assertNull(queueRowCaption(entry("a", status = DownloadStatus.Paused)))
+        assertNull(queueRowCaption(entry("a", status = DownloadStatus.Downloading)))
+    }
+
+    @Test
+    fun aCardsMetaLineEndsWithItsSubtitleOrSaysThereIsNone() {
+        val named = entry("a", total = 21_474_836_480, done = 21_474_836_480).let { base ->
+            base.copy(media = base.media.copy(filename = "Film.2160p.x265.mkv"))
+        }
+
+        assertEquals("2160p · HEVC · 20 GB · NO SUBS", downloadCardMeta(named))
+        assertEquals(
+            "2160p · HEVC · 20 GB · ENG",
+            downloadCardMeta(named.copy(subtitle = DownloadSubtitle(fileName = "a.srt", lang = "eng"))),
+        )
+        assertEquals("SUBS", downloadSubtitleTag(named.copy(subtitle = DownloadSubtitle(fileName = "a.srt"))))
+        assertEquals(DownloadQualityBadge("4K UHD", gold = true), downloadQualityBadge(named))
+        val hdr = named.copy(media = named.media.copy(filename = "Film.2160p.HDR10.x265.mkv"))
+        assertEquals(DownloadQualityBadge("4K HDR", gold = true), downloadQualityBadge(hdr))
+        val fullHd = named.copy(media = named.media.copy(filename = "Film.1080p.x264.mkv"))
+        assertEquals(false, downloadQualityBadge(fullHd)?.gold)
+        assertNull(downloadQualityBadge(entry("a")))
+    }
+
+    @Test
+    fun theDetailMetaLineSaysWhatTheEntryIs() {
+        assertEquals("MOVIE", downloadDetailMeta(entry("f")))
+        assertEquals("SERIES · A SHOW", downloadDetailMeta(episode("s1e1", tag = "S01E01")))
+    }
+
+    @Test
+    fun theGridFillsTheWidthWithCellsNoNarrowerThanItsMinimum() {
+        // The tablet's list beside the detail pane: three across, as drawn.
+        assertEquals(3, readyGridColumns(available = 936.dp, minCell = 260.dp, gap = 16.dp))
+        assertEquals(2, readyGridColumns(available = 652.dp, minCell = 260.dp, gap = 16.dp))
+        // Narrower than one cell still gets one, rather than none.
+        assertEquals(1, readyGridColumns(available = 200.dp, minCell = 260.dp, gap = 16.dp))
+        // The gap is only counted between cells: exactly two cells and one gap fit.
+        assertEquals(2, readyGridColumns(available = 536.dp, minCell = 260.dp, gap = 16.dp))
+        assertEquals(2, readyGridColumns(available = 1_200.dp, minCell = 260.dp, gap = 16.dp, maxColumns = 2))
+    }
+
+    @Test
+    fun theFinishedSectionIsNamedForTheDevice() {
+        assertEquals("On this tablet", readySectionLabel(isTablet = true))
+        assertEquals("On this device", readySectionLabel(isTablet = false))
     }
 
     @Test
@@ -124,22 +264,6 @@ class DownloadsPresentationTest {
     }
 
     @Test
-    fun theQueueLineCountsTransfersRatherThanEntries() {
-        assertEquals("queue empty", queueLine(emptyList()))
-        assertEquals(
-            "1 transfer · 2 waiting",
-            queueLine(
-                listOf(
-                    entry("a", status = DownloadStatus.Downloading),
-                    entry("b", status = DownloadStatus.Queued),
-                    entry("c", status = DownloadStatus.Paused),
-                ),
-            ),
-        )
-        assertEquals("2 items waiting", queueLine(List(2) { entry("p$it", status = DownloadStatus.Paused) }))
-    }
-
-    @Test
     fun theQueueControlOffersOnlyWhatThereIsToDo() {
         assertNull(queueControl(emptyList()))
         assertEquals(
@@ -169,8 +293,23 @@ class DownloadsPresentationTest {
 
         assertEquals(0.125f, meter.downloadsFraction)
         assertEquals(0.375f, meter.otherFraction)
-        assertEquals("16 GB of downloads · 64 GB used", meter.usedLine)
-        assertEquals("64 GB free of 128 GB", meter.freeLine)
+        assertEquals("16", meter.downloadsFigure)
+        assertEquals("GB of 128 GB", meter.ofTotalLine)
+        assertEquals("16 GB", meter.downloadsLabel)
+        assertEquals("48 GB", meter.otherLabel)
+        assertEquals("64 GB", meter.freeLabel)
+    }
+
+    @Test
+    fun anEmptyLibraryReadsAsZeroInTheVolumesUnit() {
+        val meter = storageMeter(
+            space = StorageSpace(freeBytes = 64L * Gib, totalBytes = 128L * Gib),
+            downloadBytes = 0,
+        )
+
+        assertEquals("0", meter.downloadsFigure)
+        assertEquals("GB of 128 GB", meter.ofTotalLine)
+        assertEquals("0 GB", meter.downloadsLabel)
     }
 
     @Test
@@ -211,11 +350,23 @@ class DownloadsPresentationTest {
     fun theFactsTableHoldsOnlyWhatTheEntryKnows() {
         val bare = entry("a", total = 0, done = 0)
 
-        assertEquals(emptyList(), downloadFacts(bare))
+        assertEquals(emptyList(), downloadFacts(bare.copy(createdAt = 0), Now, TimeZone.UTC))
         assertEquals(
-            listOf("File size" to "1.5 GB"),
-            downloadFacts(entry("a", total = 1_610_612_736, done = 1_610_612_736)),
+            listOf("Size" to "1.5 GB", "Subtitle" to "English", "Added" to "29 Oct"),
+            downloadFacts(
+                entry("a", total = 1_610_612_736, done = 1_610_612_736, createdAt = Now)
+                    .copy(subtitle = DownloadSubtitle(fileName = "a.srt", lang = "eng")),
+                Now,
+                TimeZone.UTC,
+            ),
         )
+    }
+
+    @Test
+    fun anAddedDateCarriesItsYearOnlyWhenItIsNotThisOne() {
+        assertEquals("29 Oct", downloadAddedLabel(Now, Now, TimeZone.UTC))
+        assertEquals("29 Oct 2025", downloadAddedLabel(Now - 365L * DayMs, Now, TimeZone.UTC))
+        assertNull(downloadAddedLabel(0, Now, TimeZone.UTC))
     }
 
     @Test
@@ -240,6 +391,10 @@ class DownloadsPresentationTest {
 }
 
 private const val Gib = 1024L * 1024 * 1024
+private const val DayMs = 24L * 60 * 60 * 1000
+
+/** 2026-10-29T12:00:00Z. */
+private const val Now = 1_793_275_200_000L
 
 private fun entry(
     videoId: String,

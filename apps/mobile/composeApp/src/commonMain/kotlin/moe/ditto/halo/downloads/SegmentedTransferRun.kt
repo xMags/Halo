@@ -169,7 +169,10 @@ internal class SegmentedTransferRun(
             withContext(NonCancellable) {
                 tableLock.withLock {
                     val segment = connection.segment
-                    if (segment != null && segment.connection === job) segment.connection = null
+                    if (segment != null && segment.connection === job) {
+                        segment.connection = null
+                        segment.receiving = false
+                    }
                 }
             }
             wake.trySend(Unit)
@@ -265,6 +268,7 @@ internal class SegmentedTransferRun(
             }
             validator = responseValidator
             served.connection = connection.job
+            served.receiving = true
             connection.segment = served
             // A 200 to a plain GET proves nothing about ranges; a 206 at the asked offset does.
             rangesProven = partial && !restart
@@ -277,8 +281,8 @@ internal class SegmentedTransferRun(
             // Reported before a single byte is read, because this is what carries
             // the validator: a transfer paused inside the throttle window would
             // otherwise have nothing to guard its own resume with.
-            val done = tableLock.withLock { doneBytesLocked() }
-            onProgress(TransferProgress(done, total, validator))
+            val (done, receiving) = tableLock.withLock { doneBytesLocked() to receivingLocked() }
+            onProgress(TransferProgress(done, total, validator, receiving))
         }
         // Only now may extra connections open, so none can read a byte before
         // the validator has been reported.
@@ -306,6 +310,7 @@ internal class SegmentedTransferRun(
             return tableLock.withLock {
                 if (segments.none { it === segment }) return@withLock null
                 rangesProven = true
+                segment.receiving = true
                 segment.beginHead()
                 segment
             }
@@ -461,6 +466,7 @@ internal class SegmentedTransferRun(
             // Without a proven range, bytes already taken cannot be continued from an offset.
             if (!rangesProven && segment.position > segment.start) return@withLock false
             segment.connection = null
+            segment.receiving = false
             segment.attempts += 1
             val retryAfter = (failure as? ConnectionRefused)?.retryAfterSeconds
             segment.retryAtMs = nowMs() + retryDelayMs(segment.attempts, retryAfter, tuning.retryDelaysMs)
@@ -523,6 +529,7 @@ internal class SegmentedTransferRun(
             val role = Role.Extra(segment, segment.position)
             val job = scope.launch(start = CoroutineStart.LAZY) { serve(role) }
             segment.connection = job
+            segment.receiving = false
             launches += job
         }
         return launches
@@ -554,14 +561,14 @@ internal class SegmentedTransferRun(
             val now = clock.nowMs()
             if (now - lastReportMs < progressIntervalMs) return
             lastReportMs = now
-            val (done, sidecar) = tableLock.withLock {
-                doneBytesLocked() to sidecarLocked().takeIf { sidecarActive }
+            val (done, receiving, sidecar) = tableLock.withLock {
+                Triple(doneBytesLocked(), receivingLocked(), sidecarLocked().takeIf { sidecarActive })
             }
             if (sidecar != null) {
                 checkNotNull(handle).flush()
                 writeSidecar(sidecar)
             }
-            onProgress(TransferProgress(done, total, validator))
+            onProgress(TransferProgress(done, total, validator, receiving))
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (failure: Throwable) {
@@ -605,6 +612,9 @@ internal class SegmentedTransferRun(
 
     private fun doneBytesLocked(): Long = segments.sumOf { it.position - it.start }
 
+    /** Connections whose response has been accepted and that still hold a segment. */
+    private fun receivingLocked(): Int = segments.count { it.connection != null && it.receiving }
+
     private fun sidecarLocked(): SegmentSidecar = SegmentSidecar(
         total = total,
         validatorSha256 = SegmentSidecar.validatorDigest(checkNotNull(validator)),
@@ -635,6 +645,9 @@ internal class SegmentedTransferRun(
     /** One byte range of the file. Guarded by the run's table lock. */
     private class Segment(val start: Long, var end: Long, var position: Long) {
         var connection: Job? = null
+
+        /** Set once [connection]'s response is accepted, so a connection still waiting for headers is not counted. */
+        var receiving = false
         var retryAtMs: Long? = null
         var attempts = 0
 

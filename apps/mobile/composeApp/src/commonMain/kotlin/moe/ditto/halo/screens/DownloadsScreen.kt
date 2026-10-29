@@ -1,6 +1,7 @@
 package moe.ditto.halo.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,12 +12,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +26,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -31,8 +34,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -58,15 +63,16 @@ import moe.ditto.halo.ui.rememberResponsive
  * What is arriving, and what is already here.
  *
  * The screen is built around two questions the old grouped list answered badly:
- * how a transfer is going, and whether a file can be watched yet. So transfers
- * come first, with a rate, a bar and the minute of history that says whether the
- * link is steady; finished files follow as rows that play on a tap.
+ * how a transfer is going, and whether a file can be watched yet. So the queue
+ * comes first, in one panel with the rate, the minute of history that says
+ * whether the link is steady and the room left on the device; finished files
+ * follow as a grid of artwork that plays on a tap.
  *
  * Downloads are device-local, so this never waits on the network and never shows
  * a loading state: the index is read from the store when the session's graph is
  * built, which is why an entry is on screen the moment the tab is opened,
- * offline included. Watch progress is the one exception, and it is decoration —
- * the hairline across a poster is absent offline rather than the screen waiting
+ * offline included. Watch progress is the one exception, and it is decoration:
+ * the hairline across a card's art is absent offline rather than the screen waiting
  * for it.
  */
 @Composable
@@ -138,7 +144,7 @@ internal fun DownloadsScreen(
                             onPlay = onPlay,
                             onRemove = { pendingRemoval = it },
                         )
-                        Box(Modifier.fillMaxHeight().width(1.dp).background(HaloColors.Hairline))
+                        Box(Modifier.fillMaxHeight().width(1.dp).background(HaloColors.SurfaceHigh))
                         DownloadDetailPane(
                             entry = selected,
                             poster = selected?.let { downloadPoster(it, sections) },
@@ -244,9 +250,19 @@ private fun DownloadsList(
     onRemove: (DownloadEntry) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val gutter = responsive.pick(phone = HaloSpacing.Md, tablet = HaloSpacing.Lg, large = HaloSpacing.Xl)
-    val transferPoster = responsive.pick(phone = TransferPosterWidth, tablet = TransferPosterWidthTablet)
-    val readyPoster = responsive.pick(phone = ReadyPosterWidth, tablet = ReadyPosterWidthTablet)
+    val gutter = downloadsGutter(responsive)
+    val wideQueue = listWidth >= WideQueuePanelFrom
+    val columns = readyGridColumns(
+        available = listWidth - gutter * 2,
+        minCell = ReadyCardMinWidth,
+        gap = ReadyGridGap,
+        // A phone held sideways has the width for three cells, each too
+        // small to read at a phone's distance; two is where it stops.
+        maxColumns = if (responsive.isTablet) null else PhoneMaxReadyColumns,
+    )
+    // Only a layout with a detail pane selects; without one a card plays.
+    val selecting = selectedVideoId != null
+    val menus = LocalTitleMenus.current
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -260,115 +276,100 @@ private fun DownloadsList(
         ),
     ) {
         stickyHeader(key = "header") {
-            DownloadsHeader(gutter = gutter)
-        }
-
-        item(key = "throughput") {
-            ThroughputPanel(
-                bytesPerSecond = aggregateRate(entries),
-                queueLine = queueLine(sections.active),
+            DownloadsHeader(
+                gutter = gutter,
+                summary = downloadsSummary(entries),
+                stacked = !responsive.isTablet,
                 control = queueControl(sections.active),
-                onControl = {
-                    scope.launch { applyQueueControl(downloads, sections.active) }
-                },
-                history = history,
-                availableWidth = listWidth,
-                modifier = Modifier.padding(horizontal = gutter, vertical = HaloSpacing.Sm),
+                onControl = { scope.launch { applyQueueControl(downloads, sections.active) } },
             )
         }
 
-        // No meter at all when the platform cannot say how much room there is.
-        // A bar drawn over a guessed total would be a picture of nothing.
-        space?.let { measured ->
-            item(key = "storage") {
-                StorageMeterBlock(
-                    meter = storageMeter(measured, downloadedBytesOnDevice(entries)),
-                    modifier = Modifier.padding(horizontal = gutter, vertical = HaloSpacing.Sm + 2.dp),
-                )
-            }
-        }
-
-        if (sections.active.isNotEmpty()) {
-            item(key = "active-label") {
-                DownloadsSectionHeader(
-                    label = "IN PROGRESS",
-                    count = itemCountLabel(sections.active.size),
-                    modifier = Modifier.padding(
-                        start = gutter,
-                        end = gutter,
-                        top = HaloSpacing.Sm,
-                        bottom = HaloSpacing.Sm + 2.dp,
-                    ),
-                )
-            }
-            items(items = sections.active, key = { it.videoId }) { entry ->
-                DownloadTransferCard(
-                    entry = entry,
-                    poster = downloadPoster(entry, sections),
-                    posterWidth = transferPoster,
-                    onPause = { scope.launch { downloads.pause(entry.videoId) } },
-                    onResume = { scope.launch { downloads.resume(entry.videoId) } },
-                    onRemove = { onRemove(entry) },
-                    modifier = Modifier.padding(start = gutter, end = gutter, bottom = HaloSpacing.Sm + 2.dp),
-                    menu = LocalTitleMenus.current?.let { menus -> { menus.openDownload(entry) } },
-                )
-            }
+        item(key = "queue") {
+            QueuePanel(
+                bytesPerSecond = aggregateRate(entries),
+                connections = aggregateConnections(entries),
+                idle = entries.none { it.status == DownloadStatus.Downloading },
+                history = history,
+                meter = space?.let { storageMeter(it, downloadedBytesOnDevice(entries)) },
+                wide = wideQueue,
+                modifier = Modifier.padding(start = gutter, end = gutter, bottom = SectionGap),
+                rows = sections.active.takeIf { it.isNotEmpty() }?.let { active ->
+                    {
+                        active.forEachIndexed { index, entry ->
+                            key(entry.videoId) {
+                                if (index > 0) {
+                                    Box(Modifier.fillMaxWidth().height(1.dp).background(HaloColors.SurfaceHigh))
+                                }
+                                DownloadQueueRow(
+                                    entry = entry,
+                                    art = downloadArt(entry, sections),
+                                    compact = !wideQueue,
+                                    onPause = { scope.launch { downloads.pause(entry.videoId) } },
+                                    onResume = { scope.launch { downloads.resume(entry.videoId) } },
+                                    onRemove = { onRemove(entry) },
+                                    menu = menus?.let { { it.openDownload(entry) } },
+                                )
+                            }
+                        }
+                    }
+                },
+            )
         }
 
         if (sections.ready.isNotEmpty()) {
             item(key = "ready-label") {
-                DownloadsSectionHeader(
-                    label = "ON THIS DEVICE",
+                DownloadsSectionCaption(
+                    label = readySectionLabel(responsive.isTablet),
                     count = readyCountLabel(sections.ready),
-                    modifier = Modifier.padding(
-                        start = gutter,
-                        end = gutter,
-                        top = HaloSpacing.Md,
-                        bottom = HaloSpacing.Sm + 2.dp,
-                    ),
+                    modifier = Modifier.padding(start = gutter, end = gutter, bottom = HaloSpacing.Sm + 4.dp),
                 )
             }
-            readyRows(
-                sections = sections,
-                progress = progress,
-                posterWidth = readyPoster,
-                gutter = gutter,
-                selectedVideoId = selectedVideoId,
-                onSelect = onSelect,
-                onPlay = onPlay,
-                onRemove = onRemove,
-            )
+            // Rows of cells rather than a lazy grid: the grid scrolls with the
+            // queue above it as one list, and a grid nested in a list cannot.
+            items(
+                items = sections.ready.chunked(columns),
+                key = { row -> "ready:" + row.first().videoId },
+            ) { row ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = gutter, end = gutter, bottom = ReadyGridGap),
+                    horizontalArrangement = Arrangement.spacedBy(ReadyGridGap),
+                ) {
+                    row.forEach { entry ->
+                        DownloadReadyCard(
+                            entry = entry,
+                            art = downloadArt(entry, sections),
+                            watched = watchedFraction(progress[entry.videoId]),
+                            selected = entry.videoId == selectedVideoId,
+                            showPlay = !selecting || entry.videoId == selectedVideoId,
+                            onClick = { if (selecting) onSelect(entry) else onPlay(entry) },
+                            onPlay = { onPlay(entry) },
+                            onRemove = if (selecting) null else ({ onRemove(entry) }),
+                            menu = menus?.let { { it.openDownload(entry) } },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    // A short last row keeps its cells the width of the rest.
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
         }
     }
 }
 
-private fun LazyListScope.readyRows(
-    sections: DownloadSections,
-    progress: Map<String, WatchState>,
-    posterWidth: Dp,
-    gutter: Dp,
-    selectedVideoId: String?,
-    onSelect: (DownloadEntry) -> Unit,
-    onPlay: (DownloadEntry) -> Unit,
-    onRemove: (DownloadEntry) -> Unit,
-) {
-    items(items = sections.ready, key = { it.videoId }) { entry ->
-        DownloadReadyRow(
-            entry = entry,
-            poster = downloadPoster(entry, sections),
-            posterWidth = posterWidth,
-            watched = watchedFraction(progress[entry.videoId]),
-            selected = entry.videoId == selectedVideoId,
-            // On a phone nothing is selected, so the row's own tap plays it;
-            // on a tablet it selects, and the button beside it plays.
-            onClick = { if (selectedVideoId == null) onPlay(entry) else onSelect(entry) },
-            onPlay = { onPlay(entry) },
-            onRemove = { onRemove(entry) },
-            modifier = Modifier.padding(start = gutter, end = gutter, bottom = HaloSpacing.Sm),
-            menu = LocalTitleMenus.current?.let { menus -> { menus.openDownload(entry) } },
-        )
-    }
-}
+/** Below this the queue panel stacks storage under the chart rather than beside it. */
+private val WideQueuePanelFrom = 600.dp
+
+/** Between the queue panel and the section under it, the design's 20dp. */
+private val SectionGap = HaloSpacing.Md + HaloSpacing.Xs
+
+private const val PhoneMaxReadyColumns = 2
+
+/** The design's 28dp margin on a tablet, the phone's usual 16 below that. */
+private fun downloadsGutter(responsive: ResponsiveInfo): Dp =
+    responsive.pick(phone = HaloSpacing.Md, tablet = HaloSpacing.Lg + HaloSpacing.Xs)
 
 /**
  * Stops everything that is running, or starts everything that was stopped.
@@ -390,23 +391,31 @@ private suspend fun applyQueueControl(downloads: DeviceDownloadRuntime, active: 
 }
 
 /**
- * The screen's title, over a scrim the list passes under.
+ * The screen's title and what is in it, over a scrim the list passes under.
  *
- * Only the title: how many files there are and what they weigh is the storage
- * meter's job a few rows down, where the same two figures are also placed
- * against the room left on the volume.
+ * The summary counts states rather than bytes: what the downloads weigh is the
+ * storage readout's job, where it is also placed against the room left. The
+ * queue control sits at the end of the title line because it acts on every
+ * row at once, so it belongs to none of them.
+ *
+ * [stacked] puts the summary under the title, which is all a phone has room
+ * for once the control shares the title's line.
  *
  * A gradient rather than a frosted surface: the shell offers the whole
  * navigation host as its blur source, and a surface cannot sample a backdrop it
- * is part of — see `LocalHazeState`. The gradient gives the same legibility
+ * is part of (see `LocalHazeState`). The gradient gives the same legibility
  * without a blur that would come out clear.
  */
 @Composable
-private fun DownloadsHeader(gutter: Dp) {
+private fun DownloadsHeader(
+    gutter: Dp,
+    summary: String,
+    stacked: Boolean,
+    control: QueueControl?,
+    onControl: () -> Unit,
+) {
     Column(Modifier.fillMaxWidth()) {
-        Text(
-            text = DownloadsTitle,
-            style = HaloType.LargeTitle,
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(HaloColors.Background)
@@ -414,9 +423,42 @@ private fun DownloadsHeader(gutter: Dp) {
                     top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + HaloSpacing.Xs,
                     start = gutter,
                     end = gutter,
-                    bottom = HaloSpacing.Sm + 6.dp,
+                    bottom = HaloSpacing.Xs,
                 ),
-        )
+            verticalArrangement = Arrangement.spacedBy(HaloSpacing.Xs),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = ControlTarget),
+                horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Text(
+                        text = DownloadsTitle,
+                        style = HaloType.LargeTitle,
+                        maxLines = 1,
+                        modifier = Modifier.alignByBaseline(),
+                    )
+                    if (!stacked && summary.isNotEmpty()) {
+                        Text(
+                            text = summary,
+                            color = HaloColors.TextDim,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.alignByBaseline(),
+                        )
+                    }
+                }
+                control?.let { QueueControlButton(it, onControl) }
+            }
+            if (stacked && summary.isNotEmpty()) {
+                Text(text = summary, color = HaloColors.TextDim, fontSize = 14.sp, maxLines = 2)
+            }
+        }
         // A separate strip rather than a gradient behind the words: the fade has
         // to end below the title, and a gradient measured as a fraction of the
         // header would climb into it as the header grows.
@@ -439,9 +481,14 @@ private val HeaderFade = HaloSpacing.Md
 /** Header over whatever stands in for the list, carrying the list's own padding. */
 @Composable
 private fun DownloadsPlaceholder(responsive: ResponsiveInfo, body: @Composable () -> Unit) {
-    val gutter = responsive.pick(phone = HaloSpacing.Md, tablet = HaloSpacing.Lg, large = HaloSpacing.Xl)
     Column(Modifier.fillMaxSize().padding(start = responsive.contentInsetStart)) {
-        DownloadsHeader(gutter = gutter)
+        DownloadsHeader(
+            gutter = downloadsGutter(responsive),
+            summary = "",
+            stacked = !responsive.isTablet,
+            control = null,
+            onControl = {},
+        )
         Box(Modifier.weight(1f)) { body() }
     }
 }

@@ -144,6 +144,13 @@ internal data class DownloadEntry(
      */
     @Transient
     val bytesPerSecond: Long = 0,
+    /**
+     * How many connections are receiving this transfer right now, or null when
+     * the platform does not say (iOS's background session never does). Not
+     * persisted, for the reason [bytesPerSecond] is not.
+     */
+    @Transient
+    val connections: Int? = null,
 ) {
     val videoId: String get() = media.videoId
     val itemId: String get() = media.itemId

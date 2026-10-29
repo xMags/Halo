@@ -72,6 +72,22 @@ class SegmentedTransferTest {
     }
 
     @Test
+    fun progressCountsTheConnectionsThatAreReceiving() = realTime {
+        val source = FakeSource(content(700 * 1024 + 123))
+        val fileSystem = downloadsFileSystem()
+        // Reports arrive one at a time, under the run's own report lock.
+        val reports = mutableListOf<TransferProgress>()
+
+        val result = source.transfer(fileSystem, progressIntervalMs = 0, onProgress = { reports += it })
+
+        assertEquals(1, reports.first().connections)
+        assertTrue(reports.any { it.connections > 1 }, "every report counted one connection")
+        assertTrue(reports.all { it.connections in 1..SegmentPlan.MaxConnections })
+        // The finished result describes a file, not a link.
+        assertEquals(0, result.connections)
+    }
+
+    @Test
     fun aSourceThatIgnoresRangesIsFinishedOverTheOneConnection() = realTime {
         val source = FakeSource(content(400 * 1024), honoursRanges = false)
         val fileSystem = downloadsFileSystem()

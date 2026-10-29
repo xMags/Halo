@@ -244,6 +244,7 @@ internal class DeviceDownloadRuntime(
                     status = DownloadStatus.Paused,
                     updatedAt = clock.nowMs(),
                     bytesPerSecond = 0,
+                    connections = null,
                 ),
             )
             entry.jobId.takeIf { entry.status == DownloadStatus.Downloading }
@@ -270,6 +271,7 @@ internal class DeviceDownloadRuntime(
                     status = DownloadStatus.Paused,
                     updatedAt = now,
                     bytesPerSecond = 0,
+                    connections = null,
                 )
             }
             if (next != _entries.value) publishLocked(next)
@@ -360,7 +362,7 @@ internal class DeviceDownloadRuntime(
                         markDownloading = true,
                     )
                     BackgroundDownloadJobState.Paused ->
-                        putLocked(entry.copy(status = DownloadStatus.Paused, bytesPerSecond = 0))
+                        putLocked(entry.copy(status = DownloadStatus.Paused, bytesPerSecond = 0, connections = null))
                     BackgroundDownloadJobState.Succeeded -> {
                         retainedToDelete += entry.retainedFileNames
                         completeLocked(entry, job.downloadedBytes, job.totalBytes)
@@ -372,7 +374,7 @@ internal class DeviceDownloadRuntime(
                     )
                     BackgroundDownloadJobState.Cancelled -> {
                         if (entry.status.isActive) {
-                            putLocked(entry.copy(status = DownloadStatus.Queued, bytesPerSecond = 0))
+                            putLocked(entry.copy(status = DownloadStatus.Queued, bytesPerSecond = 0, connections = null))
                         }
                     }
                 }
@@ -386,7 +388,7 @@ internal class DeviceDownloadRuntime(
                 if (state != BackgroundDownloadJobState.Running &&
                     state != BackgroundDownloadJobState.Enqueued
                 ) {
-                    putLocked(entry.copy(status = DownloadStatus.Queued, bytesPerSecond = 0))
+                    putLocked(entry.copy(status = DownloadStatus.Queued, bytesPerSecond = 0, connections = null))
                 }
             }
             settleLocked(sweep)
@@ -415,6 +417,7 @@ internal class DeviceDownloadRuntime(
                         event.downloadedBytes,
                         event.totalBytes,
                         markDownloading = true,
+                        connections = event.connections,
                     )
                 }
                 is BackgroundDownloadEvent.Completed -> {
@@ -437,6 +440,7 @@ internal class DeviceDownloadRuntime(
                             totalBytes = event.totalBytes.coerceAtLeast(0),
                             updatedAt = clock.nowMs(),
                             bytesPerSecond = 0,
+                            connections = null,
                         ),
                     )
                 }
@@ -489,6 +493,7 @@ internal class DeviceDownloadRuntime(
         downloadedBytes: Long,
         totalBytes: Long,
         markDownloading: Boolean,
+        connections: Int? = null,
     ) {
         val now = clock.nowMs()
         putLocked(
@@ -498,6 +503,7 @@ internal class DeviceDownloadRuntime(
                 totalBytes = totalBytes.coerceAtLeast(0),
                 updatedAt = now,
                 bytesPerSecond = rate.sample(entry.jobId ?: entry.videoId, downloadedBytes, now),
+                connections = connections,
             ),
         )
     }
@@ -518,6 +524,7 @@ internal class DeviceDownloadRuntime(
                 retainedFileNames = emptyList(),
                 updatedAt = clock.nowMs(),
                 bytesPerSecond = 0,
+                connections = null,
             ),
         )
     }
@@ -530,6 +537,7 @@ internal class DeviceDownloadRuntime(
                 failure = failure,
                 updatedAt = clock.nowMs(),
                 bytesPerSecond = 0,
+                connections = null,
             ),
         )
     }

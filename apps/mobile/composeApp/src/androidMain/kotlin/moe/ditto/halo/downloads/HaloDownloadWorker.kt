@@ -103,6 +103,7 @@ internal class HaloDownloadWorker(
                             jobId = jobId,
                             downloadedBytes = progress.downloadedBytes,
                             totalBytes = progress.totalBytes,
+                            connections = progress.connections,
                         ),
                     )
                     notifications.updateProgress(jobId, progress.downloadedBytes, progress.totalBytes)

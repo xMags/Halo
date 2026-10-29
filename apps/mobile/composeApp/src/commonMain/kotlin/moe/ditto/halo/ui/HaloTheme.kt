@@ -47,6 +47,16 @@ object HaloColors {
 
     /** Secondary line under a title: dot-separated metadata, chip values. */
     val TextMeta = Color(0xFFC7CDD9)
+
+    /** A step under [TextDim], for captions that only label a scale or a count. */
+    val TextFaint = Color(0xFF6F7789)
+
+    /** A panel sunk a shade below [Surface], such as the Downloads queue. */
+    val PanelSunken = Color(0xFF11131A)
+
+    /** The fill and edge of a destructive button that is not the only thing on its surface. */
+    val DangerFill = Color(0xFF24161A)
+    val DangerBorder = Color(0xFF5A2A2E)
 }
 
 /**
