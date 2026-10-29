@@ -5,6 +5,7 @@ import {
   type HaloBackend,
   type HaloClient,
   type SettingsPayload,
+  type WatchState,
 } from '@halo/core'
 
 /**
@@ -61,15 +62,22 @@ export function chunked<T>(items: readonly T[], size: number = MOVE_CHUNK_SIZE):
 }
 
 /**
+ * The PC's data as the move reads it. The watch history is read with its
+ * removal tombstones: `getWatchStates` leaves them out, and a removal made
+ * here must reach the account to outlast its older copy of the video.
+ */
+export type MovableDevice = HaloBackend & { getStoredWatchStates(): Promise<WatchState[]> }
+
+/**
  * Sends this PC's library, watch history, settings and addons to the
  * account. Throws when the account cannot be reached or refuses something
  * other than an addon; the caller keeps the device data and tries again. An
  * addon whose manifest the account cannot load is skipped and reported
  * instead, so one dead addon cannot hold everything else back.
  */
-export async function moveRecordsIntoAccount(device: HaloBackend, account: HaloClient): Promise<MoveResult> {
+export async function moveRecordsIntoAccount(device: MovableDevice, account: HaloClient): Promise<MoveResult> {
   for (const chunk of chunked(await device.getLibrary())) await account.putLibrary(chunk)
-  for (const chunk of chunked(await device.getWatchStates())) await account.putWatchStates(chunk)
+  for (const chunk of chunked(await device.getStoredWatchStates())) await account.putWatchStates(chunk)
 
   const [deviceSettings, accountSettings] = await Promise.all([device.getSettings(), account.getSettings()])
   if (shouldMoveSettings(deviceSettings, accountSettings)) {

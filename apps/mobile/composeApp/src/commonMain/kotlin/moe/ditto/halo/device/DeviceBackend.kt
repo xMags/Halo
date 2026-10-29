@@ -188,6 +188,13 @@ internal class DeviceBackend(
     override suspend fun getWatchStates(): List<WatchState> =
         liveWatchStates(readList(DeviceCollection.WatchStates, WatchState.serializer()))
 
+    /**
+     * Every stored row, removal tombstones included: what moving into an
+     * account must send, so a removal made here outlasts the account's older copy.
+     */
+    suspend fun getStoredWatchStates(): List<WatchState> =
+        readList(DeviceCollection.WatchStates, WatchState.serializer())
+
     override suspend fun putWatchStates(states: List<WatchState>): List<WatchState> {
         states.firstNotNullOfOrNull(::watchStateProblem)?.let { throw apiError(400, it) }
         return exclusive(DeviceCollection.WatchStates) {
