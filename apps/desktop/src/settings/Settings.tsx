@@ -330,9 +330,9 @@ function providesLine(item: AddonEntry): string {
 }
 
 /**
- * Cinemeta and OpenSubtitles, which every Halo app installs so it works
- * before anything is added. They stay in your own list: without them there
- * are no catalogs to browse and no subtitles.
+ * Cinemeta, OpenSubtitles and The Movie Database, which every Halo app
+ * installs so it works before anything is added. They stay in your own list:
+ * without them there are no catalogs to browse and no subtitles.
  */
 function isBuiltInAddon(item: AddonEntry, scope: 'yours' | 'global'): boolean {
   if (scope !== 'yours' || item.transportUrl === undefined) return false

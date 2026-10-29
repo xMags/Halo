@@ -32,7 +32,7 @@ export interface MoveResult {
 
 /**
  * The addons to add to the account: the ones added on this PC, in their
- * order, minus Cinemeta and OpenSubtitles (every account installs those
+ * order, minus the built-in ones (every account installs those
  * itself) and minus any the account already has in its own list.
  */
 export function addonsToMove(device: readonly AddonEntry[], accountOwn: readonly AddonEntry[]): AddonMove[] {
