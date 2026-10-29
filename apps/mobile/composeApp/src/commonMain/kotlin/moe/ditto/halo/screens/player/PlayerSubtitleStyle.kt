@@ -29,8 +29,10 @@ internal fun subtitleStyleOf(settings: UserSettings): SubtitleStyle = SubtitleSt
     outlineWidthPixels = outlineWidthPixels(settings.subtitleOutline),
     // Unset is on, as the desktop shows and applies it: the setting is synced,
     // so an untouched one has to look the same on both.
-    shadowOffsetPixels = if (settings.subtitleShadow != false) ShadowOffsetPixels else 0.0,
+    shadowOffsetPixels = shadowOffsetPixels(settings.subtitleShadow != false),
 )
+
+internal fun shadowOffsetPixels(shadow: Boolean): Double = if (shadow) ShadowOffsetPixels else 0.0
 
 /**
  * A null outline is "not chosen", which is the renderer's own weight, and is

@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import moe.ditto.halo.api.SubtitleOutline
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.HaloPlayerColors
@@ -518,21 +519,66 @@ internal fun RailFontChips(
     modifier: Modifier = Modifier,
     inert: Boolean = false,
 ) {
+    RailChoiceChips(
+        choices = SubtitleFontChoices.map { it.label to it.family },
+        selected = selected,
+        onSelect = onSelect,
+        modifier = modifier,
+        inert = inert,
+    )
+}
+
+/** The outline weights, named and ordered as the desktop's. */
+internal val SubtitleOutlineChoices = listOf(
+    "None" to SubtitleOutline.None,
+    "Thin" to SubtitleOutline.Thin,
+    "Normal" to SubtitleOutline.Normal,
+    "Thick" to SubtitleOutline.Thick,
+)
+
+@Composable
+internal fun RailOutlineChips(
+    selected: SubtitleOutline,
+    onSelect: (SubtitleOutline) -> Unit,
+    modifier: Modifier = Modifier,
+    inert: Boolean = false,
+) {
+    RailChoiceChips(
+        choices = SubtitleOutlineChoices,
+        selected = selected,
+        onSelect = onSelect,
+        modifier = modifier,
+        inert = inert,
+    )
+}
+
+/**
+ * A row of pill choices, one lit. Inert dims the row and ignores taps but keeps
+ * the lit one, so the saved choice is still readable where it does not apply.
+ */
+@Composable
+private fun <T> RailChoiceChips(
+    choices: List<Pair<String, T>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    inert: Boolean = false,
+) {
     Row(
         modifier = modifier.alpha(if (inert) InertAlpha else 1f),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        SubtitleFontChoices.forEach { choice ->
-            val active = choice.family == selected
+        choices.forEach { (label, value) ->
+            val active = value == selected
             Text(
-                text = choice.label,
+                text = label,
                 color = if (active) Color.White else HaloColors.TextDim,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(HaloRadius.Pill))
                     .background(if (active) HaloColors.Accent else ChipIdleFill)
-                    .clickable(enabled = !inert, role = Role.RadioButton) { onSelect(choice.family) }
+                    .clickable(enabled = !inert, role = Role.RadioButton) { onSelect(value) }
                     .padding(horizontal = 12.dp, vertical = 7.dp),
             )
         }

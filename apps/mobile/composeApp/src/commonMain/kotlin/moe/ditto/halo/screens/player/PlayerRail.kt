@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import moe.ditto.halo.api.SubtitleOutline
 import moe.ditto.halo.player.PlayerTracks
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
@@ -86,6 +87,8 @@ internal fun PlayerRail(
     subtitleScale: Double,
     subtitleDelaySeconds: Double,
     subtitleFont: String?,
+    subtitleOutline: SubtitleOutline,
+    subtitleShadow: Boolean,
     trackStyling: Boolean,
     selectedAddonSubtitleId: String?,
     bundledSubtitleFonts: Set<String>,
@@ -106,6 +109,8 @@ internal fun PlayerRail(
     onToggleSubtitleLanguage: (String, Set<String>) -> Unit,
     onSubtitleScaleChange: (Double) -> Unit,
     onSubtitleDelayChange: (Double) -> Unit,
+    onSubtitleOutlineChange: (SubtitleOutline) -> Unit,
+    onSubtitleShadowChange: (Boolean) -> Unit,
     onTrackStylingChange: (Boolean) -> Unit,
     onSubtitleFontChange: (String?) -> Unit,
     onSelectAudioTrack: (String?) -> Unit,
@@ -213,11 +218,15 @@ internal fun PlayerRail(
                             subtitleScale = subtitleScale,
                             subtitleDelaySeconds = subtitleDelaySeconds,
                             subtitleFont = subtitleFont,
+                            subtitleOutline = subtitleOutline,
+                            subtitleShadow = subtitleShadow,
                             trackStyling = trackStyling,
                             bundledFonts = bundledSubtitleFonts,
                             captionBaseSize = metrics.captionSize,
                             onScaleChange = onSubtitleScaleChange,
                             onDelayChange = onSubtitleDelayChange,
+                            onOutlineChange = onSubtitleOutlineChange,
+                            onShadowChange = onSubtitleShadowChange,
                             onTrackStylingChange = onTrackStylingChange,
                             onFontChange = onSubtitleFontChange,
                         )

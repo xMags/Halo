@@ -45,6 +45,8 @@ import moe.ditto.halo.NativePlayerSurface
 import moe.ditto.halo.PlaybackHost
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.AddonSubtitles
+import moe.ditto.halo.api.SubtitleOutline
+import moe.ditto.halo.api.UserSettings
 import moe.ditto.halo.api.VideoFitMode
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.player.MediaItem
@@ -160,6 +162,21 @@ internal fun PlayerScreen(
     // during one the platform could not give a starting value for.
     var dragAdjustment by remember { mutableStateOf<VerticalDragAdjustment?>(null) }
     var dragTarget by remember { mutableStateOf<VerticalDragTarget?>(null) }
+    // The synced outline and shadow as the rail shows them; read from the
+    // settings when each item starts. Unset reads as the desktop shows it.
+    var subtitleOutline by remember { mutableStateOf(SubtitleOutline.Normal) }
+    var subtitleShadow by remember { mutableStateOf(true) }
+
+    // Saved at once rather than debounced like the size slider: each is one
+    // tap. A failed save leaves the look applied for this session only.
+    suspend fun saveSubtitleLooks(patch: (UserSettings) -> UserSettings) {
+        try {
+            graph.settings.update(patch)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+        }
+    }
     // The video is the item, so the video id names it. The URL is one way to
     // reach that item and not what it is. Two sources for the same episode are
     // the same thing being watched, which is what the slices reporting on the
@@ -269,6 +286,8 @@ internal fun PlayerScreen(
         fitModeRestored = true
         val settings = graph.settings.current()
         val stored = subtitleStyleOf(settings)
+        subtitleOutline = settings.subtitleOutline ?: SubtitleOutline.Normal
+        subtitleShadow = settings.subtitleShadow != false
         playback.applySubtitleStyle(stored)
         openItem()
 
@@ -857,6 +876,8 @@ internal fun PlayerScreen(
                 subtitleScale = state.subtitleScale,
                 subtitleDelaySeconds = state.subtitleDelaySeconds,
                 subtitleFont = state.subtitleFont,
+                subtitleOutline = subtitleOutline,
+                subtitleShadow = subtitleShadow,
                 trackStyling = state.subtitleTrackStyling,
                 selectedAddonSubtitleId = controller.selectedAddonSubtitleId,
                 bundledSubtitleFonts = bundledSubtitleFonts,
@@ -925,6 +946,20 @@ internal fun PlayerScreen(
                 onSubtitleScaleChange = { scale -> scope.launch { playback.setSubtitleScale(scale) } },
                 onSubtitleDelayChange = { seconds ->
                     scope.launch { playback.setSubtitleDelay(clampedDelay(seconds)) }
+                },
+                onSubtitleOutlineChange = { outline ->
+                    subtitleOutline = outline
+                    scope.launch {
+                        playback.setSubtitleOutline(outlineWidthPixels(outline))
+                        saveSubtitleLooks { it.withSubtitleOutline(outline) }
+                    }
+                },
+                onSubtitleShadowChange = { shadow ->
+                    subtitleShadow = shadow
+                    scope.launch {
+                        playback.setSubtitleShadow(shadowOffsetPixels(shadow))
+                        saveSubtitleLooks { it.withSubtitleShadow(shadow) }
+                    }
                 },
                 onTrackStylingChange = { keep -> scope.launch { playback.setSubtitleTrackStyling(keep) } },
                 onSubtitleFontChange = { font -> scope.launch { playback.setSubtitleFont(font) } },

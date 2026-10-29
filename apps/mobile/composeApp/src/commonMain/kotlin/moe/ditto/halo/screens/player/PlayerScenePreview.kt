@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import moe.ditto.halo.api.SubtitleOutline
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloRadius
 
@@ -187,6 +188,8 @@ private fun PlayerSceneContent(scene: PlayerScene, controller: PlayerScreenContr
     val state = PlayerFixtures.State
     val chromeUp = controller.chromeVisible
     var trackStylingPreview by remember { mutableStateOf(state.subtitleTrackStyling) }
+    var outlinePreview by remember { mutableStateOf(SubtitleOutline.Normal) }
+    var shadowPreview by remember { mutableStateOf(true) }
 
     Box(Modifier.fillMaxSize()) {
         // Stands in for the picture. The real screen has a native surface here,
@@ -282,6 +285,8 @@ private fun PlayerSceneContent(scene: PlayerScene, controller: PlayerScreenContr
                 subtitleScale = state.subtitleScale,
                 subtitleDelaySeconds = state.subtitleDelaySeconds,
                 subtitleFont = state.subtitleFont,
+                subtitleOutline = outlinePreview,
+                subtitleShadow = shadowPreview,
                 trackStyling = trackStylingPreview,
                 selectedAddonSubtitleId = controller.selectedAddonSubtitleId,
                 bundledSubtitleFonts = PlayerFixtures.BundledSubtitleFonts,
@@ -302,6 +307,8 @@ private fun PlayerSceneContent(scene: PlayerScene, controller: PlayerScreenContr
                 onToggleSubtitleLanguage = controller::toggleSubtitleLanguage,
                 onSubtitleScaleChange = {},
                 onSubtitleDelayChange = {},
+                onSubtitleOutlineChange = { outlinePreview = it },
+                onSubtitleShadowChange = { shadowPreview = it },
                 // Held locally rather than sent anywhere: the switch changes the
                 // card's hint text for every format, which is the thing being
                 // reviewed here, and the harness owns no engine to send it to.
