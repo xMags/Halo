@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import moe.ditto.halo.device.DeviceProfileStore
+import moe.ditto.halo.device.NoDeviceProfile
 
 enum class SessionKind { Local, Oidc, Addon }
 
@@ -14,6 +16,9 @@ sealed interface SessionState {
     data object Restoring : SessionState
     data object SignedOut : SessionState
     data class SignedIn(val kind: SessionKind, val serverUrl: String) : SessionState
+
+    /** Halo without an account: everything is answered and kept on this phone. */
+    data object Device : SessionState
 }
 
 /** The login form's local-mode submit target; throws on failure, [LocalAuthException] for server rejections. */
@@ -34,6 +39,11 @@ fun interface LocalAuthenticator {
  * invariant: a session ends ONLY on the server's definitive rejection (local
  * refresh 401 / OIDC `invalid_grant` / the server refusing an add-on session
  * on recheck), never on a transport failure.
+ *
+ * Without an account the state is [SessionState.Device], which no server can
+ * end. [deviceProfile] marks that mode as in use, so a launch with no session
+ * returns to it; the profile outlives a sign-in until the phone's data has
+ * moved into the account.
  */
 class SessionController(
     private val storage: SecureStorage,
@@ -44,6 +54,7 @@ class SessionController(
     private val addons: List<SignInAddon> = emptyList(),
     private val browserSignIn: BrowserSignInPort = NoBrowserSignIn,
     sessionRecheck: HaloSessionRecheck = NoHaloSessionRecheck,
+    private val deviceProfile: DeviceProfileStore = NoDeviceProfile,
 ) : LocalAuthenticator, AddonAuthenticator {
 
     val localSessions = LocalSessionManager(
@@ -118,7 +129,8 @@ class SessionController(
      * to signed-in with no network, so an offline launch still reaches the
      * app. Token validity is tested lazily by the first API call. The arms
      * are deployment-exclusive server-side, so at most one can hold a
-     * persisted session; local is checked first only for determinism.
+     * persisted session; local is checked first only for determinism. With
+     * none, a phone used without an account goes back to that.
      */
     fun restore() {
         _loginNotice.value = null
@@ -134,11 +146,34 @@ class SessionController(
         }
         val oidcServerUrl = oidcPort.restoreSession()
         publish(
-            when (oidcServerUrl) {
-                null -> SessionState.SignedOut
-                else -> SessionState.SignedIn(SessionKind.Oidc, oidcServerUrl)
+            when {
+                oidcServerUrl != null -> SessionState.SignedIn(SessionKind.Oidc, oidcServerUrl)
+                deviceProfile.hasProfile() -> SessionState.Device
+                else -> SessionState.SignedOut
             },
         )
+    }
+
+    /**
+     * Starts Halo without an account, or resumes it: an earlier profile's data
+     * may still be waiting to move into an account. Ignored while signed in.
+     */
+    fun continueWithoutAccount() {
+        if (_state.value is SessionState.SignedIn) return
+        deviceProfile.createProfile()
+        _loginNotice.value = null
+        publish(SessionState.Device)
+    }
+
+    /**
+     * Leaves Halo without an account for the sign-in screen. The phone's data
+     * stays where it is: signing in moves it into the account, and continuing
+     * without one again picks it back up.
+     */
+    fun startSignIn() {
+        if (_state.value != SessionState.Device) return
+        _loginNotice.value = null
+        publish(SessionState.SignedOut)
     }
 
     override suspend fun signIn(serverUrl: String, username: String, password: String) {
@@ -245,10 +280,13 @@ class SessionController(
      * fire-and-forget clear could lose that race and resurrect the session
      * it was meant to wipe. (The native side keeps this fast: its storage
      * clear is synchronous and only the revoke request is fire-and-forget.)
+     * Halo without an account is wiped too, or [restore] would land in it
+     * instead of on the sign-in screen the suites expect.
      */
     suspend fun resetPersistedSessions() {
         localSessions.clear()
         addonSessions.clear()
+        deviceProfile.clear()
         runCatching { oidcPort.signOut(endIdpSession = false) }
         _loginNotice.value = null
         publish(SessionState.SignedOut)

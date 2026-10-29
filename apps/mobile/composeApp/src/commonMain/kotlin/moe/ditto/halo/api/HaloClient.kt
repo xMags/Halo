@@ -62,14 +62,14 @@ class HaloClient(
     private val tokens: TokenProvider,
     private val httpClient: HttpClient,
     private val onUnauthorized: suspend () -> Unit = {},
-) {
+) : HaloBackend {
     val baseUrl: String = baseUrl.trimEnd('/')
 
     /** The authenticated user including admin status; drives admin-only UI. */
     suspend fun getMe(): Me = request(HttpMethod.Get, "/auth/me", Me.serializer())
 
     /** Global (admin-managed) addons plus the caller's own, each ordered by position. */
-    suspend fun getAddons(): AddonsResponse =
+    override suspend fun getAddons(): AddonsResponse =
         request(HttpMethod.Get, "/addons", AddonsResponse.serializer())
 
     /**
@@ -77,7 +77,7 @@ class HaloClient(
      * transport URLs are sent — the server fetches and validates each manifest
      * itself and applies the list as a diff, so unchanged entries keep their ids.
      */
-    suspend fun putAddons(transportUrls: List<String>): List<AddonEntry> = request(
+    override suspend fun putAddons(transportUrls: List<String>): List<AddonEntry> = request(
         HttpMethod.Put,
         "/addons",
         ListSerializer(AddonEntry.serializer()),
@@ -93,7 +93,7 @@ class HaloClient(
     )
 
     /** Per-addon knobs on the caller's own entries (currently catalog visibility). */
-    suspend fun patchAddon(addonId: String, hideCatalogs: Boolean) {
+    override suspend fun patchAddon(addonId: String, hideCatalogs: Boolean) {
         exchange(
             HttpMethod.Patch,
             "/addons/${addonId.encodeURLPathPart()}",
@@ -114,11 +114,11 @@ class HaloClient(
      * One catalog, resolved server-side. [addonId] is the opaque [AddonEntry.id];
      * clients never address an addon by transport URL, which can embed secrets.
      */
-    suspend fun getCatalog(
+    override suspend fun getCatalog(
         addonId: String,
         type: String,
         id: String,
-        extra: Map<String, String> = emptyMap(),
+        extra: Map<String, String>,
     ): CatalogResponse = request(
         HttpMethod.Get,
         "/catalog",
@@ -127,7 +127,7 @@ class HaloClient(
     )
 
     /** First effective addon that can describe this type/id wins; 404 when none can. */
-    suspend fun getMeta(type: String, id: String): MetaResponse = request(
+    override suspend fun getMeta(type: String, id: String): MetaResponse = request(
         HttpMethod.Get,
         "/meta",
         MetaResponse.serializer(),
@@ -135,7 +135,7 @@ class HaloClient(
     )
 
     /** Fans out to every effective addon; playable streams grouped by addon. */
-    suspend fun getStreams(type: String, videoId: String): StreamsResult = request(
+    override suspend fun getStreams(type: String, videoId: String): StreamsResult = request(
         HttpMethod.Get,
         "/streams",
         StreamsResult.serializer(),
@@ -148,12 +148,12 @@ class HaloClient(
      * bingeGroup — Stremio's binge-continuation rule of exact group equality
      * from the same addon only.
      */
-    suspend fun getNextEpisode(
+    override suspend fun getNextEpisode(
         type: String,
         metaId: String,
         videoId: String,
-        addonId: String? = null,
-        bingeGroup: String? = null,
+        addonId: String?,
+        bingeGroup: String?,
     ): NextEpisodeResult = request(
         HttpMethod.Get,
         "/next-episode",
@@ -172,12 +172,12 @@ class HaloClient(
      * [videoHash]/[videoSize] is what turns guesswork into exact matches, so
      * callers should compute them whenever the source allows it.
      */
-    suspend fun getSubtitles(
+    override suspend fun getSubtitles(
         type: String,
         videoId: String,
-        videoHash: String? = null,
-        videoSize: Long? = null,
-        filename: String? = null,
+        videoHash: String?,
+        videoSize: Long?,
+        filename: String?,
     ): SubtitlesResult = request(
         HttpMethod.Get,
         "/subtitles",
@@ -192,36 +192,36 @@ class HaloClient(
     )
 
     /** Includes tombstones (`removedAt` set) so removals sync instead of resurrecting. */
-    suspend fun getLibrary(): List<LibraryItem> =
+    override suspend fun getLibrary(): List<LibraryItem> =
         request(HttpMethod.Get, "/library", ListSerializer(LibraryItem.serializer()))
 
     /** Batched upsert; the response is the caller's full library after merging. */
-    suspend fun putLibrary(items: List<LibraryItem>): List<LibraryItem> = request(
+    override suspend fun putLibrary(items: List<LibraryItem>): List<LibraryItem> = request(
         HttpMethod.Put,
         "/library",
         ListSerializer(LibraryItem.serializer()),
         body = HaloJson.encodeToString(ListSerializer(LibraryItem.serializer()), items),
     )
 
-    suspend fun getWatchStates(): List<WatchState> =
+    override suspend fun getWatchStates(): List<WatchState> =
         request(HttpMethod.Get, "/watch-state", ListSerializer(WatchState.serializer()))
 
     /**
      * Batched upsert applied last-write-wins per row; the response is the
      * caller's full watch state after merging, not just the rows sent.
      */
-    suspend fun putWatchStates(states: List<WatchState>): List<WatchState> = request(
+    override suspend fun putWatchStates(states: List<WatchState>): List<WatchState> = request(
         HttpMethod.Put,
         "/watch-state",
         ListSerializer(WatchState.serializer()),
         body = HaloJson.encodeToString(ListSerializer(WatchState.serializer()), states),
     )
 
-    suspend fun getSettings(): SettingsPayload =
+    override suspend fun getSettings(): SettingsPayload =
         request(HttpMethod.Get, "/settings", SettingsPayload.serializer())
 
     /** Last-write-wins: the server keeps whichever payload carries the newer timestamp. */
-    suspend fun putSettings(value: UserSettings, updatedAt: Long): SettingsPayload = request(
+    override suspend fun putSettings(value: UserSettings, updatedAt: Long): SettingsPayload = request(
         HttpMethod.Put,
         "/settings",
         SettingsPayload.serializer(),
@@ -259,6 +259,9 @@ class HaloClient(
         }
         return response
     }
+
+    /** Subtitle files come through the server's proxy, which applies its address guard. */
+    override suspend fun openSubtitleFile(url: String): HttpResponse = getAddonProxyResponse(url)
 
     private suspend fun <T> request(
         method: HttpMethod,

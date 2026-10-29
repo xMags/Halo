@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import moe.ditto.halo.api.AddonEntry
 import moe.ditto.halo.api.AddonsResponse
+import moe.ditto.halo.api.HaloBackend
 import moe.ditto.halo.api.HaloClient
 import moe.ditto.halo.cache.HaloKey
 import moe.ditto.halo.cache.QueryCache
@@ -17,10 +18,14 @@ import moe.ditto.halo.cache.QueryState
  * against what it holds, fetches manifests only for URLs it has not seen, and
  * leaves existing entries' opaque ids alone. Callers build the new list from
  * the current one.
+ *
+ * The global list is an account's: without one, [accountClient] is null and
+ * there is nothing global to change.
  */
 class AddonsRepository(
-    private val client: HaloClient,
+    private val client: HaloBackend,
     private val cache: QueryCache,
+    private val accountClient: HaloClient? = client as? HaloClient,
 ) {
     /** The raw split, which only the settings screen needs; everything else browses. */
     fun observe(): Flow<QueryState<AddonsResponse>> =
@@ -56,7 +61,7 @@ class AddonsRepository(
 
     /** Admin-only: declares the list every user resolves against. */
     suspend fun setGlobalAddons(transportUrls: List<String>) {
-        client.putGlobalAddons(transportUrls)
+        requireAccount().putGlobalAddons(transportUrls)
         cache.invalidate(HaloKey.Addons)
     }
 
@@ -67,9 +72,12 @@ class AddonsRepository(
 
     /** Admin-only: the same knob on a global entry, for every user. */
     suspend fun setGlobalHideCatalogs(addonId: String, hidden: Boolean) {
-        client.patchGlobalAddon(addonId, hidden)
+        requireAccount().patchGlobalAddon(addonId, hidden)
         cache.invalidate(HaloKey.Addons)
     }
+
+    private fun requireAccount(): HaloClient =
+        checkNotNull(accountClient) { "Global addons belong to an account" }
 
     /*
      * Every write invalidates instead of reconciling an echo, unlike the synced

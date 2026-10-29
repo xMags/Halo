@@ -6,7 +6,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import moe.ditto.halo.api.AddonSubtitles
-import moe.ditto.halo.api.HaloClient
+import moe.ditto.halo.api.HaloBackend
 import moe.ditto.halo.api.ManifestCatalog
 import moe.ditto.halo.api.MetaDetail
 import moe.ditto.halo.api.MetaPreview
@@ -26,7 +26,7 @@ import moe.ditto.halo.cache.QueryState
  * is the only writer, and everything here is a cache over it.
  */
 class BrowseRepository(
-    private val client: HaloClient,
+    private val client: HaloBackend,
     private val cache: QueryCache,
     private val addons: AddonsRepository,
 ) {

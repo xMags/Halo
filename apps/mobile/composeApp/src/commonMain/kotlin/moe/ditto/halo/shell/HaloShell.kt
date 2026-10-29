@@ -63,7 +63,7 @@ import kotlinx.coroutines.flow.Flow
 import dev.chrisbanes.haze.rememberHazeState
 import moe.ditto.halo.NativePlayerSurface
 import moe.ditto.halo.PlaybackHost
-import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.MetaDetail
 import moe.ditto.halo.api.MetaVideo
@@ -112,7 +112,7 @@ import org.jetbrains.compose.resources.painterResource
  */
 @Composable
 internal fun HaloShell(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     /** The app's one playback owner; the player route drives it, nothing else does. */
     playback: PlaybackHost,
     playerSurface: NativePlayerSurface,
@@ -124,6 +124,8 @@ internal fun HaloShell(
     videoFrames: VideoFrameSource,
     openDownloadsEvents: Flow<Unit>,
     onSignOut: () -> Unit,
+    /** Opens the sign-in screen from Halo without an account. */
+    onSignIn: () -> Unit,
     modifier: Modifier = Modifier,
     /**
      * Opens the diagnostics harness from Settings. Null in a shipped build,
@@ -272,6 +274,7 @@ internal fun HaloShell(
                     SettingsScreen(
                         graph = graph,
                         onSignOut = onSignOut,
+                        onSignIn = onSignIn,
                         onOpenDebugGate = onOpenDebugGate,
                     )
                 }

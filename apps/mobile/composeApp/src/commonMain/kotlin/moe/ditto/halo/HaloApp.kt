@@ -67,6 +67,7 @@ import moe.ditto.halo.auth.SessionState
 import moe.ditto.halo.auth.SystemEpochClock
 import moe.ditto.halo.auth.builtInServerUrl
 import moe.ditto.halo.auth.installedSignInAddons
+import moe.ditto.halo.device.PlatformDeviceStore
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlaybackStatus
 import moe.ditto.halo.player.PlayerState
@@ -107,6 +108,9 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
     }
     HaloTheme {
         val playback = remember(dependencies) { PlaybackHost(dependencies.playerPort) }
+        val deviceStore = remember(dependencies) {
+            PlatformDeviceStore(dependencies.secureStorage, dependencies.keyValueStore)
+        }
         val sessionController = remember(dependencies) {
             val authHttpClient = HttpClient()
             SessionController(
@@ -118,6 +122,7 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                 addons = installedSignInAddons,
                 browserSignIn = dependencies.browserSignIn,
                 sessionRecheck = KtorHaloSessionRecheck(authHttpClient),
+                deviceProfile = deviceStore,
             )
         }
         var screen by remember { mutableStateOf(ShellScreen.Login) }
@@ -131,10 +136,11 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
 
         // Session restore gates the first render (a persisted session must boot
         // to the app, not flash the login form), then the state collector owns
-        // both navigation directions: Login → Shell on sign-in/restore, and any
-        // screen → Login on a live sign-out (the button, or invalid_grant from
-        // a background refresh). The sign-out kick fires only on a
-        // SignedIn → SignedOut transition, so the fake-host diagnostics suites
+        // both navigation directions: Login → Shell on sign-in/restore or on
+        // continuing without an account, and any screen → Login on a live
+        // sign-out (the button, or invalid_grant from a background refresh) or
+        // on leaving Halo without an account to sign in. The kick fires only
+        // on a transition out of the app, so the fake-host diagnostics suites
         // — which walk to the gate with no session at all — never bounce.
         LaunchedEffect(sessionController) {
             if (dependencies.resetPersistedSession) sessionController.resetPersistedSessions()
@@ -142,7 +148,8 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
             sessionRestored = true
             var previous: SessionState? = null
             sessionController.state.collect { state ->
-                if (state is SessionState.SignedIn && screen == ShellScreen.Login) {
+                val inApp = state is SessionState.SignedIn || state == SessionState.Device
+                if (inApp && screen == ShellScreen.Login) {
                     refreshHostSnapshot()
                     screen = ShellScreen.Shell
                 }
@@ -154,6 +161,14 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                     // through this same transition. Both durably pause queued
                     // and OS-owned work before the outgoing graph disappears.
                     dependencies.downloadRuntime.pauseAllForSignOut()
+                    screen = ShellScreen.Login
+                }
+                // Going to sign in from Halo without an account is the same
+                // person, so their downloads carry on.
+                if (state == SessionState.SignedOut &&
+                    previous == SessionState.Device &&
+                    screen != ShellScreen.Login
+                ) {
                     screen = ShellScreen.Login
                 }
                 previous = state
@@ -184,18 +199,25 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
         val sessionState by sessionController.state.collectAsState()
         val loginNotice by sessionController.loginNotice.collectAsState()
 
-        // One graph per session. Keyed on the generation as well as the server
+        // One graph per session. Keyed on the generation as well as the state
         // because session state alone cannot distinguish two users on one
         // server — see SessionController.sessionGeneration. Signing out drops
         // it to null, which closes the outgoing one.
         val sessionGeneration by sessionController.sessionGeneration.collectAsState()
-        val serverUrl = (sessionState as? SessionState.SignedIn)?.serverUrl
-        val graph = remember(sessionGeneration, serverUrl) {
-            serverUrl?.let {
-                SignedInGraph(
-                    serverUrl = it,
+        val graph = remember(sessionGeneration, sessionState) {
+            val mode = when (val state = sessionState) {
+                is SessionState.SignedIn -> SessionMode.Account(
+                    serverUrl = state.serverUrl,
                     tokens = sessionController.tokenProvider,
                     onUnauthorized = { sessionController.rejectSession(sessionGeneration) },
+                )
+                SessionState.Device -> SessionMode.Device
+                SessionState.SignedOut, SessionState.Restoring -> null
+            }
+            mode?.let {
+                SessionGraph(
+                    mode = it,
+                    deviceStore = deviceStore,
                     keyValueStore = dependencies.keyValueStore,
                     subtitleCacheDirectory = dependencies.subtitleCacheDirectory,
                     downloadRuntime = dependencies.downloadRuntime,
@@ -224,6 +246,7 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                         videoFrames = dependencies.videoFrameSource,
                         openDownloadsEvents = dependencies.openDownloadsEvents,
                         onSignOut = { sessionController.signOut() },
+                        onSignIn = { sessionController.startSignIn() },
                         // Null in a shipped build, which removes the row entirely
                         // rather than hiding a live one behind a flag.
                         onOpenDebugGate = if (dependencies.diagnosticsEnabled) {
@@ -268,6 +291,7 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                         serverUrl = builtInServerUrl ?: rememberedServerUrl ?: PlatformDependencies.DefaultServerUrl,
                         rememberedServerUrl = rememberedServerUrl,
                         notice = loginNotice,
+                        onContinueWithoutAccount = { sessionController.continueWithoutAccount() },
                         onOpenGate = if (dependencies.diagnosticsEnabled) {
                             {
                                 refreshHostSnapshot()
@@ -598,6 +622,7 @@ private fun GateScreen(
                     is SessionState.SignedIn ->
                         "${sessionState.kind.name.lowercase()} · ${sessionState.serverUrl}"
                     SessionState.SignedOut -> "signed out"
+                    SessionState.Device -> "without an account"
                     SessionState.Restoring -> "restoring"
                 },
                 style = HaloType.Caption,

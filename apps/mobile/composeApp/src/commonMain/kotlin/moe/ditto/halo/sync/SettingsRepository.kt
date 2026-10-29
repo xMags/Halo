@@ -4,7 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.SerializationException
-import moe.ditto.halo.api.HaloClient
+import moe.ditto.halo.api.HaloBackend
 import moe.ditto.halo.api.HaloJson
 import moe.ditto.halo.api.SettingsPayload
 import moe.ditto.halo.api.UserSettings
@@ -25,7 +25,7 @@ import moe.ditto.halo.storage.StorageKeys
  * defaults rather than the user's choices.
  */
 class SettingsRepository(
-    private val client: HaloClient,
+    private val client: HaloBackend,
     private val cache: QueryCache,
     private val store: KeyValueStore,
     private val clock: EpochClock,

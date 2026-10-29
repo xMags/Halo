@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.MetaPreview
 import moe.ditto.halo.browse.CatalogRowSpec
@@ -74,7 +74,7 @@ import moe.ditto.halo.ui.rememberResponsive
  */
 @Composable
 internal fun HomeScreen(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     onOpenSearch: () -> Unit,
     onOpenDetail: (MetaRef) -> Unit,
     /** Movies play straight from the featured card; series open their detail screen instead. */
@@ -287,7 +287,7 @@ internal fun HomeScreen(
  */
 @Composable
 private fun ContinueWatchingRow(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     entries: List<ContinueEntry>,
     onItemClick: (PosterItem) -> Unit,
     posterWidth: Dp,
@@ -344,7 +344,7 @@ private val BodyStateHeight = 420.dp
  */
 @Composable
 private fun HomeCatalogRow(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     spec: CatalogRowSpec,
     posterWidth: Dp,
     gutter: Dp,

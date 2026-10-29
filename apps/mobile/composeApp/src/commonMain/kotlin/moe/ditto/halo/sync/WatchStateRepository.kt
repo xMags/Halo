@@ -1,7 +1,7 @@
 package moe.ditto.halo.sync
 
 import kotlinx.coroutines.flow.Flow
-import moe.ditto.halo.api.HaloClient
+import moe.ditto.halo.api.HaloBackend
 import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.auth.EpochClock
 import moe.ditto.halo.cache.HaloKey
@@ -17,7 +17,7 @@ import kotlin.math.floor
  * be watched without ever being saved.
  */
 class WatchStateRepository(
-    private val client: HaloClient,
+    private val client: HaloBackend,
     private val cache: QueryCache,
     private val clock: EpochClock,
 ) {

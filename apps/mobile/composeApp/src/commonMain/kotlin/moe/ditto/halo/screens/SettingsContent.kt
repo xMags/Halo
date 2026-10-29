@@ -23,6 +23,7 @@ import moe.ditto.halo.api.AddonEntry
 import moe.ditto.halo.api.AddonsResponse
 import moe.ditto.halo.api.Me
 import moe.ditto.halo.api.UserSettings
+import moe.ditto.halo.device.DefaultAddonUrls
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.HaloType
@@ -40,6 +41,10 @@ internal enum class AddonOwnership {
 }
 
 internal data class SettingsUiState(
+    /** False for Halo without an account: no server, nothing to sign out of. */
+    val signedIn: Boolean = true,
+    /** Addons the account refused when the phone's data moved into it on sign-in. */
+    val addonsNotMoved: List<String> = emptyList(),
     /** The last measured round trip to the server; null until one has completed. */
     val latencyMillis: Long? = null,
     val addons: AddonsResponse? = null,
@@ -67,6 +72,7 @@ internal fun SettingsContent(
     onOpenLanguage: (SettingsLanguageKind) -> Unit,
     onAutoplayChange: (Boolean) -> Unit,
     onSignOut: () -> Unit,
+    onSignIn: () -> Unit,
     onOpenDebugGate: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
@@ -96,6 +102,9 @@ internal fun SettingsContent(
         state.mutationError?.let { message ->
             item(key = "mutation-error") { ErrorBanner(message) }
         }
+        if (state.addonsNotMoved.isNotEmpty()) {
+            item(key = "addons-not-moved") { ErrorBanner(addonsNotMovedMessage(state.addonsNotMoved)) }
+        }
 
         item(key = "addons-label") { SettingsGroupLabel("Addons") }
         item(key = "addons-card") {
@@ -123,6 +132,10 @@ internal fun SettingsContent(
                                 busy = state.pendingAction?.endsWith(addon.id) == true,
                                 onToggleCatalogs = onToggleCatalogs,
                                 onRemove = onRemoveAddon,
+                                // Without an account the built-in addons are all
+                                // there is to browse, and they come back on the
+                                // next start anyway, as on the desktop app.
+                                removable = state.signedIn || addon.transportUrl !in DefaultAddonUrls,
                             )
                             if (index != state.addons.user.lastIndex) SettingsDivider()
                         }
@@ -222,8 +235,23 @@ internal fun SettingsContent(
             }
         }
 
-        item(key = "server-label") { SettingsGroupLabel("Server") }
-        item(key = "server-card") {
+        if (!state.signedIn) {
+            item(key = "account-label") { SettingsGroupLabel("Account") }
+            item(key = "account-card") {
+                SettingsCard {
+                    Text(
+                        text = "Your library, history and addons are kept on this phone. Sign in to sync them.",
+                        style = HaloType.Body.copy(color = HaloColors.TextDim),
+                        modifier = Modifier.padding(horizontal = HaloSpacing.Md, vertical = 13.dp),
+                    )
+                    SettingsDivider()
+                    ActionSettingRow(label = "Sign in", onClick = onSignIn)
+                }
+            }
+        }
+
+        if (state.signedIn) item(key = "server-label") { SettingsGroupLabel("Server") }
+        if (state.signedIn) item(key = "server-card") {
             val connected = state.account != null || state.addons != null || state.settings != null
             SettingsCard {
                 StaticSettingRow(label = "Latency", value = state.latencyMillis?.let { "$it ms" } ?: "...")
@@ -241,7 +269,7 @@ internal fun SettingsContent(
             }
         }
 
-        item(key = "sign-out") {
+        if (state.signedIn) item(key = "sign-out") {
             Box(
                 modifier = Modifier
                     .padding(top = HaloSpacing.Lg)
@@ -257,4 +285,10 @@ internal fun SettingsContent(
             }
         }
     }
+}
+
+private fun addonsNotMovedMessage(names: List<String>): String {
+    val one = names.size == 1
+    return "${names.joinToString(", ")} could not be added to your account because " +
+        "${if (one) "it" else "they"} did not load. You can add ${if (one) "it" else "them"} again above."
 }

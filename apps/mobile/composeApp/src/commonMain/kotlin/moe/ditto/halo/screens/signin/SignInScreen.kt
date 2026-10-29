@@ -100,6 +100,7 @@ private val Ink3 = HaloColors.Text.copy(alpha = 0.62f)
 private val Stroke = Color.White.copy(alpha = 0.11f)
 private val OnlineGreen = Color(0xFF5DD39E)
 
+private const val ContinueWithoutAccount = "Continue without an account"
 private const val WaitingCopy = "Approve the sign-in in the page that just opened, then come back to Halo."
 private const val PasswordOnlyMessage =
     "That server signs in through a web page, not a username and password."
@@ -117,6 +118,9 @@ private const val PasswordOnlyMessage =
  *
  * Signing in hands the session to [localAuthenticator] or [addonAuthenticator]
  * (the session controller), whose state change moves the app to the shell.
+ * [onContinueWithoutAccount] does the same for Halo without an account, and is
+ * offered whenever nothing is in progress, including while the server cannot
+ * be reached.
  */
 @Composable
 internal fun SignInScreen(
@@ -127,6 +131,7 @@ internal fun SignInScreen(
     serverUrl: String,
     rememberedServerUrl: String?,
     notice: String?,
+    onContinueWithoutAccount: () -> Unit,
     onOpenGate: (() -> Unit)?,
 ) {
     fun presenter() = LoginPresenter(
@@ -296,6 +301,7 @@ internal fun SignInScreen(
                             }
                         },
                         onUsePassword = { form = true },
+                        onContinueWithoutAccount = onContinueWithoutAccount,
                     )
                 }
                 onOpenGate?.let { TextLink("Open gate menu", it) }
@@ -400,6 +406,7 @@ private fun MainActions(
     onPassword: (String) -> Unit,
     onSubmitLocal: () -> Unit,
     onUsePassword: () -> Unit,
+    onContinueWithoutAccount: () -> Unit,
 ) {
     when (val phase = state.phase) {
         LoginPhase.Server, LoginPhase.Discovering -> {
@@ -409,11 +416,13 @@ private fun MainActions(
             } else {
                 StatusLine("CONNECTING", spinning = true)
             }
+            QuietButton(ContinueWithoutAccount, onContinueWithoutAccount)
             TextLink("Use username & password", onUsePassword)
         }
         is LoginPhase.AddonReady -> {
             state.error?.let { ErrorLine(it) }
             PrimaryButton(phase.config.addon.buttonLabel, onBeginAddon, icon = HaloIcons.OpenInNew)
+            QuietButton(ContinueWithoutAccount, onContinueWithoutAccount)
             TextLink("Use username & password", onUsePassword)
         }
         is LoginPhase.AddonSigningIn -> {
@@ -422,12 +431,14 @@ private fun MainActions(
         }
         is LoginPhase.OidcReady -> {
             PrimaryButton("Continue in browser", onBeginOidc, icon = HaloIcons.OpenInNew)
+            QuietButton(ContinueWithoutAccount, onContinueWithoutAccount)
             TextLink("Use username & password", onUsePassword)
         }
         is LoginPhase.OidcRequested -> Waiting()
         is LoginPhase.OidcFailed -> {
             ErrorLine(phase.reason)
             PrimaryButton("Try again", onRetryOidc, icon = HaloIcons.OpenInNew)
+            QuietButton(ContinueWithoutAccount, onContinueWithoutAccount)
         }
         // This build's own server uses local accounts: its form, without an
         // address to type, since the server is already known.
@@ -441,6 +452,7 @@ private fun MainActions(
                 enabled = state.canSubmitCredentials,
                 busy = phase is LoginPhase.LocalSubmitting,
             )
+            if (phase is LoginPhase.LocalCredentials) QuietButton(ContinueWithoutAccount, onContinueWithoutAccount)
         }
         else -> Unit
     }
