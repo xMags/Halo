@@ -395,9 +395,10 @@ class PlayerSubtitleOptionsTest {
         assertFalse(remembered)
     }
 
-    /** Every input ready: this item's tracks, hashing settled, the query answered. */
+    /** Every input ready: this item's file open, hashing settled, the query answered. */
     private fun selectionMayRun(
         ownState: Boolean = true,
+        opened: Boolean = true,
         alreadyApplied: Boolean = false,
         fingerprintSettled: Boolean = true,
         addonSubtitlesFetching: Boolean = false,
@@ -406,6 +407,7 @@ class PlayerSubtitleOptionsTest {
         hasAddonSubtitles: Boolean = true,
     ): Boolean = subtitleSelectionMayRun(
         ownState = ownState,
+        opened = opened,
         alreadyApplied = alreadyApplied,
         fingerprintSettled = fingerprintSettled,
         addonSubtitlesFetching = addonSubtitlesFetching,
@@ -441,6 +443,17 @@ class PlayerSubtitleOptionsTest {
     fun selectionDoesNotRunForAnotherItemOrTwice() {
         assertFalse(selectionMayRun(ownState = false))
         assertFalse(selectionMayRun(alreadyApplied = true))
+    }
+
+    /**
+     * The addon results can be in before the engine has opened the file. Run
+     * then, a remembered in-file track is not in the list yet and the restore
+     * settles for an addon result or nothing, which it never revisits.
+     */
+    @Test
+    fun selectionWaitsForTheFileToOpenEvenWhenTheAddonResultsAreIn() {
+        assertFalse(selectionMayRun(opened = false))
+        assertFalse(selectionMayRun(opened = false, hasEmbeddedSubtitles = false))
     }
 
     @Test

@@ -3,7 +3,9 @@ package moe.ditto.halo.player
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class PlayerPresenterTest {
     private val first = MediaItem("one", "Episode one", "https://example.test/one.mp4")
@@ -47,6 +49,63 @@ class PlayerPresenterTest {
         assertNull(seen?.durationSeconds)
         assertEquals(listOf(first), loadsWhenSeen)
         assertEquals(listOf(first, second), port.loads)
+    }
+
+    @Test
+    fun aFileCountsAsOpenOnlyOnceTheEngineIsReady() = runTest {
+        val presenter = PlayerPresenter(RecordingPlayerPort())
+        presenter.start(first)
+        assertFalse(presenter.state.opened)
+
+        // Track and pause reports can arrive while the file is still opening.
+        presenter.onEvent(PlayerEvent.TracksChanged(PlayerTracks()))
+        presenter.onEvent(PlayerEvent.PauseChanged(paused = false))
+        assertFalse(presenter.state.opened)
+
+        // A stream of unknown length still opens.
+        presenter.onEvent(PlayerEvent.Ready(durationSeconds = null))
+        assertTrue(presenter.state.opened)
+        assertNull(presenter.state.durationSeconds)
+    }
+
+    @Test
+    fun anOpenFileStaysOpenThroughPlaybackAndItsEnd() = runTest {
+        val presenter = PlayerPresenter(RecordingPlayerPort())
+        presenter.start(first)
+        presenter.onEvent(PlayerEvent.Ready(durationSeconds = 1_200.0))
+
+        presenter.onEvent(PlayerEvent.PauseChanged(paused = true))
+        assertTrue(presenter.state.opened)
+        presenter.onEvent(PlayerEvent.PauseChanged(paused = false))
+        assertTrue(presenter.state.opened)
+        presenter.onEvent(PlayerEvent.NaturalEnd)
+        assertTrue(presenter.state.opened)
+        presenter.onEvent(PlayerEvent.EndCleared)
+        assertTrue(presenter.state.opened)
+    }
+
+    @Test
+    fun startingAnotherLoadClearsOpen() = runTest {
+        val presenter = PlayerPresenter(RecordingPlayerPort())
+        presenter.start(first)
+        presenter.onEvent(PlayerEvent.Ready(durationSeconds = 1_200.0))
+
+        var openedWhileLoading: Boolean? = null
+        presenter.start(second) { openedWhileLoading = presenter.state.opened }
+
+        assertEquals(false, openedWhileLoading)
+        assertFalse(presenter.state.opened)
+    }
+
+    @Test
+    fun aLoadThatFailsBeforeOpeningIsNotOpen() = runTest {
+        val presenter = PlayerPresenter(RecordingPlayerPort())
+        presenter.start(first)
+
+        presenter.onEvent(PlayerEvent.Error("loading failed"))
+
+        assertEquals(PlaybackStatus.Failed, presenter.state.status)
+        assertFalse(presenter.state.opened)
     }
 
     @Test

@@ -15,6 +15,14 @@ data class PlayerState(
     val status: PlaybackStatus = PlaybackStatus.Idle,
     val positionSeconds: Double = 0.0,
     val durationSeconds: Double? = null,
+    /**
+     * True once the engine has opened [current]'s file, which is when it
+     * accepts an added subtitle and when the track list it reports next is
+     * this file's own. Separate from [durationSeconds] because a stream of
+     * unknown length opens without one. Cleared by every new load; a load that
+     * fails before opening leaves it false.
+     */
+    val opened: Boolean = false,
     val tracks: PlayerTracks = PlayerTracks(),
     /** Non-null only while the cache is stalling playback. */
     val buffering: PlayerBuffering? = null,
@@ -182,6 +190,7 @@ class PlayerPresenter(
         state = when (event) {
             is PlayerEvent.Ready -> state.copy(
                 status = PlaybackStatus.Playing,
+                opened = true,
                 durationSeconds = event.durationSeconds?.takeIf { it.isFinite() && it >= 0.0 },
                 error = null,
             )

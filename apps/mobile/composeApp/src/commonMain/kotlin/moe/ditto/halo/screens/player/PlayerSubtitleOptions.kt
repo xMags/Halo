@@ -195,11 +195,15 @@ internal sealed interface SubtitleSelection {
  * Whether the one-time subtitle restore for the item on screen may run now.
  *
  * It runs once, so it has to wait for the inputs its choice is made between:
- * this item's own tracks ([ownState]; the playback owner may still be
- * describing the previous item) and the addon results that will stand. Those
- * are the hash-matched ones whenever the source can be hashed, so the restore
- * waits for the hashing to settle ([fingerprintSettled]) and then for the
- * query that follows from it to answer. Run on the name-based answer that
+ * this item's own tracks and the addon results that will stand. The tracks
+ * are this item's only once the playback owner describes this item
+ * ([ownState]; it may still be describing the previous one) and the engine
+ * has opened its file ([opened]). Before that the track list is empty or
+ * still filling, and a remembered in-file track would resolve to an addon
+ * result or to nothing, with the one claim spent. The addon results that
+ * will stand are the hash-matched ones whenever the source can be hashed, so
+ * the restore waits for the hashing to settle ([fingerprintSettled]) and then
+ * for the query that follows from it to answer. Run on the name-based answer that
  * usually arrives first, a remembered addon subtitle from a hash-matched list
  * is often missing and the restore falls back to the language alone.
  *
@@ -209,6 +213,7 @@ internal sealed interface SubtitleSelection {
  */
 internal fun subtitleSelectionMayRun(
     ownState: Boolean,
+    opened: Boolean,
     alreadyApplied: Boolean,
     fingerprintSettled: Boolean,
     addonSubtitlesFetching: Boolean,
@@ -216,7 +221,7 @@ internal fun subtitleSelectionMayRun(
     hasEmbeddedSubtitles: Boolean,
     hasAddonSubtitles: Boolean,
 ): Boolean {
-    if (!ownState || alreadyApplied) return false
+    if (!ownState || !opened || alreadyApplied) return false
     if (!fingerprintSettled) return false
     if (addonSubtitlesFetching || !addonSubtitlesKnown) return false
     return hasEmbeddedSubtitles || hasAddonSubtitles
