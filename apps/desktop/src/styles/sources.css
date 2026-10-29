@@ -103,43 +103,46 @@
   }
 }
 
-/* Header */
+/* Header: the title, one count line, and the close button. */
 .sx-head {
   flex: 0 0 auto;
-  padding: 26px 32px 18px;
-}
-.sx-head-row {
   display: flex;
   align-items: flex-start;
   gap: 16px;
+  padding: 24px 32px 16px;
 }
 .sx-head-text {
   flex: 1;
   min-width: 0;
 }
 .sx-kicker {
-  font-size: 14px;
+  margin-bottom: 4px;
+  font-size: 13px;
   letter-spacing: 0.06em;
   color: var(--t3);
 }
+/* Two lines before it gives up, as the phone's heading does: episode titles run long. */
 .sx-heading {
-  margin-top: 6px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   font-family: var(--display);
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: -0.01em;
   color: var(--t1);
 }
 .sx-count {
-  margin-top: 6px;
-  font-size: 15px;
+  margin-top: 5px;
+  font-size: 14px;
   color: var(--t3);
 }
 .sx-close {
-  flex: 0 0 30px;
-  width: 30px;
-  height: 30px;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -150,7 +153,7 @@
   background: var(--cth);
 }
 .sx-filter-row {
-  margin-top: 18px;
+  margin-bottom: 14px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -163,13 +166,13 @@
 }
 /** HaloFilterPillStyle: the accent wash marks the choice, grey-on-grey would not. */
 .sx-pill {
-  height: 30px;
-  padding: 0 13px;
+  height: 32px;
+  padding: 0 12px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
   border-radius: 4px;
-  font-size: 15px;
+  font-size: 14px;
   color: var(--t3);
 }
 .sx-pill:hover {
@@ -189,24 +192,22 @@
   background: linear-gradient(var(--at), var(--at)), var(--sb);
 }
 .sx-pill-count {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--t4);
 }
+/* The sort is a glyph that opens the choices; its name is in the tooltip. */
 .sx-sort {
-  height: 30px;
-  padding: 0 12px;
-  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
   border-radius: 4px;
-  background: var(--ct);
-  border: 1px solid var(--cts);
-  font-size: 14px;
-  color: var(--t2);
-  white-space: nowrap;
+  color: var(--t3);
 }
 .sx-sort:hover {
-  background: var(--cth);
+  background: var(--sb);
+  color: var(--t1);
 }
 .sx-sheet .menu-item {
   font-size: 14px;
@@ -214,8 +215,7 @@
 
 /* Banner: one frame, two palettes. */
 .sx-banner {
-  flex: 0 0 auto;
-  margin: 0 32px 16px;
+  margin-bottom: 14px;
   padding: 11px 13px;
   display: grid;
   grid-template-columns: 6px minmax(0, 1fr) auto;
@@ -265,33 +265,57 @@
   background: var(--cth);
 }
 
-/* Body: resolving, empty, or the list. */
-.sx-body {
+/* Body: one scrolling column holding the saved copy, the filters and then
+   resolving, empty, or the list. WinUI's scroll bar floats over the list; a
+   stable gutter taken out of the right padding keeps the column as wide as
+   the native one. */
+.sx-scroller {
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  padding: 2px 24px 0 32px;
+}
+.sx-list {
+  min-height: 100%;
   display: flex;
   flex-direction: column;
+  padding-bottom: 26px;
+}
+/* WinUI's scroll indicator: hidden while idle, a slim thumb with no track or
+   arrows while the pointer is over the list. (Setting scrollbar-width would make Chromium
+   ignore these and draw its classic bar.) */
+.sx-scroller::-webkit-scrollbar {
+  width: 8px;
+}
+.sx-scroller::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 4px;
+  background: transparent padding-box;
+}
+.sx-scroller:hover::-webkit-scrollbar-thumb {
+  background-color: var(--cst);
 }
 .sx-resolving {
-  padding: 0 32px 26px;
-  overflow: hidden;
+  padding-top: 4px;
 }
 .sx-resolving-note {
   font-size: 14px;
   color: var(--t3);
 }
 .sx-skeletons {
-  margin-top: 22px;
+  margin-top: 18px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 .sx-skeleton {
-  height: 86px;
-  padding: 15px 18px;
+  height: 72px;
+  padding: 12px 14px;
   display: grid;
-  grid-template-columns: 78px minmax(0, 1fr);
-  column-gap: 18px;
+  grid-template-columns: 96px minmax(0, 1fr);
+  column-gap: 14px;
   align-items: center;
   border-radius: 10px;
   background: var(--cd);
@@ -318,7 +342,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 32px 40px;
+  padding: 24px 0 40px;
 }
 .sx-empty-inner {
   max-width: 380px;
@@ -354,35 +378,8 @@
   display: flex;
   gap: 8px;
 }
-/* WinUI's scroll bar floats over the list; a stable gutter taken out of the
-   right padding keeps the column exactly as wide as the native one. */
-.sx-scroller {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-gutter: stable;
-  padding: 0 24px 0 32px;
-}
-.sx-list {
-  padding-bottom: 26px;
-}
-/* WinUI's scroll indicator: hidden while idle, a slim thumb with no track or
-   arrows while the pointer is over the list. (Setting scrollbar-width would make Chromium
-   ignore these and draw its classic bar.) */
-.sx-scroller::-webkit-scrollbar {
-  width: 8px;
-}
-.sx-scroller::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 4px;
-  background: transparent padding-box;
-}
-.sx-scroller:hover::-webkit-scrollbar-thumb {
-  background-color: var(--cst);
-}
 
-/* Buttons: WinUI's defaults (14px, 4px corners, a darker bottom edge). */
+/* Buttons: 4px corners like the phone's controls, a darker bottom edge. */
 .sx-btn {
   gap: 8px;
   font-size: 14px;
@@ -390,30 +387,33 @@
 .btn.sx-btn {
   border-bottom-color: var(--ces);
 }
-.sx-h36 {
-  height: 36px;
+.sx-h40 {
+  height: 40px;
 }
 .sx-h34 {
   height: 34px;
 }
 .sx-play {
+  flex: 1;
+  min-width: 0;
   padding: 0 22px;
-}
-.sx-gap-9 {
-  gap: 9px;
 }
 .sx-save,
 .sx-pad-16 {
   padding: 0 16px;
 }
-.sx-details-btn {
-  padding: 0 14px;
+/* Saving and Saved report rather than offer, so they stay readable. */
+.btn.sx-save:disabled {
+  opacity: 1;
+  color: var(--t2);
+}
+.btn.sx-save-done:disabled {
+  color: var(--su);
 }
 .sx-pad-18 {
   padding: 0 18px;
 }
 .sx-copy {
-  align-self: flex-start;
   padding: 0 15px;
 }
 .sx-actions {
@@ -422,7 +422,7 @@
   gap: 8px;
 }
 
-/* Status: instant green, on-disk accent, caching amber, a wait grey. */
+/* Status: instant green, caching amber, a wait grey. */
 .sx-status-dot {
   flex: 0 0 6px;
   width: 6px;
@@ -431,16 +431,11 @@
   background: currentColor;
 }
 .sx-status-label {
+  min-width: 0;
   font-size: 14px;
-}
-.sx-status-label-15 {
-  font-size: 15px;
 }
 .sx-tone-instant {
   color: var(--su);
-}
-.sx-tone-ondisk {
-  color: var(--ac);
 }
 .sx-tone-caching {
   color: var(--ca);
@@ -456,27 +451,11 @@
   flex-wrap: wrap;
   align-items: flex-end;
 }
-.sx-meta {
-  margin-top: 6px;
-  column-gap: 10px;
-  row-gap: 5px;
-  align-items: center;
-}
 .sx-meta-line {
+  min-width: 0;
   font: 400 12px var(--mono);
+  letter-spacing: 0.02em;
   color: var(--t3);
-}
-.sx-subs {
-  padding: 2px 7px;
-  border-radius: 3px;
-  background: var(--ct);
-  border: 1px solid var(--cts);
-  font: 400 12px var(--mono);
-  letter-spacing: 0.05em;
-  color: var(--t2);
-}
-.sx-subs-off {
-  color: var(--t4);
 }
 /* The selected card's accent ring sits over its stroke. */
 .sx-selected {
@@ -484,115 +463,126 @@
   outline-offset: -1px;
 }
 
-/* The pick: an info-stroked card with an accent wash toward its top left. */
-.sx-pick {
-  position: relative;
-  border-radius: 10px;
-  background: var(--cd);
-  box-shadow: inset 0 0 0 1px var(--is);
-  overflow: hidden;
-}
-.sx-pick-wash {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-.sx-pick-wash-from {
-  stop-color: var(--at);
-}
-.sx-pick-wash-to {
-  stop-color: var(--at);
-  stop-opacity: 0;
-}
-.sx-pick-body {
-  position: relative;
-  padding: 20px;
-}
-.sx-pick-status {
+/* The lines the saved copy and the pick share: status, then medal and facts. */
+.sx-card-line {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.sx-pick-sep {
+.sx-sep {
   font-size: 14px;
   color: var(--t4);
 }
-.sx-pick-by {
+.sx-by {
   font-size: 14px;
   color: var(--t3);
+  white-space: nowrap;
 }
-.sx-pick-grid {
-  margin-top: 12px;
-  display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
-  column-gap: 20px;
+.sx-medal-line {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
-.sx-pick-badge {
-  align-self: start;
+.sx-medal-line .medal {
+  flex: 0 0 auto;
 }
-.sx-pick-text {
-  min-width: 0;
+.sx-chevron {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--t3);
 }
-.sx-pick-why {
-  font-size: 16px;
-  font-weight: 600;
+.sx-chevron:hover {
+  background: var(--sb);
   color: var(--t1);
 }
-.sx-pick .sx-meta {
-  margin-top: 7px;
+/* In the pick's status line it must not push the line taller. */
+.sx-card-line .sx-chevron {
+  margin: -9px -8px -9px 0;
 }
-.sx-pick-watch {
-  margin-top: 6px;
-  font-size: 14px;
-  color: var(--ac);
+
+/* The saved copy: plays offline, so its one button is the solid one. */
+.sx-offline {
+  margin-bottom: 14px;
+  padding: 18px;
+  border-radius: 10px;
+  background: var(--cd);
+  box-shadow: inset 0 0 0 1px var(--is);
+}
+.sx-play-offline {
+  width: 100%;
+  margin-top: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--t1);
+  color: var(--m);
+  font-size: 15px;
+  font-weight: 600;
+}
+.sx-play-offline:hover {
+  filter: brightness(0.92);
+}
+
+/* The pick: an info-stroked card with an accent wash toward its top left. */
+.sx-pick {
+  border-radius: 10px;
+  background: linear-gradient(118deg, var(--at), transparent 62%), var(--cd);
+  box-shadow: inset 0 0 0 1px var(--is);
+  overflow: hidden;
+}
+.sx-pick-body {
+  padding: 18px;
 }
 .sx-pick-file {
   margin-top: 10px;
-  font-size: 13px;
+  font: 400 12px var(--mono);
   color: var(--t4);
 }
 .sx-pick-actions {
-  margin-top: 18px;
+  margin-top: 16px;
 }
 .sx-pick-details {
-  margin: 18px -20px -20px;
-  padding: 20px;
-  border-top: 1px solid var(--ac);
-  border-radius: 0 0 9px 9px;
+  margin: 18px -18px -18px;
+  padding: 18px;
+  border-top: 1px solid var(--dv);
   background: var(--sb);
 }
 
-/* Provider groups and their cards. */
+/* Provider groups and their rows. */
 .sx-group {
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  margin: 28px 0 12px;
+  margin: 26px 0 10px;
 }
 .sx-group-name {
+  min-width: 0;
   font-size: 16px;
   font-weight: 600;
   color: var(--t1);
 }
-.sx-group-note {
-  font-size: 14px;
-  color: var(--t3);
-}
 .sx-group-count {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--t4);
 }
 .sx-reveal {
   position: relative;
   width: 100%;
-  height: 38px;
-  margin-bottom: 8px;
+  height: 40px;
+  margin-top: 2px;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 14px;
   color: var(--t3);
 }
@@ -612,67 +602,72 @@
   height: calc(100% - 1px);
   fill: none;
   stroke: var(--cs);
-  stroke-dasharray: 4 3;
+  stroke-dasharray: 6 5;
 }
 .sx-card {
-  position: relative;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   border-radius: 10px;
   background: var(--cd);
   border: 1px solid var(--cs);
   overflow: hidden;
 }
 .sx-card-head {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 104px minmax(0, 1fr) auto;
-  column-gap: 18px;
-  align-items: center;
-  padding: 15px 18px;
-  border-radius: 10px;
-}
-.sx-card-badge {
   display: flex;
+  align-items: center;
+  padding-right: 6px;
+}
+/* The row itself is the play button; the chevron beside it opens the details. */
+.sx-card-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 8px 12px 14px;
+  text-align: left;
+}
+.sx-card-main:hover {
+  background: var(--sbp);
+}
+.sx-card-main .medal {
+  flex: 0 0 auto;
 }
 .sx-card-text {
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 5px;
 }
-.sx-card-status {
+.sx-row-mark {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  color: var(--t3);
+}
+.sx-row-mark-saved {
+  color: var(--su);
+}
+.sx-card-details {
+  padding: 18px;
+  border-top: 1px solid var(--dv);
+  background: var(--sb);
+}
+
+/* Details: the release name and any warning, then tiles, as the native
+   SourceDetailsTemplate lays them out. */
+.sx-details-file {
+  font: 400 12px var(--mono);
+  color: var(--t2);
+  overflow-wrap: anywhere;
 }
 .sx-warning {
-  margin-top: 5px;
   display: flex;
   align-items: flex-start;
   gap: 7px;
   font-size: 14px;
   color: var(--ca);
 }
-.sx-card-file {
-  margin-top: 5px;
-  font-size: 12px;
-  color: var(--t4);
-}
-.sx-card-reason {
-  max-width: 112px;
-  text-align: right;
-  font-size: 14px;
-  color: var(--t4);
-}
-.sx-card-actions {
-  margin: 0 18px 16px;
-}
-.sx-card-details {
-  padding: 20px;
-  border-top: 1px solid var(--dv);
-  background: var(--sb);
-}
-
-/* Details: tiles, as the native SourceDetailsTemplate lays them out. */
 .sx-details {
   display: flex;
   flex-direction: column;
@@ -800,7 +795,7 @@
   background: var(--ac);
 }
 
-/* Footer: the key legend, and the resolve laid bare behind it. */
+/* Footer: "How this list was built", and the resolve laid bare behind it. */
 .sx-foot {
   flex: 0 0 auto;
   background: var(--cd);
@@ -816,32 +811,6 @@
 .sx-foot-toggle:hover {
   background: var(--cth);
 }
-.sx-keys {
-  display: flex;
-  gap: 10px;
-}
-.sx-key {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.sx-keycap {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 3px;
-  background: var(--ct);
-  border: 1px solid var(--cts);
-  font-size: 12px;
-  color: var(--t2);
-}
-.sx-key-label {
-  font-size: 13px;
-  color: var(--t4);
-}
 .sx-foot-link {
   font-size: 14px;
   color: var(--ac);
@@ -850,7 +819,7 @@
   flex: 0 0 14px;
   display: flex;
   justify-content: center;
-  color: var(--t3);
+  color: var(--ac);
 }
 .sx-info {
   display: grid;

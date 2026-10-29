@@ -23,8 +23,10 @@ export type StartSpeed = (typeof SPEED)[keyof typeof SPEED]
 /**
  * `caching` exists natively but no resolver ever assigns it: addons only say
  * cached, not cached, or nothing. It is kept so the palette stays complete.
+ * A file already saved on this device is not a source: the sheet offers it
+ * on a card of its own, outside the list.
  */
-export type SourceStatus = 'instant' | 'ondisk' | 'caching' | 'uncached' | 'unknown'
+export type SourceStatus = 'instant' | 'caching' | 'uncached' | 'unknown'
 
 /** The parser's placeholder for anything it could not identify. */
 export const NOT_PARSED = 'UNKNOWN'
@@ -36,7 +38,7 @@ export interface SourceEntry {
   key: string
   /** Grouping identity; never shown. */
   providerId: string
-  /** Sanitized provider name, or `On this device`. */
+  /** Sanitized provider name. */
   provider: string
   status: SourceStatus
   quality: string
@@ -51,8 +53,6 @@ export interface SourceEntry {
   subtitleLanguages: string[]
   tier: QualityTier
   speed: StartSpeed
-  hdr: boolean
-  surround: boolean
   /** Zero when unknown. */
   sizeBytes: number
   rank: number
@@ -62,25 +62,15 @@ export interface SourceEntry {
 
 /** What the sheet knows about this device that no single source can say. */
 export interface DeviceContext {
-  preferredSubtitleLanguage: string | null
   /** Measured line speed in Mbps; zero means never measured. */
   lineMbps: number
   /** Runtime in seconds; zero means unknown. */
   durationSeconds: number
-  watchedSeconds: number
-  watchedDurationSeconds: number
 }
 
 export interface DetailChip {
   label: string
   muted: boolean
-}
-
-/** The mono strip under a card's headline, and its subtitle plate. */
-export interface MetaLine {
-  line: string
-  subtitles: string
-  hasSubtitles: boolean
 }
 
 export interface SourceDetails {
@@ -103,35 +93,33 @@ export interface SourceDetails {
 interface LanguageTag {
   tag: string
   name: string
-  /** The short form the compact strip uses. */
-  code: string
 }
 
 const LANGUAGE_TAGS: LanguageTag[] = [
-  { tag: 'ENG', name: 'English', code: 'EN' }, { tag: 'JPN', name: 'Japanese', code: 'JA' },
-  { tag: 'GER', name: 'German', code: 'DE' }, { tag: 'FRE', name: 'French', code: 'FR' },
-  { tag: 'SPA', name: 'Spanish', code: 'ES' }, { tag: 'ITA', name: 'Italian', code: 'IT' },
-  { tag: 'KOR', name: 'Korean', code: 'KO' }, { tag: 'CHI', name: 'Chinese', code: 'ZH' },
-  { tag: 'HIN', name: 'Hindi', code: 'HI' }, { tag: 'RUS', name: 'Russian', code: 'RU' },
-  { tag: 'POR', name: 'Portuguese', code: 'PT' }, { tag: 'DUT', name: 'Dutch', code: 'NL' },
-  { tag: 'NOR', name: 'Norwegian', code: 'NO' }, { tag: 'SWE', name: 'Swedish', code: 'SV' },
-  { tag: 'DAN', name: 'Danish', code: 'DA' }, { tag: 'FIN', name: 'Finnish', code: 'FI' },
-  { tag: 'POL', name: 'Polish', code: 'PL' }, { tag: 'TUR', name: 'Turkish', code: 'TR' },
-  { tag: 'ARA', name: 'Arabic', code: 'AR' }, { tag: 'MULTI', name: 'several languages', code: 'MULTI' },
-  { tag: 'DUAL', name: 'two languages', code: 'DUAL' },
+  { tag: 'ENG', name: 'English' }, { tag: 'JPN', name: 'Japanese' },
+  { tag: 'GER', name: 'German' }, { tag: 'FRE', name: 'French' },
+  { tag: 'SPA', name: 'Spanish' }, { tag: 'ITA', name: 'Italian' },
+  { tag: 'KOR', name: 'Korean' }, { tag: 'CHI', name: 'Chinese' },
+  { tag: 'HIN', name: 'Hindi' }, { tag: 'RUS', name: 'Russian' },
+  { tag: 'POR', name: 'Portuguese' }, { tag: 'DUT', name: 'Dutch' },
+  { tag: 'NOR', name: 'Norwegian' }, { tag: 'SWE', name: 'Swedish' },
+  { tag: 'DAN', name: 'Danish' }, { tag: 'FIN', name: 'Finnish' },
+  { tag: 'POL', name: 'Polish' }, { tag: 'TUR', name: 'Turkish' },
+  { tag: 'ARA', name: 'Arabic' }, { tag: 'MULTI', name: 'several languages' },
+  { tag: 'DUAL', name: 'two languages' },
   // Addons are not consistent about which three-letter spelling they send.
-  { tag: 'DEU', name: 'German', code: 'DE' }, { tag: 'FRA', name: 'French', code: 'FR' },
-  { tag: 'ZHO', name: 'Chinese', code: 'ZH' }, { tag: 'NLD', name: 'Dutch', code: 'NL' },
-  { tag: 'CES', name: 'Czech', code: 'CS' }, { tag: 'CZE', name: 'Czech', code: 'CS' },
-  { tag: 'ELL', name: 'Greek', code: 'EL' }, { tag: 'GRE', name: 'Greek', code: 'EL' },
-  { tag: 'RON', name: 'Romanian', code: 'RO' }, { tag: 'RUM', name: 'Romanian', code: 'RO' },
-  { tag: 'SLK', name: 'Slovak', code: 'SK' }, { tag: 'SLO', name: 'Slovak', code: 'SK' },
-  { tag: 'EN', name: 'English', code: 'EN' }, { tag: 'JA', name: 'Japanese', code: 'JA' },
-  { tag: 'DE', name: 'German', code: 'DE' }, { tag: 'FR', name: 'French', code: 'FR' },
-  { tag: 'ES', name: 'Spanish', code: 'ES' }, { tag: 'IT', name: 'Italian', code: 'IT' },
-  { tag: 'KO', name: 'Korean', code: 'KO' }, { tag: 'ZH', name: 'Chinese', code: 'ZH' },
-  { tag: 'HI', name: 'Hindi', code: 'HI' }, { tag: 'RU', name: 'Russian', code: 'RU' },
-  { tag: 'PT', name: 'Portuguese', code: 'PT' }, { tag: 'NL', name: 'Dutch', code: 'NL' },
+  { tag: 'DEU', name: 'German' }, { tag: 'FRA', name: 'French' },
+  { tag: 'ZHO', name: 'Chinese' }, { tag: 'NLD', name: 'Dutch' },
+  { tag: 'CES', name: 'Czech' }, { tag: 'CZE', name: 'Czech' },
+  { tag: 'ELL', name: 'Greek' }, { tag: 'GRE', name: 'Greek' },
+  { tag: 'RON', name: 'Romanian' }, { tag: 'RUM', name: 'Romanian' },
+  { tag: 'SLK', name: 'Slovak' }, { tag: 'SLO', name: 'Slovak' },
+  { tag: 'EN', name: 'English' }, { tag: 'JA', name: 'Japanese' },
+  { tag: 'DE', name: 'German' }, { tag: 'FR', name: 'French' },
+  { tag: 'ES', name: 'Spanish' }, { tag: 'IT', name: 'Italian' },
+  { tag: 'KO', name: 'Korean' }, { tag: 'ZH', name: 'Chinese' },
+  { tag: 'HI', name: 'Hindi' }, { tag: 'RU', name: 'Russian' },
+  { tag: 'PT', name: 'Portuguese' }, { tag: 'NL', name: 'Dutch' },
 ]
 
 function findTag(code: string): LanguageTag | undefined {
@@ -159,15 +147,6 @@ function joinProse(values: string[]): string {
 /** Rounded to the nearest whole number, as native `llround` does for positives. */
 function whole(value: number): string {
   return String(Math.round(value))
-}
-
-/** `27:58`, or `1:04:12` once an hour is on the clock. */
-function clock(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds))
-  const hours = Math.floor(total / 3600)
-  const minutes = String(Math.floor((total % 3600) / 60)).padStart(2, '0')
-  const secs = String(total % 60).padStart(2, '0')
-  return hours > 0 ? `${hours}:${minutes}:${secs}` : `${minutes}:${secs}`
 }
 
 function dimensions(tier: QualityTier, quality: string): string | null {
@@ -199,32 +178,6 @@ function rangeDetail(range: string): string {
   if (range === 'HLG') return 'HLG'
   if (range === 'HDR10') return 'HDR10'
   return 'HDR'
-}
-
-function languageCode(code: string): string {
-  return findTag(code)?.code ?? code.toUpperCase()
-}
-
-/** The channel layout on its own; the codec name where no layout was given. */
-function soundToken(audio: string): string {
-  if (!audio || audio === NOT_PARSED) return 'SOUND NOT LISTED'
-  const text = audio.toUpperCase()
-  const space = text.indexOf(' ')
-  return space === -1 ? text : text.slice(space + 1)
-}
-
-/** Four codes fit beside the plate before the strip wraps; the rest are counted. */
-function languageToken(languages: string): string {
-  const shown = 4
-  const codes: string[] = []
-  for (const token of splitTokens(languages)) {
-    if (token === NOT_PARSED) continue
-    const code = languageCode(token)
-    if (!codes.includes(code)) codes.push(code)
-  }
-  if (codes.length === 0) return 'LANGUAGE NOT LISTED'
-  const listed = codes.slice(0, shown).join('/')
-  return codes.length > shown ? `${listed} +${codes.length - shown}` : listed
 }
 
 function soundDetail(audio: string): string {
@@ -294,7 +247,7 @@ export function medalFor(entry: { quality: string; range: string }): Medal {
 }
 
 export function speedOf(status: SourceStatus): StartSpeed {
-  if (status === 'instant' || status === 'ondisk') return SPEED.immediate
+  if (status === 'instant') return SPEED.immediate
   if (status === 'caching') return SPEED.shortWait
   return SPEED.needsDownload
 }
@@ -303,8 +256,6 @@ export function statusLabel(status: SourceStatus): string {
   switch (status) {
     case 'instant':
       return 'Plays instantly'
-    case 'ondisk':
-      return 'Already on this device'
     case 'caching':
       return 'Ready in about a minute'
     case 'uncached':
@@ -319,20 +270,6 @@ export function isHdr(range: string): boolean {
   return range.length > 0 && range !== 'SDR'
 }
 
-export function isSurround(audio: string): boolean {
-  const text = audio.toUpperCase()
-  if (text === 'ATMOS' || text === 'TRUEHD' || text === 'DTS-HD' || text === 'DTS') return true
-  // Every other layout is written "N.M"; five in front of the point is surround.
-  const point = text.indexOf('.')
-  if (point <= 0) return false
-  const leading = text[point - 1]!
-  return leading >= '5' && leading <= '9'
-}
-
-export function sizeLabel(size: string): string {
-  return !size || size === NOT_PARSED ? 'size not listed' : size
-}
-
 export function languageName(code: string): string {
   return findTag(code)?.name ?? code
 }
@@ -345,106 +282,21 @@ export function formatStreamSize(bytes: number | null): string {
 }
 
 export function bitrateWarning(entry: SourceEntry, lineMbps: number): string {
-  // A file on the disk plays off local storage; the line is not the question.
-  if (entry.status === 'ondisk') return ''
   if (entry.neededMbps <= 0 || lineMbps <= 0) return ''
   if (entry.neededMbps <= lineMbps) return ''
   return `Needs ${whole(entry.neededMbps)} Mbps, more than your line`
 }
 
-export function ordinal(position: number): string {
-  const value = position < 1 ? 1 : position
-  const lastTwo = value % 100
-  if (lastTwo >= 11 && lastTwo <= 13) return `${value}th`
-  switch (value % 10) {
-    case 1:
-      return `${value}st`
-    case 2:
-      return `${value}nd`
-    case 3:
-      return `${value}rd`
-    default:
-      return `${value}th`
-  }
-}
-
-export function reasonFor(entry: SourceEntry, pick: SourceEntry | null, isSmallest: boolean): string {
-  if (entry.status === 'ondisk') return 'On your disk'
-  if (pick && pick.key === entry.key) return 'Halo’s pick'
-  const place = ordinal(entry.rank + 1)
-  if (!pick) return place
-  if (pick.surround && !entry.surround) return `${place} · stereo only`
-  if (pick.hdr && !entry.hdr) return `${place} · no HDR`
-  if (entry.tier > pick.tier) return `${place} · lower picture`
-  if (isSmallest) return `${place} · smallest file`
-  return place
-}
-
-/** The single sentence under the quality plate on the recommended pick. */
-export function pickHeadline(entry: SourceEntry, alone: boolean): string {
-  // Before the alone case: a saved file answered for itself, not a provider.
-  if (entry.status === 'ondisk') return 'Already saved here, so it starts with no connection at all.'
-  if (alone) return 'The only source that answered for this.'
-  if (entry.speed === SPEED.immediate) {
-    return entry.tier === TIER.ultraHd || entry.tier === TIER.fullHd
-      ? 'The best picture here that starts with no waiting.'
-      : 'The one that starts with no waiting.'
-  }
-  if (entry.speed === SPEED.shortWait) return 'The best picture here, once the cache catches up.'
-  return 'The best picture here, but it has to come down first.'
-}
-
 /**
- * The pick names its dynamic range because it is the one card arguing for
- * itself; rows leave that to their plate. The preferred subtitle language
- * decides what the plate can promise.
+ * The one mono line a card prints beside its medal, as the phone does: codec,
+ * sound and size, each left out when the release did not name it. The range
+ * is the medal's to say; languages and subtitles wait in the details.
  */
-export function metaLineFor(
-  entry: SourceEntry,
-  includeRange: boolean,
-  preferredSubtitleLanguage: string | null,
-): MetaLine {
-  const parts = [sizeLabel(entry.size).toUpperCase()]
-  if (includeRange && isHdr(entry.range)) parts.push(rangeDetail(entry.range).toUpperCase())
-  parts.push(soundToken(entry.audio))
-  parts.push(languageToken(entry.languages))
-  const line = parts.join(SEPARATOR)
-
-  const tracks = entry.subtitleLanguages
-  if (tracks.length === 0) return { line, subtitles: 'NO SUBS', hasSubtitles: false }
-  if (preferredSubtitleLanguage) {
-    const wantedName = languageName(preferredSubtitleLanguage)
-    const wantedTag = preferredSubtitleLanguage.toUpperCase()
-    const found = tracks.some(
-      (track) => track.toUpperCase() === wantedTag || languageName(track) === wantedName,
-    )
-    const code = languageCode(preferredSubtitleLanguage)
-    return found
-      ? { line, subtitles: `SUB ${code}`, hasSubtitles: true }
-      : { line, subtitles: `NO ${code} SUBS`, hasSubtitles: false }
-  }
-  return {
-    line,
-    subtitles: tracks.length === 1 ? '1 SUB' : `${tracks.length} SUBS`,
-    hasSubtitles: true,
-  }
-}
-
-export function hasWatchProgress(device: DeviceContext): boolean {
-  if (device.watchedDurationSeconds <= 0 || device.watchedSeconds <= 0) return false
-  const fraction = device.watchedSeconds / device.watchedDurationSeconds
-  return fraction > 0.02 && fraction < 0.98
-}
-
-export function watchNote(device: DeviceContext): string {
-  if (!hasWatchProgress(device)) return ''
-  const fraction = device.watchedSeconds / device.watchedDurationSeconds
-  return `You watched ${whole(fraction * 100)}% of this already`
-}
-
-/** `Watch progress` row text; kept beside the note so the clock format is shared. */
-export function watchProgressLine(device: DeviceContext): string {
-  return `${clock(device.watchedSeconds)} of ${clock(device.watchedDurationSeconds)}`
+export function metaLine(entry: Pick<SourceEntry, 'codec' | 'audio' | 'size'>): string {
+  return [entry.codec, entry.audio, entry.size]
+    .filter((part) => part.length > 0 && part !== NOT_PARSED)
+    .map((part) => part.toUpperCase())
+    .join(SEPARATOR)
 }
 
 export function detailsFor(
@@ -464,7 +316,6 @@ export function detailsFor(
   if (subtitles.length === 0) subtitles.push({ label: 'NONE INCLUDED', muted: true })
 
   const cache: Record<SourceStatus, { label: string; good: boolean }> = {
-    ondisk: { label: 'Saved on this device', good: true },
     instant: { label: 'Already cached for you', good: true },
     caching: { label: 'Caching now', good: false },
     uncached: { label: 'Not cached yet', good: false },

@@ -44,6 +44,7 @@ const GLYPHS = {
   openInNewWindow: '',
   video: '',
   globe: '',
+  sort: '',
 } as const
 
 export type FluentGlyph = keyof typeof GLYPHS

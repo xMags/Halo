@@ -1,5 +1,7 @@
 import { FluentIcon } from '../components/FluentIcon'
 import type { DetailChip, SourceDetails } from './sourcePresentation'
+import type { SaveState } from './sourcesModel'
+import { SaveButton } from './SaveButton'
 
 function Chips({ chips }: { chips: DetailChip[] }) {
   return (
@@ -14,21 +16,37 @@ function Chips({ chips }: { chips: DetailChip[] }) {
 }
 
 /**
- * The expanded read-out under a card: picture, sound, bandwidth, subtitles
- * and provenance as tiles, then the copy button. The native sheet's
- * `SourceDetailsTemplate`, tile for tile.
+ * The expanded read-out under a card: the full release name, then picture,
+ * sound, bandwidth, subtitles and provenance as tiles (the native sheet's
+ * `SourceDetailsTemplate`, tile for tile), then saving and the copy button.
+ * A row keeps its Save here; the pick has its own on the card, so passes none.
  */
 export function SourceDetailsPanel({
   details,
+  file,
+  warning,
+  save,
   copied,
   onCopy,
 }: {
   details: SourceDetails
+  file: string
+  /** `Needs 48 Mbps, more than your line`, or empty. */
+  warning: string
+  save?: { state: SaveState; onSave: () => void }
   copied: boolean
   onCopy: () => void
 }) {
   return (
     <div className="sx-details">
+      <div className="sx-details-file">{file}</div>
+      {warning && (
+        <div className="sx-warning">
+          <FluentIcon glyph="warning" size={13} />
+          <span>{warning}</span>
+        </div>
+      )}
+
       <div className="sx-tile-pair">
         <div className="sx-tile">
           <div className="sx-tile-caption">PICTURE</div>
@@ -80,10 +98,13 @@ export function SourceDetailsPanel({
         </div>
       </div>
 
-      <button type="button" className="btn sx-btn sx-h34 sx-copy" onClick={onCopy}>
-        <FluentIcon glyph="copy" size={12} />
-        <span>{copied ? 'File name copied' : 'Copy file name'}</span>
-      </button>
+      <div className="sx-actions">
+        {save && <SaveButton state={save.state} onSave={save.onSave} />}
+        <button type="button" className="btn sx-btn sx-h40 sx-copy" onClick={onCopy}>
+          <FluentIcon glyph="copy" size={12} />
+          <span>{copied ? 'File name copied' : 'Copy file name'}</span>
+        </button>
+      </div>
     </div>
   )
 }
