@@ -37,7 +37,7 @@ class AccountRepository(
         val account = client ?: return null
         return avatarLock.withLock {
             avatar?.takeIf { it.first == version }?.second
-                ?: account.getAvatar().also { avatar = version to it }
+                ?: account.getAvatar(version).also { avatar = version to it }
         }
     }
 }
