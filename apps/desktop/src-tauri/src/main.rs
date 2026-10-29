@@ -128,24 +128,40 @@ fn set_corner_preference(hwnd: isize, fullscreen: bool) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-fn mpv_cmd(state: tauri::State<PlayerState>, args: Vec<String>) -> Result<(), String> {
-    state.mpv.cmd(&args)
+/// Runs one mpv call on the blocking pool. A plain (non-async) command runs on
+/// the main thread, and some mpv calls block for as long as they take:
+/// `sub-add` with an addon's subtitle URL waits until it is fetched and parsed,
+/// which froze the whole window. The webview sends these one at a time
+/// (`mpv.ts`), so running them off the main thread keeps their order.
+async fn mpv_call<T: Send + 'static>(
+    call: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(call)
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn mpv_set(state: tauri::State<PlayerState>, name: String, value: String) -> Result<(), String> {
-    state.mpv.set_str(&name, &value)
+async fn mpv_cmd(state: tauri::State<'_, PlayerState>, args: Vec<String>) -> Result<(), String> {
+    let mpv = Arc::clone(&state.mpv);
+    mpv_call(move || mpv.cmd(&args)).await
 }
 
 #[tauri::command]
-fn mpv_get(state: tauri::State<PlayerState>, name: String) -> Result<Option<String>, String> {
-    state.mpv.get_str(&name)
+async fn mpv_set(state: tauri::State<'_, PlayerState>, name: String, value: String) -> Result<(), String> {
+    let mpv = Arc::clone(&state.mpv);
+    mpv_call(move || mpv.set_str(&name, &value)).await
 }
 
 #[tauri::command]
-fn mpv_observe(
-    state: tauri::State<PlayerState>,
+async fn mpv_get(state: tauri::State<'_, PlayerState>, name: String) -> Result<Option<String>, String> {
+    let mpv = Arc::clone(&state.mpv);
+    mpv_call(move || mpv.get_str(&name)).await
+}
+
+#[tauri::command]
+async fn mpv_observe(
+    state: tauri::State<'_, PlayerState>,
     name: String,
     format: String,
 ) -> Result<(), String> {
@@ -155,12 +171,18 @@ fn mpv_observe(
         "string" => MPV_FORMAT_STRING,
         other => return Err(format!("unsupported observe format: {other}")),
     };
-    state.mpv.observe(&name, format)
+    let mpv = Arc::clone(&state.mpv);
+    mpv_call(move || mpv.observe(&name, format)).await
 }
 
 #[tauri::command]
-fn mpv_unobserve_all(state: tauri::State<PlayerState>) {
-    state.mpv.unobserve_all()
+async fn mpv_unobserve_all(state: tauri::State<'_, PlayerState>) -> Result<(), String> {
+    let mpv = Arc::clone(&state.mpv);
+    mpv_call(move || {
+        mpv.unobserve_all();
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
