@@ -1,24 +1,22 @@
 import type { AddonError, Stream } from '@halo/core'
+import type { Medal } from '../components/medal'
+import type { DownloadStatus } from '../downloads/downloadsLogic'
 import {
   NOT_PARSED,
   SPEED,
   TIER,
   addonFailureCopy,
+  bitrateWarning,
   countLabel,
   detailsFor,
   formatStreamSize,
-  isHdr,
-  isSurround,
-  metaLineFor,
-  pickHeadline,
-  reasonFor,
-  bitrateWarning,
+  medalFor,
+  metaLine,
   sanitizeAddonName,
   speedOf,
   statusLabel,
   tierOf,
   type DeviceContext,
-  type MetaLine,
   type SourceDetails,
   type SourceEntry,
   type SourceStatus,
@@ -27,16 +25,14 @@ import { compareStreams, hasIdentifyingFilename, parseStreamInfo, type StreamInf
 
 /**
  * The sources sheet's model, ported from the native WinUI Halo Desktop's
- * `SourceService::ApplyResolve` and `SourcesViewModel::Rebuild`: which sources
- * exist, how they rank, how the list groups them, and what the header and
- * footer say about the resolve. Pure: the sheet feeds it the query results and
- * renders what comes back.
+ * `SourceService::ApplyResolve` and `SourcesViewModel::Rebuild` and laid out
+ * as the phone's sources page: which sources exist, how they rank, how the
+ * list groups them, and what the header and footer say about the resolve.
+ * A finished download is not one of them: it gets its own card above the
+ * list. Pure: the sheet feeds it the query results and renders what comes back.
  */
 
-/** Named the same way in the list heading and in the footer's provider column. */
-export const LOCAL_PROVIDER_NAME = 'On this device'
-
-export const FILTERS = ['all', 'playsNow', 'ultraHd', 'fullHd', 'hd'] as const
+export const FILTERS = ['all', 'ultraHd', 'fullHd', 'hd'] as const
 export type SourceFilter = (typeof FILTERS)[number]
 
 export const SORTS = ['Recommended', 'Best picture', 'Smallest file', 'Fastest start'] as const
@@ -48,23 +44,12 @@ export interface AddonStreamGroup {
   streams: Stream[]
 }
 
-/** A completed download of the video the sheet was opened for. */
-export interface LocalFile {
-  jobId: string
-  /** The release file name the download was saved under. */
-  releaseName: string
-  sizeBytes: number
-}
-
 /** What playing or saving a source needs; the display entry carries none of it. */
 export interface SourceRecord {
   key: string
   addonId: string
-  /** The stream to play or save; for a local file, the addon stream it matched, if any. */
-  stream: Stream | null
+  stream: Stream
   info: StreamInfo
-  /** Set for a file already on this device, which plays from disk. */
-  downloadJobId: string | null
 }
 
 export interface ProviderRow {
@@ -74,7 +59,7 @@ export interface ProviderRow {
 }
 
 export interface Resolve {
-  /** Every source, local files first, in rank order. */
+  /** Every source, in rank order. */
   pool: SourceEntry[]
   records: Map<string, SourceRecord>
   providers: ProviderRow[]
@@ -82,33 +67,19 @@ export interface Resolve {
   failedProviders: number
   /** `Torrentio did not answer in time`: the banner title for a single failure. */
   firstFailure: string
-  localCount: number
+  /** `240 sources · 3 addons`, the header's count line. */
   summary: string
-  smallestBytes: number
 }
 
-/**
- * The ratio form ("3 of 4 providers") only appears when somebody failed.
- * Files on the device are counted apart: they are not a provider.
- */
-export function buildResolveSummary(
-  sourceCount: number,
-  answeredProviders: number,
-  failedProviders: number,
-  localCount: number,
-  elapsedSeconds: number,
-): string {
-  const providers = answeredProviders + failedProviders
-  if (providers !== 0) {
-    let summary = `${sourceCount}${sourceCount === 1 ? ' source from ' : ' sources from '}`
-    if (failedProviders !== 0) summary += `${answeredProviders} of `
-    summary += `${providers}${providers === 1 ? ' provider, found in ' : ' providers, found in '}`
-    summary += `${elapsedSeconds.toFixed(1)} seconds`
-    if (localCount !== 0) summary += `, plus ${localCount} saved on this device`
-    return summary
-  }
-  if (localCount === 0) return 'No provider answered'
-  return `${localCount}${localCount === 1 ? ' file saved on this device' : ' files saved on this device'}`
+/** The ratio form ("1 of 2 addons") only appears when somebody failed. */
+export function buildResolveSummary(sourceCount: number, answeredProviders: number, failedProviders: number): string {
+  const addons = answeredProviders + failedProviders
+  if (addons === 0) return 'No addon answered'
+  const asked =
+    failedProviders === 0
+      ? countLabel(addons, 'addon', 'addons')
+      : `${answeredProviders} of ${countLabel(addons, 'addon', 'addons')}`
+  return `${countLabel(sourceCount, 'source', 'sources')} · ${asked}`
 }
 
 /** The file name without any directory, trimmed. */
@@ -125,8 +96,7 @@ export function sameReleaseFile(saved: string, candidate: string): boolean {
   return left.toLowerCase() === right.toLowerCase()
 }
 
-function statusOf(info: StreamInfo, onDisk: boolean): SourceStatus {
-  if (onDisk) return 'ondisk'
+function statusOf(info: StreamInfo): SourceStatus {
   if (info.cached === null) return 'unknown'
   return info.cached ? 'instant' : 'uncached'
 }
@@ -140,9 +110,7 @@ function makeEntry(
 ): SourceEntry {
   const { info } = record
   const quality = info.quality ?? NOT_PARSED
-  const range = info.dynamicRange ?? 'SDR'
-  const audio = info.audio ?? NOT_PARSED
-  const status = statusOf(info, record.downloadJobId !== null)
+  const status = statusOf(info)
   const sizeBytes = info.sizeBytes ?? 0
   return {
     key: record.key,
@@ -150,82 +118,39 @@ function makeEntry(
     provider,
     status,
     quality,
-    range,
+    range: info.dynamicRange ?? 'SDR',
     codec: info.codec ?? NOT_PARSED,
-    audio,
+    audio: info.audio ?? NOT_PARSED,
     languages: info.languages.length > 0 ? info.languages.join(' · ') : NOT_PARSED,
     size: formatStreamSize(info.sizeBytes),
     file: info.filename,
-    subtitleLanguages: (record.stream?.subtitles ?? [])
+    subtitleLanguages: (record.stream.subtitles ?? [])
       .map((subtitle) => subtitle.lang)
       .filter((lang) => lang.length > 0),
     tier: tierOf(quality),
     speed: speedOf(status),
-    hdr: isHdr(range),
-    surround: isSurround(audio),
     sizeBytes,
     rank,
     neededMbps: sizeBytes > 0 && durationSeconds > 0 ? (sizeBytes * 8) / durationSeconds / 1_000_000 : 0,
   }
 }
 
-/**
- * Local files are built first so an addon stream offering the same release is
- * folded into the saved copy instead of listed twice; the first such stream
- * lends the copy its subtitles. Ranking runs across the whole resolve: a file
- * on the device beats anything that must come over the network.
- */
+/** Ranking runs across the whole resolve, not within each addon. */
 export function resolveSources(input: {
   groups: AddonStreamGroup[]
   errors: AddonError[]
-  localFiles: LocalFile[]
   durationSeconds: number
-  elapsedSeconds: number
 }): Resolve {
   const records = new Map<string, SourceRecord>()
-  const locals: SourceRecord[] = input.localFiles.map((file) => {
-    const record: SourceRecord = {
-      key: `local:${file.jobId}`,
-      addonId: '',
-      stream: null,
-      info: parseStreamInfo({
-        behaviorHints: {
-          filename: file.releaseName,
-          ...(file.sizeBytes > 0 ? { videoSize: file.sizeBytes } : {}),
-        },
-      }),
-      downloadJobId: file.jobId,
-    }
-    records.set(record.key, record)
-    return record
-  })
-
   const groupRecords: SourceRecord[][] = input.groups.map((group) => {
     const kept: SourceRecord[] = []
     group.streams.forEach((stream, index) => {
       if (!stream.url) return
-      const info = parseStreamInfo(stream)
-      // A nameless stream parses to the shared placeholder, which identifies
-      // nothing, so it can never be folded into a saved file.
-      const saved = hasIdentifyingFilename(info)
-        ? locals.find(
-            (local) =>
-              hasIdentifyingFilename(local.info) && sameReleaseFile(local.info.filename, info.filename),
-          )
-        : undefined
-      if (saved) {
-        if (!saved.stream) {
-          saved.stream = stream
-          saved.addonId = group.addonId
-        }
-        return
-      }
       const record: SourceRecord = {
         key: `${group.addonId}:${index}`,
         addonId: group.addonId,
         stream,
-        info,
-        downloadJobId: null,
+        info: parseStreamInfo(stream),
       }
       records.set(record.key, record)
       kept.push(record)
@@ -233,21 +158,11 @@ export function resolveSources(input: {
     return kept
   })
 
-  const ranked = [...locals, ...groupRecords.flat()].sort((left, right) => {
-    const leftLocal = left.downloadJobId !== null
-    const rightLocal = right.downloadJobId !== null
-    if (leftLocal !== rightLocal) return leftLocal ? -1 : 1
-    return compareStreams(left.info, right.info)
-  })
+  const ranked = groupRecords.flat().sort((left, right) => compareStreams(left.info, right.info))
   const rankOf = new Map(ranked.map((record, position) => [record.key, position]))
 
-  const pool: SourceEntry[] = locals.map((record) =>
-    makeEntry(record, 'local', LOCAL_PROVIDER_NAME, rankOf.get(record.key)!, input.durationSeconds),
-  )
+  const pool: SourceEntry[] = []
   const providers: ProviderRow[] = []
-  if (locals.length > 0) {
-    providers.push({ name: LOCAL_PROVIDER_NAME, value: countLabel(locals.length, 'file', 'files'), answered: true })
-  }
   input.groups.forEach((group, index) => {
     const name = sanitizeAddonName(group.addonName)
     const kept = groupRecords[index]!
@@ -265,12 +180,6 @@ export function resolveSources(input: {
   }
   pool.sort((left, right) => left.rank - right.rank)
 
-  const smallestBytes = pool.reduce(
-    (smallest, entry) =>
-      entry.sizeBytes !== 0 && (smallest === 0 || entry.sizeBytes < smallest) ? entry.sizeBytes : smallest,
-    0,
-  )
-  const sourceCount = groupRecords.reduce((total, kept) => total + kept.length, 0)
   return {
     pool,
     records,
@@ -278,22 +187,12 @@ export function resolveSources(input: {
     answeredProviders: input.groups.length,
     failedProviders: input.errors.length,
     firstFailure,
-    localCount: locals.length,
-    summary: buildResolveSummary(
-      sourceCount,
-      input.groups.length,
-      input.errors.length,
-      locals.length,
-      input.elapsedSeconds,
-    ),
-    smallestBytes,
+    summary: buildResolveSummary(pool.length, input.groups.length, input.errors.length),
   }
 }
 
 export function matchesFilter(entry: SourceEntry, filter: SourceFilter): boolean {
   switch (filter) {
-    case 'playsNow':
-      return entry.speed === SPEED.immediate
     case 'ultraHd':
       return entry.tier === TIER.ultraHd
     case 'fullHd':
@@ -328,22 +227,22 @@ export interface SourceRow {
   kind: 'row'
   entry: SourceEntry
   status: string
-  meta: MetaLine
+  meta: string
+  /** Said in the details, beside the bandwidth. */
   warning: string
-  reason: string
   details: SourceDetails
 }
 
 export type ListItem =
-  | { kind: 'header'; key: string; name: string; note: string; count: string }
+  | { kind: 'header'; key: string; name: string; count: number }
   | SourceRow
   | { kind: 'more'; key: string; label: string }
 
 export interface Pick {
   entry: SourceEntry
   status: string
-  headline: string
-  meta: MetaLine
+  meta: string
+  warning: string
   details: SourceDetails
 }
 
@@ -385,22 +284,14 @@ export function buildListing(
 
   const items: ListItem[] = []
   for (const bucket of buckets) {
-    items.push({
-      kind: 'header',
-      key: `header:${bucket.id}`,
-      name: bucket.name,
-      note: bucket.name === LOCAL_PROVIDER_NAME ? 'Saved on this device' : '',
-      count: countLabel(bucket.entries.length, 'source', 'sources'),
-    })
+    items.push({ kind: 'header', key: `header:${bucket.id}`, name: bucket.name, count: bucket.entries.length })
     for (const entry of bucket.entries) {
       items.push({
         kind: 'row',
         entry,
         status: statusLabel(entry.status),
-        // Rows leave the range to their quality plate; only the pick spells it out.
-        meta: metaLineFor(entry, false, device.preferredSubtitleLanguage),
+        meta: metaLine(entry),
         warning: bitrateWarning(entry, device.lineMbps),
-        reason: reasonFor(entry, pickEntry, entry.sizeBytes !== 0 && entry.sizeBytes === resolve.smallestBytes),
         details: detailsFor(entry, device, maximumNeededMbps),
       })
     }
@@ -417,8 +308,8 @@ export function buildListing(
     ? {
         entry: pickEntry,
         status: statusLabel(pickEntry.status),
-        headline: pickHeadline(pickEntry, resolve.pool.length === 1),
-        meta: metaLineFor(pickEntry, true, device.preferredSubtitleLanguage),
+        meta: metaLine(pickEntry),
+        warning: bitrateWarning(pickEntry, device.lineMbps),
         details: detailsFor(pickEntry, device, maximumNeededMbps),
       }
     : null
@@ -427,7 +318,7 @@ export function buildListing(
 
 /** How many sources each filter pill would show. */
 export function filterCounts(pool: SourceEntry[]): Record<SourceFilter, number> {
-  const counts = { all: 0, playsNow: 0, ultraHd: 0, fullHd: 0, hd: 0 }
+  const counts = { all: 0, ultraHd: 0, fullHd: 0, hd: 0 }
   for (const entry of pool) {
     for (const filter of FILTERS) {
       if (matchesFilter(entry, filter)) counts[filter] += 1
@@ -450,4 +341,86 @@ export function selectionStops(listing: Listing): string[] {
     ...(listing.pick ? [listing.pick.entry.key] : []),
     ...listing.items.flatMap((item) => (item.kind === 'row' ? [item.entry.key] : [])),
   ]
+}
+
+/** This video's download, whatever its state: the engine keeps one per video. */
+export interface VideoDownload {
+  jobId: string
+  /** The release file name the download was saved under. */
+  releaseName: string
+  /** The stream's own name and title, which can say what the file name does not. */
+  streamName?: string
+  streamTitle?: string
+  status: DownloadStatus
+  sizeBytes: number
+  /** Zero to one, or null while the size is unknown. */
+  fraction: number | null
+  /** The subtitle saved beside it, if any. */
+  subtitleLang: string | null
+}
+
+/** The finished download's card, above the filters and outside the ranking. */
+export interface OfflineCopy {
+  jobId: string
+  /** Null when the release name does not say its resolution. */
+  medal: Medal | null
+  /** `HEVC · 13.0 GB · ENG`: codec, size, and the saved subtitle or `NO SUBS`. */
+  meta: string
+}
+
+export function offlineCopyFor(download: VideoDownload): OfflineCopy {
+  const info = parseStreamInfo({
+    ...(download.streamName ? { name: download.streamName } : {}),
+    ...(download.streamTitle ? { title: download.streamTitle } : {}),
+    behaviorHints: { filename: download.releaseName },
+  })
+  const parts = [
+    info.codec,
+    download.sizeBytes > 0 ? formatStreamSize(download.sizeBytes) : null,
+    download.subtitleLang ? download.subtitleLang.toUpperCase() : 'NO SUBS',
+  ]
+  return {
+    jobId: download.jobId,
+    medal: info.quality ? medalFor({ quality: info.quality, range: info.dynamicRange ?? 'SDR' }) : null,
+    meta: parts.filter((part): part is string => part != null && part.length > 0).join(' · '),
+  }
+}
+
+/** What saving a source means right now; one download per video decides it. */
+export type SaveState =
+  /** Nothing to save from: the source has no address. */
+  | { kind: 'unavailable' }
+  /** `replaces` when the video is already held from another source. */
+  | { kind: 'ready'; replaces: boolean }
+  | { kind: 'saving'; fraction: number | null }
+  | { kind: 'saved' }
+
+/**
+ * Only the source the download came from wears its state, matched by release
+ * name since debrid links change between resolves. Any other source can be
+ * saved instead, which replaces it after asking. A paused or failed transfer
+ * of this same source reads as ready: starting it again leads to Downloads,
+ * where it resumes.
+ */
+export function saveStateFor(
+  record: SourceRecord | undefined,
+  download: VideoDownload | null,
+  starting: boolean,
+): SaveState {
+  if (!record?.stream.url) return { kind: 'unavailable' }
+  if (starting) return { kind: 'saving', fraction: null }
+  if (!download) return { kind: 'ready', replaces: false }
+  const fromHere =
+    hasIdentifyingFilename(record.info) && sameReleaseFile(download.releaseName, record.info.filename)
+  if (!fromHere) return { kind: 'ready', replaces: true }
+  switch (download.status) {
+    case 'done':
+      return { kind: 'saved' }
+    case 'queued':
+    case 'downloading':
+      return { kind: 'saving', fraction: download.fraction }
+    case 'paused':
+    case 'failed':
+      return { kind: 'ready', replaces: false }
+  }
 }

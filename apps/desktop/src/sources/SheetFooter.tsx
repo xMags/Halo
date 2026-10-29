@@ -2,19 +2,12 @@ import { FluentIcon } from '../components/FluentIcon'
 import { tierLabel } from './sourcePresentation'
 import type { ProviderRow } from './sourcesModel'
 
-const KEYS = [
-  { key: '↑↓', label: 'move' },
-  { key: 'Enter', label: 'play' },
-  { key: '→', label: 'details' },
-  { key: 'Esc', label: 'close' },
-] as const
-
 /** The quality-mix bar colour steps down with the tier. */
 const MIX_FILL = ['var(--ac)', 'var(--chd)', 'var(--t4)'] as const
 
 /**
- * The key legend, and behind "How this list was built" the resolve laid
- * bare: who answered, what quality came back, and the rules that chose.
+ * Behind "How this list was built", the resolve laid bare: who answered,
+ * what quality came back, and the rules that chose.
  */
 export function SheetFooter({
   open,
@@ -33,19 +26,11 @@ export function SheetFooter({
 }) {
   return (
     <div className="sx-foot">
-      <button type="button" className="sx-foot-toggle" aria-label="How this list was built" onClick={onToggle}>
-        <span className="sx-keys">
-          {KEYS.map((hint) => (
-            <span key={hint.key} className="sx-key">
-              <span className="sx-keycap">{hint.key}</span>
-              <span className="sx-key-label">{hint.label}</span>
-            </span>
-          ))}
-        </span>
-        <span className="spacer" />
+      <button type="button" className="sx-foot-toggle" aria-expanded={open} onClick={onToggle}>
         <span className="sx-foot-link">How this list was built</span>
+        <span className="spacer" />
         <span className="sx-foot-chevron">
-          <FluentIcon glyph={open ? 'chevronUp' : 'chevronDown'} size={12} />
+          <FluentIcon glyph={open ? 'chevronDown' : 'chevronUp'} size={12} />
         </span>
       </button>
       {open && (

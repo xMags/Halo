@@ -19,37 +19,40 @@ import { useNav, type StreamsParams } from '../nav'
 import { useStreams, useWatchStates } from '../queries'
 import { useSettings } from '../settings/syncedSettings'
 import { revealSettingsSection, type SettingsSection } from '../settings/settingsSection'
-import { languageName, watchNote, type DeviceContext } from './sourcePresentation'
+import { languageName, type DeviceContext } from './sourcePresentation'
 import {
   SORTS,
   buildListing,
   filterCounts,
+  offlineCopyFor,
   qualityMix,
   resolveSources,
+  saveStateFor,
   selectionStops,
-  type LocalFile,
+  type SaveState,
   type SourceFilter,
   type SourceRecord,
   type SourceSort,
+  type VideoDownload,
 } from './sourcesModel'
-import { GroupHeader, PickCard, RevealRow, SourceCard } from './SourceCards'
+import { GroupHeader, OfflineCard, PickCard, RevealRow, SourceCard } from './SourceCards'
 import { SheetFooter } from './SheetFooter'
 import { Banner, EmptyState, Resolving } from './SheetStates'
 
 /**
- * The source picker, reproducing the native WinUI Halo Desktop's sources
- * sheet: the same header, filters, pick, provider-grouped list, states and
- * footer, over whatever screen opened it. What each part says comes from
- * `sourcesModel` and `sourcePresentation`; this component owns the sheet's
- * state, keys and actions.
+ * The source picker, over whatever screen opened it, laid out as the phone's
+ * sources page: a short header, the saved copy on its own card, filters, the
+ * pick, provider-grouped rows, and the footer that says how the list was
+ * built. What each part says comes from `sourcesModel` and
+ * `sourcePresentation`; this component owns the sheet's state, keys and
+ * actions.
  */
 
 const FILTER_PILLS: Array<{ filter: SourceFilter; label: string }> = [
   { filter: 'all', label: 'All' },
-  { filter: 'playsNow', label: 'Plays now' },
   { filter: 'ultraHd', label: '4K' },
-  { filter: 'fullHd', label: 'Full HD' },
-  { filter: 'hd', label: 'HD' },
+  { filter: 'fullHd', label: '1080p' },
+  { filter: 'hd', label: '720p' },
 ]
 
 /** How much of the sheet a selected card may leave before the list follows it, and the lead it keeps. */
@@ -85,50 +88,36 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
   const loading = query.isPending
   const failed = query.isError
 
-  const completed = useMemo(
-    () => downloads.filter((item) => item.status === 'done' && item.media.video_id === params.videoId),
+  // The engine keeps one download per video; a finished one is the saved copy.
+  const ready = useMemo(
+    () => downloads.find((item) => item.status === 'done' && item.media.video_id === params.videoId) ?? null,
     [downloads, params.videoId],
   )
-  const localFiles = useMemo<LocalFile[]>(
-    () =>
-      completed.map((item) => ({
-        jobId: item.job_id,
-        releaseName: item.media.filename || item.file_name,
-        sizeBytes: Math.max(item.total_bytes, item.downloaded_bytes),
-      })),
-    [completed],
-  )
+  const videoDownload = useMemo<VideoDownload | null>(() => {
+    const item = ready ?? downloads.find((candidate) => candidate.media.video_id === params.videoId)
+    return item ? toVideoDownload(item) : null
+  }, [ready, downloads, params.videoId])
+  // Shown whatever the addons answer, loading and failed included.
+  const offline = useMemo(() => (ready ? offlineCopyFor(toVideoDownload(ready)) : null), [ready])
 
   const device = useMemo<DeviceContext>(() => {
     const row = (watchStates ?? []).find((state) => state.videoId === params.videoId)
     const tracked = row && row.durationSec > 0
     return {
-      preferredSubtitleLanguage: settings.preferredSubtitleLang ?? null,
       // Zero until a download has measured the line; the sheet says so outright.
       lineMbps: localPrefs.measuredLineMbps,
       durationSeconds: tracked ? row.durationSec : (params.runtimeMinutes ?? 0) * 60,
-      watchedSeconds: tracked && !row.watched ? row.positionSec : 0,
-      watchedDurationSeconds: tracked ? row.durationSec : 0,
     }
-  }, [
-    watchStates,
-    params.videoId,
-    params.runtimeMinutes,
-    settings.preferredSubtitleLang,
-    localPrefs.measuredLineMbps,
-  ])
+  }, [watchStates, params.videoId, params.runtimeMinutes, localPrefs.measuredLineMbps])
 
-  // A failed resolve still offers what is saved on this device.
   const resolve = useMemo(
     () =>
       resolveSources({
         groups: failed ? [] : (query.data?.groups ?? []),
         errors: failed ? [] : (query.data?.errors ?? []),
-        localFiles,
         durationSeconds: device.durationSeconds,
-        elapsedSeconds: query.data?.elapsedSeconds ?? 0,
       }),
-    [failed, query.data, localFiles, device.durationSeconds],
+    [failed, query.data, device.durationSeconds],
   )
   const listing = useMemo(
     () =>
@@ -203,13 +192,8 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
     (key: string) => {
       const record = resolve.records.get(key)
       if (!record) return
-      if (record.downloadJobId) {
-        const item = completed.find((download) => download.job_id === record.downloadJobId)
-        if (item) playDownload(push, item)
-        return
-      }
       const stream = record.stream
-      if (!stream?.url) return
+      if (!stream.url) return
       push({
         name: 'player',
         url: stream.url,
@@ -227,8 +211,11 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
         ...(stream.behaviorHints?.videoSize ? { videoSize: stream.behaviorHints.videoSize } : {}),
       })
     },
-    [resolve.records, completed, push, params],
+    [resolve.records, push, params],
   )
+
+  const saveStateOf = (key: string): SaveState =>
+    saveStateFor(resolve.records.get(key), videoDownload, busyKey === key)
 
   const downloadMedia = (record: SourceRecord): DownloadMedia => ({
     video_id: params.videoId,
@@ -240,12 +227,12 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
     episode_label: params.episodeLabel,
     poster: params.poster,
     addon_id: record.addonId,
-    binge_group: record.stream?.behaviorHints?.bingeGroup,
+    binge_group: record.stream.behaviorHints?.bingeGroup,
     filename: record.info.filename,
     ...(record.info.sizeBytes != null ? { video_size: record.info.sizeBytes } : {}),
-    video_hash: record.stream?.behaviorHints?.videoHash,
-    stream_name: record.stream?.name,
-    stream_title: record.stream?.title,
+    video_hash: record.stream.behaviorHints?.videoHash,
+    stream_name: record.stream.name,
+    stream_title: record.stream.title,
   })
 
   /**
@@ -258,7 +245,7 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
   ): Promise<DownloadSubtitleRequest | undefined> => {
     const preferred = settings.preferredSubtitleLang
     const stream = record.stream
-    if (!preferred || !stream) return undefined
+    if (!preferred) return undefined
     const bundled = stream.subtitles?.find((subtitle) => languageMatches(subtitle.lang, preferred))
     if (bundled) return { url: bundled.url, lang: bundled.lang, id: bundled.id }
 
@@ -286,7 +273,7 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
 
   const save = async (key: string) => {
     const record = resolve.records.get(key)
-    if (!record?.stream?.url || busyKey) return
+    if (!record?.stream.url || busyKey) return
     setBusyKey(key)
     const request = {
       media: downloadMedia(record),
@@ -415,7 +402,7 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
   }, [revealRequest, selected])
 
   const kicker = kickerFor(params)
-  const countLine = loading ? 'Asking your providers…' : failed ? 'No provider could be reached' : resolve.summary
+  const countLine = loading ? 'Asking your addons…' : failed ? 'No addon could be reached' : resolve.summary
   const rules = [
     { name: 'Prefer sources that play instantly', value: 'On' },
     { name: 'Preferred audio language', value: languageName(settings.preferredAudioLang ?? 'Automatic') },
@@ -438,156 +425,169 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
         <div className="sx-shadow" />
         <div className="sx-sheet" role="dialog" aria-label="Choose a source">
           <div className="sx-head">
-            <div className="sx-head-row">
-              <div className="sx-head-text">
-                {kicker && <div className="sx-kicker ellipsis">{kicker}</div>}
-                <div className="sx-heading ellipsis">
-                  {params.title ? `Where to play ${params.title}` : 'Where to play this'}
-                </div>
-                <div className="sx-count ellipsis">{countLine}</div>
-              </div>
-              <button
-                type="button"
-                className="sx-close"
-                aria-label="Close sources"
-                title="Close"
-                onClick={beginClose}
-              >
-                <FluentIcon glyph="close" size={12} />
-              </button>
+            <div className="sx-head-text">
+              {kicker && <div className="sx-kicker ellipsis">{kicker}</div>}
+              <div className="sx-heading">{params.title || 'Choose a source'}</div>
+              <div className="sx-count ellipsis">{countLine}</div>
             </div>
-
-            {!loading && !poolEmpty && (
-              <div className="sx-filter-row">
-                <div className="sx-pills" role="radiogroup">
-                  {FILTER_PILLS.map((pill) => (
-                    <button
-                      key={pill.filter}
-                      type="button"
-                      role="radio"
-                      aria-checked={filter === pill.filter}
-                      className={`sx-pill ${filter === pill.filter ? 'sx-pill-on' : ''}`}
-                      onClick={() => chooseFilter(pill.filter)}
-                    >
-                      <span>{pill.label}</span>
-                      <span className="sx-pill-count">{counts[pill.filter]}</span>
-                    </button>
-                  ))}
-                </div>
-                <MenuAnchor>
-                  <button
-                    type="button"
-                    className="sx-sort"
-                    aria-label="Change how sources are sorted"
-                    onClick={() => setSortOpen((open) => !open)}
-                  >
-                    <span>{sort}</span>
-                    <FluentIcon glyph="chevronDown" size={12} />
-                  </button>
-                  <Menu open={sortOpen} onClose={() => setSortOpen(false)} minWidth={0}>
-                    {SORTS.map((option) => (
-                      <MenuItem
-                        key={option}
-                        label={option}
-                        radio
-                        checked={sort === option}
-                        onClick={() => chooseSort(option)}
-                      />
-                    ))}
-                  </Menu>
-                </MenuAnchor>
-              </div>
-            )}
+            <button
+              type="button"
+              className="sx-close"
+              aria-label="Close sources"
+              title="Close"
+              onClick={beginClose}
+            >
+              <FluentIcon glyph="close" size={12} />
+            </button>
           </div>
 
-          {showBanner && (
-            <Banner
-              tone={failed ? 'info' : 'caution'}
-              title={
-                failed
-                  ? 'You are offline'
-                  : resolve.failedProviders === 1
-                    ? resolve.firstFailure
-                    : `${resolve.failedProviders} providers did not answer`
-              }
-              body={
-                failed
-                  ? 'Only files already downloaded to this device can play right now.'
-                  : resolve.answeredProviders === 0
-                    ? 'Nothing was returned, so some sources may be missing.'
-                    : `Showing what the other ${resolve.answeredProviders} ${resolve.answeredProviders === 1 ? 'provider' : 'providers'} returned. Some sources may be missing.`
-              }
-              action={failed ? 'Retry connection' : 'Ask them again'}
-              onAction={retry}
-            />
-          )}
+          {/* Everything below the header scrolls as one column, the saved
+              copy and the filters included, as the phone's page does. */}
+          <div ref={scrollerRef} className="sx-scroller">
+            <div className="sx-list">
+              {offline && (
+                <OfflineCard
+                  copy={offline}
+                  onPlay={() => {
+                    if (ready) playDownload(push, ready)
+                  }}
+                />
+              )}
 
-          <div className="sx-body">
-            {loading && <Resolving />}
-            {showEmpty && (
-              <EmptyState
-                title={failed ? 'Nothing could be reached' : poolEmpty ? 'Nothing playable came back' : 'No source matches that filter'}
-                body={
-                  failed
-                    ? 'Halo could not reach any provider, and nothing for this is saved on this device. Anything you download appears here and plays without a connection.'
-                    : poolEmpty
-                      ? 'Every provider answered, and none of them had a file for this. This usually clears up within a day of release.'
-                      : 'Try All, or widen the quality you are willing to accept.'
-                }
-                onRetry={retry}
-                onManageAddons={() => openSettings('addons')}
-              />
-            )}
-            {showList && (
-              <div ref={scrollerRef} className="sx-scroller">
-                <div className="sx-list">
-                  {pick && (
-                    <PickCard
-                      pick={pick}
-                      watchNote={watchNote(device)}
-                      expanded={pickExpanded}
-                      selected={selected === null}
-                      copied={copiedKey === pick.entry.key}
-                      saving={busyKey === pick.entry.key}
-                      onPlay={() => {
-                        setSelected(null)
-                        play(pick.entry.key)
-                      }}
-                      onSave={() => void save(pick.entry.key)}
-                      onToggle={togglePickExpanded}
-                      onCopy={() => void copyName(pick.entry.key, pick.entry.file)}
-                    />
-                  )}
-                  {listing.items.map((item) => {
-                    if (item.kind === 'header') {
-                      return <GroupHeader key={item.key} name={item.name} note={item.note} count={item.count} />
-                    }
-                    if (item.kind === 'more') {
-                      return <RevealRow key={item.key} label={item.label} onReveal={() => setColdRevealed(true)} />
-                    }
-                    const key = item.entry.key
-                    return (
-                      <SourceCard
-                        key={key}
-                        row={item}
-                        expanded={expandedKey === key}
-                        selected={selected === key}
-                        copied={copiedKey === key}
-                        saving={busyKey === key}
-                        cardRef={(element) => {
-                          if (element) cardRefs.current.set(key, element)
-                          else cardRefs.current.delete(key)
-                        }}
-                        onPlay={() => play(key)}
-                        onSave={() => void save(key)}
-                        onToggle={() => toggleExpanded(key)}
-                        onCopy={() => void copyName(key, item.entry.file)}
-                      />
-                    )
-                  })}
+              {showBanner && (
+                <Banner
+                  tone={failed ? 'info' : 'caution'}
+                  title={
+                    failed
+                      ? 'You are offline'
+                      : resolve.failedProviders === 1
+                        ? resolve.firstFailure
+                        : `${resolve.failedProviders} providers did not answer`
+                  }
+                  body={
+                    failed
+                      ? 'Only files already downloaded to this device can play right now.'
+                      : resolve.answeredProviders === 0
+                        ? 'Nothing was returned, so some sources may be missing.'
+                        : `Showing what the other ${resolve.answeredProviders} ${resolve.answeredProviders === 1 ? 'provider' : 'providers'} returned. Some sources may be missing.`
+                  }
+                  action={failed ? 'Retry connection' : 'Ask them again'}
+                  onAction={retry}
+                />
+              )}
+
+              {!loading && !poolEmpty && (
+                <div className="sx-filter-row">
+                  <div className="sx-pills" role="radiogroup" aria-label="Picture quality">
+                    {FILTER_PILLS.map((pill) => (
+                      <button
+                        key={pill.filter}
+                        type="button"
+                        role="radio"
+                        aria-checked={filter === pill.filter}
+                        className={`sx-pill ${filter === pill.filter ? 'sx-pill-on' : ''}`}
+                        onClick={() => chooseFilter(pill.filter)}
+                      >
+                        <span>{pill.label}</span>
+                        <span className="sx-pill-count">{counts[pill.filter]}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <MenuAnchor>
+                    <button
+                      type="button"
+                      className="sx-sort"
+                      aria-label={`Sort: ${sort}`}
+                      aria-haspopup="menu"
+                      title={`Sort: ${sort}`}
+                      onClick={() => setSortOpen((open) => !open)}
+                    >
+                      <FluentIcon glyph="sort" size={16} />
+                    </button>
+                    <Menu open={sortOpen} onClose={() => setSortOpen(false)} minWidth={0}>
+                      {SORTS.map((option) => (
+                        <MenuItem
+                          key={option}
+                          label={option}
+                          radio
+                          checked={sort === option}
+                          onClick={() => chooseSort(option)}
+                        />
+                      ))}
+                    </Menu>
+                  </MenuAnchor>
                 </div>
-              </div>
-            )}
+              )}
+
+              {loading && <Resolving />}
+              {showEmpty && (
+                <EmptyState
+                  title={
+                    failed
+                      ? 'Nothing could be reached'
+                      : poolEmpty
+                        ? 'Nothing playable came back'
+                        : 'No source matches that filter'
+                  }
+                  body={
+                    failed
+                      ? offline
+                        ? 'Halo could not reach any provider. The copy saved on this device still plays without a connection.'
+                        : 'Halo could not reach any provider, and nothing for this is saved on this device. Anything you download appears here and plays without a connection.'
+                      : poolEmpty
+                        ? 'Every provider answered, and none of them had a file for this. This usually clears up within a day of release.'
+                        : 'Try All, or widen the quality you are willing to accept.'
+                  }
+                  onRetry={retry}
+                  onManageAddons={() => openSettings('addons')}
+                />
+              )}
+              {showList && pick && (
+                <PickCard
+                  pick={pick}
+                  save={saveStateOf(pick.entry.key)}
+                  expanded={pickExpanded}
+                  selected={selected === null}
+                  copied={copiedKey === pick.entry.key}
+                  onPlay={() => {
+                    setSelected(null)
+                    play(pick.entry.key)
+                  }}
+                  onSave={() => void save(pick.entry.key)}
+                  onToggle={togglePickExpanded}
+                  onCopy={() => void copyName(pick.entry.key, pick.entry.file)}
+                />
+              )}
+              {showList &&
+                listing.items.map((item) => {
+                  if (item.kind === 'header') {
+                    return <GroupHeader key={item.key} name={item.name} count={item.count} />
+                  }
+                  if (item.kind === 'more') {
+                    return <RevealRow key={item.key} label={item.label} onReveal={() => setColdRevealed(true)} />
+                  }
+                  const key = item.entry.key
+                  return (
+                    <SourceCard
+                      key={key}
+                      row={item}
+                      save={saveStateOf(key)}
+                      expanded={expandedKey === key}
+                      selected={selected === key}
+                      copied={copiedKey === key}
+                      cardRef={(element) => {
+                        if (element) cardRefs.current.set(key, element)
+                        else cardRefs.current.delete(key)
+                      }}
+                      onPlay={() => play(key)}
+                      onSave={() => void save(key)}
+                      onToggle={() => toggleExpanded(key)}
+                      onCopy={() => void copyName(key, item.entry.file)}
+                      onFocus={() => setSelected(key)}
+                    />
+                  )
+                })}
+            </div>
           </div>
 
           <SheetFooter
@@ -602,6 +602,20 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
       </div>
     </div>
   )
+}
+
+/** The download as the model reads it; the release name is what matches it to a source. */
+function toVideoDownload(item: DownloadView): VideoDownload {
+  return {
+    jobId: item.job_id,
+    releaseName: item.media.filename || item.file_name,
+    ...(item.media.stream_name ? { streamName: item.media.stream_name } : {}),
+    ...(item.media.stream_title ? { streamTitle: item.media.stream_title } : {}),
+    status: item.status,
+    sizeBytes: Math.max(item.total_bytes, item.downloaded_bytes),
+    fraction: item.total_bytes > 0 ? Math.min(1, item.downloaded_bytes / item.total_bytes) : null,
+    subtitleLang: item.subtitle_lang ?? null,
+  }
 }
 
 /**
