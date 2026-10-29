@@ -37,6 +37,19 @@ class DeviceDataMoveTest {
     }
 
     @Test
+    fun aRemovalMadeOnThePhoneOutlastsTheAccountsOlderCopy() = realTimeTest {
+        val phone = Fixture().backend
+        val account = Fixture().backend
+        account.putWatchStates(listOf(watch("tt1", 10, 30.0)))
+        phone.putWatchStates(listOf(watch("tt1", 20, 40.0)))
+        phone.putWatchStates(listOf(watch("tt1", 25, 40.0).copy(removedAt = 25)))
+
+        moveRecordsIntoAccount(phone, account)
+
+        assertTrue(account.getWatchStates().isEmpty())
+    }
+
+    @Test
     fun settingsMoveOnlyIntoAnAccountThatHasNone() = realTimeTest {
         val phone = Fixture().backend
         phone.putSettings(UserSettings.Empty.withPreferredSubtitleLang("eng"), 10)

@@ -251,6 +251,14 @@ export class DeviceBackend implements HaloBackend {
     return liveWatchStates(await this.readList<WatchState>('watchStates', 'states'))
   }
 
+  /**
+   * Every stored row, removal tombstones included: what moving into an
+   * account must send, so a removal made here outlasts the account's older copy.
+   */
+  async getStoredWatchStates(): Promise<WatchState[]> {
+    return this.readList<WatchState>('watchStates', 'states')
+  }
+
   async putWatchStates(states: WatchState[]): Promise<WatchState[]> {
     if (!Array.isArray(states)) throw apiError(400, 'expected a list of watch states')
     const problem = states.map(watchStateProblem).find((p) => p !== null)

@@ -6,7 +6,6 @@ import {
   OPENSUBTITLES_URL,
   type AddonEntry,
   type AddonsResponse,
-  type HaloBackend,
   type HaloClient,
   type LibraryItem,
   type Manifest,
@@ -14,7 +13,13 @@ import {
   type UserSettings,
   type WatchState,
 } from '@halo/core'
-import { addonsToMove, chunked, moveRecordsIntoAccount, shouldMoveSettings } from '../src/device/mergeIntoAccount'
+import {
+  addonsToMove,
+  chunked,
+  moveRecordsIntoAccount,
+  shouldMoveSettings,
+  type MovableDevice,
+} from '../src/device/mergeIntoAccount'
 
 function manifest(name: string): Manifest {
   return { id: name, version: '1', name, resources: [], types: [], catalogs: [] }
@@ -57,13 +62,13 @@ interface DeviceData {
   addons: AddonEntry[]
 }
 
-function fakeDevice(data: DeviceData): HaloBackend {
+function fakeDevice(data: DeviceData): MovableDevice {
   return {
     getLibrary: async () => data.library,
-    getWatchStates: async () => data.watchStates,
+    getStoredWatchStates: async () => data.watchStates,
     getSettings: async () => data.settings,
     getAddons: async (): Promise<AddonsResponse> => ({ global: [], user: data.addons }),
-  } as unknown as HaloBackend
+  } as unknown as MovableDevice
 }
 
 class FakeAccount {

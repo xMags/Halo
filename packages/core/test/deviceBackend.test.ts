@@ -332,6 +332,9 @@ test('watch history: a removal is kept but never returned, outlasts stale copies
   rows = await backend.putWatchStates([watch('tt1', 15, { name: 'Stale copy' })])
   assert.deepEqual(rows.map((s) => s.videoId), ['tt2'])
   assert.deepEqual(await backend.getWatchStates(), rows)
+  // Moving into an account reads the stored rows, so the removal goes along.
+  const stored = await backend.getStoredWatchStates()
+  assert.equal(stored.find((s) => s.videoId === 'tt1')?.removedAt, 20)
 
   rows = await backend.putWatchStates([watch('tt1', 30, { positionSec: 12 })])
   assert.equal(rows.find((s) => s.videoId === 'tt1')?.positionSec, 12)

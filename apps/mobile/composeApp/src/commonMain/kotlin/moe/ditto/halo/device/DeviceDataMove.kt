@@ -63,9 +63,10 @@ internal fun shouldMoveSettings(device: SettingsPayload, account: SettingsPayloa
  * addon cannot hold everything else back. Throws when the account cannot be
  * reached or refuses anything else; the caller keeps the phone's data.
  */
-internal suspend fun moveRecordsIntoAccount(device: HaloBackend, account: HaloBackend): List<String> {
+internal suspend fun moveRecordsIntoAccount(device: DeviceBackend, account: HaloBackend): List<String> {
     device.getLibrary().chunked(MoveChunkSize).forEach { account.putLibrary(it) }
-    device.getWatchStates().chunked(MoveChunkSize).forEach { account.putWatchStates(it) }
+    // With its removal tombstones, which getWatchStates leaves out.
+    device.getStoredWatchStates().chunked(MoveChunkSize).forEach { account.putWatchStates(it) }
 
     val deviceSettings = device.getSettings()
     if (shouldMoveSettings(deviceSettings, account.getSettings())) {
