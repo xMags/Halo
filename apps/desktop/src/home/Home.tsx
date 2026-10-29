@@ -164,14 +164,8 @@ export function Home() {
               <button
                 type="button"
                 className="btn-link"
-                aria-label="See all recently watched titles"
-                onClick={() =>
-                  push({
-                    name: 'catalog',
-                    title: 'Recently watched',
-                    items: recentlyWatched.map((meta) => ({ meta })),
-                  })
-                }
+                aria-label="See your whole history"
+                onClick={() => setRoot('history')}
               >
                 See all
               </button>

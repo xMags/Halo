@@ -1,0 +1,58 @@
+/* ── History ──────────────────────────────────────────────────────────────
+   One row per played video under day and month headings, in the content
+   column's gutter, scrolling under the fixed header and filter bar. */
+.history-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 8px var(--gu) 32px;
+}
+.history-group + .history-group {
+  margin-top: 20px;
+}
+.history-label {
+  margin: 8px 0 8px 2px;
+  font: 700 12px/1.2 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t3);
+}
+.history-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.history-row:hover {
+  background-color: var(--cth);
+}
+.history-thumb {
+  width: 44px;
+  height: 66px;
+  border-radius: 4px;
+}
+.history-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.history-title {
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--t1);
+}
+.history-time {
+  font-size: 13px;
+  color: var(--t3);
+  white-space: nowrap;
+}
