@@ -15,7 +15,6 @@ import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { useMemo } from 'react'
 import { getAccountClient, getClient } from './api'
 import { useSession } from './auth/session'
-import { withoutActionEntries } from './browse/actionEntries'
 import { removedRows } from './browse/watchMarks'
 import { chunked } from './device/mergeIntoAccount'
 import { isHomeCatalogType } from './home/homeRows'
@@ -161,10 +160,7 @@ export function catalogQuery(addonId: string, type: string, id: string, extra: R
   const narrowed = Object.keys(extra).length > 0
   return {
     queryKey: narrowed ? (['catalog', addonId, type, id, extra] as const) : (['catalog', addonId, type, id] as const),
-    queryFn: async () => {
-      const metas = (await getClient().getCatalog(addonId, type, id, narrowed ? extra : undefined)).metas
-      return metas && withoutActionEntries(metas)
-    },
+    queryFn: async () => (await getClient().getCatalog(addonId, type, id, narrowed ? extra : undefined)).metas,
     staleTime: 10 * 60_000,
   }
 }
@@ -316,7 +312,7 @@ export function useSearch(term: string): SearchProgress {
       // fate back for seconds while the rest have answered.
       retry: false,
       queryFn: async () =>
-        uniqueMetas(withoutActionEntries((await getClient().getCatalog(t.addonId, t.type, t.id, { search: trimmed })).metas ?? [])),
+        uniqueMetas((await getClient().getCatalog(t.addonId, t.type, t.id, { search: trimmed })).metas ?? []),
     })),
   })
   if (!enabled) return searchProgress([], [])

@@ -1,3 +1,4 @@
+import { withoutActionEntries } from './actionEntries'
 import type { AddonError, NextEpisodeResult, StreamsResult, SubtitlesResult } from '../api/types'
 import { addonSupportsResource, getCatalog, getMeta, getStreams, getSubtitles, transportBase } from './client'
 import { parseManifest } from './manifest'
@@ -71,15 +72,19 @@ export function subtitleQueryProblem(query: SubtitleQuery): string | null {
   return null
 }
 
-/** One catalog from one addon. Throws when the addon fails; the caller decides what that means. */
-export function fetchCatalog(
+/**
+ * One catalog from one addon, without the entries that are actions rather than
+ * titles. Throws when the addon fails; the caller decides what that means.
+ */
+export async function fetchCatalog(
   addon: ResolvableAddon,
   type: string,
   id: string,
   extra: Record<string, string>,
   ctx: ResolveContext,
 ): Promise<CatalogResponse> {
-  return getCatalog(addon.transportUrl, type, id, extra, { fetch: ctx.fetch, signal: requestSignal(ctx) })
+  const response = await getCatalog(addon.transportUrl, type, id, extra, { fetch: ctx.fetch, signal: requestSignal(ctx) })
+  return { ...response, metas: withoutActionEntries(response.metas) }
 }
 
 /** First addon that can describe this type/id wins; null if none can. */

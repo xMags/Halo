@@ -43,9 +43,7 @@ class BrowseRepository(
         extra: Map<String, String> = emptyMap(),
     ): Flow<QueryState<List<MetaPreview>>> {
         val key = HaloKey.Catalog(addonId, type, catalogId, extra)
-        return cache.query(key, key.staleMs, enabled) {
-            client.getCatalog(addonId, type, catalogId, extra).metas.withoutActionEntries()
-        }
+        return cache.query(key, key.staleMs, enabled) { client.getCatalog(addonId, type, catalogId, extra).metas }
     }
 
     /** Full metadata, from the first effective addon that can describe the id. */
@@ -133,7 +131,7 @@ class BrowseRepository(
                                 type = target.type,
                                 id = target.catalogId,
                                 extra = mapOf(ManifestCatalog.SearchExtra to term),
-                            ).metas.withoutActionEntries()
+                            ).metas
                         } catch (cancellation: CancellationException) {
                             throw cancellation
                         } catch (_: Throwable) {

@@ -1,5 +1,6 @@
 package moe.ditto.halo.device
 
+import moe.ditto.halo.api.withoutActions
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
@@ -134,7 +135,8 @@ internal class AddonResolver(
     /** One catalog from one addon. Throws when the addon fails; the caller decides what that means. */
     suspend fun catalog(addon: ResolvableAddon, type: String, id: String, extra: Map<String, String>): CatalogResponse {
         val json = fetch(resourceUrl(addon.transportUrl, "catalog", type, id, extra))
-        return decode(json) { HaloJson.decodeFromJsonElement(CatalogResponse.serializer(), it) }
+        // Entries that are actions (MediaFusion's delete-all) are no titles.
+        return decode(json) { HaloJson.decodeFromJsonElement(CatalogResponse.serializer(), it) }.withoutActions()
     }
 
     /**

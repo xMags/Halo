@@ -1,5 +1,6 @@
 package moe.ditto.halo.device
 
+import moe.ditto.halo.api.withoutActionStreams
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -71,7 +72,8 @@ internal fun addonError(id: String, name: String?, reason: Throwable): AddonErro
 
 internal fun normalizeStreamsResponse(value: JsonElement): List<Stream> {
     val streams = (value as? JsonObject)?.get("streams") as? JsonArray ?: throw InvalidAddonResponseException()
-    return streams.take(MaxResults).mapNotNull(::normalizeStream)
+    // A stream that would act (delete files, clear a watchlist) is no video.
+    return streams.take(MaxResults).mapNotNull(::normalizeStream).withoutActionStreams()
 }
 
 internal fun normalizeSubtitlesResponse(value: JsonElement): List<Subtitle> {
