@@ -240,22 +240,13 @@ data class ResponsiveInfo(
         largePortrait = 440.dp,
     )
 
-    /** Personal shelves on Home: a handful of cards, so they run larger. */
+    /** Every poster row on Home: the personal shelves and the catalog rows alike. */
     val shelfPosterWidth: Dp = byTier(
         phone = 132.dp,
         tabletLandscape = 168.dp,
         tabletPortrait = 156.dp,
         largeLandscape = 178.dp,
         largePortrait = 168.dp,
-    )
-
-    /** Catalog rows: an endless strip, so they run narrower than the shelves. */
-    val catalogRowPosterWidth: Dp = byTier(
-        phone = HaloDimensions.PosterWidth,
-        tabletLandscape = 156.dp,
-        tabletPortrait = 144.dp,
-        largeLandscape = 164.dp,
-        largePortrait = 156.dp,
     )
 
     /** Search results, which carry a label under the art at every size. */
