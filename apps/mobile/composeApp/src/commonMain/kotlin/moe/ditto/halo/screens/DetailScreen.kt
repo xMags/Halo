@@ -616,7 +616,15 @@ private fun LazyListScope.episodeSection(
     }
 }
 
-/** Titles of the same type sharing this one's genre, drawn only once there is something to show. */
+/**
+ * Titles of the same type sharing this one's genre.
+ *
+ * The row holds its place with skeleton posters from the start, as Home's rows
+ * do, so the answer arriving fills it in rather than pushing a new row into
+ * the page. Its first answer is the one it keeps: the catalog revalidating in
+ * the background must not reshuffle posters someone is looking at. It leaves
+ * only when the catalog turns out to have nothing (or fails before answering).
+ */
 @Composable
 private fun SimilarRow(
     graph: SessionGraph,
@@ -630,21 +638,28 @@ private fun SimilarRow(
     val state by remember(graph, source) {
         graph.browse.catalog(source.addonId, meta.type, source.catalogId, extra = mapOf("genre" to source.genre))
     }.collectAsState(QueryState())
-    val titles = remember(state.value, meta.id) {
-        val seen = mutableSetOf("${meta.type}:${meta.id}")
-        // Catalogs can repeat a title; a row must not draw it twice.
-        state.value.orEmpty().filter { seen.add("${it.type}:${it.id}") }.take(SimilarLimit)
+    val answer = remember(state.value, meta.id) {
+        state.value?.let { titles ->
+            val seen = mutableSetOf("${meta.type}:${meta.id}")
+            // Catalogs can repeat a title; a row must not draw it twice.
+            titles.filter { seen.add("${it.type}:${it.id}") }.take(SimilarLimit)
+        }
     }
-    if (titles.isEmpty()) return
+    var shown by remember(source, meta.id) { mutableStateOf<List<MetaPreview>?>(null) }
+    if (shown == null && answer != null) shown = answer
+    val titles = shown
+    if (titles == null && state.error != null) return
+    if (titles != null && titles.isEmpty()) return
     val label = source.genre.uppercase()
     Box(Modifier.padding(top = SectionGap)) {
         CatalogRow(
             title = "More like this",
             source = label,
-            items = remember(titles) { titles.map { it.posterItem() } },
+            items = remember(titles) { titles.orEmpty().map { it.posterItem() } },
+            isLoading = titles == null,
             onItemClick = { onOpenDetail(it.metaRef()) },
-            itemMenu = posterMenu(titles),
-            onSeeAll = { onOpenShelf(ShelfSnapshot("More like this", label, titles)) },
+            itemMenu = titles?.let { posterMenu(it) },
+            onSeeAll = titles?.let { { onOpenShelf(ShelfSnapshot("More like this", label, it)) } },
             posterWidth = responsive.shelfPosterWidth,
             gutter = gutter,
             gap = responsive.catalogRowGap,
