@@ -67,11 +67,15 @@ import moe.ditto.halo.ui.rememberResponsive
  */
 internal class SourcesRequest(
     val type: String,
+    /** The title the video belongs to, for its runtime. */
+    val metaId: String,
     val videoId: String,
     /** One line naming the video: "Show · S01E02". */
     val title: String,
     val onPlay: (AddonSource, Stream) -> Unit,
     val downloadMedia: (AddonSource, Stream, String) -> DownloadMedia,
+    /** "Change these in Playback", from the list's footer. */
+    val onOpenPlayback: () -> Unit,
 )
 
 /**
@@ -167,9 +171,11 @@ internal fun SourcesRail(
                     SourcesPicker(
                         graph = graph,
                         type = current.type,
+                        metaId = current.metaId,
                         videoId = current.videoId,
                         onPlay = current.onPlay,
                         downloadMedia = current.downloadMedia,
+                        onOpenPlayback = current.onOpenPlayback,
                         contentPadding = PaddingValues(
                             start = RailBodyPadding,
                             end = RailBodyPadding,

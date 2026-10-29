@@ -93,6 +93,24 @@ data class StreamsRoute(
     /** One line naming the video, for a header that has room for only one. */
     val displayTitle: String
         get() = if (episodeTag == null) showTitle else "$showTitle · $episodeTag"
+
+    /**
+     * The sources page names the episode in its heading and the show above it
+     * (`COUNTERPART · S01E03`); a film is its own heading with nothing above.
+     */
+    val sourcesKicker: String?
+        get() = when {
+            episodeTag == null -> null
+            episodeName.isNullOrBlank() -> showTitle.uppercase()
+            else -> "$showTitle · $episodeTag".uppercase()
+        }
+
+    val sourcesTitle: String
+        get() = when {
+            episodeTag == null -> showTitle
+            episodeName.isNullOrBlank() -> episodeTag
+            else -> episodeName
+        }
 }
 
 /**

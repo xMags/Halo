@@ -1,20 +1,16 @@
 package moe.ditto.halo.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,10 +18,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,14 +30,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
 import moe.ditto.halo.SessionGraph
@@ -53,15 +45,28 @@ import moe.ditto.halo.api.MalformedResponseException
 import moe.ditto.halo.api.SessionRejectedException
 import moe.ditto.halo.api.Stream
 import moe.ditto.halo.api.StreamsResult
+import moe.ditto.halo.api.UserSettings
+import moe.ditto.halo.browse.SourceDetails
+import moe.ditto.halo.browse.SourceEntry
+import moe.ditto.halo.browse.SourceFilter
+import moe.ditto.halo.browse.SourceSort
+import moe.ditto.halo.browse.SourcesResolve
+import moe.ditto.halo.browse.buildListing
+import moe.ditto.halo.browse.detailsFor
+import moe.ditto.halo.browse.filterCounts
+import moe.ditto.halo.browse.matchesFilter
+import moe.ditto.halo.browse.qualityMix
+import moe.ditto.halo.browse.resolveSources
+import moe.ditto.halo.browse.sanitizeAddonName
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.downloads.DownloadEntry
 import moe.ditto.halo.downloads.DownloadMedia
 import moe.ditto.halo.downloads.DownloadStartResult
 import moe.ditto.halo.downloads.DownloadStatus
 import moe.ditto.halo.downloads.sourceFingerprint
+import moe.ditto.halo.sync.runtimeMinutes
 import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloColors
-import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.HaloType
@@ -70,24 +75,28 @@ import moe.ditto.halo.ui.SelectOption
 import moe.ditto.halo.ui.SelectSheet
 import moe.ditto.halo.ui.formatBytes
 import moe.ditto.halo.ui.glassSource
+import moe.ditto.halo.ui.languageLabel
 import moe.ditto.halo.ui.rememberResponsive
 
 /**
- * Where a title's playable sources are chosen, grouped by the addon that
- * offered them.
+ * Where a title's playable sources are chosen: the best one on its own card,
+ * the rest ranked and grouped by the addon that offered them.
  *
- * Nothing here filters: the server has already dropped torrents and
- * external-link results and omitted addons left with none, so an empty list
- * means nothing installed can play this, not that something was hidden. The
- * groups stay separate for the same reason search results do; which addon
- * vouched for a source is half of what makes it choosable.
+ * Nothing here drops a source: the server has already removed torrents and
+ * external-link results and omitted addons left with none, so an empty answer
+ * means nothing installed can play this. The groups stay separate for the same
+ * reason search results do; which addon vouched for a source is half of what
+ * makes it choosable.
  */
 @Composable
 internal fun StreamsScreen(
     graph: SessionGraph,
     type: String,
+    /** The title the video belongs to, for its runtime. */
+    metaId: String,
     videoId: String,
-    /** What is being played, for the header. An episode reads "Show · S01E02". */
+    /** `SHOW · S01E02` above the heading; null for a film. */
+    kicker: String?,
     title: String,
     onBack: () -> Unit,
     /**
@@ -102,13 +111,22 @@ internal fun StreamsScreen(
      * sources.
      */
     downloadMedia: (AddonSource, Stream, String) -> DownloadMedia,
+    onOpenPlayback: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val responsive = rememberResponsive()
 
     Box(modifier.fillMaxSize().background(HaloColors.Background)) {
-        Column(
-            Modifier
+        SourcesPicker(
+            graph = graph,
+            type = type,
+            metaId = metaId,
+            videoId = videoId,
+            onPlay = onPlay,
+            downloadMedia = downloadMedia,
+            onOpenPlayback = onOpenPlayback,
+            heading = SourcesHeading(kicker = kicker, title = title, onBack = onBack),
+            modifier = Modifier
                 .fillMaxHeight()
                 // A source list stretched across a tablet puts the size of a
                 // stream a foot away from its name. Centred in the content area
@@ -120,30 +138,61 @@ internal fun StreamsScreen(
                         ?: Modifier.fillMaxWidth(),
                 )
                 .align(Alignment.TopCenter),
-        ) {
-            // The header outlives every state below it: a screen that swaps itself
-            // for a spinner takes its own way back with it.
-            ScreenHeader(
-                title = "Sources",
-                subtitle = title,
-                onBack = onBack,
-                modifier = Modifier.padding(horizontal = HaloSpacing.Md),
-            )
-            SourcesPicker(
-                graph = graph,
-                type = type,
-                videoId = videoId,
-                onPlay = onPlay,
-                downloadMedia = downloadMedia,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
+        )
     }
 }
 
 /**
+ * What saving one source means right now. There is at most one download per
+ * video, so this is decided against that one download, never per row alone.
+ */
+internal sealed interface SaveState {
+    /** The device has nowhere to keep downloads, so nothing is offered. */
+    data object Unavailable : SaveState
+
+    /** [replaces] when the video is already held from another source. */
+    data class Ready(val replaces: Boolean) : SaveState
+
+    data class Saving(val fraction: Float?) : SaveState
+
+    data object Paused : SaveState
+
+    data object Saved : SaveState
+
+    data object Failed : SaveState
+}
+
+/**
+ * Only the source the download actually came from wears its state; any other
+ * source can be saved instead, which replaces it after asking.
+ */
+internal fun saveStateOf(stream: Stream, download: DownloadEntry?, available: Boolean): SaveState {
+    if (!available) return SaveState.Unavailable
+    if (download == null) return SaveState.Ready(replaces = false)
+    if (stream.url?.let(::sourceFingerprint) != download.media.sourceFingerprint) return SaveState.Ready(replaces = true)
+    return when (download.status) {
+        DownloadStatus.Done -> SaveState.Saved
+        DownloadStatus.Downloading, DownloadStatus.Queued -> SaveState.Saving(download.fraction)
+        // Paused belongs to the Downloads tab, which is where it can be resumed.
+        DownloadStatus.Paused -> SaveState.Paused
+        DownloadStatus.Failed -> SaveState.Failed
+    }
+}
+
+/** The page's own choices, held above the list so the sheets beside it can change them. */
+@Stable
+internal class SourcesView {
+    var filter by mutableStateOf(SourceFilter.All)
+    var sort by mutableStateOf(SourceSort.Recommended)
+
+    /** Shows the sources that must download first, which Recommended keeps behind one row. */
+    var revealAll by mutableStateOf(false)
+    var footerOpen by mutableStateOf(false)
+}
+
+/**
  * One video's sources, with the download state that belongs to the video rather
- * than to any one row.
+ * than to any one row, and the sheets that open over the list.
  *
  * Shared by the pushed picker and by the rail the tablet layout opens over a
  * title, so the two cannot drift apart in what a source does when it is tapped,
@@ -153,10 +202,14 @@ internal fun StreamsScreen(
 internal fun SourcesPicker(
     graph: SessionGraph,
     type: String,
+    metaId: String,
     videoId: String,
     onPlay: (AddonSource, Stream) -> Unit,
     downloadMedia: (AddonSource, Stream, String) -> DownloadMedia,
+    onOpenPlayback: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The pushed screen's heading; the rail draws its own. */
+    heading: SourcesHeading? = null,
     contentPadding: PaddingValues = PaddingValues(
         start = HaloSpacing.Md,
         end = HaloSpacing.Md,
@@ -166,20 +219,42 @@ internal fun SourcesPicker(
     val streams by remember(graph, type, videoId) {
         graph.browse.streams(type, videoId)
     }.collectAsState(QueryState())
+    // Usually already cached by the title page; only the runtime is read, for
+    // what each file asks of the line.
+    val meta by remember(graph, type, metaId) { graph.browse.meta(type, metaId) }.collectAsState(QueryState())
+    val settings by remember(graph) { graph.settings.observe() }.collectAsState(QueryState())
     val scope = rememberCoroutineScope()
 
     // One download per video, so this is the state of the whole picker's
     // subject rather than of any one row.
     val downloads by graph.downloads.entries.collectAsState()
     val download = remember(downloads, videoId) { downloads.firstOrNull { it.videoId == videoId } }
+    val downloadsAvailable = graph.downloads.isAvailable
     var refusal by remember { mutableStateOf<String?>(null) }
     // A second source for a video already held is a replacement, and a
     // replacement throws away bytes someone waited for. Asked, never assumed.
     var pendingReplacement by remember { mutableStateOf<DownloadMedia?>(null) }
 
-    // The replacement sheet frosts the source list, so the list is this
-    // screen's own blur source; a sheet inside a source it samples comes out
-    // clear. See `LocalHazeState`.
+    val view = remember(videoId) { SourcesView() }
+    var sortOpen by remember { mutableStateOf(false) }
+    var details by remember { mutableStateOf<SourceDetailsRequest?>(null) }
+
+    val saveState = { entry: SourceEntry -> saveStateOf(entry.stream, download, downloadsAvailable) }
+    val save = { entry: SourceEntry ->
+        val url = entry.stream.url
+        if (url != null) {
+            val media = downloadMedia(entry.addon, entry.stream, url)
+            if (download != null && download.media.sourceFingerprint != sourceFingerprint(url)) {
+                pendingReplacement = media
+            } else {
+                scope.launch { refusal = beginDownload(graph, media) }
+            }
+        }
+    }
+
+    // The sheets frost the source list, so the list is this picker's own blur
+    // source; a sheet inside a source it samples comes out clear. See
+    // `LocalHazeState`.
     val bodyHaze = rememberHazeState()
 
     CompositionLocalProvider(LocalHazeState provides bodyHaze) {
@@ -188,24 +263,39 @@ internal fun SourcesPicker(
                 query = streams,
                 onRetry = { scope.launch { graph.browse.retryStreams(type, videoId) } },
                 onPlay = onPlay,
-                download = download,
-                // No column at all where the device has nowhere to keep downloads,
-                // rather than a glyph that cannot do anything.
-                downloadsAvailable = graph.downloads.isAvailable,
-                onDownload = { addon, stream ->
-                    val url = stream.url
-                    if (url != null) {
-                        val media = downloadMedia(addon, stream, url)
-                        if (download != null && download.media.sourceFingerprint != sourceFingerprint(url)) {
-                            pendingReplacement = media
-                        } else {
-                            scope.launch { refusal = beginDownload(graph, media) }
-                        }
-                    }
-                },
+                heading = heading,
+                saveStateOf = saveState,
+                onSave = save,
                 refusal = refusal,
+                runtimeSeconds = (runtimeMinutes(meta.value?.runtime) ?: 0) * 60.0,
+                rules = choiceRules(settings.value),
+                onOpenPlayback = onOpenPlayback,
+                view = view,
+                onOpenSort = { sortOpen = true },
+                onOpenDetails = { entry, read -> details = SourceDetailsRequest(entry, read) },
                 contentPadding = contentPadding,
                 modifier = Modifier.fillMaxSize().glassSource(bodyHaze),
+            )
+
+            SelectSheet(
+                visible = sortOpen,
+                title = "Sort sources",
+                options = SourceSort.entries.map {
+                    SelectOption(key = it.name, label = it.label, selected = it == view.sort)
+                },
+                onSelect = { key ->
+                    sortOpen = false
+                    SourceSort.entries.firstOrNull { it.name == key }?.let { view.sort = it }
+                },
+                onClose = { sortOpen = false },
+            )
+
+            SourceDetailsSheet(
+                request = details,
+                saveStateOf = saveState,
+                onPlay = { entry -> onPlay(entry.addon, entry.stream) },
+                onSave = save,
+                onDismiss = { details = null },
             )
 
             val replacement = pendingReplacement
@@ -235,6 +325,14 @@ internal fun SourcesPicker(
         }
     }
 }
+
+/** The footer's "How Halo chose": the settings that decide what plays, as they stand. */
+private fun choiceRules(settings: UserSettings?): List<ChoiceRule> = listOf(
+    ChoiceRule("Prefer sources that play instantly", "On"),
+    ChoiceRule("Preferred audio language", settings?.preferredAudioLang?.let(::languageLabel) ?: "Automatic"),
+    ChoiceRule("Preferred subtitles", settings?.preferredSubtitleLang?.let(::languageLabel) ?: "Off"),
+    ChoiceRule("Autoplay next episode", if (settings?.autoplayNextEpisode == false) "Off" else "On"),
+)
 
 private const val ReplaceKey = "replace"
 
@@ -323,12 +421,18 @@ internal fun StreamsContent(
     onRetry: () -> Unit,
     onPlay: (AddonSource, Stream) -> Unit,
     modifier: Modifier = Modifier,
-    /** This video's download, if it has one. There is at most one per video. */
-    download: DownloadEntry? = null,
-    downloadsAvailable: Boolean = false,
-    onDownload: (AddonSource, Stream) -> Unit = { _, _ -> },
+    heading: SourcesHeading? = null,
+    saveStateOf: (SourceEntry) -> SaveState = { SaveState.Unavailable },
+    onSave: (SourceEntry) -> Unit = {},
     /** Why the last download was not accepted; shown above the sources. */
     refusal: String? = null,
+    /** The video's length, for what each file asks of the line; zero when unknown. */
+    runtimeSeconds: Double = 0.0,
+    rules: List<ChoiceRule> = emptyList(),
+    onOpenPlayback: (() -> Unit)? = null,
+    view: SourcesView = remember { SourcesView() },
+    onOpenSort: () -> Unit = {},
+    onOpenDetails: (SourceEntry, SourceDetails) -> Unit = { _, _ -> },
     /**
      * The list's own insets. The rail sets its own, being a narrower surface
      * with its header outside the scroll; the pushed screen takes the default.
@@ -339,69 +443,174 @@ internal fun StreamsContent(
         bottom = HaloSpacing.Xl,
     ),
 ) {
-    when (val state = streamsContentState(query)) {
-        is StreamsContentState.Loading -> Box(modifier, contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(color = HaloColors.Accent)
-                Text(
-                    text = "Asking your addons for sources…",
-                    style = HaloType.Caption,
-                    modifier = Modifier.padding(top = HaloSpacing.Md),
+    val state = streamsContentState(query)
+    val answer = state as? StreamsContentState.Sources
+    val resolve = remember(answer?.groups, answer?.failures, runtimeSeconds) {
+        answer?.let { resolveSources(it.groups, it.failures, runtimeSeconds) }
+    }
+
+    // The heading outlives every state below it: a screen that swaps itself
+    // for a spinner takes its own way back with it.
+    Column(modifier) {
+        heading?.let {
+            SourcesHeader(
+                heading = it,
+                countLine = when (state) {
+                    is StreamsContentState.Loading -> "Asking your addons…"
+                    is StreamsContentState.Sources -> resolve?.summary
+                    else -> null
+                },
+            )
+        }
+        val body = Modifier.fillMaxWidth().weight(1f)
+        when (state) {
+            is StreamsContentState.Loading -> Box(body, contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = HaloColors.AccentLight)
+            }
+            is StreamsContentState.RequestFailure -> FailurePanel(
+                title = state.message,
+                failures = emptyList(),
+                busy = state.isFetching,
+                onRetry = onRetry,
+                modifier = body,
+            )
+            is StreamsContentState.AllAddonsFailed -> FailurePanel(
+                title = "No addons could load sources.",
+                failures = state.failures,
+                busy = state.isFetching,
+                onRetry = onRetry,
+                modifier = body,
+            )
+            is StreamsContentState.NoSources -> CenterMessage(NoSourcesMessage, body)
+            is StreamsContentState.Sources ->
+                if (resolve == null || resolve.pool.isEmpty()) {
+                    CenterMessage(NoSourcesMessage, body)
+                } else {
+                    SourcesList(
+                        state = state,
+                        resolve = resolve,
+                        view = view,
+                        refusal = refusal,
+                        onRetry = onRetry,
+                        onPlay = { entry -> onPlay(entry.addon, entry.stream) },
+                        saveStateOf = saveStateOf,
+                        onSave = onSave,
+                        rules = rules,
+                        onOpenPlayback = onOpenPlayback,
+                        onOpenSort = onOpenSort,
+                        onOpenDetails = onOpenDetails,
+                        contentPadding = contentPadding,
+                        insetNavigationBar = heading != null,
+                        modifier = body,
+                    )
+                }
+        }
+    }
+}
+
+private const val NoSourcesMessage =
+    "No playable sources. Install a stream addon (e.g. a debrid-backed one) in Settings."
+
+@Composable
+private fun ColumnScope.SourcesList(
+    state: StreamsContentState.Sources,
+    resolve: SourcesResolve,
+    view: SourcesView,
+    refusal: String?,
+    onRetry: () -> Unit,
+    onPlay: (SourceEntry) -> Unit,
+    saveStateOf: (SourceEntry) -> SaveState,
+    onSave: (SourceEntry) -> Unit,
+    rules: List<ChoiceRule>,
+    onOpenPlayback: (() -> Unit)?,
+    onOpenSort: () -> Unit,
+    onOpenDetails: (SourceEntry, SourceDetails) -> Unit,
+    contentPadding: PaddingValues,
+    insetNavigationBar: Boolean,
+    modifier: Modifier,
+) {
+    val listing = remember(resolve, view.filter, view.sort, view.revealAll) {
+        buildListing(resolve, view.filter, view.sort, view.revealAll)
+    }
+    val counts = remember(resolve) { filterCounts(resolve.pool) }
+    // The meter compares a file with the heaviest one the viewer could pick
+    // under this filter, hidden ones included.
+    val heaviest = remember(resolve, view.filter) {
+        resolve.pool.filter { matchesFilter(it, view.filter) }.maxOfOrNull { it.neededMbps } ?: 0.0
+    }
+    val openDetails = { entry: SourceEntry -> onOpenDetails(entry, detailsFor(entry, heaviest)) }
+    val failureText = state.refreshFailure ?: when (state.failures.size) {
+        0 -> null
+        1 -> safeAddonFailure(state.failures.single())
+        else -> "${state.failures.size} addons could not load sources."
+    }
+
+    // No tab-bar allowance in the default padding: this screen covers the
+    // bar, and the rail it is shown in on a tablet has none to cover.
+    LazyColumn(modifier = modifier, contentPadding = contentPadding) {
+        if (refusal != null) {
+            item(key = "download-refusal") { RefusalNotice(refusal) }
+        }
+        if (failureText != null) {
+            item(key = "source-failures") {
+                FailureBanner(text = failureText, busy = state.isFetching, onRetry = onRetry)
+            }
+        }
+        item(key = "filters") {
+            FilterRow(
+                filter = view.filter,
+                counts = counts,
+                onFilter = { view.filter = it },
+                sortLabel = view.sort.label,
+                onOpenSort = onOpenSort,
+            )
+        }
+        if (listing.empty) {
+            item(key = "empty-filter") {
+                EmptyFilter(filter = view.filter, onShowAll = { view.filter = SourceFilter.All })
+            }
+        }
+        listing.pick?.let { pick ->
+            item(key = "pick") {
+                PickCard(
+                    entry = pick,
+                    save = saveStateOf(pick),
+                    onPlay = { onPlay(pick) },
+                    onSave = { onSave(pick) },
+                    onDetails = { openDetails(pick) },
                 )
             }
         }
-        is StreamsContentState.RequestFailure -> FailurePanel(
-            title = state.message,
-            failures = emptyList(),
-            busy = state.isFetching,
-            onRetry = onRetry,
-            modifier = modifier,
-        )
-        is StreamsContentState.AllAddonsFailed -> FailurePanel(
-            title = "No addons could load sources.",
-            failures = state.failures,
-            busy = state.isFetching,
-            onRetry = onRetry,
-            modifier = modifier,
-        )
-        is StreamsContentState.NoSources -> CenterMessage(
-            "No playable sources. Install a stream addon (e.g. a debrid-backed one) in Settings.",
-            modifier,
-        )
-        // No tab-bar allowance in the default padding: this screen covers the
-        // bar, and the rail it is shown in on a tablet has none to cover.
-        is StreamsContentState.Sources -> LazyColumn(
-            modifier = modifier,
-            contentPadding = contentPadding,
-        ) {
-            if (refusal != null) {
-                item(key = "download-refusal") {
-                    Notice(text = refusal)
-                }
+        // Keyed by addon and source, so a slow addon arriving late does not
+        // renumber the groups already on screen.
+        listing.groups.forEach { group ->
+            item(key = "group:${group.addon.id}") {
+                GroupHeading(name = group.name, count = group.entries.size)
             }
-            if (state.failures.isNotEmpty() || state.refreshFailure != null) {
-                item(key = "source-failures") {
-                    FailureNotice(
-                        failures = state.failures,
-                        refreshFailure = state.refreshFailure,
-                        busy = state.isFetching,
-                        onRetry = onRetry,
-                    )
-                }
-            }
-            // Keyed by addon, so a slow one arriving late does not renumber
-            // the groups already on screen.
-            items(items = state.groups, key = { it.addon.id }) { group ->
-                AddonGroup(
-                    group = group,
-                    onPlay = onPlay,
-                    download = download,
-                    downloadsAvailable = downloadsAvailable,
-                    onDownload = onDownload,
+            items(items = group.entries, key = { it.key }) { entry ->
+                SourceRow(
+                    entry = entry,
+                    save = saveStateOf(entry),
+                    onPlay = { onPlay(entry) },
+                    onDetails = { openDetails(entry) },
                 )
+            }
+        }
+        if (listing.hiddenCount > 0) {
+            item(key = "more") {
+                MoreButton(count = listing.hiddenCount, onClick = { view.revealAll = true })
             }
         }
     }
+    HowBuiltBar(
+        open = view.footerOpen,
+        onToggle = { view.footerOpen = !view.footerOpen },
+        providers = resolve.providers,
+        mix = qualityMix(resolve.pool),
+        rules = rules,
+        onOpenPlayback = onOpenPlayback,
+        insetNavigationBar = insetNavigationBar,
+    )
 }
 
 @Composable
@@ -423,35 +632,6 @@ private fun FailurePanel(
             }
             RetryButton(busy = busy, onClick = onRetry)
         }
-    }
-}
-
-@Composable
-private fun FailureNotice(
-    failures: List<AddonError>,
-    refreshFailure: String?,
-    busy: Boolean,
-    onRetry: () -> Unit,
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(bottom = HaloSpacing.Md)
-            .clip(RoundedCornerShape(HaloRadius.Md))
-            .background(HaloColors.SurfaceHigh)
-            .border(1.dp, HaloColors.Border, RoundedCornerShape(HaloRadius.Md))
-            .padding(HaloSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(HaloSpacing.Xs),
-    ) {
-        Text(
-            text = refreshFailure ?: "Some addons could not load sources.",
-            style = HaloType.Callout,
-            color = HaloColors.Text,
-        )
-        failures.forEach { failure ->
-            Text(text = safeAddonFailure(failure), style = HaloType.Caption)
-        }
-        RetryButton(busy = busy, onClick = onRetry)
     }
 }
 
@@ -485,16 +665,7 @@ private fun RetryButton(busy: Boolean, onClick: () -> Unit) {
 
 /** Uses only safe compatibility fields. Opaque ids and legacy messages never reach the screen. */
 internal fun safeAddonFailure(error: AddonError): String {
-    val candidate = error.name
-        ?.filter { it.code >= 32 && it.code != 127 }
-        ?.trim()
-        ?.take(80)
-        ?.takeIf { it.isNotEmpty() }
-    val name = candidate
-        ?.takeUnless {
-            "://" in it || '/' in it || '\\' in it || CredentialLikeNameSegment.containsMatchIn(it)
-        }
-        ?: "An addon"
+    val name = sanitizeAddonName(error.name)
     return when (error.code) {
         "timeout" -> "$name timed out."
         "upstream_http" -> error.status
@@ -504,207 +675,5 @@ internal fun safeAddonFailure(error: AddonError): String {
         "blocked_target" -> "$name was blocked for safety."
         "invalid_response" -> "$name returned invalid data."
         else -> "$name is unavailable."
-    }
-}
-
-private val CredentialLikeNameSegment = Regex("[A-Za-z0-9_-]{32,}")
-
-@Composable
-private fun AddonGroup(
-    group: AddonStreams,
-    onPlay: (AddonSource, Stream) -> Unit,
-    download: DownloadEntry?,
-    downloadsAvailable: Boolean,
-    onDownload: (AddonSource, Stream) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier.padding(bottom = HaloSpacing.Md)) {
-        Text(
-            text = group.addon.name.uppercase(),
-            style = HaloType.Overline.copy(color = HaloColors.Accent),
-            modifier = Modifier.padding(start = HaloSpacing.Xs, bottom = HaloSpacing.Sm),
-        )
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(HaloRadius.Lg))
-                .background(HaloColors.Glass)
-                .border(1.dp, HaloColors.GlassBorder, RoundedCornerShape(HaloRadius.Lg)),
-        ) {
-            group.streams.forEachIndexed { index, stream ->
-                if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(HaloColors.Hairline))
-                StreamRow(
-                    stream = stream,
-                    fallbackName = group.addon.name,
-                    onClick = { onPlay(group.addon, stream) },
-                    // Only the row the download actually came from wears its
-                    // state. Marking every row "downloaded" claims something
-                    // about sources nobody fetched.
-                    download = download?.takeIf {
-                        stream.url?.let(::sourceFingerprint) == it.media.sourceFingerprint
-                    },
-                    heldElsewhere = download != null &&
-                        stream.url?.let(::sourceFingerprint) != download.media.sourceFingerprint,
-                    downloadsAvailable = downloadsAvailable,
-                    onDownload = { onDownload(group.addon, stream) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun StreamRow(
-    stream: Stream,
-    fallbackName: String,
-    onClick: () -> Unit,
-    download: DownloadEntry?,
-    heldElsewhere: Boolean,
-    downloadsAvailable: Boolean,
-    onDownload: () -> Unit,
-) {
-    val size = stream.behaviorHints?.videoSize?.let(::formatBytes).orEmpty()
-    val detail = stream.title ?: stream.description
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(start = HaloSpacing.Md, top = HaloSpacing.Sm + 2.dp, bottom = HaloSpacing.Sm + 2.dp),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
-    ) {
-        Column(Modifier.weight(1f)) {
-            // Real results put quality, codec and cache state on separate lines
-            // of one string. Clamping to a single line throws away the half a
-            // source is picked on.
-            Text(
-                text = stream.name ?: fallbackName,
-                color = HaloColors.Text,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (detail != null) {
-                Text(
-                    text = detail,
-                    style = HaloType.Caption.copy(fontSize = 12.sp),
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-            stream.behaviorHints?.filename?.let { filename ->
-                Text(
-                    text = filename,
-                    style = HaloType.Caption.copy(fontSize = 10.5.sp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 3.dp),
-                )
-            }
-        }
-        if (size.isNotEmpty()) {
-            Text(
-                text = size,
-                style = HaloType.Caption.copy(fontWeight = FontWeight.SemiBold),
-                maxLines = 1,
-            )
-        }
-        if (downloadsAvailable) {
-            DownloadAction(download = download, heldElsewhere = heldElsewhere, onDownload = onDownload)
-        } else {
-            Box(Modifier.width(HaloSpacing.Md))
-        }
-    }
-}
-
-/**
- * The keep-it column at the end of a source row.
- *
- * [download] is this row's own download, so only the source that was actually
- * fetched wears a state; [heldElsewhere] says the video is held from a
- * different source, which dims this row's glyph without disabling it. Tapping
- * it then offers to replace what is on the device, because one download per
- * video is a rule about storage rather than a reason to refuse a better source.
- */
-@Composable
-private fun DownloadAction(download: DownloadEntry?, heldElsewhere: Boolean, onDownload: () -> Unit) {
-    val column = Modifier.width(DownloadColumnWidth)
-    val status = download?.status
-    Box(column, contentAlignment = Alignment.Center) {
-        when (status) {
-            null, DownloadStatus.Failed -> Icon(
-                imageVector = HaloIcons.Download,
-                contentDescription = when {
-                    status != null -> "Retry this download"
-                    heldElsewhere -> "Download this source instead"
-                    else -> "Download this source"
-                },
-                tint = when {
-                    status != null -> HaloColors.Danger
-                    heldElsewhere -> HaloColors.TextDim
-                    else -> HaloColors.Accent
-                },
-                modifier = Modifier
-                    .clickable(role = Role.Button, onClick = onDownload)
-                    .padding(HaloSpacing.Xs)
-                    .size(DownloadGlyphSize),
-            )
-
-            DownloadStatus.Done -> Icon(
-                imageVector = HaloIcons.Check,
-                contentDescription = "Downloaded",
-                tint = HaloColors.Success,
-                modifier = Modifier.padding(HaloSpacing.Xs).size(DownloadGlyphSize),
-            )
-
-            DownloadStatus.Downloading, DownloadStatus.Queued -> {
-                val fraction = download.fraction
-                if (fraction == null) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(DownloadGlyphSize),
-                        color = HaloColors.Accent,
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    CircularProgressIndicator(
-                        progress = { fraction },
-                        modifier = Modifier.size(DownloadGlyphSize),
-                        color = HaloColors.Accent,
-                        strokeWidth = 2.dp,
-                    )
-                }
-            }
-
-            // Paused belongs to the Downloads tab, which is where it can be
-            // resumed; here it only reports that the video is part-way there.
-            DownloadStatus.Paused -> Icon(
-                imageVector = HaloIcons.Download,
-                contentDescription = "Download paused",
-                tint = HaloColors.TextDim,
-                modifier = Modifier.padding(HaloSpacing.Xs).size(DownloadGlyphSize),
-            )
-        }
-    }
-}
-
-/** Wide enough for the glyph plus the row's trailing padding. */
-private val DownloadColumnWidth = 50.dp
-private val DownloadGlyphSize = 22.dp
-
-/** A line above the sources explaining something the screen just refused to do. */
-@Composable
-private fun Notice(text: String) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(bottom = HaloSpacing.Md)
-            .clip(RoundedCornerShape(HaloRadius.Md))
-            .background(HaloColors.SurfaceHigh)
-            .border(1.dp, HaloColors.Border, RoundedCornerShape(HaloRadius.Md))
-            .padding(HaloSpacing.Md),
-    ) {
-        Text(text = text, style = HaloType.Callout, color = HaloColors.Text)
     }
 }
