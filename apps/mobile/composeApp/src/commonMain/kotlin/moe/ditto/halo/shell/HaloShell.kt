@@ -182,6 +182,7 @@ internal fun HaloShell(
                         graph = graph,
                         onOpenSearch = { navController.navigate(SearchRoute) },
                         onOpenDetail = { navController.openDetail(it) },
+                        onOpenSources = { navController.navigate(it) },
                     )
                 }
                 composable<DetailRoute> { entry ->
