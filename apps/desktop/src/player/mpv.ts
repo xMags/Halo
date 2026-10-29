@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { createCallQueue } from './callQueue'
+import { createCallQueue } from '../callQueue'
 
 /**
  * The generic mpv message channel (the Stremio-settled contract): raw mpv
