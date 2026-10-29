@@ -321,9 +321,16 @@ async fn open_first(
                 }
             }
         }
-        if start.is_some() && status == 206 && opened.crossed_origin {
-            // A ranged answer from another origin may describe a different
-            // object. Take the whole file from the original URL instead.
+        // Resolver links (Torrentio, MediaFusion and the like) redirect to the
+        // debrid host's own origin, so a resume of them always crosses one.
+        // The If-Range guard went along with the range: a 206 that names the
+        // validator this download was saved under, at the size it was saved
+        // at (checked above), is the same object, wherever it came from.
+        let confirmed = job.validator.is_some() && response_validator.as_deref() == job.validator;
+        if start.is_some() && status == 206 && opened.crossed_origin && !confirmed {
+            // A ranged answer from another origin that does not name the same
+            // validator may describe a different object. Take the whole file
+            // from the original URL instead.
             opened = unless_cancelled(
                 cancel,
                 FIRST_RESPONSE_TIMEOUT,
@@ -1806,6 +1813,52 @@ mod tests {
             .await
             .unwrap();
         assert!(fixture.part_matches(&body));
+        let log = server.log.lock().unwrap();
+        assert_eq!(log[0].range, Some(300_000));
+        assert_eq!(log.len(), 1);
+    }
+
+    /// A link that only redirects, as a resolver addon's does, to the file
+    /// server on another origin.
+    fn redirector(target: String) -> String {
+        use std::io::{Read, Write};
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/resolve", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for mut stream in listener.incoming().flatten() {
+                let mut head = Vec::new();
+                let mut byte = [0u8; 1];
+                while !head.ends_with(b"\r\n\r\n") {
+                    match stream.read(&mut byte) {
+                        Ok(1) => head.push(byte[0]),
+                        _ => break,
+                    }
+                }
+                let answer = format!(
+                    "HTTP/1.1 302 Found\r\nLocation: {target}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                let _ = stream.write_all(answer.as_bytes());
+            }
+        });
+        url
+    }
+
+    #[tokio::test]
+    async fn a_resume_through_a_redirect_to_another_origin_continues() {
+        let body = content(1024 * 1024);
+        let (server, file_url) =
+            Server::start(body.clone(), Mode::Ranges, Some(ETAG_VALUE), Duration::ZERO);
+        let fixture = Fixture::new("cross-origin", redirector(file_url));
+        fs::write(&fixture.part, &body[..300_000]).unwrap();
+        let cancel = AtomicBool::new(false);
+        let job = fixture.job(body.len() as u64, Some(ETAG_VALUE));
+        let mut tuning = quick();
+        tuning.max_connections = 1;
+        download_with(&job, &cancel, &FakeHost::default(), tuning)
+            .await
+            .unwrap();
+        assert!(fixture.part_matches(&body));
+        // One ranged request, confirmed by the validator: no second, whole-file one.
         let log = server.log.lock().unwrap();
         assert_eq!(log[0].range, Some(300_000));
         assert_eq!(log.len(), 1);
