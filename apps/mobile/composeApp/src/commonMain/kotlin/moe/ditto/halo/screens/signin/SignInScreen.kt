@@ -354,10 +354,11 @@ private fun Title() {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Intro() {
+    // In the mono face of the app's shelf captions, short enough for two lines.
     Text(
-        "Stream from your addons, download for the trip, and pick up where you left off.",
+        "Stream your addons, download for later, pick up on any device.",
         modifier = Modifier.padding(top = 10.dp),
-        style = TextStyle(color = Ink2, fontSize = 15.sp, lineHeight = 21.75.sp),
+        style = monoStyle(13.sp, FontWeight.Normal, color = Ink2).copy(lineHeight = 21.sp),
     )
     FlowRow(
         modifier = Modifier.padding(top = 14.dp),
