@@ -199,6 +199,7 @@ internal fun HaloShell(
                             libraryView = LibraryView.History
                             navController.switchTab(LibraryRoute)
                         },
+                        onOpenSettings = { navController.switchTab(SettingsRoute) },
                         onOpenLibrary = {
                             libraryView = LibraryView.Saved
                             navController.switchTab(LibraryRoute)

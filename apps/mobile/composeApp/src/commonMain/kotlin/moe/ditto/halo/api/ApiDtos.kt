@@ -77,6 +77,12 @@ data class Me(
      */
     val isAdmin: Boolean,
     val createdAt: Long,
+    /**
+     * Fingerprint of the account's profile picture, served by `/auth/avatar`;
+     * null when there is none or the server keeps no pictures. It changes
+     * exactly when the picture does, so the picture is cached by it.
+     */
+    val avatarVersion: String? = null,
 )
 
 @Serializable

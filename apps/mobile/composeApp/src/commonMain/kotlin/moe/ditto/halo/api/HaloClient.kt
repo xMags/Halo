@@ -7,6 +7,7 @@ import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.readRawBytes
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -292,12 +293,7 @@ class HaloClient(
         body: String? = null,
         query: Map<String, String> = emptyMap(),
     ): String {
-        var response = execute(method, path, body, query, tokens.accessToken())
-        if (response.status == HttpStatusCode.Unauthorized) {
-            response.bodyAsText()
-            val refreshed = tokens.refreshAccessToken() ?: rejectSession()
-            response = execute(method, path, body, query, refreshed)
-        }
+        val response = send(method, path, body, query)
         val text = response.bodyAsText()
         if (!response.status.isSuccess()) {
             throw HaloApiException(
@@ -306,6 +302,41 @@ class HaloClient(
             )
         }
         return text
+    }
+
+    /** One request under the 401 policy above, with the final response unread. */
+    private suspend fun send(
+        method: HttpMethod,
+        path: String,
+        body: String? = null,
+        query: Map<String, String> = emptyMap(),
+    ): HttpResponse {
+        var response = execute(method, path, body, query, tokens.accessToken())
+        if (response.status == HttpStatusCode.Unauthorized) {
+            response.bodyAsText()
+            val refreshed = tokens.refreshAccessToken() ?: rejectSession()
+            response = execute(method, path, body, query, refreshed)
+        }
+        return response
+    }
+
+    /**
+     * The account's profile picture as image bytes, or null when it has none
+     * (or the server keeps no pictures). Ask only when [Me.avatarVersion]
+     * names one. Bounded, because the bytes are decoded on the device.
+     */
+    suspend fun getAvatar(): ByteArray? {
+        val response = send(HttpMethod.Get, "/auth/avatar")
+        if (response.status == HttpStatusCode.NotFound) return null
+        if (!response.status.isSuccess()) {
+            throw HaloApiException(
+                response.status.value,
+                errorMessage(response.bodyAsText()) ?: "HTTP ${response.status.value} from /auth/avatar",
+            )
+        }
+        val bytes = response.readRawBytes()
+        if (bytes.isEmpty() || bytes.size > MaxAvatarBytes) throw MalformedResponseException()
+        return bytes
     }
 
     /** Exactly one callback for this request, and only when the refresh itself was rejected. */
@@ -351,6 +382,9 @@ class HaloClient(
     }
 
 }
+
+/** The server caps a stored picture at ~512 KB; anything far beyond that is not one. */
+private const val MaxAvatarBytes = 1024 * 1024
 
 private const val HexDigits = "0123456789ABCDEF"
 

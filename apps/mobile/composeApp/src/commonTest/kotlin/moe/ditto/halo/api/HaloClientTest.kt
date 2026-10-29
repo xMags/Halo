@@ -75,6 +75,31 @@ class HaloClientTest {
     }
 
     @Test
+    fun theAvatarFingerprintDecodesAndThePictureComesFromAuthAvatar() = runTest {
+        val client = client { request ->
+            when (request.url.encodedPath) {
+                "/auth/me" -> jsonResponse("""{"id":"u1","username":"kenneth","isAdmin":false,"createdAt":17,"avatarVersion":"0123456789abcdef"}""")
+                // ASCII stands in for image bytes: each character is one byte.
+                else -> Triple("PNG!", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/png"))
+            }
+        }
+
+        assertEquals("0123456789abcdef", client.getMe().avatarVersion)
+        val bytes = client.getAvatar()
+
+        assertEquals(4, bytes?.size)
+        assertEquals("$BaseUrl/auth/avatar", recorded.last().url.toString())
+        assertEquals("Bearer access-1", recorded.last().headers[HttpHeaders.Authorization])
+    }
+
+    @Test
+    fun anAccountWithoutAPictureGetsNull() = runTest {
+        val client = client { jsonResponse("""{"error":"not_found"}""", HttpStatusCode.NotFound) }
+
+        assertNull(client.getAvatar())
+    }
+
+    @Test
     fun externalSubtitleUsesTheAuthenticatedAddonProxy() = runTest {
         val client = client { Triple("caption", HttpStatusCode.OK, io.ktor.http.Headers.Empty) }
 
