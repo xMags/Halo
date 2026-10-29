@@ -4,17 +4,26 @@ import type { DownloadView } from '../src/downloads/downloadsStore.ts'
 import {
   addedFact,
   addedLabel,
+  bytesOfTotal,
+  CHART_FLOOR,
   chartBars,
+  connectionsLabel,
   filterCounts,
   freeLine,
   matchesFilter,
   peakText,
   queueLine,
+  rateFigure,
+  rateNote,
   rateText,
   rateTone,
+  readyHeadline,
   resolveSelection,
   rowOf,
+  splitBytes,
   storageFigures,
+  summaryLine,
+  totalConnections,
 } from '../src/downloads/downloadsPresentation.ts'
 
 function view(patch: Partial<DownloadView> & { media?: Partial<DownloadView['media']> } = {}): DownloadView {
@@ -39,6 +48,7 @@ function view(patch: Partial<DownloadView> & { media?: Partial<DownloadView['med
     total_bytes: 4 * 1024 ** 3,
     downloaded_bytes: 1024 ** 3,
     bytes_per_second: 12 * 1024 ** 2,
+    active_connections: 0,
     source_fingerprint: 'f',
     explicit_pause: false,
     created_at: new Date(2026, 8, 5, 12).getTime(),
@@ -59,7 +69,8 @@ test('a downloading episode row reads like the native row', () => {
   assert.deepEqual(row.medal, { plate: '4K', tag: 'HDR', finish: 'gold' })
   assert.equal(row.subsChip, 'NO SUBS')
   assert.equal(row.subsMuted, true)
-  assert.equal(row.subs, 'No subtitle sidecar')
+  assert.equal(row.subs, 'None')
+  assert.deepEqual(row.transferMeta, ['1.0 of 4.0 GB', '25%', '5m left'])
   assert.equal(row.addedLabel, 'ADDED 05 SEP')
   assert.equal(addedFact(row.addedLabel), '05 SEP')
   assert.equal(row.canPause, true)
@@ -76,6 +87,43 @@ test('a movie row tags its type and drops a sub-line that repeats the name', () 
   assert.equal(row.tag, 'MOVIE')
   assert.equal(row.name, 'Heat')
   assert.equal(row.sub, '')
+  assert.equal(row.episodeLabel, undefined)
+  assert.equal(row.cardTitle, 'Heat')
+  assert.equal(row.paneMeta, 'MOVIE')
+})
+
+test('a ready episode card names the show and episode, and its quality, size and subtitle', () => {
+  const row = rowOf(view({ status: 'done', downloaded_bytes: 4 * 1024 ** 3, subtitle_lang: 'eng' }))
+  assert.equal(row.cardTitle, 'Breaking Bad · Cat’s in the Bag')
+  assert.equal(row.episodeLabel, 'S01E02')
+  assert.equal(row.paneMeta, 'S01E02 · Cat’s in the Bag')
+  assert.equal(row.cardMeta, '2160p · HEVC · 4.0 GB · ENG')
+  assert.deepEqual(row.qualityBadge, { label: '4K HDR', gold: true })
+  assert.equal(row.subs, 'English')
+})
+
+test('a card leaves out what the release name did not state', () => {
+  const row = rowOf(
+    view({
+      status: 'done',
+      file_name: 'video.mkv',
+      media: { stream_name: 'Addon', stream_title: 'Some upload' },
+    }),
+  )
+  assert.equal(row.qualityBadge, null)
+  assert.equal(row.cardMeta, '4.0 GB · NO SUBS')
+})
+
+test('the queue line says why a transfer is not moving', () => {
+  assert.deepEqual(rowOf(view({ status: 'paused' })).transferMeta, ['1.0 of 4.0 GB', '25%', 'Paused by you'])
+  assert.deepEqual(rowOf(view({ bytes_per_second: 0 })).transferMeta, ['1.0 of 4.0 GB', '25%', 'Waiting for the source'])
+  assert.deepEqual(rowOf(view({ status: 'failed', failure: 'network' })).transferMeta, [
+    'The download could not continue after repeated network failures.',
+  ])
+  assert.deepEqual(rowOf(view({ total_bytes: 0, media: { video_size: undefined } })).transferMeta, [
+    '1.0 GB so far',
+  ])
+  assert.equal(bytesOfTotal(512 * 1024 ** 2, 4 * 1024 ** 3), '512.0 MB of 4.0 GB')
 })
 
 test('states choose the lead line and its tone', () => {
@@ -108,7 +156,7 @@ test('a finished download shows one size, full progress and its subtitle', () =>
   assert.equal(row.downloadedLine, '4.0 GB')
   assert.equal(row.progress, 1)
   assert.equal(row.subsChip, 'SUB EN')
-  assert.equal(row.subs, 'Subtitle: en')
+  assert.equal(row.subs, 'en')
 })
 
 test('an unknown size says so, with what has arrived so far', () => {
@@ -148,6 +196,8 @@ test('selection keeps a visible pick, else prefers the first ready download', ()
 test('the rate reads paused, idle or moving', () => {
   assert.equal(rateText(12.345, false), '12.3 MB/s')
   assert.equal(rateText(12.345, true), 'PAUSED')
+  assert.deepEqual(rateFigure(0, false), { value: '0.0', unit: 'MB/s' })
+  assert.deepEqual(rateFigure(3, true), { value: 'PAUSED', unit: '' })
   assert.equal(rateTone(0, false), 'idle')
   assert.equal(rateTone(1, false), 'normal')
   assert.equal(rateTone(1, true), 'paused')
@@ -156,16 +206,53 @@ test('the rate reads paused, idle or moving', () => {
   assert.equal(queueLine(3), '3 active transfers')
 })
 
-test('the chart pads empty history and marks the newest six samples', () => {
+test('the chart is 28 slots against the window peak, floored, with the newest four lit', () => {
   const bars = chartBars([1, 2, 4])
-  assert.equal(bars.length, 30)
-  assert.deepEqual(bars.slice(0, 27).map((bar) => bar.height), new Array(27).fill(2))
-  assert.equal(bars[29]!.height, 38)
-  assert.equal(bars[28]!.height, 19)
-  assert.equal(bars.filter((bar) => bar.recent).length, 3)
-  assert.equal(chartBars(new Array(40).fill(0)).filter((bar) => bar.recent).length, 6)
+  assert.equal(bars.length, 28)
+  assert.deepEqual(bars.slice(0, 25).map((bar) => bar.fraction), new Array(25).fill(CHART_FLOOR))
+  assert.equal(bars[27]!.fraction, 1)
+  assert.equal(bars[26]!.fraction, 0.5)
+  assert.equal(bars[25]!.fraction, 0.25)
+  assert.deepEqual(bars.slice(24).map((bar) => bar.opacity), [1, 1, 1, 1])
+  assert.equal(bars[0]!.opacity, 0.35)
+  assert.ok(Math.abs(bars[23]!.opacity - (0.35 + (23 / 28) * 0.45)) < 1e-9)
+  // An idle minute rests every bar on the floor; a longer history keeps the newest slots.
+  assert.ok(chartBars([]).every((bar) => bar.fraction === CHART_FLOOR))
+  const long = chartBars([...new Array(30).fill(0), 8, ...new Array(27).fill(2)])
+  assert.equal(long[0]!.fraction, 1)
+  assert.equal(long[27]!.fraction, 0.25)
   assert.equal(peakText([0.4, 3.25, 1]), 'PEAK 3.3 MB/S')
   assert.equal(peakText([]), 'PEAK 0.0 MB/S')
+})
+
+test('the summary counts every state it has, and is empty with nothing', () => {
+  const rows = [
+    rowOf(view({ job_id: 'a' })),
+    rowOf(view({ job_id: 'b', status: 'queued' })),
+    rowOf(view({ job_id: 'c', status: 'done' })),
+    rowOf(view({ job_id: 'd', status: 'done' })),
+    rowOf(view({ job_id: 'e', status: 'done' })),
+  ]
+  assert.equal(summaryLine(rows), '1 downloading · 1 waiting · 3 ready')
+  assert.equal(summaryLine([rowOf(view({ status: 'failed', failure: 'network' }))]), '1 failed')
+  assert.equal(summaryLine([]), '')
+  assert.equal(readyHeadline(3, 53.4 * 1024 ** 3), '3 · 53.4 GB')
+})
+
+test('connections are summed over running transfers only', () => {
+  const items = [
+    view({ job_id: 'a', active_connections: 5 }),
+    view({ job_id: 'b', status: 'paused', active_connections: 3 }),
+    view({ job_id: 'c', status: 'done' }),
+  ]
+  assert.equal(totalConnections(items), 5)
+  assert.equal(connectionsLabel(1), '1 connection')
+  assert.equal(connectionsLabel(6), '6 connections')
+  assert.deepEqual(rateNote(items), { kind: 'connections', text: '5 connections' })
+  assert.deepEqual(rateNote([view({ active_connections: 0 })]), { kind: 'note', text: 'Connecting' })
+  assert.deepEqual(rateNote([view({ status: 'paused' })]), { kind: 'note', text: 'No active transfers' })
+  assert.deepEqual(rateNote([view({ status: 'done' })]), { kind: 'note', text: 'Idle' })
+  assert.deepEqual(rateNote([]), { kind: 'note', text: 'Idle' })
 })
 
 test('storage counts finished files by their agreed size and transfers by what arrived', () => {
@@ -180,7 +267,9 @@ test('storage counts finished files by their agreed size and transfers by what a
   assert.equal(figures.inFlightBytes, 200)
   assert.equal(figures.usedFraction, 0.8)
   assert.equal(figures.storedFraction, 0.6)
-  assert.equal(freeLine(undefined), 'FREE SPACE UNKNOWN')
-  assert.equal(freeLine(1024 ** 3), '1.0 GB FREE')
+  assert.equal(freeLine(undefined), 'free space unknown')
+  assert.equal(freeLine(1024 ** 3), '1.0 GB free')
+  assert.deepEqual(splitBytes(55.5 * 1024 ** 3), { value: '55.5', unit: 'GB' })
+  assert.deepEqual(splitBytes(0), { value: '0', unit: 'B' })
   assert.equal(addedLabel(0), 'ADDED UNKNOWN')
 })

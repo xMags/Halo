@@ -74,11 +74,14 @@ pub(super) trait TransferHost {
         validator: Option<String>,
         total: u64,
     ) -> impl Future<Output = Result<(), String>> + Send;
+    /// `connections` is how many connections are receiving data right now:
+    /// those reading a body, not those still opening or parked at a split.
     fn progress(
         &self,
         bytes: u64,
         total: u64,
         rate: u64,
+        connections: u32,
         persist: bool,
     ) -> impl Future<Output = ()> + Send;
 }
@@ -1087,11 +1090,21 @@ impl<'a, H: TransferHost + Sync> Run<'a, H> {
         // Persisting only after a flush keeps the stored byte count, and the
         // table, at or below what is actually on disk.
         let rate = self.rate.record(now, received);
+        let connections = self.receiving_connections();
         self.host
-            .progress(received, self.total, rate, durable)
+            .progress(received, self.total, rate, connections, durable)
             .await;
         self.last_progress = now;
         Ok(())
+    }
+
+    fn receiving_connections(&self) -> u32 {
+        let reading = self
+            .connections
+            .values()
+            .filter(|connection| matches!(connection.state, ConnectionState::Reading(_)))
+            .count();
+        u32::try_from(reading).unwrap_or(u32::MAX)
     }
 
     fn make_durable(&mut self) -> Result<(), TransferError> {
@@ -1206,7 +1219,7 @@ mod tests {
     use super::*;
     use std::io::{BufRead, BufReader};
     use std::net::{TcpListener, TcpStream};
-    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::{AtomicU32, AtomicUsize};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
@@ -1394,6 +1407,8 @@ mod tests {
     #[derive(Default)]
     struct FakeHost {
         metadata: Mutex<Option<(Option<String>, u64)>>,
+        /// The most connections any progress report counted as receiving.
+        most_connections: AtomicU32,
     }
 
     impl TransferHost for FakeHost {
@@ -1405,7 +1420,17 @@ mod tests {
             *self.metadata.lock().unwrap() = Some((validator, total));
             Ok(())
         }
-        async fn progress(&self, _bytes: u64, _total: u64, _rate: u64, _persist: bool) {}
+        async fn progress(
+            &self,
+            _bytes: u64,
+            _total: u64,
+            _rate: u64,
+            connections: u32,
+            _persist: bool,
+        ) {
+            self.most_connections
+                .fetch_max(connections, Ordering::SeqCst);
+        }
     }
 
     /// A pattern in which no two nearby offsets agree by accident.
@@ -1514,6 +1539,29 @@ mod tests {
             assert_eq!(extra.if_range.as_deref(), Some(ETAG_VALUE));
             assert_eq!(extra.status, 206);
         }
+    }
+
+    /// Progress counts the connections receiving data, which is what the
+    /// Downloads page shows, and never more than a run may open.
+    #[tokio::test]
+    async fn progress_reports_how_many_connections_are_receiving() {
+        let body = content(2 * 1024 * 1024);
+        let (_server, url) = Server::start(
+            body.clone(),
+            Mode::Ranges,
+            Some(ETAG_VALUE),
+            Duration::from_millis(15),
+        );
+        let fixture = Fixture::new("receiving", url);
+        let cancel = AtomicBool::new(false);
+        let host = FakeHost::default();
+        download_with(&fixture.job(0, None), &cancel, &host, quick())
+            .await
+            .unwrap();
+        assert!(fixture.part_matches(&body));
+        let most = host.most_connections.load(Ordering::SeqCst);
+        assert!(most > 1, "progress counted {most} receiving connections");
+        assert!(most <= segments::MAX_CONNECTIONS as u32);
     }
 
     #[tokio::test]
