@@ -390,13 +390,28 @@
 .sx-h40 {
   height: 40px;
 }
+/* The pick's and the saved copy's actions: the phone's 46dp buttons, at the desktop's scale. */
+.sx-h44 {
+  height: 44px;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
 .sx-h34 {
   height: 34px;
 }
+/* Play leads, Save takes the rest, as the phone splits them: about five to four. */
 .sx-play {
-  flex: 1;
+  flex: 5 1 0;
   min-width: 0;
   padding: 0 22px;
+}
+.sx-pick-actions .sx-save {
+  flex: 4 1 0;
+  min-width: 0;
+}
+.sx-save-icon {
+  flex: none;
 }
 .sx-save,
 .sx-pad-16 {
@@ -521,11 +536,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
   background: var(--t1);
   color: var(--m);
-  font-size: 15px;
-  font-weight: 600;
 }
 .sx-play-offline:hover {
   filter: brightness(0.92);

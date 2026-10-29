@@ -89,8 +89,8 @@ export function OfflineCard({ copy, onPlay }: { copy: OfflineCopy; onPlay: () =>
         {copy.medal && <QualityMedal medal={copy.medal} size="lg" />}
         <span className="sx-meta-line">{copy.meta}</span>
       </div>
-      <button type="button" className="sx-btn sx-h40 sx-play-offline" onClick={onPlay}>
-        <FluentIcon glyph="play" size={14} />
+      <button type="button" className="sx-btn sx-h44 sx-play-offline" onClick={onPlay}>
+        <FluentIcon glyph="playSolid" size={15} />
         <span>Play offline</span>
       </button>
     </div>
@@ -138,11 +138,11 @@ export function PickCard({
           {entry.file}
         </div>
         <div className="sx-actions sx-pick-actions">
-          <button type="button" className="btn-accent sx-btn sx-h40 sx-play" onClick={onPlay}>
-            <FluentIcon glyph="play" size={14} />
+          <button type="button" className="btn-accent sx-btn sx-h44 sx-play" onClick={onPlay}>
+            <FluentIcon glyph="playSolid" size={15} />
             <span>Play</span>
           </button>
-          <SaveButton state={save} onSave={onSave} />
+          <SaveButton state={save} onSave={onSave} prominent />
         </div>
         {expanded && (
           <div className="sx-pick-details">
