@@ -10,6 +10,8 @@ import {
   scrubPreviewOffset,
   shouldRequestScrubPreview,
   shouldRunUpNextCountdown,
+  subtitleControls,
+  subtitleFormat,
   subtitlePreviewMetrics,
   upNextCancelAction,
   videoTopMarginRatio,
@@ -117,4 +119,17 @@ test('resumePosition opens exactly where the video was left', () => {
   assert.equal(resumePosition(saved(6000), 5400), null)
   // An unknown length does not stop the resume.
   assert.equal(resumePosition(saved(1669), 0), 1669)
+})
+
+test('subtitle controls grey out what cannot change the selected track', () => {
+  assert.equal(subtitleFormat('hdmv_pgs_subtitle'), 'bitmap')
+  assert.equal(subtitleFormat('subrip'), 'text')
+  assert.equal(subtitleFormat('ASS'), 'styled')
+  assert.equal(subtitleFormat(undefined), 'unknown')
+
+  assert.deepEqual(subtitleControls('bitmap', true), { trackStyling: false, looks: false })
+  assert.deepEqual(subtitleControls('text', true), { trackStyling: false, looks: true })
+  assert.deepEqual(subtitleControls('styled', true), { trackStyling: true, looks: false })
+  assert.deepEqual(subtitleControls('styled', false), { trackStyling: true, looks: true })
+  assert.deepEqual(subtitleControls('unknown', true), { trackStyling: true, looks: true })
 })

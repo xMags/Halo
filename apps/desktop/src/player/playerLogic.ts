@@ -169,3 +169,61 @@ export function resumePosition(saved: WatchState | null | undefined, durationSec
   if (durationSec > 0 && position >= durationSec) return null
   return position
 }
+
+/**
+ * What kind of subtitle a track is, which decides which appearance controls
+ * can change it. Mirrors the mobile player's `subtitleFormat`.
+ */
+export type SubtitleFormat = 'styled' | 'text' | 'bitmap' | 'unknown'
+
+export function subtitleFormat(codec: string | undefined): SubtitleFormat {
+  switch (codec?.toLowerCase()) {
+    case 'ass':
+    case 'ssa':
+    case 'ass-text':
+      return 'styled'
+    case 'subrip':
+    case 'srt':
+    case 'webvtt':
+    case 'vtt':
+    case 'text':
+      return 'text'
+    case 'hdmv_pgs_subtitle':
+    case 'pgssub':
+    case 'pgs':
+      return 'bitmap'
+    default:
+      return 'unknown'
+  }
+}
+
+/**
+ * Which appearance controls do anything for the selected track. A picture
+ * track (PGS) takes no font, outline or shadow, and its look is its own; a
+ * plain text track has no look of its own to keep; a styled track that keeps
+ * its look ignores font, outline and shadow. An unknown codec (none selected,
+ * or not reported yet) leaves everything usable rather than dead.
+ */
+export function subtitleControls(format: SubtitleFormat, keepTrackStyling: boolean) {
+  const bitmap = format === 'bitmap'
+  return {
+    trackStyling: format !== 'bitmap' && format !== 'text',
+    looks: !bitmap && !(format === 'styled' && keepTrackStyling),
+  }
+}
+
+/** The line under Track styling, saying what the switch does for this track. */
+export function trackStylingNote(format: SubtitleFormat, keepTrackStyling: boolean): string {
+  switch (format) {
+    case 'styled':
+      return keepTrackStyling
+        ? "Keeping the track's own fonts and positions; only size applies."
+        : 'Overriding the track with the settings here.'
+    case 'text':
+      return 'Plain text track: the settings here always apply.'
+    case 'bitmap':
+      return 'PGS is rendered images: font, outline and shadow do not apply.'
+    case 'unknown':
+      return 'On, a styled track keeps its own look. A plain text track always follows the settings here.'
+  }
+}
