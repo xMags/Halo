@@ -79,6 +79,11 @@ internal fun SearchScreen(
     modifier: Modifier = Modifier,
 ) {
     val responsive = rememberResponsive()
+    // A tablet held sideways gets the desktop's search: one merged grid.
+    if (usesWideSearch(responsive)) {
+        WideSearchScreen(graph, onOpenDetail, onClose, modifier)
+        return
+    }
     var term by remember { mutableStateOf("") }
     var debounced by remember { mutableStateOf("") }
 
