@@ -1,6 +1,8 @@
 package moe.ditto.halo.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,11 +17,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +41,8 @@ import moe.ditto.halo.shell.StreamsRoute
 import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
+import moe.ditto.halo.ui.HaloRadius
+import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.longPressClickable
 import moe.ditto.halo.ui.monoStyle
@@ -171,4 +177,30 @@ internal fun timeLeft(positionSec: Double, durationSec: Double): String {
     if (minutes < 60) return "$minutes MIN"
     val rest = minutes % 60
     return if (rest == 0L) "${minutes / 60} H" else "${minutes / 60} H $rest MIN"
+}
+
+private val ClearButtonShape = RoundedCornerShape(HaloRadius.Pill)
+
+/**
+ * Clears the whole history, after the confirmation it asks for. Red like every
+ * destructive control in the app, and at the end of the row, out of the way
+ * of the filter above it.
+ */
+@Composable
+internal fun ClearHistoryButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier, contentAlignment = Alignment.CenterEnd) {
+        Row(
+            modifier = Modifier
+                .clip(ClearButtonShape)
+                .background(HaloColors.Danger.copy(alpha = 0.12f))
+                .border(1.dp, HaloColors.Danger.copy(alpha = 0.38f), ClearButtonShape)
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = HaloSpacing.Sm),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(imageVector = HaloIcons.Trash, contentDescription = null, tint = HaloColors.Danger, modifier = Modifier.size(16.dp))
+            Text(text = "Clear history", color = HaloColors.Danger, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
 }
