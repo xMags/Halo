@@ -1,7 +1,7 @@
 import type { MetaVideo } from '@halo/core'
 
 /** Above this many episodes a season is shown a page at a time. */
-export const EPISODE_PAGE_SIZE = 50
+export const EPISODE_PAGE_SIZE = 25
 
 export interface EpisodePage {
   /** "Episodes 1–50", by the episodes' own numbers where they have them. */
