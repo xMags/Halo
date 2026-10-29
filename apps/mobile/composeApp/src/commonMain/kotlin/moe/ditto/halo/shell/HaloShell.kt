@@ -394,9 +394,9 @@ private fun rememberCurrentTab(destination: NavDestination?): Tab? {
 }
 
 /**
- * A tab press: another tab switches to it; the lit tab, pressed from a screen
- * pushed over it, goes back to the tab's own screen, as a platform tab bar
- * does. Pressed on its own screen it does nothing.
+ * A tab press always ends on that tab's own screen: another tab opens at its
+ * main screen (see [switchTab]); the lit tab, pressed from a screen pushed over
+ * it, goes back to it. Pressed on its own screen it does nothing.
  */
 private fun NavHostController.pressTab(tab: Tab, current: Tab?, onTabItself: Boolean) {
     when {
@@ -705,17 +705,17 @@ private fun episodeSources(meta: MetaDetail, video: MetaVideo): StreamsRoute {
 }
 
 /**
- * Switches tabs without stacking them.
+ * Opens a tab at its own screen, whatever was open before.
  *
  * Popping back to the graph's start destination keeps back from walking the
- * history of visited tabs, while saving and restoring state means a tab returns
- * to where it was left, with the same scroll position and filter, rather than
- * rebuilding from scratch on every switch.
+ * history of visited tabs, and drops any title page or "See all" grid pushed
+ * over the tab being left. Nothing is saved or restored: a tab press always
+ * lands on that tab's main screen, never on a page opened inside it earlier,
+ * so the bar is a dependable way home from anywhere.
  */
 private fun NavHostController.switchTab(route: Any) {
     navigate(route) {
-        popUpTo(graph.findStartDestination().id) { saveState = true }
+        popUpTo(graph.findStartDestination().id)
         launchSingleTop = true
-        restoreState = true
     }
 }
