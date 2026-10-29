@@ -34,6 +34,15 @@ test('availability groups by the picker tier, best first, gold only for 4K', () 
       ['OTHER', 1, false],
     ],
   )
+  assert.deepEqual(
+    summary.groups.map((g) => g.medal),
+    [
+      { plate: '4K', tag: 'UHD', finish: 'gold' },
+      { plate: '1080p', tag: 'FHD', finish: 'silver' },
+      { plate: '480p', tag: null, finish: 'plain' },
+      { plate: '—', tag: null, finish: 'plain' },
+    ],
+  )
   assert.equal(summary.total, 5)
   assert.equal(summary.subtitleLanguages, 2)
 })

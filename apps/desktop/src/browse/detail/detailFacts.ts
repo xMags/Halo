@@ -1,5 +1,7 @@
 import type { MetaDetail, MetaPerson, Stream } from '@halo/core'
 import { runtimeMinutes } from '../../format'
+import type { Medal } from '../../components/medal'
+import { medalFor, NOT_PARSED } from '../../sources/sourcePresentation'
 import { parseStreamInfo, qualityRank, qualityTier } from '../../sources/streamInfo'
 
 /** One quality the addons offer, as the source picker names it. */
@@ -8,6 +10,8 @@ export interface QualityGroup {
   label: string
   /** Gold is the picker's mark for the top tier, and only for it. */
   gold: boolean
+  /** The medal of the best quality in the group, as the picker stamps it. */
+  medal: Medal
   count: number
   /** Best-first ordering; lower is better. */
   rank: number
@@ -34,11 +38,15 @@ export function summarizeAvailability(streams: readonly Stream[]): Availability 
     const label = quality ? qualityTier(quality) : UNKNOWN
     const rank = qualityRank(quality)
     const group = byLabel.get(label)
+    const medal = medalFor({ quality: quality ?? NOT_PARSED, range: 'SDR' })
     if (group) {
       group.count += 1
-      group.rank = Math.min(group.rank, rank)
+      if (rank < group.rank) {
+        group.rank = rank
+        group.medal = medal
+      }
     } else {
-      byLabel.set(label, { label, gold: quality === '2160p', count: 1, rank })
+      byLabel.set(label, { label, gold: quality === '2160p', medal, count: 1, rank })
     }
     for (const sub of stream.subtitles ?? []) languages.add(sub.lang)
   }

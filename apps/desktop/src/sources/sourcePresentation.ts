@@ -10,6 +10,8 @@
  * as "not listed" rather than guess at.
  */
 
+import type { Medal, MedalFinish } from '../components/medal'
+
 /** How the sheet talks about picture: coarser than the parsed resolution. */
 export const TIER = { ultraHd: 0, fullHd: 1, hd: 2, lower: 3 } as const
 export type QualityTier = (typeof TIER)[keyof typeof TIER]
@@ -260,32 +262,13 @@ export function tierLabel(tier: QualityTier): string {
   }
 }
 
-/** The tier in the badge's voice: still tiers, since Full HD covers 1440p too. */
-export function badgeTierLabel(tier: QualityTier): string {
-  return tierLabel(tier).toUpperCase()
-}
-
-/** Gold is spent only on the top tier, so it still means something. */
-export function isPremiumTier(tier: QualityTier): boolean {
-  return tier === TIER.ultraHd
-}
-
-/** The medal's metal: one per tier, so the finish alone says how good the picture is. */
-export type MedalFinish = 'gold' | 'silver' | 'bronze' | 'plain'
-
 /**
- * A source's quality badge: the resolution on the dark plate, and a tag
- * beside it naming the dynamic range or, without one, the tier. Below HD there
- * is no tag at all, so the plate fills the badge instead of leaving an empty
- * box. The phone's `medalFor`, so both pickers stamp a source alike.
+ * A quality as a medal: the resolution on the plate, the dynamic range or
+ * else the tier as its tag, and the tier's metal. The phone's `medalFor`, so
+ * both apps stamp a source alike.
  */
-export interface Medal {
-  plate: string
-  tag: string | null
-  finish: MedalFinish
-}
-
-export function medalFor(entry: Pick<SourceEntry, 'quality' | 'range' | 'tier'>): Medal {
+export function medalFor(entry: { quality: string; range: string }): Medal {
+  const tier = tierOf(entry.quality)
   const plate = entry.quality === '2160p' ? '4K' : entry.quality === NOT_PARSED ? '—' : entry.quality
   const tierTag: Record<QualityTier, string | null> = {
     [TIER.ultraHd]: 'UHD',
@@ -300,14 +283,14 @@ export function medalFor(entry: Pick<SourceEntry, 'quality' | 'range' | 'tier'>)
         ? 'HDR'
         : entry.quality === '1440p'
           ? 'QHD'
-          : tierTag[entry.tier]
+          : tierTag[tier]
   const finishes: Record<QualityTier, MedalFinish> = {
     [TIER.ultraHd]: 'gold',
     [TIER.fullHd]: 'silver',
     [TIER.hd]: 'bronze',
     [TIER.lower]: 'plain',
   }
-  return { plate, tag, finish: finishes[entry.tier] }
+  return { plate, tag, finish: finishes[tier] }
 }
 
 export function speedOf(status: SourceStatus): StartSpeed {
