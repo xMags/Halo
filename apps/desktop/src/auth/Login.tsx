@@ -590,27 +590,49 @@ export function Login() {
   )
 }
 
+/**
+ * The feature chips' glyphs: the phone's own (Material Icons' extension,
+ * download outline, subtitles and refresh, Apache-2.0), so both sign-in
+ * screens draw the same four.
+ */
+const INTRO_CHIPS: ReadonlyArray<{ label: string; path: string }> = [
+  {
+    label: 'Addons',
+    path:
+      'M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 ' +
+      '2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 ' +
+      '1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 ' +
+      '2.5-2.5S21.88 11 20.5 11z',
+  },
+  { label: 'Downloads', path: 'M19 9h-4V3H9v6H5l7 7 7-7zm-8 2V5h2v6h1.17L12 13.17 9.83 11H11zm-6 7h14v2H5z' },
+  {
+    label: 'Subtitles',
+    path:
+      'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 ' +
+      '6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z',
+  },
+  {
+    label: 'Sync',
+    path:
+      'M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-8 8s3.58 8 8 8c3.73 0 6.84-2.55 ' +
+      '7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 ' +
+      '4.22 1.78L13 11h7V4l-2.35 2.35z',
+  },
+]
+
 function Intro() {
   return (
     <>
       <p className="si-tagline">Stream your addons, download for later, pick up on any device.</p>
       <ul className="si-chips" aria-label="Includes">
-        <li>
-          <FluentIcon glyph="globe" size={13} />
-          Addons
-        </li>
-        <li>
-          <FluentIcon glyph="downloads" size={13} />
-          Downloads
-        </li>
-        <li>
-          <FluentIcon glyph="video" size={13} />
-          Subtitles
-        </li>
-        <li>
-          <FluentIcon glyph="retry" size={13} />
-          Sync
-        </li>
+        {INTRO_CHIPS.map((chip) => (
+          <li key={chip.label}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <path d={chip.path} />
+            </svg>
+            {chip.label}
+          </li>
+        ))}
       </ul>
     </>
   )
