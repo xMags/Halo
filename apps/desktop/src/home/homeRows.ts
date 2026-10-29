@@ -166,6 +166,42 @@ export function buildLibraryRow(
     }))
 }
 
+/** The most titles the recently watched shelf shows, as on the phone. */
+export const RECENTLY_WATCHED_LIMIT = 15
+
+/**
+ * Playback history: the last distinct titles played, newest first, at any
+ * progress, so a finished series is still one click from a rewatch. Titles
+ * already on the continue shelf (`exclude`, by item id) are left out rather
+ * than shown twice. The row's own name and poster come first, the library
+ * entry's only fill in; a row nothing names is dropped. The phone app's
+ * Recently Watched shelf, so both pick the same titles.
+ */
+export function buildRecentlyWatchedRow(
+  watchStates: WatchState[] | undefined,
+  library: LibraryItem[] | undefined,
+  exclude: ReadonlySet<string>,
+  filter: HomeFilter,
+  limit = RECENTLY_WATCHED_LIMIT,
+): MetaPreview[] {
+  const libById = activeLibraryById(library)
+  const rows = [...(watchStates ?? [])].sort((a, b) => b.updatedAt - a.updatedAt)
+  const seen = new Set<string>()
+  const shelf: MetaPreview[] = []
+  for (const row of rows) {
+    if (shelf.length >= limit) break
+    if (exclude.has(row.itemId) || seen.has(row.itemId)) continue
+    seen.add(row.itemId)
+    const entry = libById.get(row.itemId)
+    const name = row.name ?? entry?.name
+    if (!name) continue
+    const type = itemType(row.itemId)
+    if (!matchesHomeFilter(filter, type)) continue
+    shelf.push({ id: itemMetaId(row.itemId), type, name, poster: row.poster ?? entry?.poster })
+  }
+  return shelf
+}
+
 /**
  * Whether a catalog of this type belongs on Home. Only films and series do:
  * addons also publish account listings under other types (TorBox's torrent

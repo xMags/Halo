@@ -17,6 +17,7 @@ import { continueSheetParams, useContinueShelf } from './continueShelf'
 import { formatClock, videoIdTag } from '../format'
 import {
   buildLibraryRow,
+  buildRecentlyWatchedRow,
   catalogShelfLabels,
   matchesHomeFilter,
   selectFeatured,
@@ -34,6 +35,7 @@ import {
   useLibrary,
   useMeta,
   useUpsertLibrary,
+  useWatchStates,
   type BrowsableCatalog,
 } from '../queries'
 import { setSearchQuery, useSearchQuery } from '../search/searchQuery'
@@ -65,9 +67,18 @@ export function Home() {
   const query = useSearchQuery()
   const { data: addons, isLoading, error } = useEffectiveAddons()
   const { data: library } = useLibrary()
+  const { data: watchStates } = useWatchStates()
   // Continue watching stays unfiltered, as natively: an in-progress title
   // matters whichever browse filter is showing.
   const { cards: continueCards } = useContinueShelf()
+  // History is browsed, so it follows the filter; what continue watching
+  // already offers is not repeated.
+  const recentlyWatched = buildRecentlyWatchedRow(
+    watchStates,
+    library,
+    new Set(continueCards.map((card) => card.itemId)),
+    filter,
+  )
 
   const catalogs = addons ? browsableCatalogs(addons).slice(0, MAX_SHELVES) : []
   // The library shelf's label counts the whole library; the filter only
@@ -142,6 +153,32 @@ export function Home() {
           >
             {continueCards.map((card) => (
               <ContinueCardView key={card.itemId} card={card} />
+            ))}
+          </Shelf>
+        )}
+
+        {recentlyWatched.length > 0 && (
+          <Shelf
+            title="Recently watched"
+            action={
+              <button
+                type="button"
+                className="btn-link"
+                aria-label="See all recently watched titles"
+                onClick={() =>
+                  push({
+                    name: 'catalog',
+                    title: 'Recently watched',
+                    items: recentlyWatched.map((meta) => ({ meta })),
+                  })
+                }
+              >
+                See all
+              </button>
+            }
+          >
+            {recentlyWatched.map((meta) => (
+              <PosterCard key={`${meta.type}:${meta.id}`} meta={meta} />
             ))}
           </Shelf>
         )}
