@@ -44,7 +44,7 @@ export function SaveButton({
   return (
     <button
       type="button"
-      className={`btn sx-btn ${prominent ? 'sx-h44' : 'sx-h40'} sx-save ${state.kind === 'saved' ? 'sx-save-done' : ''}`}
+      className={`btn sx-btn ${prominent ? 'sx-h44' : 'sx-h34'} sx-save ${state.kind === 'saved' ? 'sx-save-done' : ''}`}
       disabled={state.kind !== 'ready'}
       onClick={onSave}
     >

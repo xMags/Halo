@@ -265,7 +265,6 @@ export function buildListing(
     resolve.pool.filter((entry) => matchesFilter(entry, filter)),
     sort,
   )
-  const maximumNeededMbps = listed.reduce((maximum, entry) => Math.max(maximum, entry.neededMbps), 0)
   const top = resolve.pool[0]
   const pickEntry = sort === 'Recommended' && top && matchesFilter(top, filter) ? top : null
 
@@ -292,7 +291,7 @@ export function buildListing(
         status: statusLabel(entry.status),
         meta: metaLine(entry),
         warning: bitrateWarning(entry, device.lineMbps),
-        details: detailsFor(entry, device, maximumNeededMbps),
+        details: detailsFor(entry, device),
       })
     }
   }
@@ -310,7 +309,7 @@ export function buildListing(
         status: statusLabel(pickEntry.status),
         meta: metaLine(pickEntry),
         warning: bitrateWarning(pickEntry, device.lineMbps),
-        details: detailsFor(pickEntry, device, maximumNeededMbps),
+        details: detailsFor(pickEntry, device),
       }
     : null
   return { pick, items }

@@ -215,24 +215,34 @@ test('a source too heavy for the measured line says so in its details', () => {
   assert.equal(row?.kind === 'row' ? row.warning : null, '')
 })
 
-test('details spell out what is and is not known', () => {
+test('details list only what the release names, measured against the line', () => {
   const [entry] = resolve(
     [{ addonId: 'a', addonName: 'Alpha', streams: [stream('A.1080p HEVC 10bit DDP 5.1 [RD+] 3 GB')] }],
     { durationSeconds: 3600 },
   ).pool
-  const details = detailsFor(entry!, device, 0)
-  assert.equal(details.resolution, '1920 × 1080')
-  assert.equal(details.picture, 'SDR')
-  assert.equal(details.codec, 'H.265 10-bit')
-  assert.equal(details.sound, 'Surround 5.1')
-  assert.equal(details.channels, '5.1')
-  assert.deepEqual(details.audioLanguages, [{ label: 'NOT LISTED', muted: true }])
-  assert.deepEqual(details.subtitles, [{ label: 'NONE INCLUDED', muted: true }])
-  assert.equal(details.cacheLabel, 'Already cached for you')
-  assert.equal(details.mbpsLabel, '7 Mbps')
-  assert.equal(details.lineLabel, 'HEAVIEST HERE 7 MBPS')
-  assert.equal(details.headroom, 'Line speed has not been measured yet')
-  assert.equal(details.meterFraction, 1)
+  const details = detailsFor(entry!, { lineMbps: 70, durationSeconds: 3600 })
+  // No HDR, no audio languages: left out, never spelled out as missing.
+  assert.deepEqual(details.rows, [
+    { label: 'Picture', value: '1920 × 1080 · H.265 10-bit' },
+    { label: 'Sound', value: 'Surround 5.1' },
+    { label: 'Subtitles', value: 'None' },
+  ])
+  assert.equal(details.cacheLabel, 'Cached')
+  assert.equal(details.cacheGood, true)
+  assert.equal(details.bandwidth?.label, '7 Mbps')
+  assert.equal(details.bandwidth?.note, '10% of your 70 Mbps line')
+  assert.ok(Math.abs((details.bandwidth?.fraction ?? 0) - 0.1) < 0.01)
+})
+
+test('details measure nothing when the size or runtime is missing, and say nothing of an unreported cache', () => {
+  const [entry] = resolve(
+    [{ addonId: 'a', addonName: 'Alpha', streams: [stream('A.2160p DV HEVC')] }],
+    { durationSeconds: 3600 },
+  ).pool
+  const details = detailsFor(entry!, device)
+  assert.equal(details.rows[0]?.value, '3840 × 2160 · Dolby Vision · H.265')
+  assert.equal(details.bandwidth, null)
+  assert.equal(details.cacheLabel, '')
 })
 
 test('medals are gold, silver and bronze by tier, tagged by range, and tagless below HD', () => {
