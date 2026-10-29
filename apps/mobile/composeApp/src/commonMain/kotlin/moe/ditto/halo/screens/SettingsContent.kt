@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -86,8 +87,31 @@ internal fun SettingsContent(
     modifier: Modifier = Modifier,
 ) {
     val responsive = rememberResponsive()
-    val preferences = state.settings ?: UserSettings.Empty
-    val canMutate = state.pendingAction == null
+    // A tablet held sideways gets the desktop's page: the form beside a rail
+    // of its sections, which carries the title and the credits instead.
+    val wide = usesWideSettings(responsive)
+    val blocks = settingsBlocks(
+        state = state,
+        userAddonUrl = userAddonUrl,
+        globalAddonUrl = globalAddonUrl,
+        onUserAddonUrlChange = onUserAddonUrlChange,
+        onGlobalAddonUrlChange = onGlobalAddonUrlChange,
+        onAddAddon = onAddAddon,
+        onToggleCatalogs = onToggleCatalogs,
+        onRemoveAddon = onRemoveAddon,
+        onOpenLanguage = onOpenLanguage,
+        onOpenCatalogLanguage = onOpenCatalogLanguage,
+        onAutoplayChange = onAutoplayChange,
+        onSignOut = onSignOut,
+        onSignIn = onSignIn,
+        onOpenDebugGate = onOpenDebugGate,
+        accountAvatar = accountAvatar,
+        withTitleAndCredits = !wide,
+    )
+    if (wide) {
+        WideSettings(blocks, signedIn = state.signedIn, modifier = modifier)
+        return
+    }
 
     LazyColumn(
         modifier = modifier
@@ -106,240 +130,288 @@ internal fun SettingsContent(
             bottom = responsive.bottomContentPadding,
         ),
     ) {
-        item(key = "header") { ScreenHeader(title = "Settings") }
+        items(items = blocks, key = { it.key }) { it.content() }
+    }
+}
 
-        state.mutationError?.let { message ->
-            item(key = "mutation-error") { ErrorBanner(message) }
-        }
-        if (state.addonsNotMoved.isNotEmpty()) {
-            item(key = "addons-not-moved") { ErrorBanner(addonsNotMovedMessage(state.addonsNotMoved)) }
-        }
+/** The sections of the form, in its order; the wide layout's rail lists them. */
+internal enum class SettingsSection {
+    Addons,
+    Home,
+    Playback,
+    Account,
+    Developer,
+}
 
-        item(key = "addons-label") { SettingsGroupLabel("Addons") }
-        item(key = "addons-card") {
-            when {
-                state.addons == null && state.addonsError -> SettingsStateCard("Could not load your addons.")
-                state.addons == null -> SettingsLoadingCard("Loading addons")
-                else -> SettingsCard {
-                    AddonUrlRow(
-                        value = userAddonUrl,
-                        label = "Personal addon URL",
-                        enabled = canMutate,
-                        busy = state.pendingAction == "user-add",
-                        onValueChange = onUserAddonUrlChange,
-                        onSubmit = { onAddAddon(AddonOwnership.User) },
-                    )
-                    if (state.addons.user.isNotEmpty()) SettingsDivider()
-                    if (state.addons.user.isEmpty()) {
-                        EmptySettingsRow("No personal addons yet.")
-                    } else {
-                        state.addons.user.forEachIndexed { index, addon ->
-                            AddonRow(
-                                addon = addon,
-                                ownership = AddonOwnership.User,
-                                enabled = canMutate,
-                                busy = state.pendingAction?.endsWith(addon.id) == true,
-                                onToggleCatalogs = onToggleCatalogs,
-                                onRemove = onRemoveAddon,
-                                // The built-in addons are what Halo needs to browse
-                                // at all, so they have no delete button, signed in
-                                // or not, as on the desktop app.
-                                removable = addon.transportUrl !in DefaultAddonUrls,
-                            )
-                            if (index != state.addons.user.lastIndex) SettingsDivider()
-                        }
-                    }
-                }
-            }
-        }
+/** One entry of the form: its list key, the section it begins if it begins one, and what it draws. */
+internal class SettingsBlock(
+    val key: String,
+    val starts: SettingsSection? = null,
+    val content: @Composable () -> Unit,
+)
 
-        val globalAddons = state.addons?.global.orEmpty()
-        if (state.account?.isAdmin == true || globalAddons.isNotEmpty()) {
-            item(key = "global-label") {
-                SettingsGroupLabel(if (state.account?.isAdmin == true) "Global, admin" else "Global")
-            }
-            item(key = "global-card") {
-                SettingsCard {
-                    if (state.account?.isAdmin == true) {
-                        AddonUrlRow(
-                            value = globalAddonUrl,
-                            label = "Global addon URL",
-                            enabled = canMutate,
-                            busy = state.pendingAction == "global-add",
-                            onValueChange = onGlobalAddonUrlChange,
-                            onSubmit = { onAddAddon(AddonOwnership.Global) },
-                        )
-                        SettingsDivider()
-                    }
-                    if (globalAddons.isEmpty()) {
-                        EmptySettingsRow("No global addons yet.")
-                    } else {
-                        globalAddons.forEachIndexed { index, addon ->
-                            AddonRow(
-                                addon = addon,
-                                ownership = AddonOwnership.Global,
-                                enabled = canMutate && state.account?.isAdmin == true,
-                                busy = state.pendingAction?.endsWith(addon.id) == true,
-                                onToggleCatalogs = onToggleCatalogs,
-                                onRemove = onRemoveAddon,
-                                // Global addons are managed on the server, never
-                                // removed from an app, admin or not.
-                                removable = false,
-                            )
-                            if (index != globalAddons.lastIndex) SettingsDivider()
-                        }
-                    }
-                }
-            }
-        }
+/**
+ * The form, as an ordered list both layouts draw: the phone as one column, a
+ * landscape tablet beside a rail that needs to know where each section begins.
+ */
+private fun settingsBlocks(
+    state: SettingsUiState,
+    userAddonUrl: String,
+    globalAddonUrl: String,
+    onUserAddonUrlChange: (String) -> Unit,
+    onGlobalAddonUrlChange: (String) -> Unit,
+    onAddAddon: (AddonOwnership) -> Unit,
+    onToggleCatalogs: (AddonEntry, AddonOwnership) -> Unit,
+    onRemoveAddon: (AddonEntry, AddonOwnership) -> Unit,
+    onOpenLanguage: (SettingsLanguageKind) -> Unit,
+    onOpenCatalogLanguage: (List<String>) -> Unit,
+    onAutoplayChange: (Boolean) -> Unit,
+    onSignOut: () -> Unit,
+    onSignIn: () -> Unit,
+    onOpenDebugGate: (() -> Unit)?,
+    accountAvatar: @Composable (Dp) -> Unit,
+    withTitleAndCredits: Boolean,
+): List<SettingsBlock> = buildList {
+    val preferences = state.settings ?: UserSettings.Empty
+    val canMutate = state.pendingAction == null
+    fun item(key: String, starts: SettingsSection? = null, content: @Composable () -> Unit) {
+        add(SettingsBlock(key, starts, content))
+    }
 
-        // Only when an installed addon has a language row (TMDB's "Language"
-        // row); with none, there is nothing for the setting to change.
-        val languageChoices = state.addons?.let { homeLanguageChoices(it.user + it.global) }
-        if (languageChoices != null) {
-            item(key = "home-label") { SettingsGroupLabel("Home") }
-            item(key = "home-card") {
-                SettingsCard {
-                    SettingValueRow(
-                        label = "Language rows",
-                        value = preferences.catalogLanguage?.takeIf { it in languageChoices } ?: "Addon default",
-                        enabled = state.settings != null && canMutate,
-                        onClick = { onOpenCatalogLanguage(languageChoices) },
-                    )
-                }
-                Text(
-                    text = "Rows such as TMDB's Language row show titles in this language.",
-                    style = HaloType.Caption,
-                    modifier = Modifier.padding(top = HaloSpacing.Sm, start = HaloSpacing.Xs),
+    if (withTitleAndCredits) item(key = "header") { ScreenHeader(title = "Settings") }
+
+    state.mutationError?.let { message ->
+        item(key = "mutation-error") { ErrorBanner(message) }
+    }
+    if (state.addonsNotMoved.isNotEmpty()) {
+        item(key = "addons-not-moved") { ErrorBanner(addonsNotMovedMessage(state.addonsNotMoved)) }
+    }
+
+    item(key = "addons-label", starts = SettingsSection.Addons) { SettingsGroupLabel("Addons") }
+    item(key = "addons-card") {
+        when {
+            state.addons == null && state.addonsError -> SettingsStateCard("Could not load your addons.")
+            state.addons == null -> SettingsLoadingCard("Loading addons")
+            else -> SettingsCard {
+                AddonUrlRow(
+                    value = userAddonUrl,
+                    label = "Personal addon URL",
+                    enabled = canMutate,
+                    busy = state.pendingAction == "user-add",
+                    onValueChange = onUserAddonUrlChange,
+                    onSubmit = { onAddAddon(AddonOwnership.User) },
                 )
-            }
-        }
-
-        if (state.account == null && (state.accountFetching || state.accountError)) {
-            item(key = "account-state") {
-                val text = if (state.accountError) {
-                    "Admin controls are unavailable because account details could not be loaded."
+                if (state.addons.user.isNotEmpty()) SettingsDivider()
+                if (state.addons.user.isEmpty()) {
+                    EmptySettingsRow("No personal addons yet.")
                 } else {
-                    "Checking account permissions..."
+                    state.addons.user.forEachIndexed { index, addon ->
+                        AddonRow(
+                            addon = addon,
+                            ownership = AddonOwnership.User,
+                            enabled = canMutate,
+                            busy = state.pendingAction?.endsWith(addon.id) == true,
+                            onToggleCatalogs = onToggleCatalogs,
+                            onRemove = onRemoveAddon,
+                            // The built-in addons are what Halo needs to browse
+                            // at all, so they have no delete button, signed in
+                            // or not, as on the desktop app.
+                            removable = addon.transportUrl !in DefaultAddonUrls,
+                        )
+                        if (index != state.addons.user.lastIndex) SettingsDivider()
+                    }
                 }
-                Text(
-                    text = text,
-                    style = HaloType.Caption,
-                    modifier = Modifier.padding(top = HaloSpacing.Sm, start = HaloSpacing.Xs),
-                )
             }
         }
+    }
 
-        item(key = "playback-label") { SettingsGroupLabel("Playback") }
-        item(key = "playback-card") {
+    val globalAddons = state.addons?.global.orEmpty()
+    if (state.account?.isAdmin == true || globalAddons.isNotEmpty()) {
+        item(key = "global-label") {
+            SettingsGroupLabel(if (state.account?.isAdmin == true) "Global, admin" else "Global")
+        }
+        item(key = "global-card") {
             SettingsCard {
-                SettingValueRow(
-                    label = "Default audio language",
-                    value = preferences.preferredAudioLang?.let(::languageLabel) ?: "Auto",
-                    enabled = state.settings != null && canMutate,
-                    onClick = { onOpenLanguage(SettingsLanguageKind.Audio) },
-                )
-                SettingsDivider()
-                SettingValueRow(
-                    label = "Default subtitles",
-                    value = preferences.preferredSubtitleLang?.let(::languageLabel) ?: "Off",
-                    enabled = state.settings != null && canMutate,
-                    onClick = { onOpenLanguage(SettingsLanguageKind.Subtitles) },
-                )
-                SettingsDivider()
-                AutoplayRow(
-                    enabled = preferences.autoplayNextEpisode ?: true,
-                    interactive = state.settings != null && canMutate,
-                    busy = state.pendingAction == "autoplay",
-                    onChange = onAutoplayChange,
-                )
-            }
-        }
-        if (state.settings == null && (state.settingsFetching || state.settingsError)) {
-            item(key = "settings-state") {
-                Text(
-                    text = if (state.settingsError) {
-                        "Playback preferences could not be loaded."
-                    } else {
-                        "Loading playback preferences..."
-                    },
-                    style = HaloType.Caption,
-                    modifier = Modifier.padding(top = HaloSpacing.Sm, start = HaloSpacing.Xs),
-                )
-            }
-        }
-
-        if (!state.signedIn) {
-            item(key = "account-label") { SettingsGroupLabel("Account") }
-            item(key = "account-card") {
-                SettingsCard {
-                    ProfileRow(name = "This phone", caption = "NOT SIGNED IN", avatar = { accountAvatar(ProfileAvatarSize) })
-                    SettingsDivider()
-                    Text(
-                        text = "Your library, history and addons are kept on this phone. Sign in to sync them.",
-                        style = HaloType.Body.copy(color = HaloColors.TextDim),
-                        modifier = Modifier.padding(horizontal = HaloSpacing.Md, vertical = 13.dp),
+                if (state.account?.isAdmin == true) {
+                    AddonUrlRow(
+                        value = globalAddonUrl,
+                        label = "Global addon URL",
+                        enabled = canMutate,
+                        busy = state.pendingAction == "global-add",
+                        onValueChange = onGlobalAddonUrlChange,
+                        onSubmit = { onAddAddon(AddonOwnership.Global) },
                     )
                     SettingsDivider()
-                    ActionSettingRow(label = "Sign in", onClick = onSignIn)
+                }
+                if (globalAddons.isEmpty()) {
+                    EmptySettingsRow("No global addons yet.")
+                } else {
+                    globalAddons.forEachIndexed { index, addon ->
+                        AddonRow(
+                            addon = addon,
+                            ownership = AddonOwnership.Global,
+                            enabled = canMutate && state.account?.isAdmin == true,
+                            busy = state.pendingAction?.endsWith(addon.id) == true,
+                            onToggleCatalogs = onToggleCatalogs,
+                            onRemove = onRemoveAddon,
+                            // Global addons are managed on the server, never
+                            // removed from an app, admin or not.
+                            removable = false,
+                        )
+                        if (index != globalAddons.lastIndex) SettingsDivider()
+                    }
                 }
             }
         }
+    }
 
-        if (state.signedIn) item(key = "server-label") { SettingsGroupLabel("Server & account") }
-        if (state.signedIn) item(key = "server-card") {
-            val connected = state.account != null || state.addons != null || state.settings != null
-            val account = state.account
+    // Only when an installed addon has a language row (TMDB's "Language"
+    // row); with none, there is nothing for the setting to change.
+    val languageChoices = state.addons?.let { homeLanguageChoices(it.user + it.global) }
+    if (languageChoices != null) {
+        item(key = "home-label", starts = SettingsSection.Home) { SettingsGroupLabel("Home") }
+        item(key = "home-card") {
             SettingsCard {
-                ProfileRow(
-                    name = account?.let { accountDisplayName(it.username) } ?: "…",
-                    caption = accountLabel(account),
-                    avatar = { accountAvatar(ProfileAvatarSize) },
+                SettingValueRow(
+                    label = "Language rows",
+                    value = preferences.catalogLanguage?.takeIf { it in languageChoices } ?: "Addon default",
+                    enabled = state.settings != null && canMutate,
+                    onClick = { onOpenCatalogLanguage(languageChoices) },
+                )
+            }
+            Text(
+                text = "Rows such as TMDB's Language row show titles in this language.",
+                style = HaloType.Caption,
+                modifier = Modifier.padding(top = HaloSpacing.Sm, start = HaloSpacing.Xs),
+            )
+        }
+    }
+
+    if (state.account == null && (state.accountFetching || state.accountError)) {
+        item(key = "account-state") {
+            val text = if (state.accountError) {
+                "Admin controls are unavailable because account details could not be loaded."
+            } else {
+                "Checking account permissions..."
+            }
+            Text(
+                text = text,
+                style = HaloType.Caption,
+                modifier = Modifier.padding(top = HaloSpacing.Sm, start = HaloSpacing.Xs),
+            )
+        }
+    }
+
+    item(key = "playback-label", starts = SettingsSection.Playback) { SettingsGroupLabel("Playback") }
+    item(key = "playback-card") {
+        SettingsCard {
+            SettingValueRow(
+                label = "Default audio language",
+                value = preferences.preferredAudioLang?.let(::languageLabel) ?: "Auto",
+                enabled = state.settings != null && canMutate,
+                onClick = { onOpenLanguage(SettingsLanguageKind.Audio) },
+            )
+            SettingsDivider()
+            SettingValueRow(
+                label = "Default subtitles",
+                value = preferences.preferredSubtitleLang?.let(::languageLabel) ?: "Off",
+                enabled = state.settings != null && canMutate,
+                onClick = { onOpenLanguage(SettingsLanguageKind.Subtitles) },
+            )
+            SettingsDivider()
+            AutoplayRow(
+                enabled = preferences.autoplayNextEpisode ?: true,
+                interactive = state.settings != null && canMutate,
+                busy = state.pendingAction == "autoplay",
+                onChange = onAutoplayChange,
+            )
+        }
+    }
+    if (state.settings == null && (state.settingsFetching || state.settingsError)) {
+        item(key = "settings-state") {
+            Text(
+                text = if (state.settingsError) {
+                    "Playback preferences could not be loaded."
+                } else {
+                    "Loading playback preferences..."
+                },
+                style = HaloType.Caption,
+                modifier = Modifier.padding(top = HaloSpacing.Sm, start = HaloSpacing.Xs),
+            )
+        }
+    }
+
+    if (!state.signedIn) {
+        item(key = "account-label", starts = SettingsSection.Account) { SettingsGroupLabel("Account") }
+        item(key = "account-card") {
+            SettingsCard {
+                ProfileRow(name = "This phone", caption = "NOT SIGNED IN", avatar = { accountAvatar(ProfileAvatarSize) })
+                SettingsDivider()
+                Text(
+                    text = "Your library, history and addons are kept on this phone. Sign in to sync them.",
+                    style = HaloType.Body.copy(color = HaloColors.TextDim),
+                    modifier = Modifier.padding(horizontal = HaloSpacing.Md, vertical = 13.dp),
                 )
                 SettingsDivider()
-                StaticSettingRow(label = "Signed in as", value = account?.username ?: "…")
-                SettingsDivider()
-                StaticSettingRow(label = "Latency", value = state.latencyMillis?.let { "$it ms" } ?: "...")
-                SettingsDivider()
-                StatusRow(connected = connected)
+                ActionSettingRow(label = "Sign in", onClick = onSignIn)
             }
         }
+    }
 
-        if (onOpenDebugGate != null) {
-            item(key = "developer-label") { SettingsGroupLabel("Developer") }
-            item(key = "developer-card") {
-                SettingsCard {
-                    ActionSettingRow(label = "Debug gate", onClick = onOpenDebugGate)
-                }
+    if (state.signedIn) item(key = "server-label", starts = SettingsSection.Account) { SettingsGroupLabel("Server & account") }
+    if (state.signedIn) item(key = "server-card") {
+        val connected = state.account != null || state.addons != null || state.settings != null
+        val account = state.account
+        SettingsCard {
+            ProfileRow(
+                name = account?.let { accountDisplayName(it.username) } ?: "…",
+                caption = accountLabel(account),
+                avatar = { accountAvatar(ProfileAvatarSize) },
+            )
+            SettingsDivider()
+            StaticSettingRow(label = "Signed in as", value = account?.username ?: "…")
+            SettingsDivider()
+            StaticSettingRow(label = "Latency", value = state.latencyMillis?.let { "$it ms" } ?: "...")
+            SettingsDivider()
+            StatusRow(connected = connected)
+        }
+    }
+
+    if (state.signedIn) item(key = "sign-out") {
+        Box(
+            modifier = Modifier
+                .padding(top = HaloSpacing.Lg)
+                .fillMaxWidth()
+                .clip(SettingsCardShape)
+                .background(HaloColors.Glass)
+                .border(1.dp, HaloColors.GlassBorder, SettingsCardShape)
+                .clickable(role = Role.Button, onClick = onSignOut)
+                .padding(vertical = HaloSpacing.Md),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Sign Out", color = HaloColors.Danger, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+
+    if (onOpenDebugGate != null) {
+        item(key = "developer-label", starts = SettingsSection.Developer) { SettingsGroupLabel("Developer") }
+        item(key = "developer-card") {
+            SettingsCard {
+                ActionSettingRow(label = "Debug gate", onClick = onOpenDebugGate)
             }
         }
+    }
 
-        if (state.signedIn) item(key = "sign-out") {
-            Box(
-                modifier = Modifier
-                    .padding(top = HaloSpacing.Lg)
-                    .fillMaxWidth()
-                    .clip(SettingsCardShape)
-                    .background(HaloColors.Glass)
-                    .border(1.dp, HaloColors.GlassBorder, SettingsCardShape)
-                    .clickable(role = Role.Button, onClick = onSignOut)
-                    .padding(vertical = HaloSpacing.Md),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("Sign Out", color = HaloColors.Danger, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            }
-        }
-
-        // Who made it and under what terms, as the desktop's About panel says.
-        item(key = "credits") {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(top = HaloSpacing.Lg),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                Text("© 2026 Last Projects & Shy", style = monoStyle(11.5.sp, color = HaloColors.TextDim))
-                Text("GPL-3.0 license", style = monoStyle(11.5.sp, color = HaloColors.TextDim))
-            }
+    // Who made it and under what terms, as the desktop's About panel says.
+    // The wide layout's rail says it instead.
+    if (withTitleAndCredits) item(key = "credits") {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = HaloSpacing.Lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text("© 2026 Last Projects & Shy", style = monoStyle(11.5.sp, color = HaloColors.TextDim))
+            Text("GPL-3.0 license", style = monoStyle(11.5.sp, color = HaloColors.TextDim))
         }
     }
 }
