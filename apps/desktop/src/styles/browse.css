@@ -18,9 +18,11 @@
 }
 
 /* ── Catalog (a shelf's "See all") ──────────────────────────────────────
-   The native CatalogPage: a 24px gutter at every width (it does not step up
-   with the layout tiers), and a wrap grid whose cells are the poster plus a
-   22px gap wide and the art plus 52px of caption tall. */
+   The native CatalogPage's 24px gutter at every width (it does not step up
+   with the layout tiers). Unlike the native page's fixed-width cells, the
+   columns share the whole width: as many as fit at the poster width, then
+   stretched to fill the row, so a wide window leaves no empty band at the
+   right. Rows are as tall as the stretched art and its caption. */
 .page-back {
   flex: 0 0 34px;
   width: 34px;
@@ -54,14 +56,13 @@
 }
 .catalog-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, calc(var(--pw) + 22px));
-  grid-auto-rows: calc(var(--pw) * 1.5 + 52px);
-  padding: 16px 24px 32px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--pw), 1fr));
+  gap: 14px 22px;
+  padding: 20px 24px 32px;
 }
-/* WinUI's grid item takes 4px off the cell's right and bottom and centres
-   the card in what is left: 9px in from the left, 4px down. */
 .catalog-grid > .poster {
-  margin: 4px 0 0 9px;
+  width: auto;
+  min-width: 0;
 }
 .catalog-empty {
   flex: 1;
