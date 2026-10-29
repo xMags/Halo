@@ -185,15 +185,10 @@ export function Home() {
               <button
                 type="button"
                 className="btn-link"
-                aria-label="See all shelf items"
-                onClick={() =>
-                  push({
-                    name: 'catalog',
-                    title: 'My library',
-                    // No source line: the page's own count already says how many.
-                    items: libraryShown.map((meta) => ({ meta })),
-                  })
-                }
+                aria-label="See your whole library"
+                // The Library page is this shelf in full, with its filter and
+                // sort, so it opens that rather than a copy of it.
+                onClick={() => setRoot('library')}
               >
                 See all
               </button>
