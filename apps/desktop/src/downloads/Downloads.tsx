@@ -540,7 +540,7 @@ function QueueRow({
       </div>
       <div className="dl-row-body">
         <div className="dl-title-line">
-          <span className="dl-tag">{row.tag}</span>
+          {row.episodeLabel && <span className="dl-tag">{row.episodeLabel}</span>}
           <span className="dl-name">{row.name}</span>
           <span className="dl-sub ellipsis">{row.sub}</span>
         </div>
@@ -610,7 +610,7 @@ function ReadyCard({
         type="button"
         className="dl-card-hit"
         aria-pressed={selected}
-        title={row.cardTitle}
+        title={row.cardSub ? `${row.cardTitle} · ${row.cardSub}` : row.cardTitle}
         onClick={onSelect}
         onDoubleClick={onPlay}
       >
@@ -625,6 +625,7 @@ function ReadyCard({
         </div>
         <div className="dl-card-text">
           <span className="dl-card-title ellipsis">{row.cardTitle}</span>
+          {row.cardSub && <span className="dl-card-sub ellipsis">{row.cardSub}</span>}
           <span className="dl-card-meta ellipsis">{row.cardMeta}</span>
         </div>
       </button>
@@ -632,7 +633,7 @@ function ReadyCard({
         <button
           type="button"
           className="dl-card-play"
-          aria-label={`Play ${row.cardTitle} offline`}
+          aria-label={`Play ${row.cardSub ? `${row.cardTitle} · ${row.cardSub}` : row.cardTitle} offline`}
           title="Play offline"
           onClick={onPlay}
         >

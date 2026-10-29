@@ -617,6 +617,40 @@
   width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--dl-border);
+  transition: box-shadow 200ms ease-out;
+}
+/* The art leans in under the pointer; the frame stays put so the grid never shifts. */
+.dl-card-art img {
+  transition:
+    transform 300ms cubic-bezier(0.2, 0, 0, 1),
+    filter 300ms ease-out;
+}
+.dl-card:hover .dl-card-art img {
+  transform: scale(1.04);
+  filter: brightness(1.08);
+}
+.dl-card:hover .dl-card-art {
+  box-shadow:
+    0 0 0 1px var(--dl-border),
+    0 12px 28px rgba(0, 0, 0, 0.45);
+}
+.dl-card-hit:focus-visible {
+  outline: none;
+}
+.dl-card-hit:focus-visible .dl-card-art {
+  outline: 2px solid var(--dl-accent-light);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dl-card-art,
+  .dl-card-art img {
+    transition: none;
+  }
+  .dl-card:hover .dl-card-art img {
+    transform: none;
+  }
 }
 .dl-card-sel .dl-card-art {
   outline: 2px solid var(--dl-accent);
@@ -655,7 +689,12 @@
   font-weight: 600;
   color: var(--dl-text);
 }
+.dl-card-sub {
+  font-size: 13px;
+  color: var(--dl-meta);
+}
 .dl-card-meta {
+  margin-top: 2px;
   font: 400 12px/1.4 var(--mono);
   color: var(--dl-dim);
 }

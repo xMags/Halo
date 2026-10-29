@@ -7,6 +7,7 @@ import {
   bytesOfTotal,
   CHART_FLOOR,
   chartBars,
+  CHART_CEILING,
   connectionsLabel,
   filterCounts,
   freeLine,
@@ -89,15 +90,17 @@ test('a movie row tags its type and drops a sub-line that repeats the name', () 
   assert.equal(row.sub, '')
   assert.equal(row.episodeLabel, undefined)
   assert.equal(row.cardTitle, 'Heat')
+  assert.equal(row.cardSub, '')
   assert.equal(row.paneMeta, 'MOVIE')
 })
 
 test('a ready episode card names the show and episode, and its quality, size and subtitle', () => {
   const row = rowOf(view({ status: 'done', downloaded_bytes: 4 * 1024 ** 3, subtitle_lang: 'eng' }))
-  assert.equal(row.cardTitle, 'Breaking Bad · Cat’s in the Bag')
+  assert.equal(row.cardTitle, 'Breaking Bad')
+  assert.equal(row.cardSub, 'Cat’s in the Bag')
   assert.equal(row.episodeLabel, 'S01E02')
   assert.equal(row.paneMeta, 'S01E02 · Cat’s in the Bag')
-  assert.equal(row.cardMeta, '2160p · HEVC · 4.0 GB · ENG')
+  assert.equal(row.cardMeta, 'HEVC · 4.0 GB · ENG')
   assert.deepEqual(row.qualityBadge, { label: '4K HDR', gold: true })
   assert.equal(row.subs, 'English')
 })
@@ -210,17 +213,17 @@ test('the chart is 28 slots against the window peak, floored, with the newest fo
   const bars = chartBars([1, 2, 4])
   assert.equal(bars.length, 28)
   assert.deepEqual(bars.slice(0, 25).map((bar) => bar.fraction), new Array(25).fill(CHART_FLOOR))
-  assert.equal(bars[27]!.fraction, 1)
-  assert.equal(bars[26]!.fraction, 0.5)
-  assert.equal(bars[25]!.fraction, 0.25)
+  assert.equal(bars[27]!.fraction, CHART_CEILING)
+  assert.equal(bars[26]!.fraction, 0.5 * CHART_CEILING)
+  assert.equal(bars[25]!.fraction, 0.25 * CHART_CEILING)
   assert.deepEqual(bars.slice(24).map((bar) => bar.opacity), [1, 1, 1, 1])
   assert.equal(bars[0]!.opacity, 0.35)
   assert.ok(Math.abs(bars[23]!.opacity - (0.35 + (23 / 28) * 0.45)) < 1e-9)
   // An idle minute rests every bar on the floor; a longer history keeps the newest slots.
   assert.ok(chartBars([]).every((bar) => bar.fraction === CHART_FLOOR))
   const long = chartBars([...new Array(30).fill(0), 8, ...new Array(27).fill(2)])
-  assert.equal(long[0]!.fraction, 1)
-  assert.equal(long[27]!.fraction, 0.25)
+  assert.equal(long[0]!.fraction, CHART_CEILING)
+  assert.equal(long[27]!.fraction, 0.25 * CHART_CEILING)
   assert.equal(peakText([0.4, 3.25, 1]), 'PEAK 3.3 MB/S')
   assert.equal(peakText([]), 'PEAK 0.0 MB/S')
 })
