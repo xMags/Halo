@@ -24,8 +24,9 @@ use super::rate::RateWindow;
 use super::segments::{self, ConnectionBudget, SegmentTable, Tuning, UNBOUNDED};
 use super::{
     available_bytes, classify_http_status, has_sufficient_space, open_get, parse_content_range,
-    DownloadFailureCode, OpenedResponse, TransferError, CANCEL_POLL, DURABLE_INTERVAL,
-    PROGRESS_INTERVAL, RATE_WINDOW, READ_TIMEOUT, SPACE_CHECK_BYTES,
+    unless_cancelled, DownloadFailureCode, OpenedResponse, TransferError, CANCEL_POLL,
+    DURABLE_INTERVAL, FIRST_RESPONSE_TIMEOUT, PROGRESS_INTERVAL, RATE_WINDOW, READ_TIMEOUT,
+    SPACE_CHECK_BYTES,
 };
 use crate::secure_fs::atomic_replace;
 use bytes::Bytes;
@@ -126,7 +127,7 @@ async fn download_with<H: TransferHost + Sync>(
         }
     };
 
-    let first = open_first(job, first_start).await?;
+    let first = open_first(job, first_start, cancel).await?;
     // A whole-file answer to a resume starts the download again.
     let table = table.filter(|_| first.start.is_some());
     host.response_metadata(first.response_validator.clone(), first.total)
@@ -279,8 +280,14 @@ struct FirstResponse {
 async fn open_first(
     job: &TransferJob<'_>,
     mut start: Option<u64>,
+    cancel: &AtomicBool,
 ) -> Result<FirstResponse, TransferError> {
-    let mut opened = open_get(job.client, job.url, job.headers, start, job.validator).await?;
+    let mut opened = unless_cancelled(
+        cancel,
+        FIRST_RESPONSE_TIMEOUT,
+        open_get(job.client, job.url, job.headers, start, job.validator),
+    )
+    .await?;
     let (content_range, response_validator) = loop {
         let response = &opened.response;
         let status = response.status().as_u16();
@@ -314,7 +321,12 @@ async fn open_first(
         if start.is_some() && status == 206 && opened.crossed_origin {
             // A ranged answer from another origin may describe a different
             // object. Take the whole file from the original URL instead.
-            opened = open_get(job.client, job.url, job.headers, None, None).await?;
+            opened = unless_cancelled(
+                cancel,
+                FIRST_RESPONSE_TIMEOUT,
+                open_get(job.client, job.url, job.headers, None, None),
+            )
+            .await?;
             start = None;
             continue;
         }
