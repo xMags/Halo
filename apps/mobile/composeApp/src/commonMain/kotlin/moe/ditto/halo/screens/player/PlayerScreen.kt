@@ -18,6 +18,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -37,6 +38,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.unit.dp
 import moe.ditto.halo.NativePlayerSurface
 import moe.ditto.halo.PlaybackHost
@@ -83,6 +85,14 @@ private const val WatchStateReportMillis = 30_000L
 
 /** How long opening a video may wait for the history it resumes from. */
 private const val ResumeHistoryWaitMillis = 5_000L
+
+/**
+ * How long hashing the source may hold up the subtitle restore. Hashing is two
+ * range reads, normally well under a second; a host that stalls them must not
+ * keep the remembered subtitle from coming back, so past this the source is
+ * treated as unhashable and the name-based results stand.
+ */
+private const val FingerprintTimeoutMillis = 10_000L
 
 /**
  * The playback screen.
@@ -265,28 +275,43 @@ internal fun PlayerScreen(
     // best effort, and a failure falls back to a name-based search rather than
     // to no subtitles.
     var fingerprint by remember(item) { mutableStateOf(context.fingerprint()) }
+    // Whether the fingerprint is as good as it is going to get: given, not
+    // needed, or asked for and answered (with a hash or with nothing). The
+    // subtitle restore waits on it; see [subtitleSelectionMayRun].
+    var fingerprintSettled by remember(item) {
+        mutableStateOf(context.isDownload || fingerprint != null)
+    }
     LaunchedEffect(item) {
         // Nothing to hash for a file already on the device, and nobody to ask
         // about it: the point of a download is that it plays with no network.
-        if (context.isDownload) return@LaunchedEffect
+        // A fingerprint the addon supplied needs no hashing either.
+        if (fingerprintSettled) return@LaunchedEffect
         // The size the addon declared is handed over rather than rediscovered:
         // hashing already costs two range reads against the same host the engine
         // is streaming from, and asking it for a number we were given is two
         // more requests that a rate-limited resolver counts against playback.
-        if (fingerprint == null) {
-            fingerprint = graph.videoHasher.fingerprint(context.url, context.videoSize)
+        fingerprint = withTimeoutOrNull(FingerprintTimeoutMillis) {
+            graph.videoHasher.fingerprint(context.url, context.videoSize)
         }
+        fingerprintSettled = true
     }
-    val addonSubtitleState by remember(item, fingerprint) {
-        if (context.isDownload) return@remember flowOf(QueryState<List<AddonSubtitles>>())
-        graph.browse.subtitles(
-            type = context.type,
-            videoId = context.videoId,
-            videoHash = fingerprint?.hash,
-            videoSize = fingerprint?.sizeBytes,
-            filename = context.filename,
-        )
-    }.collectAsState(QueryState())
+    // A fingerprint arriving restarts the query with the hash. The key block is
+    // what makes the restart start from nothing: collectAsState keeps its value
+    // across a change of flow, so without it the name-based answer would stand
+    // in for the hash-matched one until that arrived, and the restore would
+    // run on it.
+    val addonSubtitleState by key(item, fingerprint) {
+        remember {
+            if (context.isDownload) return@remember flowOf(QueryState<List<AddonSubtitles>>())
+            graph.browse.subtitles(
+                type = context.type,
+                videoId = context.videoId,
+                videoHash = fingerprint?.hash,
+                videoSize = fingerprint?.sizeBytes,
+                filename = context.filename,
+            )
+        }.collectAsState(QueryState())
+    }
     val addonSubtitles = remember(addonSubtitleState.value) {
         addonSubtitleOptions(addonSubtitleState.value.orEmpty())
     }
@@ -305,10 +330,24 @@ internal fun PlayerScreen(
     // A download has no addon query; otherwise its first answer has to be in,
     // since the query starts out as an empty result that is not fetching yet.
     val addonSubtitlesKnown = context.isDownload || addonSubtitleState.value != null || addonSubtitleState.error != null
-    LaunchedEffect(item, ownState, state.tracks, addonSubtitleState.isFetching, addonSubtitlesKnown) {
-        if (!ownState || selectionApplied) return@LaunchedEffect
-        if (addonSubtitleState.isFetching || !addonSubtitlesKnown) return@LaunchedEffect
-        if (state.tracks.subtitles.isEmpty() && addonSubtitles.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(
+        item,
+        ownState,
+        state.tracks,
+        fingerprintSettled,
+        addonSubtitleState.isFetching,
+        addonSubtitlesKnown,
+    ) {
+        val mayRun = subtitleSelectionMayRun(
+            ownState = ownState,
+            alreadyApplied = selectionApplied,
+            fingerprintSettled = fingerprintSettled,
+            addonSubtitlesFetching = addonSubtitleState.isFetching,
+            addonSubtitlesKnown = addonSubtitlesKnown,
+            hasEmbeddedSubtitles = state.tracks.subtitles.isNotEmpty(),
+            hasAddonSubtitles = addonSubtitles.isNotEmpty(),
+        )
+        if (!mayRun) return@LaunchedEffect
 
         val selection = resolveSubtitleSelection(
             remembered = graph.subtitleChoices.choiceFor(context.videoId, context.itemId),
