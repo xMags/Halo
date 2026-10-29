@@ -447,4 +447,119 @@ class PlayerSubtitleOptionsTest {
     fun selectionWaitsWhileThereIsNothingToChooseFrom() {
         assertFalse(selectionMayRun(hasEmbeddedSubtitles = false, hasAddonSubtitles = false))
     }
+
+    /**
+     * An addon subtitle once added: mpv lists it as an external track titled
+     * with the option id, and reports whatever codec it detected.
+     */
+    private fun withAddedAddonSubtitle(option: AddonSubtitleOption): PlayerTracks = tracks.copy(
+        subtitles = tracks.subtitles + PlayerTrack(
+            id = "7",
+            label = option.id,
+            language = option.lang,
+            codec = "subrip",
+            external = true,
+        ),
+        selectedSubtitleId = "7",
+    )
+
+    @Test
+    fun chipNamesASelectedAddonSubtitleByItsLanguageAndUrlFormat() {
+        val option = addons.first { it.id == "opensubtitles:6821194" }
+
+        assertEquals(
+            SubtitleChipText(value = "English", badge = ".SRT"),
+            subtitleChipText(withAddedAddonSubtitle(option), addons, option.id),
+        )
+    }
+
+    @Test
+    fun chipLeavesTheBadgeOffWhenTheAddonUrlNamesNoFormat() {
+        val option = addonSubtitleOptions(
+            listOf(
+                AddonSubtitles(
+                    addon = AddonSource("opensubtitles", "OpenSubtitles"),
+                    subtitles = listOf(Subtitle(id = "9", url = "https://subs.test/download?id=9", lang = "spa")),
+                ),
+            ),
+        )
+
+        assertEquals(
+            SubtitleChipText(value = "Spanish", badge = null),
+            subtitleChipText(withAddedAddonSubtitle(option.single()), option, option.single().id),
+        )
+    }
+
+    @Test
+    fun chipReadsTheEngineTrackWhenAnEmbeddedOneIsSelected() {
+        assertEquals(
+            SubtitleChipText(value = "jpn", badge = ".PGS"),
+            subtitleChipText(tracks.copy(selectedSubtitleId = "6"), addons, selectedAddonId = null),
+        )
+    }
+
+    @Test
+    fun chipReadsTheLanguageOfAnAddedTrackThatIsNotAnAddonResult() {
+        val downloaded = tracks.copy(
+            subtitles = tracks.subtitles + PlayerTrack(
+                id = "8",
+                label = "Downloaded subtitle",
+                language = "eng",
+                codec = "subrip",
+                external = true,
+            ),
+            selectedSubtitleId = "8",
+        )
+
+        assertEquals(
+            SubtitleChipText(value = "eng", badge = ".SRT"),
+            subtitleChipText(downloaded, addons, selectedAddonId = null),
+        )
+    }
+
+    @Test
+    fun chipReadsOffWhenNothingIsSelected() {
+        assertEquals(
+            SubtitleChipText(value = "Off", badge = null),
+            subtitleChipText(tracks, addons, selectedAddonId = null),
+        )
+    }
+
+    @Test
+    fun chipFallsBackToTheEngineTrackWhenTheSelectedAddonResultIsGone() {
+        val option = addons.first { it.id == "opensubtitles:6821194" }
+
+        assertEquals(
+            SubtitleChipText(value = "eng", badge = ".SRT"),
+            subtitleChipText(withAddedAddonSubtitle(option), emptyList(), option.id),
+        )
+    }
+
+    @Test
+    fun theFilesOwnListLeavesOutAddedAddonSubtitles() {
+        val option = addons.first { it.id == "opensubtitles:6821194" }
+
+        assertEquals(tracks.subtitles, inFileSubtitleTracks(withAddedAddonSubtitle(option).subtitles, addons))
+    }
+
+    @Test
+    fun theFilesOwnListKeepsOtherAddedTracks() {
+        val downloaded = PlayerTrack(id = "8", label = "Downloaded subtitle", external = true)
+
+        assertEquals(
+            tracks.subtitles + downloaded,
+            inFileSubtitleTracks(tracks.subtitles + downloaded, addons),
+        )
+    }
+
+    /** Only an added track hides: an embedded one titled like an id is the file's own. */
+    @Test
+    fun theFilesOwnListKeepsAnEmbeddedTrackThatHappensToShareAnId() {
+        val embedded = PlayerTrack(id = "9", label = "opensubtitles:6821194")
+
+        assertEquals(
+            tracks.subtitles + embedded,
+            inFileSubtitleTracks(tracks.subtitles + embedded, addons),
+        )
+    }
 }

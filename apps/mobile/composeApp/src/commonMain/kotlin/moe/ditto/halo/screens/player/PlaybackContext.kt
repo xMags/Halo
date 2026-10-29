@@ -50,6 +50,8 @@ internal data class PlaybackContext(
     val isDownload: Boolean = false,
     /** A subtitle stored beside a download, handed to the engine directly. */
     val localSubtitlePath: String? = null,
+    /** That subtitle's language code, when the download recorded one. */
+    val localSubtitleLang: String? = null,
 ) {
     /** True when this is an episode of something rather than a film. */
     val isEpisode: Boolean

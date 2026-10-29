@@ -154,7 +154,7 @@ class IosHostBridgeTest {
         adapter.setSubtitleOutline(5.0)
         adapter.setSubtitleShadow(2.0)
         adapter.setSubtitleLift(18)
-        adapter.addSubtitle("http://127.0.0.1:18787/media/sample4k.ass")
+        adapter.addSubtitle("http://127.0.0.1:18787/media/sample4k.ass", "opensubs:42", "eng")
 
         assertEquals(listOf(item), host.loads)
         assertEquals(42.5, host.lastSeekSeconds)
@@ -169,6 +169,7 @@ class IosHostBridgeTest {
         assertEquals(listOf(2.0), host.subtitleShadows)
         assertEquals(listOf(18), host.subtitleLifts)
         assertEquals(listOf("http://127.0.0.1:18787/media/sample4k.ass"), host.addedSubtitles)
+        assertEquals(listOf<Pair<String?, String?>>("opensubs:42" to "eng"), host.addedSubtitleNames)
         assertEquals(1, host.coreCreationCount)
     }
 
@@ -218,7 +219,7 @@ class IosHostBridgeTest {
               "audio": [{"id": "2", "label": "AAC stereo", "language": "eng", "codec": "aac", "channels": 2, "sampleRateHz": 48000}],
               "subtitles": [
                 {"id": "3", "label": "English ASS", "language": "eng", "codec": "ass"},
-                {"id": "4", "label": "Signs"}
+                {"id": "4", "label": "Signs", "external": true}
               ],
               "selectedAudioId": "2",
               "selectedSubtitleId": "3"
@@ -256,7 +257,7 @@ class IosHostBridgeTest {
             tracks.audio,
         )
         assertEquals(
-            listOf(PlayerTrack("3", "English ASS", "eng", "ass"), PlayerTrack("4", "Signs")),
+            listOf(PlayerTrack("3", "English ASS", "eng", "ass"), PlayerTrack("4", "Signs", external = true)),
             tracks.subtitles,
         )
         assertEquals("2", tracks.selectedAudioId)
@@ -389,6 +390,7 @@ class IosHostBridgeTest {
         val subtitleShadows = mutableListOf<Double>()
         val subtitleLifts = mutableListOf<Int>()
         val addedSubtitles = mutableListOf<String>()
+        val addedSubtitleNames = mutableListOf<Pair<String?, String?>>()
         var lastSeekSeconds: Double? = null
             private set
 
@@ -461,8 +463,9 @@ class IosHostBridgeTest {
             subtitleLifts += percent
         }
 
-        override fun addSubtitle(url: String) {
+        override fun addSubtitle(url: String, title: String?, lang: String?) {
             addedSubtitles += url
+            addedSubtitleNames += title to lang
         }
 
         override fun teardown() = Unit

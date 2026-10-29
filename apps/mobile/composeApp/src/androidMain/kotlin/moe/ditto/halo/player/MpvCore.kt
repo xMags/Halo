@@ -357,10 +357,13 @@ internal class MpvCore private constructor(
      * of adding it a second time. Restoring a remembered subtitle and then
      * tapping the same row otherwise leaves two identical tracks in the list,
      * which is visible on device and cannot be undone from the UI.
+     *
+     * [title] names the track; without one mpv uses the file name, which for
+     * a cached addon subtitle is a digest. See [subAddArguments].
      */
-    fun addSubtitle(url: String) {
+    fun addSubtitle(url: String, title: String?, lang: String?) {
         if (destroyed) return
-        mpv.command(arrayOf("sub-add", url, "cached"))
+        mpv.command(subAddArguments(url, title, lang).toTypedArray())
     }
 
     /**
@@ -426,14 +429,15 @@ internal class MpvCore private constructor(
             val codec = mpv.getPropertyString("track-list/$i/codec")
             val channels = mpv.getPropertyInt("track-list/$i/demux-channel-count")
             val sampleRateHz = mpv.getPropertyInt("track-list/$i/demux-samplerate")
+            val external = mpv.getPropertyBoolean("track-list/$i/external") ?: false
             val label = title ?: lang ?: "$type $trackId"
             when (type) {
                 "audio" -> {
-                    audio += PlayerTrack(trackId, label, lang, codec, channels, sampleRateHz)
+                    audio += PlayerTrack(trackId, label, lang, codec, channels, sampleRateHz, external)
                     if (selected) selectedAudio = trackId
                 }
                 "sub" -> {
-                    subs += PlayerTrack(trackId, label, lang, codec = codec)
+                    subs += PlayerTrack(trackId, label, lang, codec = codec, external = external)
                     if (selected) selectedSub = trackId
                 }
             }

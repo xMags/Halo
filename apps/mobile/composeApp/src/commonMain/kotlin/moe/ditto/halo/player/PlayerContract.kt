@@ -16,6 +16,13 @@ data class PlayerTrack(
     val channels: Int? = null,
     /** Decoded audio sample rate in hertz. Null for subtitles and unreported audio. */
     val sampleRateHz: Int? = null,
+    /**
+     * True for a track added from a separate file (`sub-add`) rather than one
+     * the media itself carries. Such a track is labelled with the title it was
+     * added under, which is how an addon subtitle is told apart from the
+     * file's own.
+     */
+    val external: Boolean = false,
 )
 
 data class PlayerTracks(
@@ -157,7 +164,13 @@ interface PlayerPort {
      */
     suspend fun setSubtitleLift(percent: Int)
 
-    suspend fun addSubtitle(url: String)
+    /**
+     * Adds a subtitle file and selects it. [title] names the track in the
+     * engine's list (without it mpv falls back to the file name, which for a
+     * cached addon subtitle is a digest), and [lang] is its language code.
+     * Either may be null; [lang] is only meaningful with a [title].
+     */
+    suspend fun addSubtitle(url: String, title: String? = null, lang: String? = null)
 
     /**
      * Tears the video decode chain down and returns once it is gone, so the

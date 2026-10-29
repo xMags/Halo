@@ -150,9 +150,9 @@ class PlayerPresenter(
         player.setSubtitleLift(percent.coerceIn(0, MaxSubtitleLiftPercent))
     }
 
-    suspend fun addSubtitle(url: String) {
+    suspend fun addSubtitle(url: String, title: String? = null, lang: String? = null) {
         if (state.status == PlaybackStatus.Released || url.isBlank()) return
-        player.addSubtitle(url)
+        player.addSubtitle(url, title, lang)
     }
 
     suspend fun onEvent(event: PlayerEvent) {

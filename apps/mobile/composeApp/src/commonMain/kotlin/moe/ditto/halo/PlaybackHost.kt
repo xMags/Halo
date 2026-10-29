@@ -166,8 +166,8 @@ internal class PlaybackHost(private val playerPort: PlayerPort) {
         publish()
     }
 
-    suspend fun addSubtitle(url: String) {
-        playerPresenter.addSubtitle(url)
+    suspend fun addSubtitle(url: String, title: String? = null, lang: String? = null) {
+        playerPresenter.addSubtitle(url, title, lang)
         publish()
     }
 
