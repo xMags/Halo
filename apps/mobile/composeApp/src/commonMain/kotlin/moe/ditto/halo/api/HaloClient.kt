@@ -125,7 +125,7 @@ class HaloClient(
         "/catalog",
         CatalogResponse.serializer(),
         query = mapOf("addon" to addonId, "type" to type, "id" to id) + extra,
-    )
+    ).withoutActions() // Filtered here too: the server may pass addon actions through.
 
     /** First effective addon that can describe this type/id wins; 404 when none can. */
     override suspend fun getMeta(type: String, id: String): MetaResponse = request(
@@ -141,7 +141,7 @@ class HaloClient(
         "/streams",
         StreamsResult.serializer(),
         query = mapOf("type" to type, "videoId" to videoId),
-    )
+    ).withoutActions()
 
     /**
      * The episode following [videoId] plus, when the addon that served the
@@ -166,7 +166,7 @@ class HaloClient(
             addonId?.let { put("addon", it) }
             bingeGroup?.let { put("bingeGroup", it) }
         },
-    )
+    ).withoutActions()
 
     /**
      * External subtitles from every subtitle-capable addon. Passing

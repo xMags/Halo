@@ -1,3 +1,4 @@
+import { withoutActionStreams } from './actionEntries'
 import type { AddonError, AddonErrorCode } from '../api/types'
 import { AddonRequestError } from './client'
 import type { Stream, Subtitle } from './types'
@@ -68,10 +69,13 @@ export function addonError(id: string, name: unknown, reason: unknown): AddonErr
 
 export function normalizeStreamsResponse(value: unknown): Stream[] {
   if (!isRecord(value) || !Array.isArray(value.streams)) throw new InvalidAddonResponseError()
-  return value.streams.slice(0, MAX_RESULTS).flatMap((entry) => {
-    const stream = normalizeStream(entry)
-    return stream ? [stream] : []
-  })
+  // A stream that would act (delete files, clear a watchlist) is no video.
+  return withoutActionStreams(
+    value.streams.slice(0, MAX_RESULTS).flatMap((entry) => {
+      const stream = normalizeStream(entry)
+      return stream ? [stream] : []
+    }),
+  )
 }
 
 export function normalizeSubtitlesResponse(value: unknown): Subtitle[] {

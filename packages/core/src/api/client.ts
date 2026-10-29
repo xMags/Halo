@@ -1,3 +1,4 @@
+import { isActionStream, withoutActionEntries, withoutActionStreams } from '../addon/actionEntries'
 import type { CatalogResponse, MetaResponse } from '../addon/types'
 import type {
   AddonEntry,
@@ -211,9 +212,11 @@ export class HaloClient {
    * directly, so the app doesn't need per-addon URLs or CORS handling.
    */
   /** `addonId` is the opaque `AddonEntry.id` — clients never address addons by transport URL. */
-  getCatalog(addonId: string, type: string, id: string, extra?: Record<string, string>, opts?: RequestOptions): Promise<CatalogResponse> {
+  async getCatalog(addonId: string, type: string, id: string, extra?: Record<string, string>, opts?: RequestOptions): Promise<CatalogResponse> {
     const qs = new URLSearchParams({ addon: addonId, type, id, ...(extra ?? {}) })
-    return this.request<CatalogResponse>('GET', `/catalog?${qs.toString()}`, undefined, opts)
+    const response = await this.request<CatalogResponse>('GET', `/catalog?${qs.toString()}`, undefined, opts)
+    // Filtered here too: the server may be one that passes addon actions through.
+    return { ...response, metas: withoutActionEntries(response.metas ?? []) }
   }
 
   /** First effective addon that can describe this type/id wins; 404 if none. */
@@ -223,9 +226,15 @@ export class HaloClient {
   }
 
   /** Fans out to every effective addon; playable streams grouped by addon. */
-  getStreams(type: string, videoId: string, opts?: RequestOptions): Promise<StreamsResult> {
+  async getStreams(type: string, videoId: string, opts?: RequestOptions): Promise<StreamsResult> {
     const qs = new URLSearchParams({ type, videoId })
-    return this.request<StreamsResult>('GET', `/streams?${qs.toString()}`, undefined, opts)
+    const response = await this.request<StreamsResult>('GET', `/streams?${qs.toString()}`, undefined, opts)
+    return {
+      ...response,
+      results: response.results
+        .map((group) => ({ ...group, streams: withoutActionStreams(group.streams) }))
+        .filter((group) => group.streams.length > 0),
+    }
   }
 
   /**
@@ -234,14 +243,15 @@ export class HaloClient {
    * with the same bingeGroup (Stremio's binge-continuation rule: exact group
    * equality, same addon only).
    */
-  getNextEpisode(
+  async getNextEpisode(
     params: { type: string; metaId: string; videoId: string; addonId?: string; bingeGroup?: string },
     opts?: RequestOptions,
   ): Promise<NextEpisodeResult> {
     const qs = new URLSearchParams({ type: params.type, metaId: params.metaId, videoId: params.videoId })
     if (params.addonId) qs.set('addon', params.addonId)
     if (params.bingeGroup) qs.set('bingeGroup', params.bingeGroup)
-    return this.request<NextEpisodeResult>('GET', `/next-episode?${qs.toString()}`, undefined, opts)
+    const response = await this.request<NextEpisodeResult>('GET', `/next-episode?${qs.toString()}`, undefined, opts)
+    return response.stream && isActionStream(response.stream) ? { ...response, stream: null } : response
   }
 
   getSubtitles(
