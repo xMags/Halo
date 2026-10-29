@@ -145,6 +145,37 @@ internal sealed interface SubtitleSelection {
 }
 
 /**
+ * Whether the one-time subtitle restore for the item on screen may run now.
+ *
+ * It runs once, so it has to wait for the inputs its choice is made between:
+ * this item's own tracks ([ownState]; the playback owner may still be
+ * describing the previous item) and the addon results that will stand. Those
+ * are the hash-matched ones whenever the source can be hashed, so the restore
+ * waits for the hashing to settle ([fingerprintSettled]) and then for the
+ * query that follows from it to answer. Run on the name-based answer that
+ * usually arrives first, a remembered addon subtitle from a hash-matched list
+ * is often missing and the restore falls back to the language alone.
+ *
+ * [addonSubtitlesKnown] means the query has answered, with results or with an
+ * error, which is not the same as not fetching: the query starts out as an
+ * empty result that is not fetching yet.
+ */
+internal fun subtitleSelectionMayRun(
+    ownState: Boolean,
+    alreadyApplied: Boolean,
+    fingerprintSettled: Boolean,
+    addonSubtitlesFetching: Boolean,
+    addonSubtitlesKnown: Boolean,
+    hasEmbeddedSubtitles: Boolean,
+    hasAddonSubtitles: Boolean,
+): Boolean {
+    if (!ownState || alreadyApplied) return false
+    if (!fingerprintSettled) return false
+    if (addonSubtitlesFetching || !addonSubtitlesKnown) return false
+    return hasEmbeddedSubtitles || hasAddonSubtitles
+}
+
+/**
  * Restores what the viewer last chose for this video, falling back to language
  * when the exact track is gone.
  *

@@ -16,6 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class PlayerSubtitleOptionsTest {
 
@@ -392,5 +393,58 @@ class PlayerSubtitleOptionsTest {
         }
 
         assertFalse(remembered)
+    }
+
+    /** Every input ready: this item's tracks, hashing settled, the query answered. */
+    private fun selectionMayRun(
+        ownState: Boolean = true,
+        alreadyApplied: Boolean = false,
+        fingerprintSettled: Boolean = true,
+        addonSubtitlesFetching: Boolean = false,
+        addonSubtitlesKnown: Boolean = true,
+        hasEmbeddedSubtitles: Boolean = true,
+        hasAddonSubtitles: Boolean = true,
+    ): Boolean = subtitleSelectionMayRun(
+        ownState = ownState,
+        alreadyApplied = alreadyApplied,
+        fingerprintSettled = fingerprintSettled,
+        addonSubtitlesFetching = addonSubtitlesFetching,
+        addonSubtitlesKnown = addonSubtitlesKnown,
+        hasEmbeddedSubtitles = hasEmbeddedSubtitles,
+        hasAddonSubtitles = hasAddonSubtitles,
+    )
+
+    @Test
+    fun selectionRunsOnceEveryInputIsIn() {
+        assertTrue(selectionMayRun())
+        assertTrue(selectionMayRun(hasAddonSubtitles = false))
+        assertTrue(selectionMayRun(hasEmbeddedSubtitles = false))
+    }
+
+    /**
+     * The name-based answer usually lands while the source is still being
+     * hashed. Restoring on it would miss a remembered hash-matched subtitle and
+     * settle for its language.
+     */
+    @Test
+    fun selectionWaitsForHashingEvenWhenTheNameBasedAnswerIsIn() {
+        assertFalse(selectionMayRun(fingerprintSettled = false))
+    }
+
+    @Test
+    fun selectionWaitsForTheQueryToAnswer() {
+        assertFalse(selectionMayRun(addonSubtitlesKnown = false))
+        assertFalse(selectionMayRun(addonSubtitlesFetching = true))
+    }
+
+    @Test
+    fun selectionDoesNotRunForAnotherItemOrTwice() {
+        assertFalse(selectionMayRun(ownState = false))
+        assertFalse(selectionMayRun(alreadyApplied = true))
+    }
+
+    @Test
+    fun selectionWaitsWhileThereIsNothingToChooseFrom() {
+        assertFalse(selectionMayRun(hasEmbeddedSubtitles = false, hasAddonSubtitles = false))
     }
 }
