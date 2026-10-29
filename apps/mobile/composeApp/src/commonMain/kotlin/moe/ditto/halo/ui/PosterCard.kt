@@ -38,7 +38,20 @@ data class PosterItem(
     val posterUrl: String? = null,
     /** 0..1 watch progress; null for anything never played. */
     val progress: Float? = null,
-)
+) {
+    /** Stremio's poster for the title, when the key's id is an IMDb one. */
+    val fallbackPosterUrl: String? get() = metahubPosterUrl(key.substringAfter(':'))
+}
+
+private val ImdbId = Regex("^tt\\d+$")
+
+/**
+ * Stremio's own poster for an IMDb title, what a catalog falls back on when an
+ * addon's art does not load. Null for any other kind of id, which metahub does
+ * not know.
+ */
+fun metahubPosterUrl(id: String?): String? =
+    id?.takeIf { ImdbId.matches(it) }?.let { "https://images.metahub.space/poster/medium/$it/img" }
 
 /** Below this, the progress bar is a sliver that reads as a rendering artifact. */
 private const val MinVisibleProgress = 0.02f
@@ -65,6 +78,7 @@ fun PosterCard(
     Column(modifier.longPressClickable(onClick = onClick, role = null, onLongPress = onLongPress)) {
         HaloAsyncImage(
             url = item.posterUrl,
+            fallbackUrl = item.fallbackPosterUrl,
             contentDescription = item.title,
             modifier = Modifier
                 .fillMaxWidth()
