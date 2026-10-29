@@ -11,6 +11,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -35,6 +36,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import androidx.compose.ui.unit.dp
 import moe.ditto.halo.NativePlayerSurface
 import moe.ditto.halo.PlaybackHost
 import moe.ditto.halo.SessionGraph
@@ -45,8 +47,11 @@ import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlaybackStatus
 import moe.ditto.halo.player.PlayerState
 import moe.ditto.halo.player.PlayerSystemPort
+import moe.ditto.halo.player.classifyVideoQuality
 import moe.ditto.halo.player.PlayerTracks
 import moe.ditto.halo.player.VideoFrameSource
+import moe.ditto.halo.ui.QualityMedal
+import moe.ditto.halo.ui.QualityMedalWidth
 import moe.ditto.halo.ui.HaloColors
 
 /** How far the bottom bar rises as it appears. */
@@ -125,6 +130,7 @@ internal fun PlayerScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by playback.state.collectAsState()
+    val qualityMedal = remember(state.videoFormat) { classifyVideoQuality(state.videoFormat) }
     val scope = rememberCoroutineScope()
     val metrics = rememberPlayerMetrics()
     val controller = remember(scope) { PlayerScreenController(scope) }
@@ -532,7 +538,10 @@ internal fun PlayerScreen(
                 showTitle = context.showTitle,
                 episodeTag = context.episodeTag,
                 episodeName = context.episodeName,
-                streamBadges = streamBadges,
+                // The medal says the resolution now, from the decoded picture,
+                // so the name's guess at it would only repeat or contradict it.
+                streamBadges = if (qualityMedal == null) streamBadges else streamBadges.filterNot(::isResolutionBadge),
+                reserveEnd = if (qualityMedal == null) 0.dp else QualityMedalWidth + 14.dp,
                 locked = controller.locked,
                 onBack = leave,
                 // Absent where the platform has no native PiP window to hand
@@ -657,6 +666,19 @@ internal fun PlayerScreen(
                         leaveTo { onSelectEpisode(choice) }
                     }
                 },
+            )
+        }
+
+        // Describes the decoded picture for the whole file, so it does not fade
+        // with the controls; the top bar leaves its corner free instead. It
+        // gives way to the rail, which takes that side of the screen.
+        if (qualityMedal != null && controller.rail == null) {
+            QualityMedal(
+                medal = qualityMedal,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    // Centred on the top bar's 38dp row.
+                    .padding(top = metrics.chromeTopPadding + 4.dp, end = metrics.hPad),
             )
         }
 

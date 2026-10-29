@@ -31,6 +31,9 @@ import moe.ditto.halo.browse.MedalFinish
  * into the metal. A badge with no tag gives its plate the whole width rather
  * than leaving an empty box beside it.
  */
+/** The regular medal's width, for layouts that leave room for one. */
+internal val QualityMedalWidth = 96.dp
+
 @Composable
 internal fun QualityMedal(medal: Medal, modifier: Modifier = Modifier, large: Boolean = false) {
     val finish = finishOf(medal.finish)
@@ -38,7 +41,7 @@ internal fun QualityMedal(medal: Medal, modifier: Modifier = Modifier, large: Bo
     val description = listOfNotNull(medal.plate, medal.tag).joinToString(" ")
     Row(
         modifier = modifier
-            .size(width = if (large) 112.dp else 96.dp, height = if (large) 36.dp else 30.dp)
+            .size(width = if (large) 112.dp else QualityMedalWidth, height = if (large) 36.dp else 30.dp)
             .clip(shape)
             .background(finish.rim)
             .border(1.dp, finish.edge, shape)

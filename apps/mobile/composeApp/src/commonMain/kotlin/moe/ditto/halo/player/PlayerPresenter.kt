@@ -20,6 +20,8 @@ data class PlayerState(
     val buffering: PlayerBuffering? = null,
     /** How far into the media the cache reaches, or null before the engine says. */
     val bufferedPositionSeconds: Double? = null,
+    /** The decoded picture; empty until the engine has one. */
+    val videoFormat: VideoFormat = VideoFormat(),
     val error: String? = null,
     // Local echoes of the last requested live controls. The core is the source
     // of truth; these exist so the shell can display what it asked for without
@@ -181,6 +183,7 @@ class PlayerPresenter(
                     .takeIf { it.isFinite() && it >= 0.0 }
                     ?: state.bufferedPositionSeconds,
             )
+            is PlayerEvent.VideoFormatChanged -> state.copy(videoFormat = event.format)
             PlayerEvent.NaturalEnd -> state.copy(status = PlaybackStatus.Ended, buffering = null)
             // Nothing is being filled once playback has failed, and a stall is
             // a common way to arrive here, so the overlay must not survive

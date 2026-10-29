@@ -125,6 +125,8 @@ internal fun PlayerTopBar(
     episodeTag: String?,
     episodeName: String?,
     streamBadges: List<String>,
+    /** Room left free at the row's end, where the quality medal sits over the video. */
+    reserveEnd: Dp,
     locked: Boolean,
     onBack: () -> Unit,
     /** Null on platforms with no native picture-in-picture; the button is then absent. */
@@ -136,7 +138,7 @@ internal fun PlayerTopBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = metrics.hPad, end = metrics.hPad, top = metrics.chromeTopPadding),
+            .padding(start = metrics.hPad, end = metrics.hPad + reserveEnd, top = metrics.chromeTopPadding),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

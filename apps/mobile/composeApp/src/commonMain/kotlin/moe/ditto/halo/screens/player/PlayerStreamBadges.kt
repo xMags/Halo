@@ -19,6 +19,9 @@ package moe.ditto.halo.screens.player
  * group, is either already visible in the picture or not worth the width.
  */
 
+/** True for the resolution half of [streamBadges], which the player's quality medal replaces. */
+internal fun isResolutionBadge(badge: String): Boolean = ResolutionRules.any { it.badge == badge }
+
 /** How the badge for one fact is spelled, and everything that means it. */
 private class BadgeRule(val badge: String, alternatives: List<String>) {
     // Bounded by non-alphanumerics rather than \b so that the dotted spellings

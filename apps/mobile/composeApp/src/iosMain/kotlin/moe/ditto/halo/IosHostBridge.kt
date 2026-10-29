@@ -25,6 +25,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import moe.ditto.halo.player.VideoFormat
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerPort
@@ -135,6 +136,13 @@ interface HaloIosPlayerEventSink {
 
     /** [positionSeconds] < 0 means the cache reach is currently unknown. */
     fun onBufferedPositionChanged(positionSeconds: Double)
+
+    /**
+     * The decoded picture. Zero sizes mean there is none; an empty [gamma]
+     * means mpv did not report a transfer. Primitives for the same reason as
+     * the buffering figures above.
+     */
+    fun onVideoFormatChanged(width: Int, height: Int, gamma: String, dolbyVision: Boolean)
     fun onEnded()
     fun onError(message: String)
 }
@@ -259,6 +267,19 @@ internal class IosPlayerEventBridge : HaloIosPlayerEventSink {
         if (positionSeconds.isFinite() && positionSeconds >= 0.0) {
             channel.trySend(PlayerEvent.BufferedPositionChanged(positionSeconds))
         }
+    }
+
+    override fun onVideoFormatChanged(width: Int, height: Int, gamma: String, dolbyVision: Boolean) {
+        channel.trySend(
+            PlayerEvent.VideoFormatChanged(
+                VideoFormat(
+                    width = width.coerceAtLeast(0),
+                    height = height.coerceAtLeast(0),
+                    gamma = gamma.ifEmpty { null },
+                    dolbyVision = dolbyVision,
+                ),
+            ),
+        )
     }
 
     override fun onEnded() {

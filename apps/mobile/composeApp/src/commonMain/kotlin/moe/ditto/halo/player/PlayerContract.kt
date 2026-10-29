@@ -58,6 +58,19 @@ data class SubtitleStyle(
     }
 }
 
+/**
+ * The decoded picture as the engine reports it: display size, transfer
+ * (`pq`, `hlg`, `bt.1886`…) and whether the stream is Dolby Vision. Zero sizes
+ * mean no picture yet. What the player's quality medal is classified from, so
+ * it describes the file that is actually playing, not what its name claims.
+ */
+data class VideoFormat(
+    val width: Int = 0,
+    val height: Int = 0,
+    val gamma: String? = null,
+    val dolbyVision: Boolean = false,
+)
+
 sealed interface PlayerEvent {
     data class Ready(val durationSeconds: Double?) : PlayerEvent
     data class PositionChanged(val positionSeconds: Double) : PlayerEvent
@@ -83,6 +96,8 @@ sealed interface PlayerEvent {
      * not only while it stalls.
      */
     data class BufferedPositionChanged(val positionSeconds: Double) : PlayerEvent
+
+    data class VideoFormatChanged(val format: VideoFormat) : PlayerEvent
 
     data object NaturalEnd : PlayerEvent
     data class Error(val message: String) : PlayerEvent

@@ -18,6 +18,9 @@ enum MPVCoreEvent {
         cachedSeconds: Double
     )
     case bufferedPosition(seconds: Double)
+    /// The decoded picture: zero sizes mean none, an empty gamma means mpv
+    /// did not report a transfer.
+    case videoFormat(width: Int32, height: Int32, gamma: String, dolbyVision: Bool)
     case ended
     case error(message: String)
 }
@@ -56,6 +59,13 @@ final class MPVCore {
     private var eofNotified = false
     private var pausedForCache = false
     private var cacheFillPercent: Int32 = -1
+    // The decoded picture, assembled from four observations; reported whole,
+    // and only when it moves.
+    private var videoWidth: Int32 = 0
+    private var videoHeight: Int32 = 0
+    private var videoGamma = ""
+    private var videoDolbyVision = false
+    private var lastVideoFormat: (Int32, Int32, String, Bool)?
 
     private enum Observed: UInt64 {
         case timePos = 1
@@ -67,6 +77,10 @@ final class MPVCore {
         case pausedForCache = 7
         case cacheBufferingState = 8
         case demuxerCacheTime = 9
+        case videoWidth = 10
+        case videoHeight = 11
+        case videoGamma = 12
+        case videoColorMatrix = 13
     }
 
     init(muted: Bool) {
@@ -116,6 +130,17 @@ final class MPVCore {
             Observed.demuxerCacheTime.rawValue,
             "demuxer-cache-time",
             MPV_FORMAT_DOUBLE
+        )
+        // The decoded picture, for the quality medal: the same four
+        // properties the desktop and Android players read.
+        mpv_observe_property(handle, Observed.videoWidth.rawValue, "video-params/dw", MPV_FORMAT_INT64)
+        mpv_observe_property(handle, Observed.videoHeight.rawValue, "video-params/dh", MPV_FORMAT_INT64)
+        mpv_observe_property(handle, Observed.videoGamma.rawValue, "video-params/gamma", MPV_FORMAT_STRING)
+        mpv_observe_property(
+            handle,
+            Observed.videoColorMatrix.rawValue,
+            "video-params/colormatrix",
+            MPV_FORMAT_STRING
         )
 
         // The wakeup callback runs on an mpv-internal thread. It must only
@@ -241,6 +266,10 @@ final class MPVCore {
             mpv_unobserve_property(handle, Observed.pausedForCache.rawValue)
             mpv_unobserve_property(handle, Observed.cacheBufferingState.rawValue)
             mpv_unobserve_property(handle, Observed.demuxerCacheTime.rawValue)
+            mpv_unobserve_property(handle, Observed.videoWidth.rawValue)
+            mpv_unobserve_property(handle, Observed.videoHeight.rawValue)
+            mpv_unobserve_property(handle, Observed.videoGamma.rawValue)
+            mpv_unobserve_property(handle, Observed.videoColorMatrix.rawValue)
             mpv_terminate_destroy(handle)
             mpv = nil
         }
@@ -332,9 +361,42 @@ final class MPVCore {
             if seconds.isFinite && seconds >= 0 {
                 emit(.bufferedPosition(seconds: seconds))
             }
+        case .videoWidth, .videoHeight:
+            // MPV_FORMAT_NONE (no picture right now) reads as zero.
+            var size: Int32 = 0
+            if property.format == MPV_FORMAT_INT64, let value = property.data {
+                size = Int32(clamping: max(0, value.assumingMemoryBound(to: Int64.self).pointee))
+            }
+            if Observed(rawValue: event.reply_userdata) == .videoWidth {
+                videoWidth = size
+            } else {
+                videoHeight = size
+            }
+            emitVideoFormat()
+        case .videoGamma:
+            videoGamma = stringValue(property) ?? ""
+            emitVideoFormat()
+        case .videoColorMatrix:
+            // mpv names a Dolby Vision stream through its colour matrix.
+            videoDolbyVision = stringValue(property) == "dolbyvision"
+            emitVideoFormat()
         case nil:
             break
         }
+    }
+
+    /// An MPV_FORMAT_STRING observation's text, or nil when mpv has none.
+    private func stringValue(_ property: mpv_event_property) -> String? {
+        guard property.format == MPV_FORMAT_STRING, let value = property.data else { return nil }
+        guard let text = value.assumingMemoryBound(to: UnsafePointer<CChar>?.self).pointee else { return nil }
+        return String(cString: text)
+    }
+
+    private func emitVideoFormat() {
+        let next = (videoWidth, videoHeight, videoGamma, videoDolbyVision)
+        if let last = lastVideoFormat, last == next { return }
+        lastVideoFormat = next
+        emit(.videoFormat(width: videoWidth, height: videoHeight, gamma: videoGamma, dolbyVision: videoDolbyVision))
     }
 
     private func emitBuffering(_ handle: OpaquePointer) {

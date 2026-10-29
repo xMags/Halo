@@ -9,6 +9,7 @@ import moe.ditto.halo.auth.AuthConfig
 import moe.ditto.halo.auth.AuthEvent
 import moe.ditto.halo.auth.OidcHostRequest
 import moe.ditto.halo.auth.SignInAddonException
+import moe.ditto.halo.player.VideoFormat
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerTrack
@@ -233,6 +234,7 @@ class IosHostBridgeTest {
         )
         bridge.onBufferedPositionChanged(-1.0)
         bridge.onBufferedPositionChanged(51.5)
+        bridge.onVideoFormatChanged(width = 1920, height = -4, gamma = "", dolbyVision = true)
         bridge.onBufferingChanged(
             active = false,
             percent = -1,
@@ -244,7 +246,7 @@ class IosHostBridgeTest {
         val received = mutableListOf<PlayerEvent>()
         val flowJob = launch { bridge.events.collect { received += it } }
         // Channel is buffered; everything already sent is immediately available.
-        while (received.size < 6) yield()
+        while (received.size < 7) yield()
         flowJob.cancel()
 
         assertEquals(PlayerEvent.Ready(60.0), received[0])
@@ -270,8 +272,13 @@ class IosHostBridgeTest {
             received[2],
         )
         assertEquals(PlayerEvent.BufferedPositionChanged(51.5), received[3])
-        assertEquals(PlayerEvent.BufferingChanged(active = false), received[4])
-        assertEquals(PlayerEvent.NaturalEnd, received[5])
+        // Negative sizes are clamped and an empty transfer means none reported.
+        assertEquals(
+            PlayerEvent.VideoFormatChanged(VideoFormat(width = 1920, height = 0, gamma = null, dolbyVision = true)),
+            received[4],
+        )
+        assertEquals(PlayerEvent.BufferingChanged(active = false), received[5])
+        assertEquals(PlayerEvent.NaturalEnd, received[6])
     }
 
     @Test
