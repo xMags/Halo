@@ -69,6 +69,8 @@ internal fun ScreenHeader(
     onFilterChange: (MediaTypeFilter) -> Unit = {},
     /** Switches between views of the screen (Library's Saved / History), right under the title. */
     views: (@Composable () -> Unit)? = null,
+    /** Sits at the end of the title's row (Home's account picture); null leaves the title alone. */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val responsive = rememberResponsive()
     // A header with nothing under the title has nothing to rearrange.
@@ -138,12 +140,26 @@ internal fun ScreenHeader(
                 Box(Modifier.weight(2f), contentAlignment = Alignment.BottomEnd) {
                     controls(Modifier.widthIn(max = HaloLayout.BrowseHeaderControlsWidth))
                 }
+                trailing?.invoke()
             }
             views?.let { Box(Modifier.padding(top = ControlGap)) { it() } }
             return@Column
         }
 
-        Text(text = title, style = HaloType.LargeTitle)
+        if (trailing == null) {
+            Text(text = title, style = HaloType.LargeTitle)
+        } else {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = title,
+                    style = HaloType.LargeTitle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                trailing()
+            }
+        }
         if (subtitle != null) {
             Text(
                 text = subtitle,

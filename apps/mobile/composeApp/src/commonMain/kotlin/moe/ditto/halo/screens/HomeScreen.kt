@@ -89,6 +89,8 @@ internal fun HomeScreen(
     onOpenHistory: () -> Unit,
     /** My library's "See all": the Library tab, which is that grid with its filter. */
     onOpenLibrary: () -> Unit,
+    /** The account picture beside the title: the Settings tab. */
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val responsive = rememberResponsive()
@@ -186,6 +188,7 @@ internal fun HomeScreen(
                 onOpenSearch = onOpenSearch,
                 filter = filter,
                 onFilterChange = { filter = it },
+                trailing = { AccountAvatar(graph, onClick = onOpenSettings) },
             )
         }
 
