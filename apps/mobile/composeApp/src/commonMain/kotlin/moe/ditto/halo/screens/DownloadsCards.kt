@@ -89,7 +89,7 @@ private val SelectionShape = RoundedCornerShape(HaloRadius.Md + SelectionInset)
 
 /** Queue art widths, the design's on a tablet and a narrower one where a phone needs the room for words. */
 internal val QueueArtWidth = 128.dp
-internal val QueueArtWidthCompact = 96.dp
+internal val QueueArtWidthCompact = 80.dp
 
 /** A queued row's art recedes: its turn has not come. */
 private const val QueuedArtAlpha = 0.55f
@@ -200,9 +200,11 @@ private fun QueueRowTitleLine(entry: DownloadEntry, compact: Boolean) {
             Text(
                 text = titles.title,
                 color = titleColor,
-                fontSize = 16.sp,
+                fontSize = if (compact) 15.sp else 16.sp,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
+                // A phone gives a long title a second line rather than cutting
+                // it to a few characters beside the row's two controls.
+                maxLines = if (compact) 2 else 1,
                 overflow = TextOverflow.Ellipsis,
                 // Unweighted, so the title takes what it needs first and the
                 // episode's name gets what is left, down to nothing.
