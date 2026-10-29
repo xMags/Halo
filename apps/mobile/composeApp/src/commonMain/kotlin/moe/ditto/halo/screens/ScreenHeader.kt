@@ -69,6 +69,8 @@ internal fun ScreenHeader(
     onFilterChange: (MediaTypeFilter) -> Unit = {},
     /** Switches between views of the screen (Library's Saved / History), right under the title. */
     views: (@Composable () -> Unit)? = null,
+    /** Sits before the title on its row (Home's Halo mark, which makes the title a wordmark). */
+    leading: (@Composable () -> Unit)? = null,
     /** Sits at the end of the title's row (Home's account picture); null leaves the title alone. */
     trailing: (@Composable () -> Unit)? = null,
 ) {
@@ -128,13 +130,19 @@ internal fun ScreenHeader(
                 // title is twice the height of either control.
                 verticalAlignment = Alignment.Bottom,
             ) {
-                Text(
-                    text = title,
-                    style = HaloType.LargeTitle,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Row(
                     modifier = Modifier.weight(1f),
-                )
+                    horizontalArrangement = Arrangement.spacedBy(TitleMarkGap),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    leading?.invoke()
+                    Text(
+                        text = title,
+                        style = HaloType.LargeTitle,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 // The controls keep to the trailing edge and stop growing at
                 // their stated width; the box is what holds them there.
                 Box(Modifier.weight(2f), contentAlignment = Alignment.BottomEnd) {
@@ -146,10 +154,15 @@ internal fun ScreenHeader(
             return@Column
         }
 
-        if (trailing == null) {
+        if (trailing == null && leading == null) {
             Text(text = title, style = HaloType.LargeTitle)
         } else {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(TitleMarkGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                leading?.invoke()
                 Text(
                     text = title,
                     style = HaloType.LargeTitle,
@@ -157,7 +170,7 @@ internal fun ScreenHeader(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                trailing()
+                trailing?.invoke()
             }
         }
         if (subtitle != null) {
@@ -209,3 +222,6 @@ private val ControlGap = HaloSpacing.Sm + 4.dp
 
 /** Gap between the search field and the filter, once they share a row. */
 private val ControlRowGap = 14.dp
+
+/** Between a leading mark and the title it brands. */
+private val TitleMarkGap = 12.dp

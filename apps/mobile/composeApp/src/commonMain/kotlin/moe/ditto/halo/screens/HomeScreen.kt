@@ -1,5 +1,10 @@
 package moe.ditto.halo.screens
 
+import org.jetbrains.compose.resources.painterResource
+import moe.ditto.halo.resources.halo_mark
+import moe.ditto.halo.resources.Res
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -183,11 +188,14 @@ internal fun HomeScreen(
     ) {
         item(key = "header") {
             ScreenHeader(
-                title = "Home",
+                // Home is the app's front page, so it carries the brand rather
+                // than its tab's name, as the desktop's title bar does.
+                title = "Halo",
                 modifier = Modifier.padding(horizontal = gutter),
                 onOpenSearch = onOpenSearch,
                 filter = filter,
                 onFilterChange = { filter = it },
+                leading = { HomeHaloMark() },
                 trailing = { AccountAvatar(graph, onClick = onOpenSettings) },
             )
         }
@@ -593,3 +601,16 @@ private fun PlayButton(label: String, onClick: () -> Unit, modifier: Modifier = 
         Text(text = label, color = HaloColors.OnPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
     }
 }
+
+/** The Halo mark beside Home's title, sized to the large title's cap height. */
+@Composable
+private fun HomeHaloMark() {
+    Image(
+        painter = painterResource(Res.drawable.halo_mark),
+        contentDescription = null,
+        modifier = Modifier.size(HomeMarkSize),
+        contentScale = ContentScale.Fit,
+    )
+}
+
+private val HomeMarkSize = 40.dp
