@@ -377,7 +377,13 @@ private fun WideHero(
             Column(Modifier.weight(1f)) {
                 Column(Modifier.widthIn(max = 560.dp)) {
                     HeroTitle(meta.name, meta.logo)
-                    HeroFacts(facts, meta.ageRating, meta.imdbRating, Modifier.padding(top = 18.dp))
+                    HeroFacts(
+                        facts = facts,
+                        // Addons send blank fields as often as missing ones.
+                        certificate = meta.ageRating?.takeIf { it.isNotBlank() },
+                        rating = meta.imdbRating?.takeIf { it.isNotBlank() },
+                        modifier = Modifier.padding(top = 18.dp),
+                    )
                     meta.description?.takeIf { it.isNotBlank() }?.let { text ->
                         Text(
                             text = text,
@@ -457,7 +463,7 @@ private fun WideHero(
 private fun HeroTitle(name: String, logo: String?) {
     val painter = logo?.let { rememberAsyncImagePainter(model = it, contentScale = ContentScale.Fit) }
     val state = painter?.state?.collectAsState()?.value
-    if (painter == null || state is AsyncImagePainter.State.Error) {
+    val nameText = @Composable {
         Text(
             text = name,
             color = Ink,
@@ -467,16 +473,26 @@ private fun HeroTitle(name: String, logo: String?) {
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+    if (painter == null || state is AsyncImagePainter.State.Error) {
+        nameText()
         return
     }
     // Bounded both ways: addons ship anything from square marks to long wordmarks.
-    Image(
-        painter = painter,
-        contentDescription = name,
-        contentScale = ContentScale.Fit,
-        alignment = Alignment.BottomStart,
-        modifier = Modifier.widthIn(max = 440.dp).heightIn(max = 120.dp),
-    )
+    // The name stands in while the logo loads, so the title is never a gap.
+    // The logo stays composed meanwhile: it is what asks for the picture.
+    Box {
+        if (state !is AsyncImagePainter.State.Success) {
+            nameText()
+        }
+        Image(
+            painter = painter,
+            contentDescription = name,
+            contentScale = ContentScale.Fit,
+            alignment = Alignment.BottomStart,
+            modifier = Modifier.widthIn(max = 440.dp).heightIn(max = 120.dp),
+        )
+    }
 }
 
 @Composable
