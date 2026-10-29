@@ -162,7 +162,6 @@ class ResponsiveTest {
         assertEquals(210.dp, phone.homeHeroHeight)
         assertEquals(460.dp, phone.detailHeroHeight)
         assertEquals(BrowseHeaderLayout.Stacked, phone.browseHeaderLayout)
-        assertEquals(HaloDimensions.PosterWidth, phone.catalogRowPosterWidth)
         assertEquals(132.dp, phone.shelfPosterWidth)
     }
 

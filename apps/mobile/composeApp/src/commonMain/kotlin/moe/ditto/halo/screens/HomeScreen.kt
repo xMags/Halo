@@ -291,10 +291,9 @@ internal fun HomeScreen(
                 spec = spec,
                 extra = extra,
                 ready = spec.languageChoices == null || settingsReady,
-                // Catalog rows run narrower than the personal shelves on
-                // purpose: those are a handful of cards, these are an endless
-                // strip.
-                posterWidth = responsive.catalogRowPosterWidth,
+                // The same size as the personal shelves above, so every row
+                // on Home reads as one set.
+                posterWidth = responsive.shelfPosterWidth,
                 gutter = gutter,
                 gap = responsive.catalogRowGap,
                 bottomPadding = rowGap,
