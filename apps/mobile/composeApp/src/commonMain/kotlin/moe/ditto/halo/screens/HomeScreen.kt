@@ -46,6 +46,7 @@ import kotlinx.coroutines.delay
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.MetaPreview
+import moe.ditto.halo.api.playableFromPreview
 import moe.ditto.halo.browse.CatalogRowSpec
 import moe.ditto.halo.browse.ContinueEntry
 import moe.ditto.halo.browse.catalogRows
@@ -215,7 +216,13 @@ internal fun HomeScreen(
                     },
                     onOpen = { onOpenDetail(MetaRef(card.type, card.id)) },
                     onPlay = {
-                        if (card.type == MovieType) onPlayMovie(card) else onOpenDetail(MetaRef(card.type, card.id))
+                        // A TMDB-listed film names its playable id only in its
+                        // full meta, so its title page is the way in.
+                        if (card.type == MovieType && card.playableFromPreview) {
+                            onPlayMovie(card)
+                        } else {
+                            onOpenDetail(MetaRef(card.type, card.id))
+                        }
                     },
                 )
             }

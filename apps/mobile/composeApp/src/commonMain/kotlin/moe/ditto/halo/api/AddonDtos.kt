@@ -109,7 +109,34 @@ interface MetaCard {
      * fail the whole catalog the way an enum would.
      */
     val posterShape: String?
+
+    val behaviorHints: MetaBehaviorHints?
 }
+
+@Serializable
+data class MetaBehaviorHints(
+    /**
+     * The video a film plays as when that differs from its id. The TMDB addon
+     * lists films under its own `tmdb:` ids, which stream addons do not know,
+     * and names the IMDb id to play instead, as Stremio honours.
+     */
+    val defaultVideoId: String? = null,
+)
+
+/**
+ * The video id a film's sources, progress and download are looked up by: the
+ * addon's `defaultVideoId` when it names one, else the title's own id.
+ */
+val MetaCard.movieVideoId: String
+    get() = behaviorHints?.defaultVideoId?.trim()?.takeIf { it.isNotEmpty() } ?: id
+
+/**
+ * Whether a film can be played from its card as it is: its id is already the
+ * one stream addons look up (IMDb), or the card names the video. Otherwise the
+ * title page, which loads the full meta and its hint, is the way in.
+ */
+val MetaCard.playableFromPreview: Boolean
+    get() = id.startsWith("tt") || movieVideoId != id
 
 @Serializable
 data class MetaPreview(
@@ -124,6 +151,7 @@ data class MetaPreview(
     override val releaseInfo: String? = null,
     override val imdbRating: String? = null,
     override val genres: List<String> = emptyList(),
+    override val behaviorHints: MetaBehaviorHints? = null,
 ) : MetaCard
 
 @Serializable
@@ -164,6 +192,7 @@ data class MetaDetail(
     val cast: List<String> = emptyList(),
     val director: List<String> = emptyList(),
     val writer: List<String> = emptyList(),
+    override val behaviorHints: MetaBehaviorHints? = null,
 ) : MetaCard
 
 @Serializable

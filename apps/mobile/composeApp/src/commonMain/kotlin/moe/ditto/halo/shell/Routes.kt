@@ -60,7 +60,7 @@ data class DetailRoute(val type: String, val metaId: String)
  * mean guessing at a separator that a show's own name may contain.
  *
  * [metaId] is carried alongside [videoId] for the same reason [DetailRoute]
- * carries both halves: a film's video id is its meta id, an episode's is not,
+ * carries both halves: a film's video id is usually its meta id, an episode's is not,
  * and splitting one out of the other is a guess about a format addons do not
  * promise.
  */

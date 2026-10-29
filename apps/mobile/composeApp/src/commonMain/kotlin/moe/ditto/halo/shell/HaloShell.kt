@@ -67,6 +67,7 @@ import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.MetaDetail
 import moe.ditto.halo.api.MetaVideo
+import moe.ditto.halo.api.movieVideoId
 import moe.ditto.halo.browse.episodeTag
 import moe.ditto.halo.screens.DetailScreen
 import moe.ditto.halo.screens.DownloadsScreen
@@ -588,13 +589,13 @@ private fun NavHostController.openDetail(ref: MetaRef) =
     navigate(DetailRoute(type = ref.type, metaId = ref.metaId))
 
 /**
- * A film's sources. Its meta id is also its video id: there is one video, and it
- * is the title.
+ * A film's sources. There is one video, and it is the title: its meta id, or the
+ * IMDb id a TMDB-listed film names to play as (see [movieVideoId]).
  */
 private fun movieSources(meta: MetaCard) = StreamsRoute(
     type = meta.type,
     metaId = meta.id,
-    videoId = meta.id,
+    videoId = meta.movieVideoId,
     showTitle = meta.name,
     poster = meta.poster,
 )
