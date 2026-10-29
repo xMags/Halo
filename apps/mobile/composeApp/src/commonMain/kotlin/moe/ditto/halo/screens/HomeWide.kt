@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -57,6 +58,7 @@ import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.ResponsiveInfo
+import moe.ditto.halo.ui.fadeHiddenEdges
 import moe.ditto.halo.ui.RowHeading
 import moe.ditto.halo.ui.longPressClickable
 import moe.ditto.halo.ui.monoStyle
@@ -272,9 +274,15 @@ internal fun WideContinueRow(
     bottomPadding: Dp,
 ) {
     val menus = LocalTitleMenus.current
+    val stripState = rememberLazyListState()
     Column(Modifier.padding(bottom = bottomPadding)) {
         RowHeading(title = "Continue watching", source = "${entries.size} IN PROGRESS", gutter = gutter, onSeeAll = onSeeAll)
-        LazyRow(contentPadding = PaddingValues(horizontal = gutter), horizontalArrangement = Arrangement.spacedBy(gap)) {
+        // Stops at the gutter like every row on this page, fading the end that hides cards.
+        LazyRow(
+            state = stripState,
+            modifier = Modifier.padding(horizontal = gutter).fadeHiddenEdges(stripState),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+        ) {
             items(items = entries, key = { it.itemId }) { entry ->
                 ContinueCard(
                     graph = graph,

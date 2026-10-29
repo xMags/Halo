@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,13 +64,22 @@ fun CatalogRow(
     itemMenu: ((PosterItem) -> Unit)? = null,
     /** The heading's "See all", which opens everything the row holds; null leaves it out. */
     onSeeAll: (() -> Unit)? = null,
+    /**
+     * Stops the strip at the gutter instead of running it to the screen's
+     * edge, fading whichever end still hides cards, as the desktop's shelves
+     * do. For a screen wide enough that a margin reads as the page's edge.
+     */
+    insetStrip: Boolean = false,
 ) {
+    val stripState = rememberLazyListState()
     if (!isLoading && items.isEmpty()) return
 
     Column(modifier.padding(bottom = bottomPadding)) {
         RowHeading(title = title, source = source, gutter = gutter, onSeeAll = onSeeAll.takeIf { !isLoading })
         LazyRow(
-            contentPadding = PaddingValues(horizontal = gutter),
+            state = stripState,
+            modifier = if (insetStrip) Modifier.padding(horizontal = gutter).fadeHiddenEdges(stripState) else Modifier,
+            contentPadding = PaddingValues(horizontal = if (insetStrip) 0.dp else gutter),
             horizontalArrangement = Arrangement.spacedBy(gap),
         ) {
             if (isLoading) {
