@@ -82,25 +82,15 @@
   flex: 0 0 34px;
   background: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.341));
 }
+/* One width at every window size: the rows are the phone's compact ones, a
+   medal and two short lines, so a wider sheet only adds empty space. */
 .sx-sheet {
-  width: 700px;
+  width: 640px;
   display: flex;
   flex-direction: column;
   background: var(--m);
   border-left: 1px solid var(--dv);
   pointer-events: auto;
-}
-/* 880px once the content column (window less the pane) reaches 1500px. The
-   sheet sits outside that column, so it cannot container-query it. */
-@media (min-width: 1724px) {
-  .sx-sheet {
-    width: 880px;
-  }
-}
-@media (min-width: 1548px) {
-  .shell:has(.nav-compact) .sx-sheet {
-    width: 880px;
-  }
 }
 
 /* Header: the title, one count line, and the close button. */
