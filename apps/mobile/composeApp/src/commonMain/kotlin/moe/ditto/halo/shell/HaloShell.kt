@@ -196,7 +196,6 @@ internal fun HaloShell(
                 composable<LibraryRoute> {
                     LibraryScreen(
                         graph = graph,
-                        onOpenSearch = { navController.navigate(SearchRoute) },
                         onOpenDetail = { navController.openDetail(it) },
                         onOpenSources = { navController.navigate(it) },
                     )

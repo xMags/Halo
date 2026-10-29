@@ -44,7 +44,6 @@ import moe.ditto.halo.ui.rememberResponsive
 @Composable
 internal fun LibraryScreen(
     graph: SessionGraph,
-    onOpenSearch: () -> Unit,
     onOpenDetail: (MetaRef) -> Unit,
     onOpenSources: (StreamsRoute) -> Unit,
     modifier: Modifier = Modifier,
@@ -83,21 +82,21 @@ internal fun LibraryScreen(
             .padding(start = responsive.contentInsetStart),
     ) {
         if (view == HistoryView) {
-            HistoryView(graph, filter, { filter = it }, views, onOpenSearch, onOpenSources, onOpenDetail)
+            HistoryView(graph, filter, { filter = it }, views, onOpenSources, onOpenDetail)
             return@Box
         }
         when {
-            // The three empty-ish states keep the title and search, so the screen
-            // still names itself — and can still reach search — while it has
-            // nothing of its own to show.
+            // The three empty-ish states keep the title and the Saved / History
+            // switch, so the screen still names itself, and History stays
+            // reachable, while it has nothing of its own to show.
             saved == null && library.error != null ->
-                LibraryPlaceholder(gutter, onOpenSearch, views) { CenterMessage("Could not reach your Halo server.") }
-            saved == null -> LibraryPlaceholder(gutter, onOpenSearch, views) {
+                LibraryPlaceholder(gutter, views) { CenterMessage("Could not reach your Halo server.") }
+            saved == null -> LibraryPlaceholder(gutter, views) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = HaloColors.Accent)
                 }
             }
-            saved.isEmpty() -> LibraryPlaceholder(gutter, onOpenSearch, views) {
+            saved.isEmpty() -> LibraryPlaceholder(gutter, views) {
                 CenterMessage("Nothing saved yet. Open a title and tap “Add to library”.")
             }
             else -> PosterGrid(
@@ -119,7 +118,6 @@ internal fun LibraryScreen(
                 header = {
                     ScreenHeader(
                         title = LibraryTitle,
-                        onOpenSearch = onOpenSearch,
                         // The filter appears only once something is saved: three
                         // segments over an empty grid control nothing.
                         filter = filter,
@@ -139,7 +137,6 @@ private fun HistoryView(
     filter: MediaTypeFilter,
     onFilterChange: (MediaTypeFilter) -> Unit,
     views: @Composable () -> Unit,
-    onOpenSearch: () -> Unit,
     onOpenSources: (StreamsRoute) -> Unit,
     onOpenDetail: (MetaRef) -> Unit,
 ) {
@@ -160,7 +157,6 @@ private fun HistoryView(
         header = {
             ScreenHeader(
                 title = LibraryTitle,
-                onOpenSearch = onOpenSearch,
                 filter = filter,
                 onFilterChange = onFilterChange,
                 views = views,
@@ -191,12 +187,11 @@ private const val HistoryView = "History"
 @Composable
 private fun LibraryPlaceholder(
     gutter: Dp,
-    onOpenSearch: () -> Unit,
     views: @Composable () -> Unit,
     body: @Composable () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().padding(start = gutter, end = gutter)) {
-        ScreenHeader(title = LibraryTitle, onOpenSearch = onOpenSearch, views = views)
+        ScreenHeader(title = LibraryTitle, views = views)
         Box(Modifier.weight(1f)) { body() }
     }
 }
