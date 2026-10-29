@@ -18,9 +18,13 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
 sha2 = "0.10"
 futures-util = "0.3"
+# Response body chunks, held between connections; already in the build
+# through reqwest.
+bytes = "1"
 # Pipes, IO and Security: the Discord Rich Presence named-pipe client
-# (discord.rs) and its tests' fake Discord server.
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_IO", "Win32_System_Memory", "Win32_System_Pipes", "Win32_Storage_FileSystem"] }
+# (discord.rs) and its tests' fake Discord server. Ioctl: marking a download's
+# part file sparse (downloads/segmented.rs).
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_Memory", "Win32_System_Pipes", "Win32_Storage_FileSystem"] }
 # Discord artwork URL checks; already in the build through Tauri.
 url = "2"
 tauri-plugin-dialog = "2"
