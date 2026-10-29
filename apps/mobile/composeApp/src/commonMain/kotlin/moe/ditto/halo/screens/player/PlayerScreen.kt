@@ -419,6 +419,9 @@ internal fun PlayerScreen(
     var upNext by remember(item) { mutableStateOf<PlaybackContext?>(null) }
     LaunchedEffect(item) {
         if (!context.isEpisode) return@LaunchedEffect
+        // A download plays with no network, and the next episode found by the
+        // lookup would stream; so a download offers nothing to follow it.
+        if (context.isDownload) return@LaunchedEffect
         upNext = nextEpisodePlayback(graph, context)
     }
 
