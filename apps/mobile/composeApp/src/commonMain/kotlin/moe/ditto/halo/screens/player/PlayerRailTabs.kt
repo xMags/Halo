@@ -17,7 +17,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -25,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import moe.ditto.halo.api.SubtitleOutline
 import moe.ditto.halo.player.PlayerTrack
 import moe.ditto.halo.player.PlayerTracks
 import moe.ditto.halo.resources.Res
@@ -164,17 +170,25 @@ internal fun SubtitleAppearanceTab(
     subtitleScale: Double,
     subtitleDelaySeconds: Double,
     subtitleFont: String?,
+    subtitleOutline: SubtitleOutline,
+    subtitleShadow: Boolean,
     trackStyling: Boolean,
     bundledFonts: Set<String>,
     captionBaseSize: TextUnit,
     onScaleChange: (Double) -> Unit,
     onDelayChange: (Double) -> Unit,
+    onOutlineChange: (SubtitleOutline) -> Unit,
+    onShadowChange: (Boolean) -> Unit,
     onTrackStylingChange: (Boolean) -> Unit,
     onFontChange: (String?) -> Unit,
 ) {
     val selectedTrack = tracks.subtitles.firstOrNull { it.id == tracks.selectedSubtitleId }
     val format = subtitleFormat(selectedTrack?.codec)
     val bitmap = format == SubtitleFormat.Bitmap
+    // Font, outline and shadow are style overrides: a picture track has no
+    // text to draw them on, and a script keeping its own look ignores them.
+    // Shown dimmed rather than hidden, so the saved choice is still readable.
+    val looksInert = bitmap || (format == SubtitleFormat.Ass && trackStyling)
 
     RailCard {
         RailCardHeader(
@@ -203,6 +217,33 @@ internal fun SubtitleAppearanceTab(
             onChange = onDelayChange,
             modifier = Modifier.padding(top = 8.dp),
         )
+    }
+
+    RailCard {
+        RailCardHeader(label = "Outline", hint = "The edge drawn around each letter")
+        RailOutlineChips(
+            selected = subtitleOutline,
+            onSelect = onOutlineChange,
+            modifier = Modifier.padding(top = 10.dp),
+            inert = looksInert,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Shadow",
+                color = HaloColors.Text,
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
+            RailSwitch(
+                checked = subtitleShadow,
+                onCheckedChange = onShadowChange,
+                enabled = !looksInert,
+            )
+        }
     }
 
     RailCard {
@@ -237,7 +278,7 @@ internal fun SubtitleAppearanceTab(
         // With a script's own styling in force, a font choice is ignored: the
         // chips stay so the current selection is still readable, but they are
         // dimmed to say they are not in effect.
-        val chipsInert = bitmap || (format == SubtitleFormat.Ass && trackStyling)
+        val chipsInert = looksInert
         RailFontChips(
             selected = subtitleFont,
             onSelect = onFontChange,
@@ -273,13 +314,32 @@ internal fun SubtitleAppearanceTab(
             contentAlignment = Alignment.Center,
         ) {
             val previewFamily = rememberSubtitlePreviewFamily(subtitleFont)
-            Text(
-                text = PlayerFixtures.CaptionSample,
-                color = HaloColors.Text,
+            val density = LocalDensity.current
+            // The engine draws outline and shadow in its own pixels; these are
+            // the same amounts in dp at the preview's size, close enough to
+            // judge by. The stroke straddles the glyph edge, hence doubled.
+            val outlinePx = with(density) { (outlineWidthPixels(subtitleOutline) * PreviewCaptionRatio * 2).dp.toPx() }
+            val shadowPx = with(density) { (shadowOffsetPixels(subtitleShadow) * PreviewCaptionRatio).dp.toPx() }
+            val shadow = if (shadowPx > 0f) Shadow(Color.Black, Offset(shadowPx, shadowPx), 0f) else null
+            val previewStyle = TextStyle(
                 fontSize = captionBaseSize * subtitleScale.toFloat() * PreviewCaptionRatio,
                 fontFamily = previewFamily,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
+            )
+            // The outline is a stroked copy under the letters, carrying the
+            // shadow when there is one, as the renderer casts it from the edge.
+            if (outlinePx > 0f) {
+                Text(
+                    text = PlayerFixtures.CaptionSample,
+                    color = Color.Black,
+                    style = previewStyle.copy(drawStyle = Stroke(width = outlinePx), shadow = shadow),
+                )
+            }
+            Text(
+                text = PlayerFixtures.CaptionSample,
+                color = HaloColors.Text,
+                style = if (outlinePx > 0f) previewStyle else previewStyle.copy(shadow = shadow),
             )
         }
     }
