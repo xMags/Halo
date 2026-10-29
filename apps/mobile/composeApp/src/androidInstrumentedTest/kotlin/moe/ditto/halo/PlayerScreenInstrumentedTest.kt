@@ -150,7 +150,7 @@ class PlayerScreenInstrumentedTest {
         rule.waitUntil(10_000) { nodesWithText(SourcesLabel).isNotEmpty() }
 
         activityRule.scenario.onActivity { activity ->
-            assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, activity.requestedOrientation)
+            assertEquals(ActivityInfo.SCREEN_ORIENTATION_FULL_USER, activity.requestedOrientation)
             assertFalse(
                 "player left FLAG_KEEP_SCREEN_ON behind",
                 activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0,
