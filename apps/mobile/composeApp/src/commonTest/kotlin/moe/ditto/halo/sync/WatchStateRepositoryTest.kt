@@ -6,6 +6,7 @@ import moe.ditto.halo.cache.QueryCache
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -100,6 +101,33 @@ class WatchStateRepositoryTest {
         assertNull(state.poster)
         val body = api.bodyOf(0)
         assertTrue("poster" !in body && "\"name\"" !in body, "rejected fields must be omitted: $body")
+    }
+
+    @Test
+    fun aRemovalSendsATombstoneAndLeavesTheCacheWithoutTheRow() = runTest {
+        val row = """{"videoId":"v","itemId":"movie:v","positionSec":90.0,"durationSec":1000.0,"watched":false,"updatedAt":1}"""
+        var removed = false
+        val api = RecordingApi { if (removed) "[]" else "[$row]" }
+        val clock = FakeClock()
+        val repo = repository(api, clock, QueryCache(backgroundScope, clock))
+        val loaded = repo.observe().first { it.value?.isNotEmpty() == true }.value.orEmpty()
+
+        removed = true
+        repo.remove(loaded)
+
+        assertContains(api.bodyOf(0), "\"removedAt\":${clock.now}")
+        assertEquals(emptyList(), repo.cached())
+    }
+
+    @Test
+    fun aServerThatKeepsARemovedRowIsReportedRatherThanShownAsDone() = runTest {
+        val row = """{"videoId":"v","itemId":"movie:v","positionSec":90.0,"durationSec":1000.0,"watched":false,"updatedAt":1}"""
+        val api = RecordingApi { "[$row]" }
+        val clock = FakeClock()
+        val repo = repository(api, clock, QueryCache(backgroundScope, clock))
+        val loaded = repo.observe().first { it.value?.isNotEmpty() == true }.value.orEmpty()
+
+        assertFailsWith<RemovalUnsupportedException> { repo.remove(loaded) }
     }
 
     @Test

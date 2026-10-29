@@ -49,6 +49,7 @@ internal fun watchStateProblem(state: WatchState): String? {
         return "watch state name must be 1 to 512 characters"
     }
     if (state.poster != null && !isUrl(state.poster)) return "watch state poster must be a URL"
+    if (state.removedAt != null && state.removedAt <= 0) return "watch state removedAt must be a positive integer"
     if (state.updatedAt <= 0) return "watch state updatedAt must be a positive integer"
     return null
 }
@@ -92,6 +93,9 @@ internal fun mergeLibrary(stored: List<LibraryItem>, incoming: List<LibraryItem>
     }
     return byId.values.toList()
 }
+
+/** The rows a watch history read returns: everything but removal tombstones. */
+internal fun liveWatchStates(states: List<WatchState>): List<WatchState> = states.filter { it.removedAt == null }
 
 /** Same rule as [mergeLibrary], keyed by videoId; a winning row replaces the stored one whole. */
 internal fun mergeWatchStates(stored: List<WatchState>, incoming: List<WatchState>): List<WatchState> {

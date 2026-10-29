@@ -184,15 +184,16 @@ internal class DeviceBackend(
         }
     }
 
+    /** Removed rows stay stored, so the removal outlasts stale copies, but are never returned, as on the server. */
     override suspend fun getWatchStates(): List<WatchState> =
-        readList(DeviceCollection.WatchStates, WatchState.serializer())
+        liveWatchStates(readList(DeviceCollection.WatchStates, WatchState.serializer()))
 
     override suspend fun putWatchStates(states: List<WatchState>): List<WatchState> {
         states.firstNotNullOfOrNull(::watchStateProblem)?.let { throw apiError(400, it) }
         return exclusive(DeviceCollection.WatchStates) {
             val merged = mergeWatchStates(readList(DeviceCollection.WatchStates, WatchState.serializer()), states)
             writeList(DeviceCollection.WatchStates, WatchState.serializer(), merged)
-            merged
+            liveWatchStates(merged)
         }
     }
 
