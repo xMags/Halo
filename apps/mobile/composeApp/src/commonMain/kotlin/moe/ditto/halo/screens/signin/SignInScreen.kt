@@ -64,6 +64,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -339,9 +340,10 @@ private fun Title() {
                 append("everywhere.")
             }
         },
-        // -1 dp: the display weight's side bearing at this size reads as an indent.
-        modifier = Modifier.padding(top = 16.dp).offset(x = (-1).dp).semantics { heading() },
+        // Centred like everything the card says, as on the desktop.
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp).semantics { heading() },
         style = TextStyle(
+            textAlign = TextAlign.Center,
             color = HaloColors.Text,
             fontSize = 38.sp,
             lineHeight = 39.5.sp,
@@ -356,13 +358,13 @@ private fun Title() {
 private fun Intro() {
     // In the mono face of the app's shelf captions, short enough for two lines.
     Text(
-        "Stream your addons, download for later, pick up on any device.",
-        modifier = Modifier.padding(top = 10.dp),
-        style = monoStyle(13.sp, FontWeight.Normal, color = Ink2).copy(lineHeight = 21.sp),
+        "Stream your addons, download for later,\npick up on any device.",
+        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+        style = monoStyle(13.sp, FontWeight.Normal, color = Ink2).copy(lineHeight = 21.sp, textAlign = TextAlign.Center),
     )
     FlowRow(
-        modifier = Modifier.padding(top = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Chip(HaloIcons.Extension, "Addons")
@@ -488,22 +490,34 @@ private fun PasswordForm(
 
 @Composable
 private fun Waiting() {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Text("Check your browser", style = TextStyle(color = HaloColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Medium))
-        Text(WaitingCopy, style = TextStyle(color = Ink2, fontSize = 14.5.sp, lineHeight = 21.75.sp))
+        Text(WaitingCopy, style = TextStyle(color = Ink2, fontSize = 14.5.sp, lineHeight = 21.75.sp, textAlign = TextAlign.Center))
         StatusLine("WAITING FOR BROWSER", spinning = true)
     }
 }
 
 @Composable
 private fun SignedIn() {
-    Text("You’re all set", style = TextStyle(color = HaloColors.Text, fontSize = 22.sp, fontWeight = FontWeight.Medium))
+    Text(
+        "You’re all set",
+        modifier = Modifier.fillMaxWidth(),
+        style = TextStyle(color = HaloColors.Text, fontSize = 22.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center),
+    )
     StatusLine("OPENING YOUR LIBRARY…", spinning = true)
 }
 
 @Composable
 private fun StatusLine(label: String, spinning: Boolean) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         if (spinning) {
             CircularProgressIndicator(
                 modifier = Modifier.size(11.dp),
@@ -518,7 +532,11 @@ private fun StatusLine(label: String, spinning: Boolean) {
 
 @Composable
 private fun ErrorLine(text: String) {
-    Text(text, style = TextStyle(color = HaloColors.Danger, fontSize = 13.5.sp, lineHeight = 19.sp))
+    Text(
+        text,
+        modifier = Modifier.fillMaxWidth(),
+        style = TextStyle(color = HaloColors.Danger, fontSize = 13.5.sp, lineHeight = 19.sp, textAlign = TextAlign.Center),
+    )
 }
 
 @Composable
