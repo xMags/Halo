@@ -1,4 +1,6 @@
 import type { MetaPreview } from '@halo/core'
+import type { CatalogPaging } from './browse/catalogPaging'
+import type { HomeFilter } from './home/homeRows'
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 
 /**
@@ -66,6 +68,11 @@ export interface CatalogParams {
   title: string
   source?: string
   items: CatalogItem[]
+  /**
+   * Set when the shelf's catalog pages: the grid then asks the addon for more
+   * as it is scrolled, keeping the shelf's type filter.
+   */
+  more?: CatalogPaging & { filter: HomeFilter }
 }
 
 export type Screen =
