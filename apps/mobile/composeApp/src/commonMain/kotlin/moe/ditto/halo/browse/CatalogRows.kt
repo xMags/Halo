@@ -16,6 +16,8 @@ data class CatalogRowSpec(
     val title: String,
     /** The addon it comes from, as the mono line beside the heading, e.g. "CINEMETA". */
     val source: String,
+    /** The languages it can be asked for, when it is a language row (see [languageChoices]); null otherwise. */
+    val languageChoices: List<String>? = null,
 )
 
 /**
@@ -49,6 +51,7 @@ fun catalogRows(addons: List<AddonEntry>): List<CatalogRowSpec> = addons.flatMap
                 catalogId = catalog.id,
                 title = labels.title,
                 source = labels.source,
+                languageChoices = languageChoices(catalog),
             )
         }
 }

@@ -39,6 +39,7 @@ private const val LatencyProbeIntervalMillis = 15_000L
 
 private sealed interface SettingsOverlay {
     data class Language(val kind: SettingsLanguageKind) : SettingsOverlay
+    data class CatalogLanguage(val choices: List<String>) : SettingsOverlay
     data class Remove(val entry: AddonEntry, val ownership: AddonOwnership) : SettingsOverlay
 }
 /** The original app's settings surface, backed by the session graph. */
@@ -186,6 +187,12 @@ internal fun SettingsScreen(
         }
     }
 
+    fun updateCatalogLanguage(language: String?) {
+        launchMutation("catalog-language", "Could not save the language for Home's rows. Try again.") {
+            graph.settings.update { it.withCatalogLanguage(language) }
+        }
+    }
+
     fun updateAutoplay(enabled: Boolean) {
         launchMutation("autoplay", "Could not save the autoplay preference. Try again.") {
             graph.settings.update { it.withAutoplayNextEpisode(enabled) }
@@ -227,6 +234,7 @@ internal fun SettingsScreen(
                     onToggleCatalogs = ::toggleCatalogs,
                     onRemoveAddon = { entry, ownership -> overlay = SettingsOverlay.Remove(entry, ownership) },
                     onOpenLanguage = { overlay = SettingsOverlay.Language(it) },
+                    onOpenCatalogLanguage = { overlay = SettingsOverlay.CatalogLanguage(it) },
                     onAutoplayChange = ::updateAutoplay,
                     onSignOut = onSignOut,
                     onSignIn = onSignIn,
@@ -269,6 +277,22 @@ internal fun SettingsScreen(
                         onSelect = { key -> updateLanguage(activeOverlay.kind, key.takeUnless { it == NoLanguage }) },
                         onClose = { overlay = null },
                     bottomClearance = responsive.floatingBarClearance,
+                    )
+                }
+                is SettingsOverlay.CatalogLanguage -> {
+                    val selected = settingsState.value?.catalogLanguage?.takeIf { it in activeOverlay.choices }
+                    SelectSheet(
+                        visible = true,
+                        title = "Language rows on Home",
+                        description = "Rows such as TMDB's Language row show titles in this language.",
+                        options = listOf(
+                            SelectOption(key = NoLanguage, label = "Addon default", selected = selected == null),
+                        ) + activeOverlay.choices.map { language ->
+                            SelectOption(key = language, label = language, selected = selected == language)
+                        },
+                        onSelect = { key -> updateCatalogLanguage(key.takeUnless { it == NoLanguage }) },
+                        onClose = { overlay = null },
+                        bottomClearance = responsive.floatingBarClearance,
                     )
                 }
                 is SettingsOverlay.Remove -> SelectSheet(
