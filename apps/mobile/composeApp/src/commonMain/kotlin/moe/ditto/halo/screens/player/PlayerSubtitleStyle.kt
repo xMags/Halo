@@ -27,18 +27,21 @@ internal fun subtitleStyleOf(settings: UserSettings): SubtitleStyle = SubtitleSt
         ?: 1.0,
     font = settings.subtitleFontFamily?.takeIf { it.isNotBlank() },
     outlineWidthPixels = outlineWidthPixels(settings.subtitleOutline),
-    shadowOffsetPixels = if (settings.subtitleShadow == true) ShadowOffsetPixels else 0.0,
+    // Unset is on, as the desktop shows and applies it: the setting is synced,
+    // so an untouched one has to look the same on both.
+    shadowOffsetPixels = if (settings.subtitleShadow != false) ShadowOffsetPixels else 0.0,
 )
 
 /**
  * A null outline is "not chosen", which is the renderer's own weight, and is
- * deliberately not the same as [SubtitleOutline.None].
+ * deliberately not the same as [SubtitleOutline.None]. The widths are the
+ * desktop's, so one synced choice draws the same outline on both.
  */
 internal fun outlineWidthPixels(outline: SubtitleOutline?): Double = when (outline) {
     SubtitleOutline.None -> 0.0
-    SubtitleOutline.Thin -> 1.0
+    SubtitleOutline.Thin -> 1.5
     SubtitleOutline.Normal -> SubtitleStyle.DefaultOutlineWidthPixels
-    SubtitleOutline.Thick -> 5.0
+    SubtitleOutline.Thick -> 4.5
     null -> SubtitleStyle.DefaultOutlineWidthPixels
 }
 
