@@ -291,7 +291,7 @@ private fun QueueRowActions(
             )
         }
         QueueIconButton(
-            icon = HaloIcons.Close,
+            icon = HaloIcons.Trash,
             description = "Cancel download",
             onClick = onRemove,
             destructive = true,

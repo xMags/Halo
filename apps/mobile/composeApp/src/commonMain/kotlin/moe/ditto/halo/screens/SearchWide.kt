@@ -510,7 +510,7 @@ private fun RecentPill(term: String, onRunAgain: () -> Unit, onRemove: () -> Uni
             Modifier.size(26.dp).clip(PillShape).clickable(role = Role.Button, onClickLabel = "Remove $term", onClick = onRemove),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(HaloIcons.Close, contentDescription = "Remove $term", tint = HaloColors.TextDim, modifier = Modifier.size(12.dp))
+            Icon(HaloIcons.Trash, contentDescription = "Remove $term", tint = HaloColors.TextDim, modifier = Modifier.size(12.dp))
         }
     }
 }

@@ -355,7 +355,7 @@ private fun HistoryChip(term: String, onRunAgain: () -> Unit, onRemove: () -> Un
     ) {
         Text(text = term, color = HaloColors.TextMeta, fontSize = 12.5.sp, maxLines = 1)
         Icon(
-            imageVector = HaloIcons.Close,
+            imageVector = HaloIcons.Trash,
             contentDescription = "Remove $term",
             tint = HaloColors.TextDim,
             modifier = Modifier
@@ -396,7 +396,7 @@ private fun HistoryRow(term: String, onRunAgain: () -> Unit, onRemove: () -> Uni
                 )
             }
             Icon(
-                imageVector = HaloIcons.Close,
+                imageVector = HaloIcons.Trash,
                 contentDescription = "Remove $term",
                 tint = HaloColors.TextDim,
                 modifier = Modifier

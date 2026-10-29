@@ -200,7 +200,7 @@ export function Search() {
                   title="Remove"
                   onClick={() => forget(entry.term)}
                 >
-                  <FluentIcon glyph="close" size={9} />
+                  <FluentIcon glyph="delete" size={11} />
                 </button>
               </div>
             ))}
