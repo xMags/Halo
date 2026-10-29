@@ -312,6 +312,8 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   resumeRef.current = prefs.resumePlayback
   /** Prior progress for this video, resolved BEFORE loadfile so the file-loaded handler can't race the fetch. */
   const priorStateRef = useRef<WatchState | null>(null)
+  /** A download that brought its own subtitle file, which a remembered "Off" must not hide. */
+  const hasLocalSubtitleRef = useRef(false)
   /** End-of-file behavior; a ref because the observers mount before the next-episode prefetch resolves. */
   const onEndRef = useRef<() => void>(() => {})
   /** This file's end has been acted on; re-armed by a new file or a seek back from the end. */
@@ -520,6 +522,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
         const files = await getPlaybackFiles(params.downloadId)
         sourceUrl = files.video_path
         localSubtitlePath = files.subtitle_path
+        hasLocalSubtitleRef.current = Boolean(files.subtitle_path)
       }
       await mpvSet('pause', 'no')
       if (disposed) return
@@ -952,7 +955,8 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     const externalByLang = (lang: string) => externals.find((s) => languageMatches(s.lang, lang))
 
     const remembered = getSubtitleChoice(params.videoId, params.itemId)
-    if (remembered?.kind === 'off') {
+    // Downloading with a subtitle is a newer choice than an "Off" made before.
+    if (remembered?.kind === 'off' && !hasLocalSubtitleRef.current) {
       subDefaultAppliedRef.current = true
       void selectEmbeddedSub('no').then((selected) => {
         if (!selected) subDefaultAppliedRef.current = false
