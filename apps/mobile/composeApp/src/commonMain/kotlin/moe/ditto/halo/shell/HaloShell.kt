@@ -255,9 +255,12 @@ internal fun HaloShell(
                     StreamsScreen(
                         graph = graph,
                         type = route.type,
+                        metaId = route.metaId,
                         videoId = route.videoId,
-                        title = route.displayTitle,
+                        kicker = route.sourcesKicker,
+                        title = route.sourcesTitle,
                         onBack = { navController.popBackStack() },
+                        onOpenPlayback = { navController.switchTab(SettingsRoute) },
                         downloadMedia = { addon, stream, url -> route.downloadMedia(addon, stream, url) },
                         onPlay = { addon, stream ->
                             val url = stream.url ?: return@StreamsScreen
@@ -642,6 +645,7 @@ private fun RailTabButton(tab: Tab, selected: Boolean, onClick: () -> Unit) {
  */
 private fun NavHostController.sourcesRequest(route: StreamsRoute) = SourcesRequest(
     type = route.type,
+    metaId = route.metaId,
     videoId = route.videoId,
     title = route.displayTitle,
     onPlay = { addon, stream ->
@@ -654,6 +658,7 @@ private fun NavHostController.sourcesRequest(route: StreamsRoute) = SourcesReque
         }
     },
     downloadMedia = { addon, stream, url -> route.downloadMedia(addon, stream, url) },
+    onOpenPlayback = { switchTab(SettingsRoute) },
 )
 
 /**

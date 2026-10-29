@@ -95,9 +95,10 @@ class StreamsContentInstrumentedTest {
         )
         render(state)
 
-        rule.onNodeWithText("Some addons could not load sources.").assertExists()
+        // One failed addon is named in the banner; the source still answers as the pick.
         rule.onNodeWithText("Broken addon returned invalid data.").assertExists()
-        rule.onNodeWithText("4K source").assertExists()
+        rule.onNodeWithText("Best pick").assertExists()
+        rule.onNodeWithContentDescription("4K UHD").assertExists()
         rule.onNodeWithContentDescription("Retry sources").assertExists()
     }
 
