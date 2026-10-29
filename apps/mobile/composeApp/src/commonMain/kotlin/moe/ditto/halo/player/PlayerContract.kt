@@ -100,6 +100,11 @@ sealed interface PlayerEvent {
     data class VideoFormatChanged(val format: VideoFormat) : PlayerEvent
 
     data object NaturalEnd : PlayerEvent
+    /**
+     * The engine is no longer at the end: the viewer sought back from it. The
+     * file stays loaded and paused there, so playback carries on from here.
+     */
+    data object EndCleared : PlayerEvent
     data class Error(val message: String) : PlayerEvent
     data object Teardown : PlayerEvent
 }

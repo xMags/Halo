@@ -425,9 +425,16 @@ internal fun PlayerScreen(
     // The engine reaching the end is what raises the card; the countdown, both
     // buttons and the advance all run through the controller's single claim, so
     // whichever happens first wins and the rest become no-ops.
+    // Leaving the end (a seek back) withdraws the card and lets a later end
+    // raise it again.
+    var wasEnded by remember(item) { mutableStateOf(false) }
     LaunchedEffect(ownState, state.status, upNext) {
+        if (!ownState) return@LaunchedEffect
+        val ended = state.status == PlaybackStatus.Ended
+        if (wasEnded && !ended) controller.onLeftEnd()
+        wasEnded = ended
         val next = upNext ?: return@LaunchedEffect
-        if (!ownState || state.status != PlaybackStatus.Ended) return@LaunchedEffect
+        if (!ended) return@LaunchedEffect
         controller.showUpNext { leaveTo { onSelectEpisode(EpisodeChoice.Resolved(next)) } }
     }
 

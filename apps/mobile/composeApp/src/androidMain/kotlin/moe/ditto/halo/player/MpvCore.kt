@@ -34,6 +34,8 @@ internal class MpvCore private constructor(
         fun onBufferedPosition(positionSeconds: Double)
         fun onVideoFormat(format: VideoFormat)
         fun onEnded()
+        /** The file left its end because the viewer sought back. */
+        fun onEndCleared()
         fun onError(message: String)
     }
 
@@ -170,8 +172,11 @@ internal class MpvCore private constructor(
     private fun handleProperty(property: String, value: Boolean) {
         when (property) {
             "pause" -> listener?.onPauseChanged(value)
-            "eof-reached" -> if (value && fileLifecycle.markEofReached()) {
-                listener?.onEnded()
+            "eof-reached" -> if (value) {
+                if (fileLifecycle.markEofReached()) listener?.onEnded()
+            } else if (fileLifecycle.clearEofReached()) {
+                // A seek back from the end: the next end has to count again.
+                listener?.onEndCleared()
             }
             "paused-for-cache" -> {
                 pausedForCache = value
@@ -553,6 +558,13 @@ internal class MpvFileLifecycle {
     fun markEofReached(): Boolean = synchronized(lock) {
         if (eofReached) return@synchronized false
         eofReached = true
+        true
+    }
+
+    /** True when the current file had reached its end and now has not. */
+    fun clearEofReached(): Boolean = synchronized(lock) {
+        if (!eofReached) return@synchronized false
+        eofReached = false
         true
     }
 

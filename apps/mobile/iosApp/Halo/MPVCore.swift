@@ -22,6 +22,8 @@ enum MPVCoreEvent {
     /// did not report a transfer.
     case videoFormat(width: Int32, height: Int32, gamma: String, dolbyVision: Bool)
     case ended
+    /// The file left its end because the viewer sought back.
+    case endCleared
     case error(message: String)
 }
 
@@ -341,8 +343,10 @@ final class MPVCore {
             if reached && !eofNotified {
                 eofNotified = true
                 emit(.ended)
-            } else if !reached {
+            } else if !reached && eofNotified {
+                // A seek back from the end: the next end has to count again.
                 eofNotified = false
+                emit(.endCleared)
             }
         case .trackList, .audioId, .subtitleId:
             emitTracks(handle)
