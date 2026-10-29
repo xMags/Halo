@@ -45,6 +45,18 @@ class SourcesModelTest {
     }
 
     @Test
+    fun theDtsHdCodecAndATsExtensionAreNotReadAsAQuality() {
+        fun quality(text: String) = parseSourceInfo(stream(text)).quality
+        assertNull(quality("Movie.BluRay.DTS-HD.MA.5.1-GRP"))
+        assertNull(quality("Movie.BluRay.DTSHD-GRP"))
+        assertNull(quality("Movie.Remux-GRP.ts\n💾 20 GB"))
+        // The real tokens still count.
+        assertEquals(SourceQuality.P720, quality("Movie.HD.WEB.DTS-HD-GRP"))
+        assertEquals(SourceQuality.SD, quality("Movie.2023.TS.x264-GRP"))
+        assertEquals(SourceQuality.P1080, quality("Movie.1080p.DTS-HD.MA.5.1"))
+    }
+
+    @Test
     fun readsChannelsGluedToTheCodecAndTheExplicitUncachedTag() {
         val info = parseSourceInfo(stream("Film.1080p.x264.DDP5.1 [RD download] 3,5 GB ENG ITA"))
         assertEquals("DDP 5.1", info.audio)
