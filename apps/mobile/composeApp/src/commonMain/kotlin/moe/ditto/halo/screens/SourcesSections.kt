@@ -8,33 +8,34 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
@@ -46,6 +47,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import moe.ditto.halo.api.Stream
+import moe.ditto.halo.api.StreamBehaviorHints
 import moe.ditto.halo.browse.MixRow
 import moe.ditto.halo.browse.ProviderRow
 import moe.ditto.halo.browse.QualityTier
@@ -54,10 +57,14 @@ import moe.ditto.halo.browse.SourceFilter
 import moe.ditto.halo.browse.SourceStatus
 import moe.ditto.halo.browse.medalFor
 import moe.ditto.halo.browse.metaLine
+import moe.ditto.halo.browse.parseSourceInfo
+import moe.ditto.halo.downloads.DownloadEntry
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
+import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.QualityMedal
+import moe.ditto.halo.ui.formatBytes
 import moe.ditto.halo.ui.longPressClickable
 import moe.ditto.halo.ui.monoStyle
 
@@ -223,6 +230,79 @@ internal fun PickCard(
             modifier = Modifier.padding(top = 10.dp),
         )
         PlaySaveButtons(save = save, onPlay = onPlay, onSave = onSave, modifier = Modifier.padding(top = HaloSpacing.Md))
+    }
+}
+
+/**
+ * This video's finished download, above everything addons offer: it starts at
+ * once and needs no connection. Drawn as the pick card is, its quality read
+ * from the saved release's name, with one action, since there is nothing left
+ * to save.
+ */
+@Composable
+internal fun OfflineCard(entry: DownloadEntry, onPlay: () -> Unit) {
+    val shape = RoundedCornerShape(10.dp)
+    val info = remember(entry.media) {
+        parseSourceInfo(
+            Stream(
+                name = entry.media.streamName,
+                title = entry.media.streamTitle,
+                behaviorHints = StreamBehaviorHints(filename = entry.media.filename),
+            ),
+        )
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = HaloSpacing.Md)
+            .clip(shape)
+            .background(SourcesPalette.CardFill)
+            .border(1.dp, PillOnEdge, shape)
+            .padding(18.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.size(8.dp).clip(RoundedCornerShape(HaloRadius.Pill)).background(HaloColors.Success))
+            Text("Saved on this device", color = HaloColors.Success, fontSize = 13.5.sp)
+            Text("·", color = SourcesPalette.Faint, fontSize = 13.5.sp)
+            Text("Plays offline", color = HaloColors.TextDim, fontSize = 13.5.sp)
+        }
+        Row(
+            modifier = Modifier.padding(top = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (info.quality != null) QualityMedal(medalFor(info), large = true)
+            Text(
+                text = listOfNotNull(
+                    info.codec,
+                    formatBytes(entry.totalBytes.takeIf { it > 0 } ?: entry.downloadedBytes),
+                    entry.subtitle?.lang?.uppercase() ?: "NO SUBS",
+                ).joinToString(" · "),
+                style = monoStyle(12.sp, FontWeight.Normal, color = HaloColors.TextDim),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Row(
+            modifier = Modifier
+                .padding(top = HaloSpacing.Md)
+                .fillMaxWidth()
+                .height(46.dp)
+                .clip(SourcesPalette.ControlShape)
+                .background(HaloColors.Text)
+                .clickable(role = Role.Button, onClick = onPlay),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(HaloIcons.Play, contentDescription = null, tint = HaloColors.Background, modifier = Modifier.size(20.dp))
+            Text(
+                "Play offline",
+                color = HaloColors.Background,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
     }
 }
 
