@@ -1,15 +1,22 @@
 import { HaloClient, type AuthConfig, type OidcAuthConfig, type OtherAuthConfig } from '@halo/core'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import avatar from '../assets/user-avatar.png'
-import { activateSession, addonSessionKind, getAccountClient, getDeviceProfile, getServerUrl, seedDefaultAddons, type SessionKind } from '../api'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import {
+  activateSession,
+  addonSessionKind,
+  getAccountClient,
+  getBuiltInServerUrl,
+  getDeviceProfile,
+  seedDefaultAddons,
+  type SessionKind,
+} from '../api'
 import { FluentIcon } from '../components/FluentIcon'
 import { HaloMark } from '../components/HaloMark'
-import { ProgressBar, ProgressRing } from '../components/ProgressRing'
 import { TitleBar } from '../components/TitleBar'
 import { moveDeviceDataIntoAccount } from '../device/deviceDataMove'
-import { accountLabel } from './accountLabel'
+import { parseServerAddress } from '../serverUrl'
+import { accountDisplayName, accountLabel } from './accountLabel'
 import { signInAddonFor } from './installedAddons'
 import { signInWithPassword } from './localAuth'
 import { cancelBrowserSignIn } from './loopbackSignIn'
@@ -21,20 +28,27 @@ import { classifySignInFailure, localSignInMessage } from './signInFailure'
 /** How long "You're all set" stays up before the library opens, as in the native app. */
 const SIGNED_IN_DWELL_MS = 1200
 const HELP_URL = 'https://github.com/xMags/Halo/issues'
-const SETUP_GUIDE_URL = 'https://github.com/xMags/Halo#readme'
+/** The last self-hosted server signed in to from the form, offered again next time. */
+const LAST_SERVER_KEY = 'halo.lastServerAddress'
 
 /** A browser sign-in: the server's OIDC provider, or the sign-in add-on for the server's mode. */
 type BrowserMethod =
   | { kind: 'oidc'; config: OidcAuthConfig }
   | { kind: 'addon'; addon: SignInAddon; config: OtherAuthConfig }
 
-/** The native sign-in page's steps (LoginViewModel), one panel each. */
+/**
+ * The sign-in steps. The built-in server decides the first: a browser method
+ * (`browser`), its own accounts (`local`), or a mode this build lacks. The
+ * username & password form for a self-hosted server (`custom`) is reachable
+ * from every resting step, and returns to the one it was opened from.
+ */
 type Step =
   | { kind: 'discovering' }
   | { kind: 'unreachable'; detail: string }
   | { kind: 'unsupported'; mode: string }
   | { kind: 'local'; error: string | null }
   | { kind: 'browser'; method: BrowserMethod; error: string | null }
+  | { kind: 'custom'; error: string | null; back: RestingStep }
   | { kind: 'waiting'; local: true }
   | { kind: 'waiting'; local: false; method: BrowserMethod; authUrl: string | null }
   | { kind: 'signedIn'; name: string; label: string; moving: boolean }
@@ -42,12 +56,15 @@ type Step =
   | { kind: 'expired'; method: BrowserMethod }
   | { kind: 'preparing' }
 
+/** Where the custom-server form goes back to. */
+type RestingStep = Extract<Step, { kind: 'discovering' | 'unreachable' | 'unsupported' | 'local' | 'browser' }>
+
 function isOidcConfig(config: AuthConfig | OtherAuthConfig): config is OidcAuthConfig {
   return config.mode === 'oidc'
 }
 
 /** OIDC and local accounts are built in; any other mode needs this build to carry its add-on. */
-function readyStep(config: AuthConfig | OtherAuthConfig): Step {
+function readyStep(config: AuthConfig | OtherAuthConfig): RestingStep {
   if (config.mode === 'local') return { kind: 'local', error: null }
   if (isOidcConfig(config)) return { kind: 'browser', method: { kind: 'oidc', config }, error: null }
   // Neither built-in mode, so its fields are the add-on's to read. (A plain
@@ -58,14 +75,33 @@ function readyStep(config: AuthConfig | OtherAuthConfig): Step {
   return { kind: 'unsupported', mode: other.mode }
 }
 
+/** The browser method's button: the add-on names itself ("Continue with Magneto"). */
+function methodLabel(method: BrowserMethod): string {
+  return method.kind === 'addon' ? method.addon.buttonLabel : 'Continue in browser'
+}
+
+/** The form's way back to the browser method: "Sign in with Magneto instead". */
+function backLabel(back: RestingStep): string {
+  if (back.kind !== 'browser') return 'Back'
+  return `${methodLabel(back.method).replace(/^Continue\b/, 'Sign in')} instead`
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function readLastServer(): string {
+  try {
+    return localStorage.getItem(LAST_SERVER_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
 /**
  * Steps that leave Halo usable without an account. The others are mid sign-in
- * (credentials sent, or tokens already being saved), where leaving would
- * abandon a session halfway.
+ * (credentials sent, or tokens already being saved) or a form, where the way
+ * out is the form's own back link.
  */
 const NO_ACCOUNT_STEPS: ReadonlySet<Step['kind']> = new Set([
   'discovering',
@@ -77,19 +113,43 @@ const NO_ACCOUNT_STEPS: ReadonlySet<Step['kind']> = new Set([
   'expired',
 ])
 
+/** The tagline and feature chips: left out of the forms, whose fields need the room. */
+const INTRO_HIDDEN: ReadonlySet<Step['kind']> = new Set(['custom', 'local'])
+
 /**
- * The sign-in screen, matching the native app's LoginPage: the server is
- * built in, so it opens by asking that server how it signs people in, then
- * offers exactly that one way, beside using Halo without an account (which
- * also covers a server that cannot be reached). Every async step is tagged
- * with an attempt number so a cancelled or superseded attempt can never
- * overwrite a newer one.
+ * Posters fanned on the halo ring behind the card, left to right, and the
+ * backdrops that crossfade behind everything. Fetched from Metahub, the image
+ * host Cinemeta's own metadata points at, like every poster the app shows;
+ * signed out there is no addon list to ask, so the titles are fixed (the same
+ * ones the phone shows). A poster that fails to load keeps its dark card.
+ */
+const POSTERS: ReadonlyArray<{ imdbId: string; badge?: 'offline' | 'quality' }> = [
+  { imdbId: 'tt11280740' },
+  { imdbId: 'tt3581920', badge: 'offline' },
+  { imdbId: 'tt15398776', badge: 'quality' },
+  { imdbId: 'tt4574334' },
+  { imdbId: 'tt1375666' },
+]
+const BACKDROPS = ['tt15239678', 'tt2543164', 'tt1877830']
+
+const posterUrl = (imdbId: string) => `https://images.metahub.space/poster/medium/${imdbId}/img`
+const backdropUrl = (imdbId: string) => `https://images.metahub.space/background/medium/${imdbId}/img`
+
+/**
+ * The sign-in screen: a frosted card over a fan of posters on the halo ring,
+ * the design Last Music and RainFrames share, in Halo's accent. The server is
+ * built in, so it opens by asking that server how it signs people in and
+ * offers exactly that way, beside using Halo without an account and a
+ * username & password form for a self-hosted server. Every async step is
+ * tagged with an attempt number so a cancelled or superseded attempt can
+ * never overwrite a newer one.
  */
 export function Login() {
   const { state, signedIn, continueWithoutAccount, cancelSignIn } = useSession()
-  const serverUrl = getServerUrl()
+  const builtInServer = getBuiltInServerUrl()
   const [step, setStep] = useState<Step>({ kind: 'discovering' })
   const [deviceError, setDeviceError] = useState<string | null>(null)
+  const [server, setServer] = useState(readLastServer)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -99,7 +159,7 @@ export function Login() {
     const id = ++attempt.current
     setStep({ kind: 'discovering' })
     try {
-      const config = await new HaloClient({ baseUrl: serverUrl, fetch: nativeFetch }).getAuthConfig()
+      const config = await new HaloClient({ baseUrl: builtInServer, fetch: nativeFetch }).getAuthConfig()
       if (id === attempt.current) setStep(readyStep(config))
     } catch (err) {
       if (id === attempt.current) setStep({ kind: 'unreachable', detail: err instanceof Error ? err.message : String(err) })
@@ -127,7 +187,12 @@ export function Login() {
     // Moving needs the account's id (it names the downloads partition); when
     // it is not known yet, the signed-in shell does the move once it is.
     const moving = me !== null && getDeviceProfile() !== null
-    setStep({ kind: 'signedIn', name: me?.username ?? '', label: accountLabel(me ?? undefined), moving })
+    setStep({
+      kind: 'signedIn',
+      name: me ? accountDisplayName(me.username) : '',
+      label: accountLabel(me ?? undefined),
+      moving,
+    })
     const ready = async () => {
       // A first sign-in seeds the default addons; Home must not draw before
       // they exist. Seeding first also keeps a moved addon from counting as
@@ -139,6 +204,7 @@ export function Login() {
     if (id === attempt.current) signedIn(kind)
   }
 
+  /** The built-in server's own accounts. */
   async function submitLocal(event: FormEvent) {
     event.preventDefault()
     if (!username || !password) {
@@ -148,10 +214,57 @@ export function Login() {
     const id = ++attempt.current
     setStep({ kind: 'waiting', local: true })
     try {
-      await signInWithPassword(serverUrl, username, password)
+      await signInWithPassword(builtInServer, username, password)
     } catch (err) {
       if (id === attempt.current) setStep({ kind: 'local', error: localSignInMessage(err) })
       return
+    }
+    await finish('local', id)
+  }
+
+  /**
+   * A self-hosted server's accounts. Its sign-in mode is checked first, so a
+   * server that signs in through a web page says so instead of refusing the
+   * password as if it were wrong.
+   */
+  async function submitCustom(event: FormEvent, back: RestingStep) {
+    event.preventDefault()
+    const fail = (error: string) => setStep({ kind: 'custom', error, back })
+    let address: string
+    try {
+      address = parseServerAddress(server)
+    } catch (err) {
+      fail(err instanceof Error ? err.message : String(err))
+      return
+    }
+    if (!username || !password) {
+      fail('Enter your username and password.')
+      return
+    }
+    const id = ++attempt.current
+    setStep({ kind: 'waiting', local: true })
+    let mode: string
+    try {
+      mode = (await new HaloClient({ baseUrl: address, fetch: nativeFetch }).getAuthConfig()).mode
+    } catch {
+      if (id === attempt.current) fail('Couldn’t reach that server. Check the address and try again.')
+      return
+    }
+    if (id !== attempt.current) return
+    if (mode !== 'local') {
+      fail('That server signs in through a web page, not a username and password.')
+      return
+    }
+    try {
+      await signInWithPassword(address, username, password)
+    } catch (err) {
+      if (id === attempt.current) fail(localSignInMessage(err))
+      return
+    }
+    try {
+      localStorage.setItem(LAST_SERVER_KEY, address)
+    } catch {
+      // Only a convenience for next time.
     }
     await finish('local', id)
   }
@@ -165,7 +278,7 @@ export function Login() {
     }
     try {
       if (method.kind === 'oidc') await signInWithOidc(method.config, onOpened)
-      else await method.addon.signIn(serverUrl, method.config, onOpened)
+      else await method.addon.signIn(builtInServer, method.config, onOpened)
     } catch (err) {
       if (id !== attempt.current) return
       const failure = classifySignInFailure(err)
@@ -210,280 +323,344 @@ export function Login() {
     }
   }
 
+  function openCustom() {
+    if (step.kind === 'discovering' || step.kind === 'unreachable' || step.kind === 'unsupported' || step.kind === 'local' || step.kind === 'browser') {
+      setStep({ kind: 'custom', error: null, back: step })
+    }
+  }
+
+  const passwordLink = (
+    <button type="button" className="si-link" onClick={openCustom}>
+      Use username &amp; password
+    </button>
+  )
+
+  const noAccount =
+    NO_ACCOUNT_STEPS.has(step.kind) &&
+    (state === 'device' ? (
+      <button type="button" className="si-btn si-btn-quiet" onClick={cancelSignIn}>
+        Back to Halo
+      </button>
+    ) : (
+      <button type="button" className="si-btn si-btn-quiet" onClick={() => void continueOnDevice()}>
+        Continue without an account
+      </button>
+    ))
+
   return (
-    <div className="auth-screen">
-      <div className="glow glow-a" />
-      <div className="glow glow-b" />
-      <TitleBar />
-      <div className="auth-stage">
-        <div className="auth-col">
-          {/* The lockup is identical in every state, so it lives outside them. */}
-          <div className="logo-lockup">
-            <HaloMark className="logo-mark" size={26} />
-            <div className="logo-word">HALO</div>
-          </div>
+    <div className="si-screen">
+      {BACKDROPS.map((imdbId, index) => (
+        <div
+          key={imdbId}
+          className={`si-backdrop si-backdrop-${index + 1}`}
+          style={{ backgroundImage: `url(${backdropUrl(imdbId)})` }}
+          aria-hidden
+        />
+      ))}
+      <div className="si-shade" aria-hidden />
+      <div className="si-glow si-glow-a" aria-hidden />
+      <div className="si-glow si-glow-c" aria-hidden />
+      <TitleBar dark />
 
-          {step.kind === 'discovering' && (
-            <>
-              <div className="auth-title">Connecting to Halo</div>
-              <div className="auth-ring" style={{ marginTop: 22 }}>
-                <ProgressRing size={22} />
-              </div>
-              <div className="auth-sub">Checking how this server signs you in.</div>
-            </>
-          )}
-
-          {step.kind === 'local' && (
-            <form onSubmit={(event) => void submitLocal(event)}>
-              <div className="auth-title">Sign in to Halo</div>
-              <div className="auth-sub">Use the account created on your Halo server.</div>
-              <div className="field-block" style={{ marginTop: 22 }}>
-                <label className="field-label" htmlFor="halo-username">
-                  Username
-                </label>
-                <input
-                  id="halo-username"
-                  className="field"
-                  value={username}
-                  maxLength={512}
-                  onChange={(e) => setUsername(e.target.value)}
-                  autoFocus
-                  spellCheck={false}
-                />
-              </div>
-              <div className="field-block">
-                <label className="field-label" htmlFor="halo-password">
-                  Password
-                </label>
-                <input
-                  id="halo-password"
-                  className="field"
-                  type="password"
-                  value={password}
-                  maxLength={4096}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              {step.error && <div className="auth-error">{step.error}</div>}
-              <button type="submit" className="btn-accent h36 btn-block" style={{ marginTop: 20 }}>
-                Sign in
-              </button>
-            </form>
-          )}
-
-          {step.kind === 'browser' && (
-            <>
-              <div className="auth-title">Sign in to Halo</div>
-              <div className="auth-sub">Your library and account data stay on your server.</div>
-              {step.error && <div className="auth-error">{step.error}</div>}
-              <button
-                type="button"
-                className="btn-accent h36 btn-block"
-                style={{ marginTop: 24 }}
-                onClick={() => void startBrowser(step.method)}
-              >
-                <FluentIcon glyph="openInNewWindow" size={15} />
-                {step.method.kind === 'addon' ? step.method.addon.buttonLabel : 'Continue in browser'}
-              </button>
-              <button
-                type="button"
-                className="auth-help"
-                title="Open Halo support"
-                onClick={() => void openUrl(HELP_URL).catch(() => undefined)}
-              >
-                Having trouble signing in?
-              </button>
-            </>
-          )}
-
-          {step.kind === 'waiting' && (
-            <>
-              <div className="auth-title">{step.local ? 'Signing in' : 'Check your browser'}</div>
-              <div className="auth-card" style={{ marginTop: 20 }}>
-                <ProgressRing size={18} />
-                <div className="auth-body">
-                  {step.local
-                    ? 'Halo is securely checking your account with your server.'
-                    : 'We opened a sign-in request in your default browser. Approve it there and this window carries on by itself.'}
-                </div>
-              </div>
-              <div className="auth-status">
-                <span className="auth-status-dot" />
-                <span className="mono">{step.local ? 'CHECKING ACCOUNT' : 'WAITING FOR BROWSER'}</span>
-              </div>
-              {!step.local && (
-                <>
-                  <button
-                    type="button"
-                    className="btn h36 btn-block"
-                    style={{ marginTop: 22 }}
-                    disabled={!step.authUrl}
-                    onClick={() => step.authUrl && void openUrl(step.authUrl).catch(() => undefined)}
-                  >
-                    Open the link again
-                  </button>
-                  <button type="button" className="auth-help" onClick={() => cancelBrowser(step.method)}>
-                    Cancel
-                  </button>
-                </>
-              )}
-            </>
-          )}
-
-          {step.kind === 'signedIn' && (
-            <>
-              <div className="auth-title">You’re all set</div>
-              <div className="auth-account">
-                <img className="auth-avatar" src={avatar} alt="" draggable={false} />
-                <div className="auth-account-text">
-                  {step.name && <div className="auth-name">{step.name}</div>}
-                  <div className="mono">{step.label}</div>
-                </div>
-              </div>
-              <div className="auth-sub" style={{ marginTop: 18 }}>
-                Halo will remember this device until you sign out.
-              </div>
-              <div style={{ marginTop: 22 }}>
-                <ProgressBar />
-              </div>
-              <div className="mono auth-center" style={{ marginTop: 10 }}>
-                {step.moving ? 'Moving this PC’s library into your account…' : 'Opening your library…'}
-              </div>
-            </>
-          )}
-
-          {step.kind === 'declined' && (
-            <>
-              <div className="auth-title">Sign-in was declined</div>
-              <div className="auth-sub" style={{ marginTop: 8 }}>
-                You can try again whenever you’re ready.
-              </div>
-              <button
-                type="button"
-                className="btn-accent h36 btn-block"
-                style={{ marginTop: 24 }}
-                onClick={() => void startBrowser(step.method)}
-              >
-                Try again
-              </button>
-            </>
-          )}
-
-          {step.kind === 'expired' && (
-            <>
-              <div className="auth-title">Sign-in request expired</div>
-              <div className="auth-sub" style={{ marginTop: 8 }}>
-                This sign-in request has expired. Start a new one to continue.
-              </div>
-              <button
-                type="button"
-                className="btn-accent h36 btn-block"
-                style={{ marginTop: 24 }}
-                onClick={() => void startBrowser(step.method)}
-              >
-                Start again
-              </button>
-            </>
-          )}
-
-          {step.kind === 'unsupported' && (
-            <>
-              <div className="auth-title">This build can’t sign in here</div>
-              <div className="auth-sub" style={{ marginTop: 8 }}>
-                This server signs in with “{step.mode}”, which this build of Halo doesn’t include.
-              </div>
-              <button
-                type="button"
-                className="btn-accent h36 btn-block"
-                style={{ marginTop: 24 }}
-                onClick={() => void discover()}
-              >
-                Retry
-              </button>
-              <button
-                type="button"
-                className="auth-help"
-                title="Open Halo support"
-                onClick={() => void openUrl(HELP_URL).catch(() => undefined)}
-              >
-                Having trouble signing in?
-              </button>
-            </>
-          )}
-
-          {step.kind === 'preparing' && (
-            <>
-              <div className="auth-title">Setting up Halo</div>
-              <div className="auth-ring" style={{ marginTop: 22 }}>
-                <ProgressRing size={22} />
-              </div>
-              <div className="auth-sub">Getting Halo ready on this PC.</div>
-            </>
-          )}
-
-          {step.kind === 'unreachable' && (
-            <>
-              <div className="auth-title">Can’t connect to Halo</div>
-              <div className="auth-sub" style={{ marginTop: 8 }}>
-                Try again later.
-              </div>
-              <button
-                type="button"
-                className="btn-accent h36 btn-block"
-                style={{ marginTop: 24 }}
-                onClick={() => void discover()}
-              >
-                Retry
-              </button>
-              <div className="auth-setup">
-                Need to set up a server?{' '}
-                <button type="button" onClick={() => void openUrl(SETUP_GUIDE_URL).catch(() => undefined)}>
-                  Read the setup guide
-                </button>
-              </div>
-              <button
-                type="button"
-                className="auth-help auth-details-toggle"
-                aria-expanded={detailsOpen}
-                onClick={() => setDetailsOpen((open) => !open)}
-              >
-                <FluentIcon glyph={detailsOpen ? 'chevronDown' : 'chevronRight'} size={13} />
-                Technical details
-              </button>
-              {detailsOpen && (
-                <div className="auth-details">
-                  <div className="auth-details-error">{step.detail}</div>
-                </div>
-              )}
-            </>
-          )}
-
-          {NO_ACCOUNT_STEPS.has(step.kind) &&
-            (state === 'device' ? (
-              <div className="auth-alt">
-                <button type="button" className="btn h36 btn-block" onClick={cancelSignIn}>
-                  Back to Halo
-                </button>
-                <div className="auth-alt-note">
-                  Signing in moves this PC’s library, history, addons and downloads into your account.
-                </div>
-              </div>
-            ) : (
-              <div className="auth-alt">
-                <button type="button" className="btn h36 btn-block" onClick={() => void continueOnDevice()}>
-                  Continue without an account
-                </button>
-                {deviceError ? (
-                  <div className="auth-error">{deviceError}</div>
-                ) : (
-                  <div className="auth-alt-note">
-                    Your library, history and addons stay on this PC. Sign in any time to sync them.
-                  </div>
+      <main className="si-stage">
+        <div className="si-deck">
+          <div className="si-fan" aria-hidden>
+            <div className="si-ring" />
+            {POSTERS.map((poster, index) => (
+              <div key={poster.imdbId} className={`si-poster si-poster-${index + 1}`}>
+                {poster.badge === 'offline' && (
+                  <span className="si-chip si-chip-offline">
+                    <FluentIcon glyph="check" size={10} />
+                    OFFLINE
+                  </span>
                 )}
+                {poster.badge === 'quality' && <span className="si-chip si-chip-gold">4K · HDR</span>}
+                <img
+                  src={posterUrl(poster.imdbId)}
+                  alt=""
+                  draggable={false}
+                  onError={(event) => {
+                    event.currentTarget.style.visibility = 'hidden'
+                  }}
+                />
               </div>
             ))}
+          </div>
+
+          <section className="si-card" aria-labelledby="si-title">
+            <div className="si-meta">
+              <span className="si-meta-brand">
+                <HaloMark size={16} />
+                HALO
+              </span>
+              <span>MEDIA CENTER</span>
+            </div>
+
+            <h1 className="si-title" id="si-title">
+              Your shows,
+              <br />
+              <span>everywhere.</span>
+            </h1>
+            {!INTRO_HIDDEN.has(step.kind) && <Intro />}
+
+            <div className="si-action">
+              {step.kind === 'discovering' && (
+                <>
+                  <Status spinner>CONNECTING TO HALO</Status>
+                  {noAccount}
+                  {passwordLink}
+                </>
+              )}
+
+              {step.kind === 'browser' && (
+                <>
+                  {step.error && <div className="si-error">{step.error}</div>}
+                  <button type="button" className="si-btn si-btn-primary" onClick={() => void startBrowser(step.method)}>
+                    <FluentIcon glyph="openInNewWindow" size={15} />
+                    {methodLabel(step.method)}
+                  </button>
+                  {noAccount}
+                  {passwordLink}
+                </>
+              )}
+
+              {step.kind === 'local' && (
+                <form className="si-form" onSubmit={(event) => void submitLocal(event)}>
+                  <Field id="si-username" label="Username" value={username} onChange={setUsername} autoComplete="username" autoFocus />
+                  <Field id="si-password" label="Password" value={password} onChange={setPassword} type="password" autoComplete="current-password" />
+                  {step.error && <div className="si-error">{step.error}</div>}
+                  <button type="submit" className="si-btn si-btn-primary si-submit">
+                    Sign in
+                  </button>
+                  {noAccount}
+                  <button type="button" className="si-link" onClick={openCustom}>
+                    Use another server
+                  </button>
+                </form>
+              )}
+
+              {step.kind === 'custom' && (
+                <form className="si-form" onSubmit={(event) => void submitCustom(event, step.back)}>
+                  <Field
+                    id="si-server"
+                    label="Server address"
+                    value={server}
+                    onChange={setServer}
+                    placeholder="https://your-server.example"
+                    autoComplete="url"
+                    autoFocus={!server}
+                  />
+                  <Field id="si-username" label="Username" value={username} onChange={setUsername} autoComplete="username" autoFocus={!!server} />
+                  <Field id="si-password" label="Password" value={password} onChange={setPassword} type="password" autoComplete="current-password" />
+                  {step.error && <div className="si-error">{step.error}</div>}
+                  <button type="submit" className="si-btn si-btn-primary si-submit">
+                    Sign in
+                  </button>
+                  <button type="button" className="si-link" onClick={() => setStep(step.back)}>
+                    {backLabel(step.back)}
+                  </button>
+                </form>
+              )}
+
+              {step.kind === 'waiting' && (
+                <>
+                  <div className="si-wait">
+                    <div className="si-wait-head">{step.local ? 'Signing in' : 'Check your browser'}</div>
+                    <p>
+                      {step.local
+                        ? 'Halo is checking your account with your server.'
+                        : 'We opened a sign-in page in your browser. Approve it there and Halo carries on by itself.'}
+                    </p>
+                    <Status spinner>{step.local ? 'CHECKING ACCOUNT' : 'WAITING FOR BROWSER'}</Status>
+                  </div>
+                  {!step.local && (
+                    <>
+                      <button
+                        type="button"
+                        className="si-btn si-btn-quiet si-after-wait"
+                        disabled={!step.authUrl}
+                        onClick={() => step.authUrl && void openUrl(step.authUrl).catch(() => undefined)}
+                      >
+                        Open the link again
+                      </button>
+                      <button type="button" className="si-link" onClick={() => cancelBrowser(step.method)}>
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+
+              {step.kind === 'signedIn' && (
+                <>
+                  <div className="si-wait-head si-done">You’re all set</div>
+                  <div className="si-account">
+                    <div className="si-avatar" aria-hidden>
+                      {(step.name || 'H').slice(0, 1).toUpperCase()}
+                    </div>
+                    <div className="si-account-text">
+                      {step.name && <span className="si-account-name">{step.name}</span>}
+                      <span className="si-account-label">{step.label}</span>
+                    </div>
+                  </div>
+                  <div className="si-bar" aria-hidden>
+                    <i />
+                  </div>
+                  <Status>{step.moving ? 'MOVING THIS PC’S LIBRARY INTO YOUR ACCOUNT…' : 'OPENING YOUR LIBRARY…'}</Status>
+                </>
+              )}
+
+              {(step.kind === 'declined' || step.kind === 'expired') && (
+                <>
+                  <div className="si-wait">
+                    <div className="si-wait-head">
+                      {step.kind === 'declined' ? 'Sign-in was declined' : 'Sign-in request expired'}
+                    </div>
+                    <p>
+                      {step.kind === 'declined'
+                        ? 'You can try again whenever you’re ready.'
+                        : 'This sign-in request has expired. Start a new one to continue.'}
+                    </p>
+                  </div>
+                  <button type="button" className="si-btn si-btn-primary si-after-wait" onClick={() => void startBrowser(step.method)}>
+                    Try again
+                  </button>
+                  {noAccount}
+                </>
+              )}
+
+              {step.kind === 'unsupported' && (
+                <>
+                  <div className="si-wait">
+                    <div className="si-wait-head">This build can’t sign in here</div>
+                    <p>This server signs in with “{step.mode}”, which this build of Halo doesn’t include.</p>
+                  </div>
+                  <button type="button" className="si-btn si-btn-primary si-after-wait" onClick={() => void discover()}>
+                    Retry
+                  </button>
+                  {noAccount}
+                  {passwordLink}
+                </>
+              )}
+
+              {step.kind === 'unreachable' && (
+                <>
+                  <div className="si-wait">
+                    <div className="si-wait-head">Can’t reach Halo</div>
+                    <p>Check your connection and try again.</p>
+                  </div>
+                  <button type="button" className="si-btn si-btn-primary si-after-wait" onClick={() => void discover()}>
+                    Try again
+                  </button>
+                  {noAccount}
+                  {passwordLink}
+                  <button
+                    type="button"
+                    className="si-link si-details-toggle"
+                    aria-expanded={detailsOpen}
+                    onClick={() => setDetailsOpen((open) => !open)}
+                  >
+                    <FluentIcon glyph={detailsOpen ? 'chevronDown' : 'chevronRight'} size={12} />
+                    Technical details
+                  </button>
+                  {detailsOpen && <div className="si-details">{step.detail}</div>}
+                </>
+              )}
+
+              {step.kind === 'preparing' && <Status spinner>GETTING HALO READY ON THIS PC</Status>}
+
+              {deviceError && NO_ACCOUNT_STEPS.has(step.kind) && <div className="si-error">{deviceError}</div>}
+            </div>
+
+            <div className="si-meta si-foot">
+              <span>© 2026 LAST PROJECTS &amp; SHY</span>
+              <button
+                type="button"
+                className="si-help"
+                title="Open Halo support"
+                onClick={() => void openUrl(HELP_URL).catch(() => undefined)}
+              >
+                NEED HELP?
+              </button>
+            </div>
+          </section>
         </div>
-      </div>
+      </main>
+    </div>
+  )
+}
+
+function Intro() {
+  return (
+    <>
+      <p className="si-tagline">
+        Stream from your addons, download for the trip, and pick up where you left off on any device.
+      </p>
+      <ul className="si-chips" aria-label="Includes">
+        <li>
+          <FluentIcon glyph="globe" size={13} />
+          Addons
+        </li>
+        <li>
+          <FluentIcon glyph="downloads" size={13} />
+          Downloads
+        </li>
+        <li>
+          <FluentIcon glyph="video" size={13} />
+          Subtitles
+        </li>
+        <li>
+          <FluentIcon glyph="retry" size={13} />
+          Sync
+        </li>
+      </ul>
+    </>
+  )
+}
+
+/** The mono status line: a spinner while something is under way, else plain text. */
+function Status({ spinner = false, children }: { spinner?: boolean; children: ReactNode }) {
+  return (
+    <div className="si-status" role="status">
+      {spinner && <span className="si-spinner" aria-hidden />}
+      {children}
+    </div>
+  )
+}
+
+function Field({
+  id,
+  label,
+  value,
+  onChange,
+  type = 'text',
+  placeholder,
+  autoComplete,
+  autoFocus = false,
+}: {
+  id: string
+  label: string
+  value: string
+  onChange: (value: string) => void
+  type?: 'text' | 'password'
+  placeholder?: string
+  autoComplete: string
+  autoFocus?: boolean
+}) {
+  return (
+    <div className="si-field">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        autoFocus={autoFocus}
+        spellCheck={false}
+        maxLength={type === 'password' ? 4096 : 512}
+        onChange={(event) => onChange(event.target.value)}
+      />
     </div>
   )
 }

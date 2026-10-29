@@ -41,6 +41,11 @@ export function loadLocalSession(): boolean {
   return session !== null
 }
 
+/** The server the saved password session belongs to, which need not be the built-in one. */
+export function getLocalSessionServerUrl(): string | null {
+  return session?.serverUrl ?? null
+}
+
 export function clearLocalSession(): void {
   session = null
   localStorage.removeItem(LOCAL_KEY)
