@@ -54,10 +54,25 @@ internal fun downloadSections(entries: List<DownloadEntry>): DownloadSections {
     val ordered = groups.flatMap { it.entries }
     return DownloadSections(
         active = ordered.filterNot { it.status == DownloadStatus.Done },
-        ready = ordered.filter { it.status == DownloadStatus.Done },
+        // The title that finished last leads, whenever it was started; a
+        // show's episodes stay together, in the order they run.
+        ready = groups
+            .mapNotNull { group ->
+                val done = group.entries.filter { it.status == DownloadStatus.Done }
+                done.takeIf { it.isNotEmpty() }?.let { it to it.maxOf(::finishedAt) }
+            }
+            .sortedByDescending { (_, latest) -> latest }
+            .flatMap { (done, _) -> done },
         posters = groups.associate { it.itemId to it.poster },
     )
 }
+
+/**
+ * When a finished entry finished. Entries from before that was recorded fall
+ * back on their last update, which for a finished download is its finishing
+ * or later, never its start.
+ */
+private fun finishedAt(entry: DownloadEntry): Long = entry.completedAt ?: entry.updatedAt
 
 /** The art for one row: the video's own poster, else the title's. */
 internal fun downloadPoster(entry: DownloadEntry, sections: DownloadSections): String? =

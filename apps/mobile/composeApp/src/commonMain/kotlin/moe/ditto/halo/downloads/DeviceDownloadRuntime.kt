@@ -523,6 +523,7 @@ internal class DeviceDownloadRuntime(
                 failure = null,
                 retainedFileNames = emptyList(),
                 updatedAt = clock.nowMs(),
+                completedAt = clock.nowMs(),
                 bytesPerSecond = 0,
                 connections = null,
             ),
