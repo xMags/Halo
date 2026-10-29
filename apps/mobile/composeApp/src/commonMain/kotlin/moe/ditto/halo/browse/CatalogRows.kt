@@ -18,6 +18,8 @@ data class CatalogRowSpec(
     val source: String,
     /** The languages it can be asked for, when it is a language row (see [languageChoices]); null otherwise. */
     val languageChoices: List<String>? = null,
+    /** Whether its "See all" grid can ask for further pages (see [catalogSupportsSkip]). */
+    val supportsSkip: Boolean = false,
 )
 
 /**
@@ -52,6 +54,7 @@ fun catalogRows(addons: List<AddonEntry>): List<CatalogRowSpec> = addons.flatMap
                 title = labels.title,
                 source = labels.source,
                 languageChoices = languageChoices(catalog),
+                supportsSkip = catalogSupportsSkip(catalog),
             )
         }
 }

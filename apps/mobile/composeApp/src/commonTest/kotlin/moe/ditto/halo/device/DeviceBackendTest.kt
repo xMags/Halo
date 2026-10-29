@@ -111,6 +111,22 @@ class DeviceBackendTest {
     }
 
     @Test
+    fun aCatalogPageCarriesEveryExtraAndCountsWhatTheAddonSent() = realTimeTest {
+        val fixture = Fixture(
+            mapOf(
+                "https://catalog.test/catalog/movie/top/genre=Action&skip=100.json" to json(
+                    """{"metas":[{"id":"dltorbox","type":"movie","name":"Delete all files"},{"id":"tt9","type":"movie","name":"Nine"}]}""",
+                ),
+            ),
+        )
+        val catalog = fixture.backend.putAddons(listOf(CatalogAddon)).single()
+        val page = fixture.backend.getCatalog(catalog.id, "movie", "top", mapOf("genre" to "Action", "skip" to "100"))
+        assertEquals(listOf("tt9"), page.metas.map { it.id })
+        // The action entry is not shown but still counts towards the addon's offset.
+        assertEquals(2, page.receivedCount)
+    }
+
+    @Test
     fun metaComesFromTheFirstAddonThatCanDescribeTheIdSkippingFailures() = realTimeTest {
         val second = "https://meta-two.test/manifest.json"
         val fixture = Fixture(

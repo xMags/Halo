@@ -211,6 +211,7 @@ internal fun HaloShell(
                 }
                 composable<ShelfRoute> { entry ->
                     ShelfScreen(
+                        graph = graph,
                         snapshot = shelves[entry.toRoute<ShelfRoute>().key],
                         onBack = { navController.popBackStack() },
                         onOpenDetail = { navController.openDetail(it) },

@@ -57,9 +57,10 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.ditto.halo.SessionGraph
+import moe.ditto.halo.api.CatalogResponse
 import moe.ditto.halo.api.MetaCard
-import moe.ditto.halo.api.MetaPreview
 import moe.ditto.halo.api.playableFromPreview
+import moe.ditto.halo.browse.CatalogPageSource
 import moe.ditto.halo.browse.CatalogRowSpec
 import moe.ditto.halo.browse.ContinueEntry
 import moe.ditto.halo.browse.catalogExtra
@@ -186,7 +187,7 @@ internal fun HomeScreen(
     // or failed catalog collapses it. Scrolling back up crossed one such row
     // after another, and their vanishing height ate the gesture: the list would
     // barely move towards the top. Read and written only on the main thread.
-    val knownCatalogs = remember(graph) { HashMap<String, List<MetaPreview>>() }
+    val knownCatalogs = remember(graph) { HashMap<String, CatalogResponse>() }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -479,25 +480,33 @@ private fun HomeCatalogRow(
     gap: Dp,
     bottomPadding: Dp,
     /** This row's result from an earlier pass, so it reappears at its settled height. */
-    known: List<MetaPreview>?,
-    onKnown: (List<MetaPreview>) -> Unit,
+    known: CatalogResponse?,
+    onKnown: (CatalogResponse) -> Unit,
     onOpenDetail: (MetaRef) -> Unit,
     onOpenShelf: (ShelfSnapshot) -> Unit,
     insetStrip: Boolean,
 ) {
     val state by remember(graph, spec.key, extra, ready) {
-        graph.browse.catalog(spec.addonId, spec.type, spec.catalogId, enabled = ready, extra = extra)
+        graph.browse.catalogPage(spec.addonId, spec.type, spec.catalogId, enabled = ready, extra = extra)
     }.collectAsState(QueryState(value = known))
     LaunchedEffect(state.value) { state.value?.let(onKnown) }
 
-    val metas = state.value
+    val page = state.value
+    val metas = page?.metas
     CatalogRow(
         title = spec.title,
         source = spec.source,
         items = remember(metas) { metas.orEmpty().map { it.posterItem() } },
         onItemClick = { onOpenDetail(it.metaRef()) },
         itemMenu = posterMenu(metas.orEmpty()),
-        onSeeAll = { onOpenShelf(ShelfSnapshot(spec.title, spec.source, metas.orEmpty())) },
+        onSeeAll = {
+            // A catalog that pages carries where its next page starts, so the
+            // grid can go on past what the row holds.
+            val paging = page?.takeIf { spec.supportsSkip }?.let {
+                ShelfPaging(CatalogPageSource(spec.addonId, spec.type, spec.catalogId, extra), it.receivedCount)
+            }
+            onOpenShelf(ShelfSnapshot(spec.title, spec.source, metas.orEmpty(), paging))
+        },
         posterWidth = posterWidth,
         isLoading = metas == null && state.error == null,
         gutter = gutter,
