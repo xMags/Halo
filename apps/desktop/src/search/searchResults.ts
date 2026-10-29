@@ -1,4 +1,5 @@
-import type { MetaPreview } from '@halo/core'
+import type { LibraryItem, MetaPreview } from '@halo/core'
+import type { SearchHistoryEntry } from './searchHistory'
 
 /** One searchable catalog: an installed addon's catalog that takes a `search` extra. */
 export interface SearchTarget {
@@ -80,4 +81,80 @@ export function searchProgress(targets: readonly SearchTarget[], states: readonl
     }
   })
   return { groups, topMatch, pending, failed, total: targets.length }
+}
+
+/** `type:id`, the identity two addons share for one title. */
+export function metaKey(meta: Pick<MetaPreview, 'type' | 'id'>): string {
+  return `${meta.type}:${meta.id}`
+}
+
+/** Lower case without accents, so "Amélie" is found by "amelie". */
+function folded(text: string): string {
+  return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+}
+
+/** The query's words; a title matches when its name holds every one of them. */
+function queryWords(query: string): string[] {
+  return folded(query).split(/\s+/).filter(Boolean)
+}
+
+/**
+ * The library entries the query names, newest first, as posters. They are
+ * what the viewer most likely means, and no addon has to answer for them.
+ */
+export function libraryMatches(library: readonly LibraryItem[] | undefined, query: string): MetaPreview[] {
+  const words = queryWords(query)
+  if (words.length === 0) return []
+  return (library ?? [])
+    .filter((item) => !item.removedAt)
+    .filter((item) => {
+      const name = folded(item.name)
+      return words.every((word) => name.includes(word))
+    })
+    .sort((a, b) => b.addedAt - a.addedAt)
+    .map((item) => ({
+      id: item.id.slice(item.type.length + 1),
+      type: item.type,
+      name: item.name,
+      ...(item.poster ? { poster: item.poster } : {}),
+    }))
+}
+
+/**
+ * Several ranked lists as one: every list's first title, then every list's
+ * second, and so on, each title once. Taking turns keeps each addon's own
+ * ranking without letting the first addon's long tail bury the others' best.
+ * Titles in `exclude` are left out (they are shown elsewhere on the screen).
+ */
+export function interleave(lists: readonly (readonly MetaPreview[])[], exclude: ReadonlySet<string> = new Set()): MetaPreview[] {
+  const seen = new Set(exclude)
+  const merged: MetaPreview[] = []
+  const longest = Math.max(0, ...lists.map((list) => list.length))
+  for (let rank = 0; rank < longest; rank += 1) {
+    for (const list of lists) {
+      const meta = list[rank]
+      if (!meta) continue
+      const key = metaKey(meta)
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push(meta)
+    }
+  }
+  return merged
+}
+
+/**
+ * Past searches that contain what is being typed, most recent first, for
+ * picking one instead of typing it out. The term itself is not suggested back.
+ */
+export function suggestedSearches(history: readonly SearchHistoryEntry[], typed: string, limit = 5): string[] {
+  const needle = folded(typed.trim())
+  if (!needle) return []
+  return history
+    .map((entry) => entry.term)
+    .filter((term) => {
+      const candidate = folded(term)
+      return candidate !== needle && candidate.includes(needle)
+    })
+    .slice(0, limit)
 }
