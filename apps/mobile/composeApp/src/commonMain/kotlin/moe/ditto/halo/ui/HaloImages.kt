@@ -8,8 +8,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -79,17 +83,34 @@ fun HaloAsyncImage(
     /** Which part of the art a crop keeps; a title's backdrop favours its upper part. */
     alignment: Alignment = Alignment.Center,
     placeholder: (@Composable BoxScope.() -> Unit)? = null,
+    /**
+     * Loaded when [url] is missing or fails, before the placeholder settles in.
+     * Addons hand out poster links that are dead (a stale Amazon image) or
+     * mangled at the source, and a title they name by IMDb id has a poster of
+     * its own to fall back on.
+     */
+    fallbackUrl: String? = null,
 ) {
-    if (url.isNullOrBlank()) {
+    val primary = url?.takeIf { it.isNotBlank() }
+    val secondary = fallbackUrl?.takeIf { it.isNotBlank() && it != primary }
+    var onFallback by remember(primary, secondary) { mutableStateOf(primary == null) }
+    val model = if (onFallback) secondary else primary
+    if (model == null) {
         Box(modifier.background(HaloColors.Surface)) {
             placeholder?.invoke(this)
         }
         return
     }
 
-    val painter = rememberAsyncImagePainter(model = url, contentScale = contentScale)
+    val painter = rememberAsyncImagePainter(model = model, contentScale = contentScale)
     val state by painter.state.collectAsState()
-    val settled = state is AsyncImagePainter.State.Success || state is AsyncImagePainter.State.Error
+    val failed = state is AsyncImagePainter.State.Error
+    // A failure with a fallback still to try is not the end of the load: the
+    // skeleton stays up while the second source is asked for.
+    LaunchedEffect(failed) {
+        if (failed && !onFallback && secondary != null) onFallback = true
+    }
+    val settled = state is AsyncImagePainter.State.Success || (failed && (onFallback || secondary == null))
     val placeholderAlpha by animateFloatAsState(
         targetValue = if (settled) 0f else 1f,
         animationSpec = tween(durationMillis = 240),
