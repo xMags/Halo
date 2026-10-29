@@ -303,6 +303,9 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
       }
       return result.outcome
     }
+    // The engine's own reason, which names what to fix ("Sign in before
+    // downloading.", an unsafe source). Null for anything without one.
+    let reason: string | null = null
     try {
       let outcome = await begin(false)
       // One download per video: swapping the source has to be deliberate.
@@ -322,14 +325,16 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
         setRoot('downloads')
         return
       }
-    } catch {
+    } catch (error) {
       // Reported below, like any other start that did not happen.
+      if (typeof error === 'string' && error) reason = error
+      else if (error instanceof Error && error.message) reason = error.message
     } finally {
       setBusyKey(null)
     }
     await showDialog({
       title: 'Download could not start',
-      body: 'Check the source, free storage, and download folder, then try again.',
+      body: reason ?? 'Check the source, free storage, and download folder, then try again.',
       close: 'Close',
     })
   }
