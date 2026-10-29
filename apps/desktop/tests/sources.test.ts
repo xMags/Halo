@@ -220,3 +220,20 @@ test('the DTS-HD codec and a .ts extension are not read as a quality', () => {
   assert.equal(quality('Movie.2023.TS.x264-GRP'), 'SD')
   assert.equal(quality('Movie.1080p.DTS-HD.MA.5.1'), '1080p')
 })
+
+test('a source size is always whole bytes, as the download engine requires', () => {
+  const size = (title: string, videoSize?: number) =>
+    parseStreamInfo({
+      url: 'https://cdn.test/x',
+      title,
+      ...(videoSize != null ? { behaviorHints: { videoSize } } : {}),
+    }).sizeBytes
+
+  // 29.35 GB multiplies out to 31514322534.4 bytes.
+  assert.equal(size('Inception.2010.2160p.mkv 29.35 GB'), 31514322534)
+  assert.equal(size('Movie.mkv 700.5 MB'), 734527488)
+  // An addon's own fractional figure is rounded too, and one of zero means unknown.
+  assert.equal(size('Movie.mkv', 1234.6), 1235)
+  assert.equal(size('Movie.mkv 2 GB', 0), 2 * 1024 ** 3)
+  assert.equal(size('Movie.mkv'), null)
+})
