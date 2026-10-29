@@ -1,5 +1,6 @@
 package moe.ditto.halo.screens
 
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -29,5 +30,24 @@ class SettingsRailTest {
     @Test
     fun noSectionsLightTheFirstEntry() {
         assertEquals(0, activeSettingsSection(emptyList(), anchor, atEnd = false))
+    }
+}
+
+/** Where the wide Settings layout puts its rail and form. */
+class WideSettingsPlacementTest {
+
+    @Test
+    fun theFormIsCentredOnTheScreenWithTheRailToItsLeft() {
+        val placement = wideSettingsPlacement(screenWidth = 1691.dp, leadingInset = 80.dp)
+        assertEquals(800.dp, placement.formWidth)
+        // The form's middle is the screen's middle.
+        assertEquals(1691.dp / 2, placement.railStart + 260.dp + 44.dp + placement.formWidth / 2)
+    }
+
+    @Test
+    fun aNarrowScreenKeepsTheRailClearOfTheNavigationRail() {
+        val placement = wideSettingsPlacement(screenWidth = 1200.dp, leadingInset = 80.dp)
+        assertEquals(104.dp, placement.railStart)
+        assertEquals(1200.dp - 104.dp - 260.dp - 44.dp - 24.dp, placement.formWidth)
     }
 }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -44,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -98,7 +100,6 @@ private val PagePadding = 24.dp
  * rows stretched so far their values sat a long way from their labels.
  */
 private val FormMaxWidth = 800.dp
-private val PageMaxWidth = PagePadding + RailWidth + ColumnGap + FormMaxWidth + PagePadding
 
 private val RailEntryShape = RoundedCornerShape(6.dp)
 private val AboutCardShape = RoundedCornerShape(8.dp)
@@ -143,9 +144,10 @@ internal fun WideSettings(blocks: List<SettingsBlock>, signedIn: Boolean, modifi
     }
     val active = jumped ?: reading
 
-    Box(modifier.fillMaxSize().padding(start = responsive.contentInsetStart), contentAlignment = Alignment.TopCenter) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val placement = wideSettingsPlacement(screenWidth = maxWidth, leadingInset = responsive.contentInsetStart)
         Row(
-            Modifier.fillMaxHeight().widthIn(max = PageMaxWidth).fillMaxWidth().padding(horizontal = PagePadding),
+            Modifier.fillMaxHeight().padding(start = placement.railStart),
             horizontalArrangement = Arrangement.spacedBy(ColumnGap),
         ) {
             SettingsRail(
@@ -160,7 +162,7 @@ internal fun WideSettings(blocks: List<SettingsBlock>, signedIn: Boolean, modifi
                 modifier = Modifier.width(RailWidth).fillMaxHeight().padding(top = top + 8.dp),
             )
             LazyColumn(
-                Modifier.weight(1f).fillMaxHeight(),
+                Modifier.width(placement.formWidth).fillMaxHeight(),
                 state = listState,
                 contentPadding = PaddingValues(top = top + 8.dp, bottom = responsive.bottomContentPadding + 24.dp),
             ) {
@@ -168,6 +170,23 @@ internal fun WideSettings(blocks: List<SettingsBlock>, signedIn: Boolean, modifi
             }
         }
     }
+}
+
+/** Where the rail starts and how wide the form is, measured from the screen's leading edge. */
+internal data class WideSettingsPlacement(val railStart: Dp, val formWidth: Dp)
+
+/**
+ * The form is what is read, so it is centred on the screen, with the rail to
+ * its left. Where the screen is too narrow for that, the rail keeps its place
+ * clear of the navigation rail and the form moves right only as far as it must.
+ */
+internal fun wideSettingsPlacement(screenWidth: Dp, leadingInset: Dp): WideSettingsPlacement {
+    val minRailStart = leadingInset + PagePadding
+    val room = screenWidth - minRailStart - RailWidth - ColumnGap - PagePadding
+    val formWidth = minOf(FormMaxWidth, room).coerceAtLeast(0.dp)
+    val centredFormStart = (screenWidth - formWidth) / 2
+    val railStart = maxOf(centredFormStart - ColumnGap - RailWidth, minRailStart)
+    return WideSettingsPlacement(railStart, formWidth)
 }
 
 /** The section the reader is in, from where the list has scrolled. */
