@@ -13,7 +13,7 @@ import { placeContextMenu, type Point } from './menuPlacement'
  */
 
 export type ContextMenuEntry =
-  | { kind: 'item'; label: string; glyph: FluentGlyph; onSelect: () => void }
+  | { kind: 'item'; label: string; glyph: FluentGlyph; onSelect: () => void; danger?: boolean }
   | { kind: 'separator' }
 
 interface OpenMenu {
@@ -219,7 +219,7 @@ function ContextMenuView({ menu }: { menu: OpenMenu }) {
           <button
             key={`${index}-${entry.label}`}
             type="button"
-            className="menu-item"
+            className={entry.danger ? 'menu-item menu-item-danger' : 'menu-item'}
             role="menuitem"
             onClick={() => {
               closeContextMenu()

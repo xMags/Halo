@@ -403,6 +403,7 @@ function AddonsSection() {
           : `“${item.manifest.name}” will be removed from your addons.`,
       primary: 'Remove',
       close: 'Cancel',
+      destructive: true,
     })
     if (!confirmed) return
     const list = scope === 'global' ? globalAddons : userAddons
@@ -564,7 +565,7 @@ function AddonsSection() {
           )}
           <button
             type="button"
-            className="icon-btn icon-btn-bare icon-btn-28"
+            className="icon-btn icon-btn-bare icon-btn-28 icon-btn-danger"
             title={lockTitle ?? 'Remove addon'}
             disabled={lockTitle !== null || listBusy}
             onClick={() => void remove(item, scope)}
@@ -1000,6 +1001,7 @@ function SignedInAccountSection() {
               body: 'You will need to sign in again to use this server.',
               primary: 'Sign out',
               close: 'Cancel',
+              destructive: true,
             }).then((confirmed) => {
               if (confirmed) signOut()
             })
