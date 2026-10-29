@@ -116,6 +116,11 @@
 .nav-compact .nav-item {
   padding: 0 16px;
 }
+/* The toggle too: 4px nav + 4px + half of 40px = 28px. Without it the
+   hamburger sat 4px left of the icons under it. */
+.nav-compact .nav-toggle {
+  margin-left: 4px;
+}
 .nav-compact .account-row {
   justify-content: center;
   padding: 0;
