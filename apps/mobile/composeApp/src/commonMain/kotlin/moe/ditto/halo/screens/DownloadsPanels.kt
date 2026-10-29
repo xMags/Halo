@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -77,10 +78,13 @@ private const val LitBars = 4
 private const val ChartAnimationMs = 500
 
 private val ChartHeight = 76.dp
+/** A phone's chart: the same bars, at a height that leaves the list on the first screen. */
+private val ChartHeightCompact = 52.dp
 private val BarCorner = HaloRadius.Sm / 2f
 private val BarGap = 3.dp
 
 private val StorageBarHeight = HaloSpacing.Sm
+private val StorageBarHeightCompact = 6.dp
 private val LegendSwatch = 8.dp
 private val StorageColumnWidth = 220.dp
 private val OtherAppsFill = HaloColors.Primary.copy(alpha = 0.34f)
@@ -211,18 +215,18 @@ internal fun QueuePanel(
             meter?.let {
                 Box(
                     Modifier
-                        .padding(vertical = HaloSpacing.Md)
+                        .padding(vertical = if (wide) HaloSpacing.Md else HaloSpacing.Sm + 4.dp)
                         .fillMaxWidth()
                         .height(1.dp)
                         .background(HaloColors.Border),
                 )
-                StorageColumn(it, Modifier.fillMaxWidth())
+                if (wide) StorageColumn(it, Modifier.fillMaxWidth()) else StorageStrip(it)
             }
         }
         if (rows != null) {
             Box(
                 Modifier
-                    .padding(top = QueueDividerGap)
+                    .padding(top = if (wide) QueueDividerGap else HaloSpacing.Sm + 4.dp)
                     .fillMaxWidth()
                     .height(1.dp)
                     .background(HaloColors.Border),
@@ -235,9 +239,9 @@ internal fun QueuePanel(
 /**
  * The rate, what it is running over, the window's peak, and the chart.
  *
- * [compact] moves the connection pill under the figure: across a phone the
- * figure, its unit, the pill and the peak do not fit on one line, and the peak
- * is the one that has to stay level with the figure it is compared against.
+ * [compact] is the phone's shape: a smaller figure with the connection pill
+ * still beside it, a shorter chart, and the peak moved to the chart's foot,
+ * where it has the width a phone's top line does not.
  */
 @Composable
 private fun ThroughputColumn(
@@ -248,45 +252,46 @@ private fun ThroughputColumn(
     compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HaloSpacing.Sm + 4.dp)) {
+    val figureSize = if (compact) 30.sp else 40.sp
+    val peak = "Peak ${formatSpeed(history.peak) ?: rateFigure(0)}".uppercase()
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(if (compact) HaloSpacing.Sm else HaloSpacing.Sm + 4.dp),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
             val (figure, unit) = rateParts(bytesPerSecond)
             Text(
                 text = figure,
-                style = monoStyle(fontSize = 40.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.8).sp)
-                    .copy(lineHeight = 40.sp),
+                style = monoStyle(fontSize = figureSize, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.8).sp)
+                    .copy(lineHeight = figureSize),
                 maxLines = 1,
             )
             Text(
                 text = unit,
-                style = monoStyle(fontSize = 16.sp, color = HaloColors.TextMeta),
+                style = monoStyle(fontSize = if (compact) 14.sp else 16.sp, color = HaloColors.TextMeta),
                 maxLines = 1,
-                modifier = Modifier.padding(bottom = 3.dp),
+                modifier = Modifier.padding(bottom = if (compact) 2.dp else 3.dp),
             )
-            if (!compact) {
-                QueueStateNote(connections, idle, Modifier.padding(start = 6.dp, bottom = 2.dp))
-            }
+            QueueStateNote(connections, idle, Modifier.padding(start = if (compact) 2.dp else 6.dp, bottom = 2.dp))
             Spacer(Modifier.weight(1f))
-            Text(
-                text = "Peak ${formatSpeed(history.peak) ?: rateFigure(0)}".uppercase(),
-                style = kickerStyle(),
-                maxLines = 1,
-                modifier = Modifier.padding(bottom = 3.dp),
-            )
+            if (!compact) {
+                Text(text = peak, style = kickerStyle(), maxLines = 1, modifier = Modifier.padding(bottom = 3.dp))
+            }
         }
-        if (compact && (idle || connections != null)) QueueStateNote(connections, idle)
 
-        ThroughputChart(history)
+        ThroughputChart(history, if (compact) ChartHeightCompact else ChartHeight)
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
         ) {
             Text(text = "$ChartWindowSeconds s ago".uppercase(), style = kickerStyle(HaloColors.TextFaint))
+            Spacer(Modifier.weight(1f))
+            if (compact) Text(text = peak, style = kickerStyle(), maxLines = 1)
             Text(text = "Now".uppercase(), style = kickerStyle(HaloColors.TextFaint))
         }
     }
@@ -336,25 +341,34 @@ private fun QueueStateNote(connections: Int?, idle: Boolean, modifier: Modifier 
 
 /** Stops everything that is running, or starts everything that was stopped. */
 @Composable
-internal fun QueueControlButton(control: QueueControl, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun QueueControlButton(
+    control: QueueControl,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** A phone's header: the glyph alone in a square, the label kept for screen readers. */
+    iconOnly: Boolean = false,
+) {
     Row(
         modifier = modifier
             .height(ControlTarget)
+            .then(if (iconOnly) Modifier.width(ControlTarget) else Modifier)
             .clip(ControlShape)
             .background(HaloColors.SurfaceHigh)
             .border(1.dp, HaloColors.Border, ControlShape)
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = HaloSpacing.Md - 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = if (iconOnly) 0.dp else HaloSpacing.Md - 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = if (control == QueueControl.PauseAll) HaloIcons.Pause else HaloIcons.Play,
-            contentDescription = null,
+            contentDescription = if (iconOnly) control.label else null,
             tint = HaloColors.Text,
             modifier = Modifier.size(16.dp),
         )
-        Text(text = control.label, color = HaloColors.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        if (!iconOnly) {
+            Text(text = control.label, color = HaloColors.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        }
     }
 }
 
@@ -372,11 +386,11 @@ internal fun kickerStyle(color: Color = HaloColors.TextDim) =
  * something faster.
  */
 @Composable
-private fun ThroughputChart(history: ThroughputHistory) {
+private fun ThroughputChart(history: ThroughputHistory, height: Dp) {
     val bars = history.bars
     val peak = history.peak
     Row(
-        modifier = Modifier.fillMaxWidth().height(ChartHeight),
+        modifier = Modifier.fillMaxWidth().height(height),
         horizontalArrangement = Arrangement.spacedBy(BarGap),
         verticalAlignment = Alignment.Bottom,
     ) {
@@ -434,7 +448,7 @@ private fun StorageColumn(meter: StorageMeter, modifier: Modifier = Modifier) {
                 modifier = Modifier.alignByBaseline(),
             )
         }
-        StorageBar(meter)
+        StorageBar(meter, StorageBarHeight)
         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
             LegendRow("Downloads", meter.downloadsLabel, HaloColors.TextMeta) {
                 Modifier.background(HaloColors.Accent)
@@ -455,10 +469,10 @@ private fun StorageColumn(meter: StorageMeter, modifier: Modifier = Modifier) {
  * would not land on the same fractions.
  */
 @Composable
-private fun StorageBar(meter: StorageMeter) {
+private fun StorageBar(meter: StorageMeter, height: Dp) {
     val downloadsFill = Brush.horizontalGradient(listOf(HaloColors.Accent, HaloColors.AccentLight))
     val track = HaloColors.Primary.copy(alpha = 0.08f)
-    Canvas(Modifier.fillMaxWidth().height(StorageBarHeight)) {
+    Canvas(Modifier.fillMaxWidth().height(height)) {
         val radius = CornerRadius(size.height / 2f)
         val clip = Path().apply {
             addRoundRect(
@@ -474,6 +488,46 @@ private fun StorageBar(meter: StorageMeter) {
                 drawRect(color = OtherAppsFill, topLeft = Offset(downloads, 0f), size = Size(other, size.height))
             }
         }
+    }
+}
+
+/**
+ * Storage on a phone: the same three numbers as the tablet's column, in a
+ * caption line, a thin bar and one legend line, so the list stays on screen.
+ */
+@Composable
+private fun StorageStrip(meter: StorageMeter) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(HaloSpacing.Sm)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "STORAGE", style = kickerStyle(), modifier = Modifier.weight(1f))
+            Text(
+                text = "${meter.downloadsFigure} ${meter.ofTotalLine}",
+                style = monoStyle(fontSize = 12.sp, color = HaloColors.TextMeta),
+                maxLines = 1,
+            )
+        }
+        StorageBar(meter, StorageBarHeightCompact)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            StripLegend("Downloads", meter.downloadsLabel) { Modifier.background(HaloColors.Accent) }
+            StripLegend("Other", meter.otherLabel) { Modifier.background(OtherAppsFill) }
+            StripLegend("Free", meter.freeLabel) {
+                Modifier.border(1.dp, HaloColors.TextFaint, RoundedCornerShape(HaloRadius.Pill))
+            }
+        }
+    }
+}
+
+@Composable
+private fun StripLegend(label: String, value: String, swatch: () -> Modifier) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(LegendSwatch)
+                .clip(RoundedCornerShape(HaloRadius.Pill))
+                .then(swatch()),
+        )
+        Text(text = label, color = HaloColors.TextDim, fontSize = 12.sp, maxLines = 1)
+        Text(text = value, style = monoStyle(fontSize = 12.sp, color = HaloColors.TextMeta), maxLines = 1)
     }
 }
 

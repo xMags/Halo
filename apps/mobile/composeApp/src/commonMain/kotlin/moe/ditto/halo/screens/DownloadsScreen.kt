@@ -453,7 +453,7 @@ private fun DownloadsHeader(
                         )
                     }
                 }
-                control?.let { QueueControlButton(it, onControl) }
+                control?.let { QueueControlButton(it, onControl, iconOnly = stacked) }
             }
             if (stacked && summary.isNotEmpty()) {
                 Text(text = summary, color = HaloColors.TextDim, fontSize = 14.sp, maxLines = 2)
