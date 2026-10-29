@@ -64,6 +64,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -98,7 +99,6 @@ private val Teal = HaloColors.AccentLight
 private val Ink2 = HaloColors.Text.copy(alpha = 0.8f)
 private val Ink3 = HaloColors.Text.copy(alpha = 0.62f)
 private val Stroke = Color.White.copy(alpha = 0.11f)
-private val OnlineGreen = Color(0xFF5DD39E)
 
 private const val ContinueWithoutAccount = "Continue without an account"
 private const val WaitingCopy = "Approve the sign-in in the page that just opened, then come back to Halo."
@@ -307,14 +307,7 @@ internal fun SignInScreen(
                 onOpenGate?.let { TextLink("Open gate menu", it) }
             }
 
-            Footer(
-                status = when {
-                    phase == LoginPhase.Discovering -> ServerStatus.Connecting
-                    phase == LoginPhase.Server && mainState.error != null -> ServerStatus.Unreachable
-                    phase == LoginPhase.Server -> ServerStatus.Connecting
-                    else -> ServerStatus.Online
-                },
-            )
+            Footer()
         }
     }
 }
@@ -625,27 +618,23 @@ private fun TextLink(label: String, onClick: () -> Unit) {
     }
 }
 
-private enum class ServerStatus(val label: String, val dot: Color) {
-    Connecting("CONNECTING", Color.White.copy(alpha = 0.45f)),
-    Online("SERVER ONLINE", OnlineGreen),
-    Unreachable("SERVER UNREACHABLE", HaloColors.Danger),
-}
+private const val Copyright = "© 2026 LAST PROJECTS & CRYGUY"
 
 @Composable
-private fun Footer(status: ServerStatus) {
+private fun Footer() {
     val uriHandler = LocalUriHandler.current
     Column(Modifier.padding(top = 16.dp)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.07f)))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(7.dp).background(status.dot, CircleShape))
             Text(
-                status.label,
-                modifier = Modifier.padding(start = 8.dp),
+                Copyright,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 style = monoStyle(10.5.sp, FontWeight.Medium, Ink3, 1.5.sp),
             )
-            Spacer(Modifier.weight(1f))
-            // Padded to a 44 dp tap target; same face and size as the status,
-            // so the two share a baseline.
+            // Padded to a 44 dp tap target; same face and size as the
+            // copyright, so the two share a baseline.
             Text(
                 "NEED HELP?",
                 modifier = Modifier
