@@ -22,12 +22,14 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.ditto.halo.SessionGraph
+import moe.ditto.halo.api.Me
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
@@ -44,7 +46,13 @@ import org.jetbrains.compose.resources.decodeToImageBitmap
  * falls back the same way rather than leaving a hole.
  */
 @Composable
-internal fun AccountAvatar(graph: SessionGraph, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun AccountAvatar(
+    graph: SessionGraph,
+    /** Null where the picture only shows who is signed in, as on Settings' account card. */
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    size: Dp = DefaultAvatarSize,
+) {
     val me by remember(graph) { graph.account.observe() }.collectAsState(QueryState())
     val account = me.value
     val version = account?.avatarVersion
@@ -65,14 +73,20 @@ internal fun AccountAvatar(graph: SessionGraph, onClick: () -> Unit, modifier: M
     val name = account?.username.orEmpty()
     Box(
         modifier = modifier
-            .size(AvatarSize)
+            .size(size)
             .clip(CircleShape)
             .background(HaloColors.SurfaceHigh)
             .border(1.dp, HaloColors.GlassBorder, CircleShape)
-            .clickable(
-                role = Role.Button,
-                onClickLabel = if (name.isNotEmpty()) "$name: account and settings" else "Account and settings",
-                onClick = onClick,
+            .then(
+                if (onClick == null) {
+                    Modifier
+                } else {
+                    Modifier.clickable(
+                        role = Role.Button,
+                        onClickLabel = if (name.isNotEmpty()) "$name: account and settings" else "Account and settings",
+                        onClick = onClick,
+                    )
+                },
             ),
         contentAlignment = Alignment.Center,
     ) {
@@ -87,17 +101,32 @@ internal fun AccountAvatar(graph: SessionGraph, onClick: () -> Unit, modifier: M
             name.isNotEmpty() -> Text(
                 text = name.take(1).uppercase(),
                 color = HaloColors.Text,
-                fontSize = 18.sp,
+                fontSize = (size.value * 0.4f).sp,
                 fontWeight = FontWeight.SemiBold,
             )
             else -> Icon(
                 imageVector = HaloIcons.Person,
                 contentDescription = "Account and settings",
                 tint = HaloColors.TextDim,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(size * 0.55f),
             )
         }
     }
 }
 
-private val AvatarSize = 44.dp
+private val DefaultAvatarSize = 44.dp
+
+/** The username with its first letter raised, as the desktop's account card shows it. */
+internal fun accountDisplayName(username: String): String =
+    username.replaceFirstChar { it.uppercaseChar() }
+
+/**
+ * The mono caption under the account name: the account's tier when the server
+ * has tiers (`PREMIUM`), else the account kind and whether it administers this
+ * server. The desktop's `accountLabel`.
+ */
+internal fun accountLabel(me: Me?): String = when {
+    me?.plan != null -> me.plan.uppercase()
+    me?.isAdmin == true -> "ADMIN · HALO ACCOUNT"
+    else -> "HALO ACCOUNT"
+}

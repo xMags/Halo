@@ -1,5 +1,6 @@
 package moe.ditto.halo.screens
 
+import moe.ditto.halo.ui.monoStyle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -373,6 +374,36 @@ internal fun StaticSettingRow(label: String, value: String) {
             textAlign = TextAlign.End,
             modifier = Modifier.padding(start = HaloSpacing.Md).weight(1f),
         )
+    }
+}
+
+/**
+ * Who this is: the account's picture, its name and a mono caption (the plan,
+ * or the account kind), heading the account card as the desktop's does.
+ */
+@Composable
+internal fun ProfileRow(name: String, caption: String, avatar: @Composable () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = HaloSpacing.Md, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        avatar()
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = name,
+                color = HaloColors.Text,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = caption,
+                style = monoStyle(11.5.sp, FontWeight.Bold, color = HaloColors.AccentLight, letterSpacing = 1.sp),
+                maxLines = 1,
+            )
+        }
     }
 }
 
