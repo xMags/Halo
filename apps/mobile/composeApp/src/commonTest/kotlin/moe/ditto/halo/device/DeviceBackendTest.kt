@@ -284,6 +284,24 @@ class DeviceBackendTest {
     }
 
     @Test
+    fun aRemovalIsKeptButNeverReturnedOutlastsStaleCopiesAndANewerPlayBringsTheVideoBack() = realTimeTest {
+        val backend = Fixture().backend
+        backend.putWatchStates(listOf(watch("tt1", 10, name = "Gone"), watch("tt2", 10)))
+        var rows = backend.putWatchStates(listOf(watch("tt1", 20).copy(removedAt = 20)))
+        assertEquals(listOf("tt2"), rows.map { it.videoId })
+
+        rows = backend.putWatchStates(listOf(watch("tt1", 15, name = "Stale copy")))
+        assertEquals(listOf("tt2"), rows.map { it.videoId })
+        assertEquals(rows, backend.getWatchStates())
+
+        rows = backend.putWatchStates(listOf(watch("tt1", 30, positionSec = 12.0)))
+        assertEquals(12.0, rows.single { it.videoId == "tt1" }.positionSec)
+        assertNull(rows.single { it.videoId == "tt1" }.removedAt)
+
+        assertStatus(400) { backend.putWatchStates(listOf(watch("tt3", 1).copy(removedAt = 0))) }
+    }
+
+    @Test
     fun settingsNewerReplacesOlderIsIgnoredUnknownKeysPassThroughInvalidValuesAreRefused() = realTimeTest {
         val backend = Fixture().backend
         assertEquals(0L, backend.getSettings().updatedAt)

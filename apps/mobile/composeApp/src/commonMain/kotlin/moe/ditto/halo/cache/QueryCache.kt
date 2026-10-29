@@ -104,6 +104,22 @@ class QueryCache(
     @Suppress("UNCHECKED_CAST")
     suspend fun <T> peek(key: QueryKey): T? = entry(key).state.value.value as T?
 
+    /**
+     * [peek] for callers that cannot suspend, such as a menu built the moment a
+     * long press lands. It never waits: in the rare instant another caller
+     * holds the lock it answers null, which those callers already treat as
+     * "not loaded yet".
+     */
+    fun <T> peekNow(key: QueryKey): T? {
+        if (!mutex.tryLock()) return null
+        try {
+            @Suppress("UNCHECKED_CAST")
+            return entries[key.id]?.state?.value?.value as T?
+        } finally {
+            mutex.unlock()
+        }
+    }
+
     /** Replaces the cached value and supersedes anything in flight for [key]. */
     suspend fun <T> set(key: QueryKey, value: T) {
         val entry = entry(key)

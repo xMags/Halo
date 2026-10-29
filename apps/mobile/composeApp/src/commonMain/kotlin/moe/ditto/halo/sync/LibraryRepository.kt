@@ -35,6 +35,9 @@ class LibraryRepository(
         )
     }
 
+    /** The cached rows, tombstones included, or null while the library has not loaded. */
+    fun cached(): List<LibraryItem>? = cache.peekNow<List<LibraryItem>>(HaloKey.Library)
+
     /**
      * Saves [meta]. Re-adding a previously removed title clears its tombstone
      * and restarts its added date, which is what "add to library" means to

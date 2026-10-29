@@ -109,6 +109,12 @@ data class WatchState(
     /** Denormalised display fields, per-row last-write-wins like the rest. */
     val name: String? = null,
     val poster: String? = null,
+    /**
+     * Set when the video was removed from the watch history: the row is then a
+     * tombstone, kept so the removal wins over stale copies. Servers never send
+     * one, and playing the video again writes a newer row without it.
+     */
+    val removedAt: Long? = null,
     val updatedAt: Long,
 )
 

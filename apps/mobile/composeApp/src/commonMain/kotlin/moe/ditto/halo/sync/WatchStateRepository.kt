@@ -68,6 +68,52 @@ class WatchStateRepository(
         return state
     }
 
+    /** The cached rows, or null while the history has not loaded: a mark then has nothing to build on. */
+    fun cached(): List<WatchState>? = cache.peekNow<List<WatchState>>(HaloKey.WatchStates)
+
+    /** "Mark as watched" for each target, first to last, against the rows as they are now. */
+    suspend fun markWatched(targets: List<WatchMarkTarget>, runtimeSec: Double?) {
+        if (targets.isEmpty()) return
+        val existing = cached().orEmpty().associateBy { it.videoId }
+        write(watchedRowsInOrder(targets, existing, runtimeSec, clock.nowMs()))
+    }
+
+    suspend fun markUnwatched(target: WatchMarkTarget) {
+        val existing = cached()?.firstOrNull { it.videoId == target.videoId }
+        write(listOf(unwatchedRow(target, existing, clock.nowMs())))
+    }
+
+    /**
+     * Removes the rows from the watch history ([removedRows]). Servers leave
+     * tombstones out of what they send back, so a removal they understood is
+     * gone from the echo; one still there means a server that does not know
+     * removals yet, and that is said rather than shown as done.
+     */
+    suspend fun remove(states: List<WatchState>) {
+        if (states.isEmpty()) return
+        val rows = removedRows(states, clock.nowMs())
+        val removed = rows.mapTo(mutableSetOf()) { it.videoId }
+        val echo = write(rows)
+        if (echo.any { it.videoId in removed }) throw RemovalUnsupportedException()
+    }
+
+    /** Batches, so clearing a long history is not one huge request; the cache keeps the last echo. */
+    private suspend fun write(rows: List<WatchState>): List<WatchState> {
+        var echo: List<WatchState> = emptyList()
+        for (batch in rows.chunked(WriteBatchSize)) {
+            echo = cache.mutate<List<WatchState>>(
+                key = HaloKey.WatchStates,
+                optimistic = { current ->
+                    batch.fold(current.orEmpty()) { list, row ->
+                        if (row.removedAt != null) list.filterNot { it.videoId == row.videoId } else list.upsert(row)
+                    }
+                },
+                put = { client.putWatchStates(batch) },
+            )
+        }
+        return echo
+    }
+
     private fun List<WatchState>.upsert(state: WatchState): List<WatchState> {
         val index = indexOfFirst { it.videoId == state.videoId }
         if (index < 0) return this + state
@@ -80,5 +126,11 @@ class WatchStateRepository(
 
         const val MinDurationSec = 60.0
         const val MinPositionSec = 5.0
+
+        private const val WriteBatchSize = 500
     }
 }
+
+/** The server kept rows it was asked to remove: it predates removals from the watch history. */
+class RemovalUnsupportedException :
+    IllegalStateException("Your Halo server cannot remove history yet. Nothing was lost; it needs updating first.")
