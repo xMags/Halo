@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Halo</title>
+<style>
+  /* The tab the browser lands on after signing in to the Halo desktop app,
+     served by its one-shot loopback listener. Self-contained: no network, no
+     scripts, so it renders the same offline and leaks nothing. Styled after
+     the app's sign-in card. */
+  :root { color-scheme: dark; --accent: #60cdff; --ink2: rgba(255,255,255,.8); --ink3: rgba(255,255,255,.62); --stroke: rgba(255,255,255,.1); --tone: {{TONE}}; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid; place-items: center; padding: 24px; overflow: hidden;
+    background: #0b0c10; color: #fff;
+    font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  }
+  .glow { position: fixed; pointer-events: none; border-radius: 50%; }
+  .glow-a { left: -20vw; top: -30vh; width: 70vw; height: 70vh; background: radial-gradient(closest-side, rgba(96,205,255,.16), transparent); }
+  .glow-b { right: -20vw; bottom: -30vh; width: 70vw; height: 70vh; background: radial-gradient(closest-side, rgba(76,194,255,.12), transparent); }
+  .ring {
+    position: fixed; left: 50%; top: 50%; width: min(980px, 120vw); height: 320px; margin: -160px 0 0 calc(min(980px, 120vw) / -2);
+    border-radius: 50%; border: 2px solid rgba(96,205,255,.28);
+    box-shadow: 0 0 60px rgba(76,194,255,.18), inset 0 0 40px rgba(76,194,255,.1);
+    transform: rotate(-10deg); pointer-events: none;
+  }
+  .card {
+    position: relative; width: min(440px, 100%); padding: 30px 34px 22px; text-align: center;
+    border: 1px solid var(--stroke); border-radius: 28px;
+    background: linear-gradient(180deg, rgba(26,28,35,.82), rgba(18,20,26,.9));
+    backdrop-filter: blur(26px) saturate(1.4);
+    box-shadow: 0 40px 90px rgba(0,0,0,.55), 0 10px 26px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.09);
+    animation: rise .6s cubic-bezier(.2,.8,.2,1) both;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  .meta { display: flex; align-items: center; justify-content: space-between; font: 500 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace; letter-spacing: .14em; color: var(--ink3); }
+  .brand { display: flex; align-items: center; gap: 8px; color: #fff; }
+  .badge {
+    width: 64px; height: 64px; margin: 30px auto 0; border-radius: 50%;
+    display: grid; place-items: center; color: var(--tone);
+    background: color-mix(in srgb, var(--tone) 14%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--tone) 40%, transparent), 0 0 34px color-mix(in srgb, var(--tone) 30%, transparent);
+    animation: pop .5s cubic-bezier(.2,.8,.2,1) .15s both;
+  }
+  @keyframes pop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+  h1 { margin: 22px 0 0; font: 800 40px/1.05 'Segoe UI Variable Display', 'Segoe UI', sans-serif; letter-spacing: -.03em; }
+  h1 span { display: block; color: var(--accent); font-style: italic; font-weight: 700; }
+  p { margin: 14px auto 0; max-width: 34ch; font: 400 13.5px/1.65 ui-monospace, 'Cascadia Mono', Consolas, monospace; color: var(--ink2); }
+  .status { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 22px; font: 500 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace; letter-spacing: .14em; color: var(--ink3); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--tone); box-shadow: 0 0 10px var(--tone); }
+  .foot { margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.07); justify-content: center; }
+  @media (prefers-reduced-motion: reduce) { .card, .badge { animation: none; } }
+</style>
+</head>
+<body>
+  <div class="glow glow-a"></div>
+  <div class="glow glow-b"></div>
+  <div class="ring"></div>
+  <main class="card">
+    <div class="meta">
+      <span class="brand">
+        <svg width="16" height="16" viewBox="0 0 64 64" aria-hidden="true"><path d="M5 34 A27 9.5 0 0 1 59 34" transform="rotate(-16 32 34)" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><rect x="13" y="7" width="12" height="50" rx="6" fill="#4cc2ff"/><rect x="39" y="7" width="12" height="50" rx="6" fill="#4cc2ff"/><path d="M5 34 A27 9.5 0 0 0 59 34" transform="rotate(-16 32 34)" fill="none" stroke="#1a1c23" stroke-width="10"/><path d="M5 34 A27 9.5 0 0 0 59 34" transform="rotate(-16 32 34)" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/></svg>
+        HALO
+      </span>
+      <span>MEDIA CENTER</span>
+    </div>
+    <div class="badge" aria-hidden="true">{{ICON}}</div>
+    <h1>{{HEADING}}<span>{{ACCENT}}</span></h1>
+    <p>{{BODY}}</p>
+    <div class="status"><span class="dot" aria-hidden="true"></span>{{STATUS}}</div>
+    <div class="meta foot">© 2026 LAST PROJECTS &amp; SHY</div>
+  </main>
+</body>
+</html>
