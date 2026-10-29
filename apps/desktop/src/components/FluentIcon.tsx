@@ -44,6 +44,8 @@ const GLYPHS = {
   openInNewWindow: '',
   video: '',
   globe: '',
+  /** Contact: the signed-out account avatar. */
+  contact: '',
 } as const
 
 export type FluentGlyph = keyof typeof GLYPHS

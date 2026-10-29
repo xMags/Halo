@@ -1,3 +1,4 @@
+import { AccountAvatar } from '../auth/AccountAvatar'
 import { HaloMark } from './HaloMark'
 import { showWindowMenu } from '../window'
 import { WindowButtons } from './WindowButtons'
@@ -17,8 +18,11 @@ import { WindowButtons } from './WindowButtons'
  * `dark` pins the bar to the dark palette whatever the theme, for the player,
  * whose bar is near-black in both themes: in the light theme the light
  * palette's ink would vanish into it.
+ *
+ * `account` puts the account's picture before the caption buttons; the
+ * browse shell sets it, the player does not.
  */
-export function TitleBar({ dark = false }: { dark?: boolean }) {
+export function TitleBar({ dark = false, account = false }: { dark?: boolean; account?: boolean }) {
   return (
     <div
       className={`titlebar ${dark ? 'theme-dark' : ''}`}
@@ -35,6 +39,7 @@ export function TitleBar({ dark = false }: { dark?: boolean }) {
         <span className="brand-word">Halo</span>
       </div>
       <div className="spacer" />
+      {account && <AccountAvatar />}
       <div className="caption-slot">
         <WindowButtons />
       </div>

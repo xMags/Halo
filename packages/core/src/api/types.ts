@@ -52,6 +52,12 @@ export interface Me {
   createdAt: number
   /** The account's tier, e.g. `premium`, from a server that has tiers; absent otherwise. */
   plan?: string
+  /**
+   * Fingerprint of the account's profile picture, served by GET /auth/avatar;
+   * absent when there is no picture or the server keeps none. It changes
+   * exactly when the picture does, so clients cache the image by it.
+   */
+  avatarVersion?: string
 }
 
 export interface LibraryItem {

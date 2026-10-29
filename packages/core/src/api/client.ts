@@ -106,8 +106,19 @@ export class HaloClient {
     path: string,
     body?: unknown,
     opts?: RequestOptions,
-    retried = false,
   ): Promise<T> {
+    const res = await this.send(method, path, body, opts)
+    return (await res.json()) as T
+  }
+
+  /** One authenticated request with the 401 policy below; resolves only on a 2xx. */
+  private async send(
+    method: 'GET' | 'PUT' | 'POST' | 'PATCH',
+    path: string,
+    body?: unknown,
+    opts?: RequestOptions,
+    retried = false,
+  ): Promise<Response> {
     const token = (await this.getAccessToken?.()) ?? null
     const headers: Record<string, string> = {}
     if (token) headers.Authorization = `Bearer ${token}`
@@ -130,7 +141,7 @@ export class HaloClient {
       // means the access token aged out between the provider's expiry check
       // and the server's.
       if (this.refreshAccessToken && (await this.refreshAccessToken())) {
-        return this.request(method, path, body, opts, true)
+        return this.send(method, path, body, opts, true)
       }
       this.onUnauthorized?.()
       throw new HaloApiError(401, 'Unauthorized')
@@ -139,7 +150,7 @@ export class HaloClient {
       const text = await res.text().catch(() => '')
       throw new HaloApiError(res.status, text || `Request failed: ${method} ${path}`)
     }
-    return (await res.json()) as T
+    return res
   }
 
   /** Public endpoint: which IdP to authenticate against and as which client, or a mode only an add-on knows. */
@@ -150,6 +161,19 @@ export class HaloClient {
   /** The authenticated user incl. admin status; drives admin-only UI. */
   getMe(): Promise<Me> {
     return this.request<Me>('GET', '/auth/me')
+  }
+
+  /**
+   * The account's profile picture, or null when it has none (or the server
+   * keeps no pictures). Fetch it again only when `Me.avatarVersion` changes.
+   */
+  async getAvatar(opts?: RequestOptions): Promise<Blob | null> {
+    try {
+      return await (await this.send('GET', '/auth/avatar', undefined, opts)).blob()
+    } catch (error) {
+      if (error instanceof HaloApiError && error.status === 404) return null
+      throw error
+    }
   }
 
   /** Global (admin-managed) addons plus the caller's own, each ordered by position. */
