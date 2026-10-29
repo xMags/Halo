@@ -98,3 +98,7 @@
 .history-actions .icon-btn-bare {
   color: var(--t2);
 }
+.btn-danger.history-clear {
+  padding: 0 14px;
+  gap: 8px;
+}
