@@ -3,6 +3,7 @@ package moe.ditto.halo.downloads
 import android.content.Context
 import android.system.ErrnoException
 import android.system.OsConstants
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.WorkerParameters
@@ -10,6 +11,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import java.io.File
 import java.net.URI
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import moe.ditto.halo.auth.SystemEpochClock
 import okio.FileSystem
@@ -41,7 +43,20 @@ internal class HaloDownloadWorker(
         }
 
         setForeground(notifications.foreground(jobId, 0, 0))
-        val http = HttpClient(OkHttp)
+        val http = HttpClient(OkHttp) {
+            engine {
+                config {
+                    // OkHttp's own default gives a server 10 seconds to start
+                    // answering, and a debrid link resolving a file for the
+                    // first time often takes longer: every attempt then died
+                    // before its first byte and was retried until the job
+                    // failed. The transfer's stall limit is the one rule for
+                    // silence, so the socket waits as long as it does.
+                    connectTimeout(ConnectTimeoutSeconds, TimeUnit.SECONDS)
+                    readTimeout(HttpRangeTransfer.DefaultStallTimeoutMs, TimeUnit.MILLISECONDS)
+                }
+            }
+        }
         return try {
             var protectedRequest = request
             val transfer = HttpRangeTransfer(
@@ -88,6 +103,10 @@ internal class HaloDownloadWorker(
             throw cancellation
         } catch (failure: Throwable) {
             val sanitized = failure.toDownloadFailure()
+            // The kind of failure only, never the message: it can carry the
+            // source URL, whose query holds the debrid key.
+            val status = (failure as? DownloadTransferException)?.httpStatus?.let { " (HTTP $it)" }.orEmpty()
+            Log.w(LogTag, "Attempt $runAttemptCount failed: ${failure::class.simpleName} -> ${sanitized.code}$status")
             if (sanitized.isTransient && runAttemptCount < AndroidDownloadWorkContract.MaxRetries) {
                 Result.retry()
             } else {
@@ -114,6 +133,9 @@ internal class HaloDownloadWorker(
         .putLong(AndroidDownloadWorkContract.TotalBytes, totalBytes)
         .build()
 }
+
+private const val LogTag = "HaloDownload"
+private const val ConnectTimeoutSeconds = 30L
 
 private val DownloadFailure.isTransient: Boolean
     get() = code == DownloadFailureCode.Network || code == DownloadFailureCode.ServerUnavailable

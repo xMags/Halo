@@ -28,6 +28,8 @@ internal data class TransferProgress(
  */
 internal class DownloadTransferException(
     val failure: DownloadFailure,
+    /** The source's HTTP status when it answered with an error; for diagnostics only. */
+    val httpStatus: Int? = null,
 ) : Exception(failure.message) {
     constructor(message: String) : this(DownloadFailure(DownloadFailureCode.Unknown))
 }
@@ -123,7 +125,7 @@ internal class HttpRangeTransfer(
     private fun resumeOffset(response: HttpResponse, existing: Long, partFile: Path): Long {
         if (response.status == HttpStatusCode.OK) return 0L
         if (response.status != HttpStatusCode.PartialContent) {
-            throw DownloadTransferException(statusFailure(response.status))
+            throw DownloadTransferException(statusFailure(response.status), response.status.value)
         }
         if (existing == 0L) return 0L
         val start = response.contentRangeStart()
@@ -213,7 +215,7 @@ internal class HttpRangeTransfer(
         else -> DownloadFailure(DownloadFailureCode.SourceRejected)
     }
 
-    private companion object {
+    internal companion object {
         const val BufferSize = 64 * 1024
         const val DefaultStallTimeoutMs = 60_000L
         const val DefaultProgressIntervalMs = 500L
