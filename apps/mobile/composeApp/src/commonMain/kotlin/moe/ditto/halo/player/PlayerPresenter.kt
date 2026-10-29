@@ -43,7 +43,13 @@ class PlayerPresenter(
     var state: PlayerState = PlayerState()
         private set
 
-    suspend fun start(item: MediaItem) {
+    /**
+     * [onLoading] runs once the new item's Loading state is set and before the
+     * load is awaited. Loading can take a while (a host may suspend every core
+     * call), and until a caller republishes, observers would keep seeing the
+     * previous item's state and act on it on the new item's behalf.
+     */
+    suspend fun start(item: MediaItem, onLoading: () -> Unit = {}) {
         if (state.status == PlaybackStatus.Released) return
         state = PlayerState(
             current = item,
@@ -58,6 +64,7 @@ class PlayerPresenter(
             subtitleFont = state.subtitleFont,
             subtitleTrackStyling = state.subtitleTrackStyling,
         )
+        onLoading()
         player.load(item)
     }
 
