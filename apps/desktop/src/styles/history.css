@@ -1,6 +1,8 @@
 /* ── History ──────────────────────────────────────────────────────────────
-   One row per played video under day and month headings, in the content
-   column's gutter, scrolling under the fixed header and filter bar. */
+   One card per played video under day and month headings, in the content
+   column's gutter, scrolling under the fixed header. Cards flow into as many
+   columns as the content column fits, newest first reading left to right, so
+   a wide window is not one long stripe with the time stranded at its edge. */
 .history-scroll {
   flex: 1;
   min-height: 0;
@@ -9,41 +11,64 @@
   padding: 8px var(--gu) 32px;
 }
 .history-group + .history-group {
-  margin-top: 20px;
+  margin-top: 24px;
 }
 .history-label {
-  margin: 8px 0 8px 2px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 10px 2px;
   font: 700 12px/1.2 var(--mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--t3);
 }
-.history-row {
+.history-count {
+  font-weight: 400;
+  opacity: 0.75;
+}
+.history-grid {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
+  gap: 8px;
+}
+.history-row {
+  display: flex;
   align-items: center;
-  width: 100%;
-  padding: 8px 10px;
-  border: 0;
+  min-width: 0;
+  border: 1px solid var(--cts);
   border-radius: 8px;
+  background: var(--ct);
+}
+.history-row:hover {
+  background-color: var(--cth);
+}
+/* The card's main action: everything but the buttons on its right. */
+.history-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 8px 4px 8px 8px;
+  border: 0;
+  border-radius: 8px 0 0 8px;
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: default;
 }
-.history-row:hover {
-  background-color: var(--cth);
-}
 .history-thumb {
-  width: 44px;
-  height: 66px;
+  flex: 0 0 auto;
+  width: 52px;
+  height: 78px;
   border-radius: 4px;
 }
 .history-body {
   display: flex;
   flex-direction: column;
+  gap: 3px;
   min-width: 0;
 }
 .history-title {
@@ -55,4 +80,21 @@
   font-size: 13px;
   color: var(--t3);
   white-space: nowrap;
+}
+/* Shown while the card is hovered or holds focus; their space is kept, so
+   nothing moves when they appear. */
+.history-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding-right: 8px;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+}
+.history-row:hover .history-actions,
+.history-row:focus-within .history-actions {
+  opacity: 1;
+}
+.history-actions .icon-btn-bare {
+  color: var(--t2);
 }
