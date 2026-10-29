@@ -79,7 +79,8 @@ class PlaybackHostTest {
         )
 
         assertEquals(
-            listOf("scale=1.5", "font=JetBrains Mono", "outline=1.0", "shadow=2.0"),
+            // Track styling too: the engine starts in neither of its states.
+            listOf("scale=1.5", "font=JetBrains Mono", "outline=1.0", "shadow=2.0", "trackStyling=true"),
             port.subtitleCalls,
         )
         assertEquals(1.5, host.state.value.subtitleScale)

@@ -323,14 +323,23 @@ internal class MpvCore private constructor(
     }
 
     /**
-     * `no` leaves a script's own styling alone; `force` replaces its fonts,
-     * sizes and positions with the player's. mpv has no third state, and the
-     * two names read backwards from the switch, which is why the mapping is
-     * here rather than at the call site.
+     * `scale` keeps a script's own fonts and positions but still applies the
+     * size and the lift above the controls; `force` replaces its styling with
+     * the player's. Not `no`: mpv ignores `sub-scale` and `sub-pos` for a
+     * script under it, so the size slider did nothing on a styled track. An
+     * mpv older than `scale` (0.37) rejects it and leaves the value as it was,
+     * which the read-back catches; `yes` there still applies the lift.
      */
     fun setSubtitleTrackStyling(keepScript: Boolean) {
         if (destroyed) return
-        mpv.setPropertyString("sub-ass-override", if (keepScript) "no" else "force")
+        if (!keepScript) {
+            mpv.setPropertyString("sub-ass-override", "force")
+            return
+        }
+        mpv.setPropertyString("sub-ass-override", "scale")
+        if (mpv.getPropertyString("sub-ass-override") != "scale") {
+            mpv.setPropertyString("sub-ass-override", "yes")
+        }
     }
 
     fun setSubtitleOutline(widthPixels: Double) {

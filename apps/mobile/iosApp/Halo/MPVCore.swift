@@ -218,9 +218,18 @@ final class MPVCore {
         perform { handle in mpv_set_property_string(handle, "sub-font", font ?? "sans-serif") }
     }
 
+    /// `scale` keeps a script's own look but still applies the size and lift;
+    /// `no` made mpv ignore `sub-scale` and `sub-pos` for a styled track. An
+    /// mpv older than `scale` (0.37) rejects it, so `yes` is the fallback.
     func setSubtitleTrackStyling(keepScript: Bool) {
         perform { handle in
-            mpv_set_property_string(handle, "sub-ass-override", keepScript ? "no" : "force")
+            guard keepScript else {
+                mpv_set_property_string(handle, "sub-ass-override", "force")
+                return
+            }
+            if mpv_set_property_string(handle, "sub-ass-override", "scale") < 0 {
+                mpv_set_property_string(handle, "sub-ass-override", "yes")
+            }
         }
     }
 
