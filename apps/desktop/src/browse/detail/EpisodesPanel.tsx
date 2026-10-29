@@ -1,12 +1,19 @@
 import type { MetaDetail, MetaVideo, WatchState } from '@halo/core'
-import type { MouseEvent } from 'react'
+import { useMemo, useState, type MouseEvent } from 'react'
 import { ArtImage } from '../../components/ArtImage'
 import { ComboBox } from '../../components/ComboBox'
 import { FluentIcon } from '../../components/FluentIcon'
 import type { DownloadView } from '../../downloads/downloadsStore'
 import { airYear, episodeTag, formatAirDate, formatTimeLeft } from '../../format'
+import { episodePages, pageContaining } from './episodePages'
 
-/** A show's season picker and the chosen season's episodes, as one glass panel. */
+/**
+ * A show's season picker and the chosen season's episodes, as one glass
+ * panel. A season longer than a page is shown a page at a time behind a
+ * second picker, opening on the page with the episode in progress, so a show
+ * with thousands of episodes neither buries the panels below nor builds
+ * thousands of rows. The parent keys the panel by season, which resets it.
+ */
 export function EpisodesPanel({
   meta,
   seasons,
@@ -33,6 +40,9 @@ export function EpisodesPanel({
   const note = [`${episodes.length} episode${episodes.length === 1 ? '' : 's'}`, airYear(episodes[0]?.released)]
     .filter(Boolean)
     .join(' · ')
+  const pages = useMemo(() => episodePages(episodes), [episodes])
+  const [page, setPage] = useState(() => pageContaining(pages, resumeVideoId))
+  const shown = pages[Math.min(page, pages.length - 1)]?.episodes ?? []
 
   return (
     <div className="glass detail-panel">
@@ -41,19 +51,31 @@ export function EpisodesPanel({
           Episodes
           <small>{note}</small>
         </h2>
-        {seasons.length > 1 && (
-          <ComboBox
-            options={seasons.map((s) => ({ value: s, label: s === 0 ? 'Specials' : `Season ${s}` }))}
-            minWidth={140}
-            width="auto"
-            ariaLabel="Season"
-            value={activeSeason ?? seasons[0] ?? 0}
-            onChange={(value) => onSeason(Number(value))}
-          />
-        )}
+        <div className="srow-pickers">
+          {seasons.length > 1 && (
+            <ComboBox
+              options={seasons.map((s) => ({ value: s, label: s === 0 ? 'Specials' : `Season ${s}` }))}
+              minWidth={140}
+              width="auto"
+              ariaLabel="Season"
+              value={activeSeason ?? seasons[0] ?? 0}
+              onChange={(value) => onSeason(Number(value))}
+            />
+          )}
+          {pages.length > 1 && (
+            <ComboBox
+              options={pages.map((p, index) => ({ value: index, label: p.label }))}
+              minWidth={170}
+              width="auto"
+              ariaLabel="Episodes"
+              value={Math.min(page, pages.length - 1)}
+              onChange={(value) => setPage(Number(value))}
+            />
+          )}
+        </div>
       </div>
       <div className="ep-list">
-        {episodes.map((video) => (
+        {shown.map((video) => (
           <EpisodeRow
             key={video.id}
             video={video}
