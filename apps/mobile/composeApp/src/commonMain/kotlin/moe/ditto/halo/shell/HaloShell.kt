@@ -35,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.CompositionLocalProvider
@@ -333,10 +334,13 @@ internal fun HaloShell(
             // Both are chrome over the same graph, and exactly one of them is
             // ever in use: the rail replaces the bar in landscape rather than
             // joining it.
+            // Kept here, not in the bar or rail: turning a tablet swaps one for
+            // the other, and the tab a title page was opened from stays lit.
+            val currentTab = rememberCurrentTab(navController)
             if (responsive.usesNavigationRail) {
-                HaloNavRail(navController, Modifier.align(Alignment.CenterStart))
+                HaloNavRail(navController, currentTab, Modifier.align(Alignment.CenterStart))
             } else {
-                HaloTabBar(navController, Modifier.align(Alignment.BottomCenter))
+                HaloTabBar(navController, currentTab, Modifier.align(Alignment.BottomCenter))
             }
             TitleMenuOverlays(titleMenus, Modifier.align(Alignment.BottomCenter))
         }
@@ -387,11 +391,14 @@ private fun NavDestination?.isPushed(): Boolean =
  * pushed over and keeps lit underneath it.
  */
 @Composable
-private fun rememberCurrentTab(destination: NavDestination?): Tab? {
-    var lastTab by remember { mutableStateOf<Tab?>(null) }
-    val own = tabs.firstOrNull { tab -> destination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true }
-    LaunchedEffect(own) { if (own != null) lastTab = own }
-    return own ?: lastTab
+private fun rememberCurrentTab(navController: NavHostController): Tab? {
+    val entry by navController.currentBackStackEntryAsState()
+    val destination = entry?.destination
+    // Saved by position, so it also outlasts the activity being recreated.
+    var lastTab by rememberSaveable { mutableStateOf<Int?>(null) }
+    val own = tabs.indexOfFirst { tab -> destination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true }
+    LaunchedEffect(own) { if (own >= 0) lastTab = own }
+    return tabs.getOrNull(if (own >= 0) own else lastTab ?: -1)
 }
 
 /**
@@ -443,10 +450,9 @@ private val TabBarHeight = 56.dp
 private val TabIconSize = 24.dp
 
 @Composable
-private fun HaloTabBar(navController: NavHostController, modifier: Modifier = Modifier) {
+private fun HaloTabBar(navController: NavHostController, current: Tab?, modifier: Modifier = Modifier) {
     val entry by navController.currentBackStackEntryAsState()
     val destination = entry?.destination
-    val current = rememberCurrentTab(destination)
     val onTabItself = current != null && destination?.hierarchy?.any { it.hasRoute(current.route::class) } == true
 
     // Screens that own the whole viewport hide the bar rather than having it
@@ -527,10 +533,9 @@ private fun TabButton(tab: Tab, selected: Boolean, onClick: () -> Unit, modifier
  * Library a two-step trip on a device with room for both.
  */
 @Composable
-private fun HaloNavRail(navController: NavHostController, modifier: Modifier = Modifier) {
+private fun HaloNavRail(navController: NavHostController, current: Tab?, modifier: Modifier = Modifier) {
     val entry by navController.currentBackStackEntryAsState()
     val destination = entry?.destination
-    val current = rememberCurrentTab(destination)
     val onTabItself = current != null && destination?.hierarchy?.any { it.hasRoute(current.route::class) } == true
 
     AnimatedVisibility(
