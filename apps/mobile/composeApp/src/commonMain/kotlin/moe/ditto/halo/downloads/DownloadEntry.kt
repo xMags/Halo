@@ -137,6 +137,12 @@ internal data class DownloadEntry(
     val createdAt: Long,
     val updatedAt: Long,
     /**
+     * When the last byte arrived, which orders the finished list: the download
+     * that just finished comes first, whenever it was started. Null on entries
+     * finished before this was recorded, and on anything unfinished.
+     */
+    val completedAt: Long? = null,
+    /**
      * How fast bytes are currently arriving, smoothed over the last few
      * samples. Deliberately not persisted: it describes a transfer that is
      * running right now, and a speed restored from disk would be a number about

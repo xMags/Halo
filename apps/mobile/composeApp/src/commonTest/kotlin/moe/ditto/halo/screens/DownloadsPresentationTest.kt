@@ -46,6 +46,20 @@ class DownloadsPresentationTest {
     }
 
     @Test
+    fun theDownloadThatFinishedLastComesFirstWheneverItStarted() {
+        val sections = downloadSections(
+            listOf(
+                entry("started-first", createdAt = 1).copy(completedAt = 500),
+                entry("started-last", createdAt = 300).copy(completedAt = 400),
+                // Finished before completion times were recorded: its last update stands in.
+                entry("legacy", createdAt = 200).copy(updatedAt = 450),
+            ),
+        )
+
+        assertEquals(listOf("started-first", "legacy", "started-last"), sections.ready.map { it.videoId })
+    }
+
+    @Test
     fun aRowWithNoArtOfItsOwnBorrowsTheTitles() {
         val sections = downloadSections(
             listOf(
