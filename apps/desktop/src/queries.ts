@@ -15,6 +15,8 @@ import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { useMemo } from 'react'
 import { getAccountClient, getClient } from './api'
 import { useSession } from './auth/session'
+import { removedRows } from './browse/watchMarks'
+import { chunked } from './device/mergeIntoAccount'
 import { isHomeCatalogType } from './home/homeRows'
 import {
   searchProgress,
@@ -353,6 +355,34 @@ export function useWatchStates() {
   return useQuery({
     queryKey: ['watchStates'],
     queryFn: () => getClient().getWatchStates(),
+  })
+}
+
+/**
+ * Removes videos from the watch history (`removedRows`), in batches so that
+ * clearing a long history is not one huge request. Whatever happens, the
+ * history is read again afterwards, so a batch that failed partway leaves the
+ * screens showing what was actually removed.
+ */
+export function useRemoveFromHistory() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (states: readonly WatchState[]) => {
+      const rows = removedRows(states, Date.now())
+      let latest: WatchState[] | undefined
+      for (const batch of chunked(rows)) latest = await getClient().putWatchStates(batch)
+      // A server that does not know removals stores the rows and sends them
+      // straight back; nothing newer can have replaced them in between.
+      const removed = new Set(rows.map((row) => row.videoId))
+      if (latest?.some((state) => removed.has(state.videoId))) {
+        throw new Error('Your Halo server cannot remove history yet. Nothing was lost; it needs updating first.')
+      }
+      return latest
+    },
+    onSuccess: (states) => {
+      if (states) queryClient.setQueryData(['watchStates'], states)
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['watchStates'] }),
   })
 }
 

@@ -4,6 +4,7 @@ import { useMemo, useState, type MouseEvent } from 'react'
 import { getClient } from '../api'
 import { useTitleMenu } from '../browse/titleMenu'
 import { ArtImage } from '../components/ArtImage'
+import { showDialog } from '../components/Dialog'
 import { FluentIcon } from '../components/FluentIcon'
 import { SearchBox } from '../components/SearchBox'
 import { SectionHeader } from '../components/SectionHeader'
@@ -12,7 +13,7 @@ import { formatTimeLeft, videoIdTag } from '../format'
 import { continueSheetParams } from '../home/continueShelf'
 import type { HomeFilter } from '../home/homeRows'
 import { useNav } from '../nav'
-import { useLibrary, useWatchStates } from '../queries'
+import { useLibrary, useRemoveFromHistory, useWatchStates } from '../queries'
 import { buildHistory, groupHistory, historyTime, searchHistory, type HistoryEntry } from './historyRows'
 
 const FILTERS: ReadonlyArray<{ value: HomeFilter; label: string }> = [
@@ -23,9 +24,9 @@ const FILTERS: ReadonlyArray<{ value: HomeFilter; label: string }> = [
 
 /**
  * Everything played, newest first, one row per video, from the synced watch
- * history. The history itself is read only: a row's menu marks watched or
- * saves to the library, as the same title's menu does anywhere else, but
- * nothing here deletes history.
+ * history. A row's menu does what the same title's menu does anywhere else,
+ * and can also remove the row; Clear history removes every row. A removal
+ * forgets the video's progress too, everywhere the history syncs.
  */
 export function History() {
   const { data: watchStates, isLoading, error } = useWatchStates()
@@ -39,12 +40,41 @@ export function History() {
   )
   const hasAny = (watchStates?.length ?? 0) > 0
   const searching = query.trim() !== ''
+  const removeFromHistory = useRemoveFromHistory()
+
+  /** Every row, whatever the filter and search show: the dialog says so. */
+  const clearHistory = async () => {
+    const count = watchStates?.length ?? 0
+    if (count === 0) return
+    const confirmed = await showDialog({
+      title: 'Clear your watch history?',
+      body: `This forgets all ${count} videos you have played: where you stopped, what you watched, and everything in Continue watching. It cannot be undone.`,
+      primary: 'Clear history',
+      close: 'Cancel',
+      destructive: true,
+    })
+    if (!confirmed) return
+    try {
+      await removeFromHistory.mutateAsync(watchStates ?? [])
+    } catch (error) {
+      await showDialog({ title: 'Could not clear your history', body: String(error), close: 'Close' })
+    }
+  }
 
   return (
     <div className="view view-col">
       <SectionHeader title="History">
         <SearchBox value={query} onChange={setQuery} placeholder="Search history" />
         <Segmented options={FILTERS} value={filter} onChange={setFilter} />
+        <button
+          type="button"
+          className="btn-danger history-clear"
+          disabled={!hasAny || removeFromHistory.isPending}
+          onClick={() => void clearHistory()}
+        >
+          <FluentIcon glyph="delete" size={13} />
+          <span>Clear history</span>
+        </button>
       </SectionHeader>
 
       <div className="history-scroll">

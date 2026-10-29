@@ -32,9 +32,9 @@ export function watchedRow(
 }
 
 /**
- * The row "Mark as unwatched" writes. Rows cannot be deleted (sync is
- * last-write-wins and the server keeps every row), so this is the row that
- * reads as "never started" everywhere: no position and no length, which the
+ * The row "Mark as unwatched" writes. It keeps the video in the history (a
+ * removal, `removedRows`, takes it out): this is the row that reads as
+ * "never started" everywhere: no position and no length, which the
  * continue shelf and resume logic in both desktop clients skip, the same as a
  * missing row.
  */
@@ -45,6 +45,19 @@ export function unwatchedRow(target: WatchMarkTarget, existing: WatchState | und
     durationSec: 0,
     watched: false,
   }
+}
+
+/**
+ * The tombstones that remove videos from the watch history, which forgets
+ * where they stopped and whether they were watched. Sync is last-write-wins,
+ * so a removal is a newer row rather than a deletion; servers keep it, never
+ * send it back, and a later play writes a newer row that brings the video
+ * back. The row otherwise stays as it was: a server too old to know
+ * `removedAt` drops the field and stores the row, and must not then wipe the
+ * progress of a video it goes on showing.
+ */
+export function removedRows(states: readonly WatchState[], now: number): WatchState[] {
+  return states.map((state) => ({ ...state, removedAt: now, updatedAt: now }))
 }
 
 /**

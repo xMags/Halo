@@ -4,6 +4,7 @@ import type { MetaVideo, WatchState } from '@halo/core'
 import {
   earlierEpisodes,
   hasWatchProgress,
+  removedRows,
   unwatchedRow,
   watchedRow,
   watchedRowsInOrder,
@@ -135,4 +136,9 @@ test('a batch of marks is stamped in order, so the shelf lands after the last of
     request.videoId === 'tt1:1:3' ? { state: 'resolved', videoId: 'tt1:1:4' } : { state: 'unknown' },
   )
   assert.equal(shelf.cards[0]?.videoId, 'tt1:1:4')
+})
+
+test('a removal keeps the row as it was, stamped removed and updated now', () => {
+  const row: WatchState = { videoId: 'tt1:1:2', itemId: 'series:tt1', positionSec: 90, durationSec: 1200, watched: false, name: 'Show', updatedAt: 100 }
+  assert.deepEqual(removedRows([row], 500), [{ ...row, removedAt: 500, updatedAt: 500 }])
 })

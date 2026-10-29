@@ -2,6 +2,7 @@ import type { LibraryItem, MetaDetail, MetaPreview, MetaVideo, WatchState } from
 import { useQueryClient } from '@tanstack/react-query'
 import type { MouseEvent } from 'react'
 import { openContextMenu, type ContextMenuEntry } from '../components/ContextMenu'
+import { showDialog } from '../components/Dialog'
 import { confirmDeleteFromDevice, reportDownloadActionFailure } from '../downloads/downloadPrompts'
 import { deleteReady, readyDownloadFor, showInExplorer } from '../downloads/downloadsStore'
 import { runtimeMinutes, videoIdTag } from '../format'
@@ -9,7 +10,7 @@ import { continueSheetParams } from '../home/continueShelf'
 import type { HistoryEntry } from '../history/historyRows'
 import type { ContinueCard } from '../home/homeRows'
 import { useNav } from '../nav'
-import { libraryItemFromMeta, useReportWatchState, useUpsertLibrary } from '../queries'
+import { libraryItemFromMeta, useRemoveFromHistory, useReportWatchState, useUpsertLibrary } from '../queries'
 import { playDownload } from '../sources/SourcesSheet'
 import {
   earlierEpisodes,
@@ -59,6 +60,7 @@ export function useTitleMenu() {
   const { push, openSheet } = useNav()
   const upsertLibrary = useUpsertLibrary()
   const reportWatchState = useReportWatchState()
+  const removeFromHistory = useRemoveFromHistory()
 
   const cachedLibrary = () => queryClient.getQueryData<LibraryItem[]>(['library'])
   const cachedWatchStates = () => queryClient.getQueryData<WatchState[]>(['watchStates'])
@@ -136,6 +138,42 @@ export function useTitleMenu() {
     }
   }
 
+  /** Forgets videos in the watch history; a failure is said, since the row would otherwise just stay. */
+  const forget = async (rows: WatchState[]) => {
+    if (rows.length === 0) return
+    try {
+      await removeFromHistory.mutateAsync(rows)
+    } catch (error) {
+      await showDialog({ title: 'Could not remove from history', body: String(error), close: 'Close' })
+    }
+  }
+
+  /** Re-read when chosen, so a row removed since the menu opened is not written again. */
+  const removeVideo = (videoId: string) =>
+    void forget(cachedWatchStates()?.filter((state) => state.videoId === videoId) ?? [])
+
+  /**
+   * Takes a title off Continue watching by forgetting every video of it: the
+   * shelf shows a show by its latest episode, so forgetting that one alone
+   * would only bring the one before it back. Asks first when that forgets
+   * more than the one video on the card.
+   */
+  const removeTitle = async (itemId: string, name: string) => {
+    const count = cachedWatchStates()?.filter((state) => state.itemId === itemId).length ?? 0
+    if (count === 0) return
+    if (count > 1) {
+      const confirmed = await showDialog({
+        title: `Remove ${name} from Continue watching?`,
+        body: `This forgets all ${count} videos of it in your history: where you stopped and what you watched. Playing it again starts over.`,
+        primary: 'Remove',
+        close: 'Cancel',
+        destructive: true,
+      })
+      if (!confirmed) return
+    }
+    await forget(cachedWatchStates()?.filter((state) => state.itemId === itemId) ?? [])
+  }
+
   const deleteDownload = async (jobId: string) => {
     if (!(await confirmDeleteFromDevice())) return
     await reportDownloadActionFailure(await deleteReady(jobId))
@@ -169,7 +207,13 @@ export function useTitleMenu() {
         glyph: 'folder',
         onSelect: () => void showInExplorer(item.job_id).then(reportDownloadActionFailure),
       },
-      { kind: 'item', label: 'Delete from device', glyph: 'delete', onSelect: () => void deleteDownload(item.job_id) },
+      {
+        kind: 'item',
+        label: 'Delete from device',
+        glyph: 'delete',
+        danger: true,
+        onSelect: () => void deleteDownload(item.job_id),
+      },
     ]
     return { play, manage }
   }
@@ -266,6 +310,14 @@ export function useTitleMenu() {
       watchedEntry(target, meta?.runtime, tag ?? undefined),
       libraryEntry({ id: card.metaId, type: card.type, name: card.name, ...(card.poster ? { poster: card.poster } : {}) }),
       ...saved.manage,
+      SEPARATOR,
+      Boolean(cachedWatchStates()) && {
+        kind: 'item',
+        label: 'Remove from Continue watching',
+        glyph: 'close',
+        danger: true,
+        onSelect: () => void removeTitle(card.itemId, card.name),
+      },
     ])
   }
 
@@ -318,6 +370,8 @@ export function useTitleMenu() {
       meta && video ? earlierEntry(meta, entry.itemId, video) : null,
       libraryEntry({ id: entry.metaId, type: entry.type, name: entry.name, ...(entry.poster ? { poster: entry.poster } : {}) }),
       ...saved.manage,
+      SEPARATOR,
+      { kind: 'item', label: 'Remove from history', glyph: 'delete', danger: true, onSelect: () => removeVideo(entry.videoId) },
     ])
   }
 
