@@ -161,6 +161,8 @@ export function Detail({ type, id }: { type: string; id: string }) {
         <div className="detail-panels">
           {isSeries && (
             <EpisodesPanel
+              // A new season starts on its own first page (or the one in progress).
+              key={activeSeason ?? 'none'}
               meta={meta}
               seasons={seasons}
               activeSeason={activeSeason}
