@@ -236,22 +236,23 @@ internal fun PlayerScreen(
         openFollowUps?.cancel()
         playback.play(item)
         openFollowUps = launch {
-            // Back to where this video was left, once its file is open and its
-            // length known. Playback is not held for it: the history is normally
-            // cached already, and when it is not the wait for it is bounded.
+            // Back to where this video was left, once its file is open. Playback
+            // is not held for it: the history is normally cached already, and
+            // when it is not the wait for it is bounded. A stream of unknown
+            // length opens with no duration, which resumePosition accepts.
             launch {
                 val saved = graph.watchStates.loadedProgressFor(context.videoId, ResumeHistoryWaitMillis)
                     ?: return@launch
-                val opened = playback.state.first { it.current == item && it.durationSeconds != null }
+                val opened = playback.state.first { it.current == item && it.opened }
                 resumePosition(saved, opened.durationSeconds)?.let { playback.seekTo(it) }
             }
             // A downloaded video carries its subtitle beside it, added directly
             // rather than through the addon path: the file is already here, and
             // the network this would otherwise ask may not be. Only once the file
-            // is open (its length known; a pause report alone can mark it playing
-            // mid-load), because mpv refuses a subtitle while a load is pending and
-            // nothing reports that refusal.
-            playback.state.first { it.current == item && it.durationSeconds != null }
+            // is open (the engine said so; a pause report alone can mark it
+            // playing mid-load), because mpv refuses a subtitle while a load is
+            // pending and nothing reports that refusal.
+            playback.state.first { it.current == item && it.opened }
             context.localSubtitlePath?.let { path ->
                 playback.addSubtitle(path, title = DownloadedSubtitleTitle, lang = context.localSubtitleLang)
             }
@@ -351,10 +352,11 @@ internal fun PlayerScreen(
     val settingsState by remember(graph) { graph.settings.observe() }.collectAsState(QueryState())
     val preferredSubtitleLang = settingsState.value?.preferredSubtitleLang
 
-    // Applied once the engine has reported this file's own tracks, because the
-    // choice is between those and the addon results and both have to be known
-    // to pick between them. Re-running on a later track list would fight the
-    // viewer, so the guard is a claim rather than a comparison.
+    // Applied once the engine has opened this file and so reported its own
+    // tracks (see [subtitleSelectionMayRun]), because the choice is between
+    // those and the addon results and both have to be known to pick between
+    // them. Re-running on a later track list would fight the viewer, so the
+    // guard is a claim rather than a comparison.
     var selectionApplied by remember(item) { mutableStateOf(false) }
     // Bumped when a retry hands the claim back, so the selection runs again
     // even if nothing else it watches has changed by then.
@@ -366,6 +368,7 @@ internal fun PlayerScreen(
         item,
         selectionRound,
         ownState,
+        state.opened,
         state.tracks,
         fingerprintSettled,
         addonSubtitleState.isFetching,
@@ -373,6 +376,7 @@ internal fun PlayerScreen(
     ) {
         val mayRun = subtitleSelectionMayRun(
             ownState = ownState,
+            opened = ownState && state.opened,
             alreadyApplied = selectionApplied,
             fingerprintSettled = fingerprintSettled,
             addonSubtitlesFetching = addonSubtitleState.isFetching,
