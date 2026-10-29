@@ -473,10 +473,16 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 20px;
-  align-items: start;
 }
 .detail-split > :only-child {
   grid-column: 1 / -1;
+}
+/* Beside the cast, About takes the cast panel's height: a zero height keeps
+   it out of the row's sizing, and a long list scrolls inside the panel. */
+.detail-split > .detail-about:not(:only-child) {
+  height: 0;
+  min-height: 100%;
+  overflow-y: auto;
 }
 .detail-split:empty {
   display: none;
@@ -916,6 +922,10 @@
 @container (max-width: 1040px) {
   .detail-split {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .detail-split > .detail-about:not(:only-child) {
+    height: auto;
+    min-height: 0;
   }
 }
 @container (max-width: 940px) {
