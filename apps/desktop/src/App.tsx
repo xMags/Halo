@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { ContextMenuHost } from './components/ContextMenu'
 import { DialogHost } from './components/Dialog'
 import { NavRail } from './components/NavRail'
@@ -22,7 +22,7 @@ import { getDeviceProfile, getServerUrl, getSessionDownloadOwner, setSessionDown
 import { moveDeviceDataIntoAccount } from './device/deviceDataMove'
 import { deviceDownloadOwner } from './device/deviceStore'
 import { setDownloadsAccount, clearDownloadsAccount, opaqueDownloadOwner } from './downloads/downloadsStore'
-import { useLocalPrefs } from './localPrefs'
+import { setLocalPrefs, useLocalPrefs } from './localPrefs'
 import { presenceSetEnabled } from './player/presence'
 import { useMe } from './queries'
 
@@ -98,8 +98,9 @@ function Shell() {
   const { screen, setRoot, sheet } = useNav()
   const windowFullscreen = useWindowFullscreen()
   // Lives here, not in the pane: the player replaces the whole shell tree, and
-  // the pane must come back the way it was left.
-  const [paneOpen, setPaneOpen] = useState(true)
+  // the pane must come back the way it was left. Stored, so the next launch
+  // opens it the same way; closed until the user first expands it.
+  const paneOpen = useLocalPrefs().navPaneOpen
 
   useEffect(() => {
     if (screen.name !== 'player' && windowFullscreen.fullscreen) {
@@ -141,7 +142,7 @@ function Shell() {
       <div className="glow glow-b" />
       <TitleBar />
       <div className="shell-body">
-        <NavRail open={paneOpen} onToggle={() => setPaneOpen((open) => !open)} />
+        <NavRail open={paneOpen} onToggle={() => setLocalPrefs({ navPaneOpen: !paneOpen })} />
         <div className="content">
           <div className="content-host">
             <Stack />

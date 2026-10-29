@@ -20,6 +20,8 @@ import type { ThemeChoice } from './theme'
  *   fillPicture           the player crops to fill the window (mpv
  *                         `panscan`); a fit for this screen's shape, so it
  *                         holds from one video to the next
+ *   navPaneOpen           the left pane is expanded; closed until the user
+ *                         opens it, then as they last left it
  *
  * Everything account-shaped (languages, subtitle size/font/outline/shadow,
  * autoplay) stays in `settings/syncedSettings.ts`, which syncs last-write-wins.
@@ -39,6 +41,7 @@ export interface LocalPrefs {
   measuredLineMbps: number
   discordPresence: boolean
   fillPicture: boolean
+  navPaneOpen: boolean
 }
 
 const DEFAULTS: LocalPrefs = {
@@ -49,6 +52,7 @@ const DEFAULTS: LocalPrefs = {
   measuredLineMbps: 0,
   discordPresence: true,
   fillPicture: false,
+  navPaneOpen: false,
 }
 
 function isThemeChoice(value: unknown): value is ThemeChoice {
@@ -81,6 +85,7 @@ function read(): LocalPrefs {
       discordPresence:
         typeof row.discordPresence === 'boolean' ? row.discordPresence : DEFAULTS.discordPresence,
       fillPicture: typeof row.fillPicture === 'boolean' ? row.fillPicture : DEFAULTS.fillPicture,
+      navPaneOpen: typeof row.navPaneOpen === 'boolean' ? row.navPaneOpen : DEFAULTS.navPaneOpen,
     }
   } catch {
     // A blocked or corrupt store must not stop the app booting.
