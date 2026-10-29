@@ -12,11 +12,11 @@ function season(count: number, firstNumber = 1): MetaVideo[] {
 }
 
 test('a season of up to a page is one page; a longer one splits in order', () => {
-  assert.equal(episodePages(season(50)).length, 1)
+  assert.equal(episodePages(season(25)).length, 1)
   const pages = episodePages(season(2000))
-  assert.equal(pages.length, 40)
-  assert.deepEqual(pages.slice(0, 2).map((page) => page.label), ['Episodes 1–50', 'Episodes 51–100'])
-  assert.equal(pages[39]!.label, 'Episodes 1951–2000')
+  assert.equal(pages.length, 80)
+  assert.deepEqual(pages.slice(0, 2).map((page) => page.label), ['Episodes 1–25', 'Episodes 26–50'])
+  assert.equal(pages[79]!.label, 'Episodes 1976–2000')
   assert.equal(pages.flatMap((page) => page.episodes).length, 2000)
 })
 
@@ -28,7 +28,7 @@ test('labels follow the episodes’ own numbers, and positions where they have n
 
 test('the panel opens on the page holding the episode in progress', () => {
   const pages = episodePages(season(200))
-  assert.equal(pageContaining(pages, 'show:1:120'), 2)
+  assert.equal(pageContaining(pages, 'show:1:120'), 4)
   assert.equal(pageContaining(pages, 'elsewhere'), 0)
   assert.equal(pageContaining(pages, null), 0)
 })
