@@ -78,6 +78,7 @@ function confirmCancel(): Promise<boolean> {
     body: 'The partial file and protected request will be removed from this device.',
     primary: 'Cancel transfer',
     close: 'Keep transfer',
+    destructive: true,
   })
 }
 
@@ -651,7 +652,7 @@ function DetailPane({
             )}
             <button
               type="button"
-              className="icon-btn icon-btn-34 dl-pane-cancel"
+              className="icon-btn icon-btn-34 icon-btn-danger dl-pane-cancel"
               aria-label="Cancel transfer"
               title="Cancel transfer"
               onClick={onCancel}

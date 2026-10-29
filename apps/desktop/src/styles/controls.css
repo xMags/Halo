@@ -45,6 +45,9 @@
   border: 1px solid var(--cr);
   color: var(--cr);
 }
+.btn-danger:hover:not(:disabled) {
+  background: var(--crt);
+}
 .btn-danger-fill {
   background: var(--df);
   border: 0;
@@ -126,6 +129,18 @@
 }
 .icon-btn-bare:disabled {
   background: var(--ctd);
+}
+/* Destructive icon buttons (remove, cancel, delete) draw their glyph in the
+   critical colour, as every destructive control in the app does. */
+.icon-btn.icon-btn-danger {
+  color: var(--cr);
+}
+.icon-btn.icon-btn-danger:hover:not(:disabled) {
+  background: var(--crt);
+}
+/* Locked (a built-in addon): nothing can be destroyed, so it is not red. */
+.icon-btn.icon-btn-danger:disabled {
+  color: var(--t4);
 }
 .icon-btn-30 {
   width: 30px;
@@ -592,6 +607,10 @@ input[type='range'] {
 }
 .menu-item:hover {
   background: var(--sb);
+}
+/* A destructive menu entry: label and glyph in the critical colour. */
+.menu-item.menu-item-danger {
+  color: var(--cr);
 }
 .menu-check {
   width: 14px;

@@ -18,6 +18,8 @@ export interface DialogOptions {
   close: string
   /** Drawn in the accent and focused first. Without one, the first button takes focus. */
   defaultButton?: 'primary' | 'close'
+  /** The primary action destroys something: it is drawn red, whatever the default button. */
+  destructive?: boolean
 }
 
 interface PendingDialog {
@@ -149,7 +151,7 @@ function DialogView({ dialog }: { dialog: PendingDialog }) {
             <button
               ref={primaryRef}
               type="button"
-              className={primaryIsDefault ? 'btn-accent' : 'btn'}
+              className={options.destructive ? 'btn-danger btn-danger-fill' : primaryIsDefault ? 'btn-accent' : 'btn'}
               onClick={() => finish(true)}
             >
               {options.primary}

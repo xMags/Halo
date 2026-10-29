@@ -8,6 +8,7 @@ export function confirmDeleteFromDevice(): Promise<boolean> {
     body: 'This permanently removes the video and its subtitle sidecar from this device.',
     primary: 'Delete',
     close: 'Cancel',
+    destructive: true,
   })
 }
 
