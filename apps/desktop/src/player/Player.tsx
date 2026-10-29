@@ -1470,6 +1470,10 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
                         <div className="prail-kicker" style={{ margin: '15px 0 10px' }}>
                           FROM ADDONS
                         </div>
+                        {/* A download plays offline, so its addons are never asked. */}
+                        {params.sourceKind === 'download' && (
+                          <div className="prail-hint">Not available for downloads.</div>
+                        )}
                         {subs.isLoading && (
                           <div className="prail-hint">
                             <span className="spinner" /> Searching addons…
