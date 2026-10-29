@@ -1,23 +1,132 @@
 /* ── Downloads ─────────────────────────────────────────────────────────────
-   The native WinUI Halo Desktop's `Views/DownloadsPage.xaml`: the list column
-   owns the header and scrolls on its own, and the 300px detail panel beside
-   it runs the full height to the window edge on the window's own tone. */
+   The one page on the phone's palette (`HaloColors` in the mobile app's
+   `ui/HaloTheme.kt`) rather than the grey WinUI one, scoped to the page so the
+   shell and every other page keep theirs. The header and a scrolling column
+   on the left; the 380px detail pane beside it runs the full height to the
+   window edge.
+
+   The page's own tokens are `--dl-*`. The shared text and accent tokens are
+   pointed at them too, so the shared pieces drawn inside the page (kickers,
+   the info bar, the menu, skeletons, the focus ring) read on its surfaces. */
 .dl-screen {
+  --dl-bg: #0a0c11;
+  --dl-panel: #11131a;
+  --dl-surface: #14161d;
+  --dl-surface-high: #1c202a;
+  --dl-surface-hover: #232836;
+  --dl-border: #252a35;
+  /* The hairline between queue rows, quieter than a card's stroke. */
+  --dl-rule: #1c202a;
+  --dl-text: #f4f6fb;
+  --dl-meta: #c7cdd9;
+  --dl-dim: #8b93a5;
+  --dl-faint: #6f7789;
+  --dl-accent: #0a84ff;
+  --dl-accent-light: #4cc2ff;
+  /* Accent text on the selected wash. */
+  --dl-accent-ink: #4cc2ff;
+  --dl-accent-tint: rgba(10, 132, 255, 0.16);
+  --dl-selected: #0f2440;
+  --dl-danger: #ff6b6b;
+  --dl-danger-bg: #24161a;
+  --dl-danger-hover: #2e1a1f;
+  --dl-danger-border: #5a2a2e;
+  --dl-danger-tint: rgba(255, 107, 107, 0.14);
+  --dl-success: #5dd39e;
+  --dl-success-bg: rgba(93, 211, 158, 0.12);
+  /* Gold fills (the in-flight segment, a paused bar, the 4K badge) and gold
+     text, which must darken on a light surface where the fill need not. */
+  --dl-gold: #ffd479;
+  --dl-on-gold: #14161d;
+  --dl-caution: #ffd479;
+  --dl-caution-tint: rgba(255, 212, 121, 0.14);
+  --dl-track: rgba(244, 246, 251, 0.08);
+  --dl-hover: rgba(244, 246, 251, 0.04);
+  /* The solid primary button: the page's text colour as a fill. */
+  --dl-solid: #f4f6fb;
+  --dl-on-solid: #0a0c11;
+
+  --t1: var(--dl-text);
+  --t2: var(--dl-meta);
+  --t3: var(--dl-dim);
+  --t4: var(--dl-faint);
+  --ac: var(--dl-accent-light);
+  --p1: var(--dl-surface-high);
+
   display: flex;
+  background: var(--dl-bg);
+  color: var(--dl-text);
 }
+/* The light page, derived from the app's light tokens (text, accent, caution
+   and critical inks) on the phone palette's structure. */
+:root[data-theme='light'] .dl-screen {
+  --dl-bg: #f3f4f7;
+  --dl-panel: #ffffff;
+  --dl-surface: #ffffff;
+  --dl-surface-high: #eef0f4;
+  --dl-surface-hover: #e5e8ee;
+  --dl-border: #dde1e8;
+  --dl-rule: #eceef2;
+  --dl-text: #14161d;
+  --dl-meta: #3a404c;
+  --dl-dim: #5e6573;
+  --dl-faint: #7d8494;
+  --dl-accent: #005fb8;
+  --dl-accent-light: #2b88d8;
+  --dl-accent-ink: #005fb8;
+  --dl-accent-tint: rgba(0, 95, 184, 0.1);
+  --dl-selected: #dcebfa;
+  --dl-danger: #c42b1c;
+  --dl-danger-bg: #fde7e9;
+  --dl-danger-hover: #fbd9dd;
+  --dl-danger-border: #f1b5bb;
+  --dl-danger-tint: rgba(196, 43, 28, 0.08);
+  --dl-success: #0f7b0f;
+  --dl-success-bg: rgba(15, 123, 15, 0.1);
+  --dl-gold: #f2bd4f;
+  --dl-on-gold: #14161d;
+  --dl-caution: #9d5d00;
+  --dl-caution-tint: rgba(157, 93, 0, 0.12);
+  --dl-track: rgba(20, 22, 29, 0.08);
+  --dl-hover: rgba(20, 22, 29, 0.04);
+  --dl-solid: #14161d;
+  --dl-on-solid: #ffffff;
+  --ac: var(--dl-accent);
+}
+.dl-screen .kicker {
+  font: 400 12px/1.2 var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--dl-dim);
+}
+
 .dl-main {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  /* The column's own width drives the queue panel's layout. */
+  container: dl-main / inline-size;
+}
+.dl-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 14px;
+  padding: 28px 32px 0;
+}
+.dl-title {
+  margin: 0;
+  font: 600 30px/1.2 var(--display);
+  color: var(--dl-text);
+}
+.dl-summary {
+  padding-top: 6px;
+  font-size: 14px;
+  color: var(--dl-dim);
 }
 .dl-head-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-.btn.dl-pause-all {
-  padding: 0 14px;
   gap: 8px;
 }
 .dl-scroll {
@@ -26,297 +135,582 @@
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
-  padding: 8px 24px 48px;
+  padding: 20px 32px 32px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 20px;
 }
 
-/* Rate, throughput and storage read as one instrument, so they share a frame. */
-.instrument {
-  display: flex;
-  flex-wrap: wrap;
-  background: var(--cd);
-  border: 1px solid var(--cs);
-  border-radius: 8px;
-  overflow: hidden;
+/* The filter tray, restyled from the shared segmented control. */
+.dl-screen .tray {
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--dl-surface);
+  border: 1px solid var(--dl-border);
 }
-.inst-block {
+.dl-screen .tray-pills .tray-btn {
+  height: auto;
+  align-items: baseline;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 9px;
+  font-size: 14px;
+  color: var(--dl-meta);
+}
+.dl-screen .tray-pills .tray-btn:hover {
+  background: var(--dl-hover);
+}
+.dl-screen .tray-pills .tray-btn-active,
+.dl-screen .tray-pills .tray-btn-active:hover {
+  background: var(--dl-selected);
+  color: var(--dl-accent-ink);
+}
+.dl-screen .tray-count {
+  font: 400 12px/1 var(--mono);
+  color: var(--dl-dim);
+}
+.dl-screen .tray-btn-active .tray-count {
+  color: inherit;
+}
+
+/* ── Buttons ── */
+.dl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid var(--dl-border);
+  background: var(--dl-surface-high);
+  color: var(--dl-text);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dl-btn:hover {
+  background: var(--dl-surface-hover);
+}
+.dl-btn-block {
+  width: 100%;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 15px;
+}
+.dl-btn-play {
+  width: 100%;
+  height: 46px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--dl-solid);
+  color: var(--dl-on-solid);
+  font-size: 15px;
+}
+.dl-btn-play:hover {
+  background: var(--dl-solid);
+  filter: brightness(0.92);
+}
+.dl-btn-accent {
+  border-color: transparent;
+  background: var(--dl-accent);
+  color: #ffffff;
+}
+.dl-btn-accent:hover {
+  background: var(--dl-accent);
+  filter: brightness(1.08);
+}
+/* Destructive, so red, and pinned to the foot of the pane. */
+.dl-btn-delete {
+  width: 100%;
+  height: 44px;
+  margin-top: auto;
+  border-radius: 12px;
+  border-color: var(--dl-danger-border);
+  background: var(--dl-danger-bg);
+  color: var(--dl-danger);
+  font-size: 15px;
+}
+.dl-btn-delete:hover {
+  background: var(--dl-danger-hover);
+}
+.dl-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--dl-border);
+  background: var(--dl-surface-high);
+  color: var(--dl-text);
+}
+.dl-icon-btn:hover {
+  background: var(--dl-surface-hover);
+}
+.dl-icon-btn.dl-icon-btn-danger {
+  color: var(--dl-danger);
+}
+.dl-icon-btn.dl-icon-btn-danger:hover {
+  background: var(--dl-danger-tint);
+}
+
+/* ── The queue panel: rate, throughput and storage over the transfers ── */
+.dl-queue-panel {
+  padding: 20px 22px 4px;
+  background: var(--dl-panel);
+  border: 1px solid var(--dl-border);
+  border-radius: 16px;
+}
+/* With no rows under it, the panel closes below the instrument. */
+.dl-queue-panel:not(:has(.dl-queue)) {
+  padding-bottom: 20px;
+}
+.dl-instrument {
+  display: flex;
+  gap: 28px;
+}
+.dl-throughput {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dl-instrument-rule {
+  flex: 0 0 1px;
+  background: var(--dl-border);
+}
+.dl-storage {
+  flex: 0 0 240px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 16px 20px;
-  border-left: 1px solid var(--cs);
+  gap: 10px;
 }
-.inst-block:first-child {
-  border-left: 0;
+/* Too narrow for the chart beside the storage: storage goes under it. */
+@container dl-main (max-width: 840px) {
+  .dl-instrument {
+    flex-direction: column;
+    gap: 18px;
+  }
+  .dl-storage {
+    flex: 0 0 auto;
+  }
 }
-.inst-rate {
-  flex: 0 0 auto;
-  min-width: 172px;
-  gap: 5px;
-}
-.inst-queue {
-  font-size: 14px;
-  color: var(--t3);
-}
-.inst-chart {
-  flex: 1 1 188px;
-  min-width: 188px;
-  gap: 8px;
-  padding: 14px 20px;
-}
-.inst-chart-foot {
+.dl-rate {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px 10px;
 }
-.inst-chart-foot .mono {
-  color: var(--t4);
+.dl-rate-value {
+  font: 600 40px/1 var(--mono);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--dl-text);
 }
-.inst-storage {
-  flex: 0 0 296px;
-  gap: 9px;
+.dl-rate-value.rate-idle {
+  color: var(--dl-meta);
 }
-.inst-storage-head {
+.dl-rate-value.rate-paused {
+  color: var(--dl-caution);
+}
+.dl-rate-unit {
+  padding-bottom: 3px;
+  font: 400 16px/1 var(--mono);
+  color: var(--dl-meta);
+}
+.dl-conn-pill {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  margin: 0 0 2px 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--dl-success-bg);
+  color: var(--dl-success);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
-.inst-storage-line {
-  flex: 1;
-  font-size: 14px;
-  color: var(--t2);
+.dl-conn-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dl-success);
 }
-.mono-big {
-  font: 700 28px/1.1 var(--mono);
-  color: var(--t1);
+.dl-rate-note {
+  margin: 0 0 3px 6px;
+  font-size: 13px;
+  color: var(--dl-dim);
+  white-space: nowrap;
 }
-.rate-idle {
-  color: var(--t3);
+.dl-screen .kicker.dl-peak {
+  padding-bottom: 3px;
+  white-space: nowrap;
 }
-.rate-paused {
-  color: var(--ca);
-}
-/* Thirty 7px bars with 2px gaps, stretched to the cell the way the native
-   Viewbox stretches them: widths and gaps are shares of the strip. */
-.bars {
+
+/* The phone's chart: 28 bars, 4px apart, each against the window's peak.
+   Heights ease the way the phone's `animateFloatAsState` does (500 ms,
+   FastOutSlowIn); the strip has a fixed height, so a bar's change never
+   lays out anything outside it. */
+.dl-chart {
   display: flex;
   align-items: flex-end;
-  gap: 0.7463%;
-  height: 38px;
+  gap: 4px;
+  height: 76px;
+  contain: layout paint;
 }
-.bar {
-  flex: 0 0 2.6119%;
-  border-radius: 2px 2px 0 0;
-  background: var(--chd);
+.dl-chart-bar {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 3px 3px 1px 1px;
+  background: linear-gradient(var(--dl-accent-light), var(--dl-accent));
+  transition: height 500ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-.bar-live {
-  background: var(--ac);
+@media (prefers-reduced-motion: reduce) {
+  .dl-chart-bar {
+    transition: none;
+  }
 }
-.storage-track {
-  position: relative;
+.dl-chart-foot {
+  display: flex;
+  justify-content: space-between;
+}
+.dl-screen .dl-chart-foot .kicker {
+  color: var(--dl-faint);
+}
+
+.dl-storage-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.dl-storage-value {
+  font: 600 26px/1.1 var(--mono);
+  color: var(--dl-text);
+}
+.dl-storage-unit {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 13px/1.2 var(--mono);
+  color: var(--dl-meta);
+}
+.dl-storage-track {
+  display: flex;
+  gap: 2px;
   height: 8px;
   border-radius: 4px;
-  background: var(--sb);
+  background: var(--dl-track);
   overflow: hidden;
 }
-.storage-track > div {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
+.dl-storage-stored {
+  border-radius: 4px 0 0 4px;
+  background: linear-gradient(90deg, var(--dl-accent), var(--dl-accent-light));
 }
-.storage-fill-flight {
-  background: var(--ca);
+.dl-storage-flight {
+  background: var(--dl-gold);
 }
-.storage-fill-stored {
-  background: var(--aa);
-}
-.legend {
+.dl-legend {
   display: flex;
-  gap: 16px;
-  font-size: 14px;
-  color: var(--t2);
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
 }
-.legend-item {
+.dl-legend-item {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  color: var(--dl-meta);
 }
-.legend-value {
-  font: 400 12px/1 var(--mono);
-  color: var(--t3);
+.dl-legend-flight {
+  color: var(--dl-dim);
 }
-.swatch {
+.dl-legend-value {
+  font: 400 13px/1.2 var(--mono);
+}
+.dl-swatch {
   width: 8px;
   height: 8px;
-  border-radius: 2px;
+  border-radius: 50%;
 }
-.swatch-stored {
-  background: var(--ac);
+.dl-swatch-stored {
+  background: var(--dl-accent);
 }
-.swatch-flight {
-  background: var(--ca);
+.dl-swatch-flight {
+  background: var(--dl-gold);
 }
 
-.section-rule {
+/* ── Queue rows ── */
+.dl-queue {
+  display: flex;
+  flex-direction: column;
+  margin-top: 18px;
+  border-top: 1px solid var(--dl-border);
+}
+.dl-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
+  margin: 0 -10px;
+  padding: 12px 10px;
+  border-top: 1px solid var(--dl-rule);
+  border-radius: 12px;
+  cursor: default;
 }
-.section-rule > hr {
+.dl-row:first-child,
+.dl-row-sel,
+.dl-row-sel + .dl-row {
+  border-top-color: transparent;
+}
+.dl-row:hover {
+  background: var(--dl-hover);
+}
+.dl-row.dl-row-sel {
+  background: var(--dl-selected);
+}
+.dl-thumb {
+  flex: 0 0 128px;
+  width: 128px;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+}
+.dl-screen .dl-skeleton-row .dl-thumb {
+  height: auto;
+  border-radius: 8px;
+}
+.dl-row-waiting .dl-thumb {
+  opacity: 0.55;
+}
+.dl-row-body {
   flex: 1;
-  height: 1px;
-  border: 0;
-  margin: 0;
-  background: var(--cs);
-}
-.dl-section-rule {
-  margin-top: 4px;
-}
-
-/* A ListView of cards: each item carries 8px below it, the last one too. */
-.dl-list {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-bottom: 8px;
 }
-.dl-row {
-  display: grid;
-  grid-template-columns: 74px minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
-  width: 100%;
-  padding: 12px;
-  border-radius: 8px;
-  background-color: var(--cd);
-  border: 1px solid var(--cs);
-  cursor: default;
-}
-.dl-row:hover {
-  background-image: linear-gradient(var(--cth), var(--cth));
-}
-.dl-row-sel {
-  background-color: var(--ns);
-  border-color: var(--ac);
-}
-.dl-thumb {
-  width: 74px;
-  height: 42px;
-  border-radius: 4px;
-}
-/* The row thumbnail's fill has no track under it. */
-.art-progress-bare {
-  background: transparent;
-}
-.dl-row-body {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.dl-row-body-transfer {
-  gap: 7px;
-}
-.dl-row-body-ready {
+.dl-row-waiting .dl-row-body {
   gap: 6px;
 }
+/* The episode title gives way first, then the name. */
 .dl-title-line {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  column-gap: 9px;
-  align-items: center;
-}
-.dl-title-line-pill {
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
 }
 .dl-tag {
-  font: 700 12px/1.3 var(--mono);
-  color: var(--t3);
+  flex: 0 0 auto;
+  font: 400 13px/1.3 var(--mono);
+  color: var(--dl-dim);
   white-space: nowrap;
 }
 .dl-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--t1);
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--dl-text);
+}
+.dl-row-waiting .dl-name {
+  color: var(--dl-meta);
 }
 .dl-sub {
+  flex: 0 1000 auto;
   font-size: 14px;
-  color: var(--t3);
+  color: var(--dl-dim);
+}
+.dl-screen .kicker.dl-up-next {
+  color: var(--dl-faint);
 }
 .dl-bar {
-  height: 5px;
+  height: 6px;
   border-radius: 3px;
-  background: var(--sb);
+  background: var(--dl-border);
   overflow: hidden;
 }
 .dl-bar-fill {
-  height: 5px;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 400ms ease-out;
 }
-.tone-fill-normal {
-  background: var(--ac);
+.dl-fill-normal {
+  background: linear-gradient(90deg, var(--dl-accent), var(--dl-accent-light));
 }
-.tone-fill-caution {
-  background: var(--ca);
+.dl-fill-caution {
+  background: var(--dl-gold);
 }
-.tone-fill-critical {
-  background: var(--cr);
+.dl-fill-critical {
+  background: var(--dl-danger);
 }
-.mono.tone-text-normal {
-  color: var(--t1);
-}
-.mono.tone-text-caution {
-  color: var(--ca);
-}
-.mono.tone-text-critical {
-  color: var(--cr);
-}
-/* One line that clips rather than wraps, like the native horizontal panel. */
+/* One line that clips rather than wraps. */
 .dl-meta {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  white-space: nowrap;
+  gap: 14px;
+  min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
+  font: 400 12px/1.4 var(--mono);
+  color: var(--dl-dim);
 }
-.dl-meta .dot-sep {
-  font-size: 12px;
+.dl-meta-lead {
+  color: var(--dl-meta);
 }
-.mono.dl-added {
-  color: var(--t4);
+.dl-meta-caution > :last-child {
+  color: var(--dl-caution);
 }
-.btn.dl-choose-source {
-  align-self: flex-start;
-  margin-top: 2px;
+.dl-meta-critical,
+.dl-meta-critical .dl-meta-lead {
+  color: var(--dl-danger);
 }
 .dl-row-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-.dl-ready-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex: 0 0 auto;
   gap: 8px;
 }
 
+/* ── Ready to watch ── */
+.dl-ready {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dl-ready-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.dl-screen .kicker.dl-ready-count {
+  color: var(--dl-faint);
+}
+/* Cards stretch across the row rather than leaving an empty band. */
+.dl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px;
+}
+.dl-card {
+  position: relative;
+  min-width: 0;
+}
+.dl-card-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  border-radius: 12px;
+}
+.dl-card-art {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+}
+.dl-card-sel .dl-card-art {
+  outline: 2px solid var(--dl-accent);
+  outline-offset: 2px;
+}
+.dl-badge {
+  position: absolute;
+  top: 8px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  font: 600 11px/1.2 var(--mono);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  background: rgba(10, 12, 17, 0.8);
+  color: #f4f6fb;
+}
+.dl-badge-quality {
+  left: 8px;
+}
+.dl-badge-quality.dl-badge-gold {
+  background: var(--dl-gold);
+  color: var(--dl-on-gold);
+}
+.dl-badge-episode {
+  right: 8px;
+}
+.dl-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 0 2px;
+}
+.dl-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--dl-text);
+}
+.dl-card-meta {
+  font: 400 12px/1.4 var(--mono);
+  color: var(--dl-dim);
+}
+/* A layer the size of the art, so the play button sits on its corner. */
+.dl-card-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  aspect-ratio: 16 / 9;
+  pointer-events: none;
+}
+.dl-card-play {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(244, 246, 251, 0.92);
+  color: #0a0c11;
+  opacity: 0;
+  transform: scale(0.9);
+  transition:
+    opacity 150ms ease-out,
+    transform 150ms ease-out;
+}
+.dl-card-sel .dl-card-play,
+.dl-card:hover .dl-card-play,
+.dl-card-play:focus-visible {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.dl-card-play:hover {
+  background: #ffffff;
+}
+
+/* ── Empty and no-match states ── */
 .dl-empty-card {
-  margin-top: 12px;
   padding: 44px 40px;
   display: grid;
   grid-template-columns: 170px minmax(0, 1fr);
   column-gap: 36px;
-  background: var(--cd);
-  border: 1px solid var(--cs);
-  border-radius: 8px;
+  background: var(--dl-surface);
+  border: 1px solid var(--dl-border);
+  border-radius: 16px;
 }
 .dl-empty-art {
   width: 170px;
   height: 110px;
-  border-radius: 6px;
+  border-radius: 12px;
 }
 .dl-empty-copy {
   max-width: 520px;
@@ -324,7 +718,7 @@
 .dl-empty-title {
   font-size: 22px;
   font-weight: 600;
-  color: var(--t1);
+  color: var(--dl-text);
 }
 .dl-empty-steps {
   display: flex;
@@ -338,10 +732,11 @@
   column-gap: 10px;
   align-items: baseline;
   font-size: 14px;
-  color: var(--t2);
+  color: var(--dl-meta);
 }
-.kicker.dl-step-number {
+.dl-screen .kicker.dl-step-number {
   letter-spacing: 0;
+  color: var(--dl-accent-ink);
 }
 .dl-empty-actions {
   display: flex;
@@ -349,55 +744,62 @@
   margin-top: 22px;
 }
 .dl-nomatch-card {
-  margin-top: 12px;
   padding: 34px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  background: var(--cd);
-  border: 1px solid var(--cs);
-  border-radius: 8px;
+  background: var(--dl-surface);
+  border: 1px solid var(--dl-border);
+  border-radius: 16px;
 }
 .dl-nomatch-title {
   font-size: 18px;
   font-weight: 600;
-  color: var(--t1);
+  color: var(--dl-text);
 }
 .dl-nomatch-body {
   font-size: 15px;
-  color: var(--t3);
+  color: var(--dl-dim);
 }
 
-/* The right-hand counterpart to the navigation pane, not a card in the list. */
+/* ── The detail pane ── */
 .dl-pane {
   display: flex;
   flex-direction: column;
-  flex: 0 0 300px;
-  width: 300px;
-  padding: 0 20px;
-  background: var(--m);
-  border-left: 1px solid var(--cs);
+  flex: 0 0 380px;
+  width: 380px;
+  background: var(--dl-bg);
+  border-left: 1px solid var(--dl-surface);
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
 }
+/* Measured on the content surface: a narrow one keeps more for the column. */
+@container (max-width: 1199px) {
+  .dl-pane {
+    flex-basis: 320px;
+    width: 320px;
+  }
+}
+/* At least the pane's height, so the delete button sits at its foot. */
 .dl-pane-inner {
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin: 20px 0 32px;
+  gap: 16px;
+  padding: 28px 24px 24px;
 }
-.pane-poster {
-  position: relative;
-  align-self: center;
+.dl-pane-art {
   flex: 0 0 auto;
-  width: 260px;
-  height: 390px;
-  border-radius: 6px;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
 }
-.art-progress-pane {
-  background: var(--cs);
+.dl-pane-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .dl-pane-title {
   display: flex;
@@ -406,73 +808,118 @@
   gap: 8px;
 }
 .dl-pane-name {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--t1);
+  margin: 0;
+  font: 600 24px/1.25 var(--display);
+  color: var(--dl-text);
   overflow-wrap: anywhere;
 }
-.mono.dl-pane-file {
-  line-height: 18px;
+.dl-pane-meta {
+  font: 400 12px/1.4 var(--mono);
+  color: var(--dl-dim);
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
-.dl-pane-transfer {
+.dl-state-pill {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font: 600 11px/1.4 var(--mono);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  background: var(--dl-surface-high);
+  color: var(--dl-dim);
+}
+.dl-state-downloading {
+  background: var(--dl-accent-tint);
+  color: var(--dl-accent-ink);
+}
+.dl-state-paused {
+  background: var(--dl-caution-tint);
+  color: var(--dl-caution);
+}
+.dl-state-failed {
+  background: var(--dl-danger-tint);
+  color: var(--dl-danger);
+}
+.dl-pane-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
+.dl-pane-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+/* A failure's sentence wraps here: the pane is where it is read whole. */
 .dl-pane-lead {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  font: 400 12px/1.4 var(--mono);
+  color: var(--dl-meta);
+}
+.dl-lead-caution {
+  color: var(--dl-caution);
+}
+.dl-lead-critical {
+  color: var(--dl-danger);
 }
 .dl-pane-controls {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px;
-  gap: 6px;
-}
-.dl-pane-controls > .btn {
-  grid-column: 1;
-}
-.dl-pane-cancel {
-  grid-column: 2;
-}
-.facts {
-  border: 1px solid var(--cs);
-  border-radius: 6px;
-  overflow: hidden;
-}
-.fact-row {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 12px;
-  border-top: 1px solid var(--cs);
+  gap: 8px;
 }
-.fact-row:first-child {
+.dl-pane-controls > .dl-btn-block {
+  flex: 1;
+  width: auto;
+}
+.dl-icon-btn.dl-pane-cancel {
+  width: 44px;
+  height: 44px;
+  margin-left: auto;
+  border-radius: 12px;
+}
+.dl-facts {
+  margin: 0;
+  background: var(--dl-surface);
+  border: 1px solid var(--dl-border);
+  border-radius: 16px;
+  overflow: hidden;
+  font-size: 14px;
+}
+.dl-fact {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--dl-border);
+}
+.dl-fact:first-child {
   border-top: 0;
 }
-.fact-label {
-  font-size: 14px;
-  color: var(--t2);
+.dl-fact dt {
+  flex: 0 0 auto;
+  color: var(--dl-dim);
 }
-.fact-value {
+.dl-fact dd {
   flex: 1;
   min-width: 0;
+  margin: 0;
   text-align: right;
-  font: 700 12px/1.5 var(--mono);
-  color: var(--t1);
+  font: 400 13px/1.4 var(--mono);
+  color: var(--dl-text);
   overflow-wrap: anywhere;
 }
-.mono.dl-pane-note {
-  color: var(--t4);
-  line-height: 18px;
+.dl-pane-note {
+  font: 400 12px/18px var(--mono);
+  color: var(--dl-faint);
 }
 .dl-folder-card {
-  margin: 20px 0 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 28px 24px;
   padding: 20px;
-  background: var(--cd);
-  border: 1px solid var(--cs);
-  border-radius: 8px;
-}
-.dl-folder-manage {
-  margin-top: 14px;
+  background: var(--dl-surface);
+  border: 1px solid var(--dl-border);
+  border-radius: 16px;
 }

@@ -190,6 +190,10 @@ pub struct DownloadView {
     pub total_bytes: u64,
     pub downloaded_bytes: u64,
     pub bytes_per_second: u64,
+    /// Connections receiving data for this download right now; 0 unless it
+    /// is downloading.
+    #[serde(default)]
+    pub active_connections: u32,
     pub source_fingerprint: String,
     pub failure: Option<DownloadFailureCode>,
     pub explicit_pause: bool,
@@ -255,6 +259,10 @@ struct DownloadRecord {
     created_at: u64,
     updated_at: u64,
     bytes_per_second: u64,
+    /// Live like the rate, but never stored: a count restored from disk would
+    /// describe connections that no longer exist.
+    #[serde(skip)]
+    active_connections: u32,
     #[serde(default)]
     replacement: Option<ReplacementBackup>,
     /// A tombstone: the files are being removed, and a record that survives a
@@ -275,6 +283,13 @@ impl DownloadRecord {
             total_bytes: self.total_bytes,
             downloaded_bytes: self.downloaded_bytes,
             bytes_per_second: self.bytes_per_second,
+            // A transfer winding down can report once more after a pause; only
+            // a running download has connections to show.
+            active_connections: if self.status == DownloadStatus::Downloading {
+                self.active_connections
+            } else {
+                0
+            },
             source_fingerprint: self.source_fingerprint.clone(),
             failure: self.failure.clone(),
             explicit_pause: self.explicit_pause,
@@ -847,6 +862,7 @@ impl DownloadManager {
             created_at: now,
             updated_at: now,
             bytes_per_second: 0,
+            active_connections: 0,
             replacement: backup,
             pending_deletion: false,
         };
@@ -1279,6 +1295,7 @@ impl DownloadManager {
             inner.cancel.insert(job_id.clone(), flag);
             let view = inner.entries.get_mut(&job_id).map(|entry| {
                 entry.status = DownloadStatus::Downloading;
+                entry.active_connections = 0;
                 entry.updated_at = now_ms();
                 entry.view()
             });
@@ -1317,6 +1334,7 @@ impl DownloadManager {
                 // down already wrote the state the user asked for.
                 let still_running = entry.status == DownloadStatus::Downloading;
                 entry.bytes_per_second = 0;
+                entry.active_connections = 0;
                 entry.updated_at = now_ms();
                 match &result {
                     Ok(done) => {
@@ -1587,6 +1605,7 @@ impl DownloadManager {
         bytes: u64,
         total: u64,
         rate: u64,
+        connections: u32,
         persist: bool,
     ) {
         let view = {
@@ -1599,6 +1618,7 @@ impl DownloadManager {
                 entry.total_bytes = total;
             }
             entry.bytes_per_second = rate;
+            entry.active_connections = connections;
             entry.updated_at = now_ms();
             // A transfer winding down after an account switch still reports
             // once; that report must not reach the new account's list.
@@ -1717,9 +1737,9 @@ impl segmented::TransferHost for JobHost<'_> {
             .update_response_metadata(self.job_id, validator, total)
             .await
     }
-    async fn progress(&self, bytes: u64, total: u64, rate: u64, persist: bool) {
+    async fn progress(&self, bytes: u64, total: u64, rate: u64, connections: u32, persist: bool) {
         self.manager
-            .update_progress(self.job_id, bytes, total, rate, persist)
+            .update_progress(self.job_id, bytes, total, rate, connections, persist)
             .await;
     }
 }
@@ -2295,6 +2315,7 @@ mod tests {
             created_at: 1,
             updated_at: 1,
             bytes_per_second: 0,
+            active_connections: 0,
             replacement: None,
             pending_deletion: false,
         }

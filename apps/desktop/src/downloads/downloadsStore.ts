@@ -21,6 +21,7 @@ import {
   pushThroughputSample,
   requiresNewSource,
   selectLandscapeArtwork,
+  THROUGHPUT_SAMPLE_MS,
   type DownloadFailureCode,
   type DownloadStatus,
 } from './downloadsLogic'
@@ -72,6 +73,8 @@ export interface DownloadView {
   total_bytes: number
   downloaded_bytes: number
   bytes_per_second: number
+  /** Connections receiving data right now; 0 unless downloading. */
+  active_connections: number
   source_fingerprint: string
   failure?: DownloadFailureCode
   explicit_pause: boolean
@@ -161,8 +164,8 @@ export function openDownloadFolder(jobId?: string): Promise<void> {
  *
  * One subscription to the engine for the whole app, rather than one per screen
  * that wants to know about downloads. It also owns what has to outlive a page
- * visit: the throughput history (sampled on a one-second clock, so its slots
- * always mean seconds no matter how many transfers report), which transfers a
+ * visit: the throughput history (sampled on its own clock, so its slots always
+ * cover the same minute no matter how many transfers report), which transfers a
  * bulk pause stopped, the last action's error, and the landscape artwork
  * lookups. Everything resets when the bound account changes.
  */
@@ -175,14 +178,13 @@ export interface DownloadsSnapshot {
   error: string | null
   /** The last pause, resume, removal or folder action failed with this. */
   actionError: string | null
-  /** Combined transfer rate in MB/s, one sample per second, oldest first. */
+  /** Combined transfer rate in MB/s, one sample per chart bar, oldest first. */
   throughput: readonly number[]
   /** Nothing is moving and something a bulk pause stopped is waiting. */
   pausedAll: boolean
   directory: DirectoryInfo | null
 }
 
-const SAMPLE_MS = 1_000
 
 let snapshot: DownloadsSnapshot = {
   downloads: [],
@@ -364,7 +366,7 @@ export async function clearDownloadsAccount(): Promise<void> {
 function updateSampler(): void {
   if (sampler !== null) return
   if (!snapshot.downloads.some((item) => item.status === 'downloading')) return
-  sampler = window.setInterval(sampleThroughput, SAMPLE_MS)
+  sampler = window.setInterval(sampleThroughput, THROUGHPUT_SAMPLE_MS)
 }
 
 function sampleThroughput(): void {
@@ -374,7 +376,7 @@ function sampleThroughput(): void {
   // Transfers are the only sustained throughput this app produces, so they are
   // also the only honest measurement of the line behind it. Megabits, because
   // the number is compared with what a line is sold as; and only these
-  // once-a-second samples of the engine's windowed rate, since a raw progress
+  // periodic samples of the engine's windowed rate, since a raw progress
   // slice would record a burst as the line speed.
   const lineMbps = (bytesPerSecond * 8) / 1_000_000
   if (isNewLinePeak(lineMbps, getLocalPrefs().measuredLineMbps)) {

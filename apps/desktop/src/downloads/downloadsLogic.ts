@@ -124,8 +124,11 @@ export function formatDownloadBytes(value: number): string {
   return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`
 }
 
-/** The throughput strip keeps one sample per second for this many seconds. */
-export const THROUGHPUT_SLOTS = 30
+/** The throughput chart's bars, which together cover one rolling minute. */
+export const THROUGHPUT_SLOTS = 28
+export const THROUGHPUT_WINDOW_MS = 60_000
+/** One sample per bar, so the window always spans the same minute. */
+export const THROUGHPUT_SAMPLE_MS = THROUGHPUT_WINDOW_MS / THROUGHPUT_SLOTS
 
 /** Appends one sample, dropping the oldest once the window is full. */
 export function pushThroughputSample(samples: readonly number[], value: number): number[] {
