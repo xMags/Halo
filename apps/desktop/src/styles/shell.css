@@ -37,40 +37,6 @@
   gap: 10px;
   padding-left: 12px;
 }
-/* The account's picture before the caption buttons: a 24px disc, as Windows
-   apps show the signed-in account in their title bar. */
-.tb-avatar {
-  flex: 0 0 24px;
-  width: 24px;
-  height: 24px;
-  margin-right: 8px;
-  padding: 0;
-  border: 1px solid var(--cs);
-  border-radius: 50%;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--cd);
-  color: var(--t2);
-  cursor: pointer;
-}
-.tb-avatar:hover {
-  border-color: var(--ac);
-}
-.tb-avatar:focus-visible {
-  outline: 2px solid var(--ac);
-  outline-offset: 1px;
-}
-.tb-avatar-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.tb-avatar-initial {
-  font-size: 12px;
-  font-weight: 600;
-}
 .titlebar-brand {
   display: flex;
   align-items: center;

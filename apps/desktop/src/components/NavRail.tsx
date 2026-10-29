@@ -1,4 +1,5 @@
 import avatar from '../assets/user-avatar.png'
+import { useAccountPicture } from '../auth/accountPicture'
 import { accountLabel, DEVICE_ACCOUNT_LABEL, DEVICE_ACCOUNT_NAME } from '../auth/accountLabel'
 import { useSession } from '../auth/session'
 import { useTitleMenu } from '../browse/titleMenu'
@@ -64,6 +65,8 @@ export function NavRail({ open, onToggle }: NavRailProps) {
   const onDevice = state === 'device'
   const name = onDevice ? DEVICE_ACCOUNT_NAME : me?.username ?? ''
   const role = onDevice ? DEVICE_ACCOUNT_LABEL : accountLabel(me)
+  // The account's own picture when it has one; the stock avatar otherwise.
+  const picture = useAccountPicture()
 
   return (
     <nav className={`nav ${open ? '' : 'nav-compact'}`}>
@@ -130,7 +133,7 @@ export function NavRail({ open, onToggle }: NavRailProps) {
         title={open || !name ? 'Server & account' : name}
         onClick={() => setRoot('settings')}
       >
-        <img className="account-avatar" src={avatar} alt="" draggable={false} />
+        <img className="account-avatar" src={picture ?? avatar} alt="" draggable={false} />
         <span className="nav-lines account-lines">
           <span className="account-name ellipsis">{name}</span>
           <span className="account-role ellipsis">{role}</span>
