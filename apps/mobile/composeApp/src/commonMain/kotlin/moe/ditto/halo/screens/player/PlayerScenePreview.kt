@@ -221,6 +221,7 @@ private fun PlayerSceneContent(scene: PlayerScene, controller: PlayerScreenContr
                 episodeTag = PlayerFixtures.CurrentEpisode.tag,
                 episodeName = PlayerFixtures.EpisodeName,
                 streamBadges = PlayerFixtures.StreamBadges,
+                reserveEnd = 0.dp,
                 locked = controller.locked,
                 onBack = {},
                 // The gallery shows the pill as a device with native PiP draws

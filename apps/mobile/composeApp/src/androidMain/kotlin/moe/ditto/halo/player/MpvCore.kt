@@ -32,6 +32,7 @@ internal class MpvCore private constructor(
         /** Null once the cache stops stalling playback. */
         fun onBuffering(buffering: PlayerBuffering?)
         fun onBufferedPosition(positionSeconds: Double)
+        fun onVideoFormat(format: VideoFormat)
         fun onEnded()
         fun onError(message: String)
     }
@@ -50,6 +51,9 @@ internal class MpvCore private constructor(
     // the overlay needs both at once.
     @Volatile private var pausedForCache = false
     @Volatile private var cacheFillPercent: Int? = null
+    // The decoded picture, assembled from four separate observations and only
+    // touched on the callback executor. Reported whole, and only when it moves.
+    private var videoFormat = VideoFormat()
     // END_FILE's reason is hidden by this JNI binding. The small state machine
     // distinguishes a real failure from the END_FILE that loadfile emits for
     // the file it replaced, and serializes the caller, event and log threads.
@@ -98,7 +102,9 @@ internal class MpvCore private constructor(
             dispatch { handleProperty(property, value) }
         }
 
-        override fun eventProperty(property: String, value: String) { /* unused */ }
+        override fun eventProperty(property: String, value: String) {
+            dispatch { handleProperty(property, value) }
+        }
 
         override fun event(eventId: Int) {
             dispatch { handleEvent(eventId) }
@@ -125,12 +131,35 @@ internal class MpvCore private constructor(
     private fun handleProperty(property: String) {
         when (property) {
             "sid", "aid" -> emitTracks()
+            // A value-less observation of the picture means mpv has none right
+            // now (between files, or audio only), so that part of it is gone.
+            VideoWidth -> updateVideoFormat(videoFormat.copy(width = 0))
+            VideoHeight -> updateVideoFormat(videoFormat.copy(height = 0))
+            VideoGamma -> updateVideoFormat(videoFormat.copy(gamma = null))
+            VideoColorMatrix -> updateVideoFormat(videoFormat.copy(dolbyVision = false))
         }
+    }
+
+    private fun handleProperty(property: String, value: String) {
+        when (property) {
+            VideoGamma -> updateVideoFormat(videoFormat.copy(gamma = value.ifEmpty { null }))
+            // mpv names a Dolby Vision stream through its colour matrix; there
+            // is no profile property to read on this path.
+            VideoColorMatrix -> updateVideoFormat(videoFormat.copy(dolbyVision = value == "dolbyvision"))
+        }
+    }
+
+    private fun updateVideoFormat(next: VideoFormat) {
+        if (next == videoFormat) return
+        videoFormat = next
+        listener?.onVideoFormat(next)
     }
 
     private fun handleProperty(property: String, value: Long) {
         when (property) {
             "track-list/count" -> emitTracks()
+            VideoWidth -> updateVideoFormat(videoFormat.copy(width = value.toInt().coerceAtLeast(0)))
+            VideoHeight -> updateVideoFormat(videoFormat.copy(height = value.toInt().coerceAtLeast(0)))
             "cache-buffering-state" -> {
                 cacheFillPercent = value.toInt()
                 if (pausedForCache) emitBuffering()
@@ -466,6 +495,12 @@ internal class MpvCore private constructor(
             mpv.observeProperty("paused-for-cache", MPVLib.MpvFormat.MPV_FORMAT_FLAG)
             mpv.observeProperty("cache-buffering-state", MPVLib.MpvFormat.MPV_FORMAT_INT64)
             mpv.observeProperty("demuxer-cache-time", MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
+            // The decoded picture, for the quality medal: the same four
+            // properties the desktop player reads.
+            mpv.observeProperty(VideoWidth, MPVLib.MpvFormat.MPV_FORMAT_INT64)
+            mpv.observeProperty(VideoHeight, MPVLib.MpvFormat.MPV_FORMAT_INT64)
+            mpv.observeProperty(VideoGamma, MPVLib.MpvFormat.MPV_FORMAT_STRING)
+            mpv.observeProperty(VideoColorMatrix, MPVLib.MpvFormat.MPV_FORMAT_STRING)
             return core
         }
     }
@@ -532,3 +567,8 @@ internal class MpvFileLifecycle {
         lastErrorMessage ?: "Playback ended unexpectedly."
     }
 }
+
+private const val VideoWidth = "video-params/dw"
+private const val VideoHeight = "video-params/dh"
+private const val VideoGamma = "video-params/gamma"
+private const val VideoColorMatrix = "video-params/colormatrix"

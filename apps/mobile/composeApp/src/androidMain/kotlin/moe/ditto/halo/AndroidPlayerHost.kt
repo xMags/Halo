@@ -24,6 +24,7 @@ import moe.ditto.halo.player.PlayerBuffering
 import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerPort
 import moe.ditto.halo.player.PlayerTracks
+import moe.ditto.halo.player.VideoFormat
 
 /**
  * Android-side owner of one libmpv core and one render [SurfaceView], kept above
@@ -120,6 +121,9 @@ internal class AndroidMpvPlayerHost(
 
         override fun onBufferedPosition(positionSeconds: Double) =
             emitFromCore(generation, PlayerEvent.BufferedPositionChanged(positionSeconds))
+
+        override fun onVideoFormat(format: VideoFormat) =
+            emitFromCore(generation, PlayerEvent.VideoFormatChanged(format))
 
         override fun onEnded() = emitFromCore(generation, PlayerEvent.NaturalEnd)
         override fun onError(message: String) = emitFromCore(generation, PlayerEvent.Error(message))

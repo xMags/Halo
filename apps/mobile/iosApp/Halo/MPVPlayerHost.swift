@@ -156,6 +156,8 @@ final class MPVPlayerHost: NSObject, HaloIosPlayerHost {
             )
         case .bufferedPosition(let seconds):
             sink.onBufferedPositionChanged(positionSeconds: seconds)
+        case .videoFormat(let width, let height, let gamma, let dolbyVision):
+            sink.onVideoFormatChanged(width: width, height: height, gamma: gamma, dolbyVision: dolbyVision)
         case .ended:
             sink.onEnded()
         case .error(let message):

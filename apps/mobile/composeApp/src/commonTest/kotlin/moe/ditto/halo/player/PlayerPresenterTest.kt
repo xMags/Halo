@@ -217,6 +217,19 @@ class PlayerPresenterTest {
     }
 
     @Test
+    fun theDecodedPictureIsKeptAndANewSourceStartsWithout() = runTest {
+        val presenter = PlayerPresenter(RecordingPlayerPort())
+        presenter.start(first)
+        val format = VideoFormat(width = 3840, height = 1600, gamma = "pq", dolbyVision = false)
+
+        presenter.onEvent(PlayerEvent.VideoFormatChanged(format))
+        assertEquals(format, presenter.state.videoFormat)
+
+        presenter.start(first)
+        assertEquals(VideoFormat(), presenter.state.videoFormat)
+    }
+
+    @Test
     fun bufferingStateClearsAtNaturalEnd() = runTest {
         val presenter = PlayerPresenter(RecordingPlayerPort())
         presenter.start(first)
