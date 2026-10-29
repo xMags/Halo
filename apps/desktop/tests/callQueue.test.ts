@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createCallQueue } from '../src/player/callQueue.ts'
+import { createCallQueue } from '../src/callQueue.ts'
 
 const later = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 

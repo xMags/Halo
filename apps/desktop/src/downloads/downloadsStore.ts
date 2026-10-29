@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useSyncExternalStore } from 'react'
 import { getClient } from '../api'
+import { createCallQueue } from '../callQueue'
 import {
   downloadEtaSeconds,
   downloadFailureMessage,
@@ -318,10 +319,19 @@ async function refreshDirectory(): Promise<void> {
   }
 }
 
+/**
+ * Binding, clearing and moving the engine's account, one at a time in the
+ * order they were asked for. They are async commands, which the app does not
+ * run in arrival order, and the account binding clears the old owner and binds
+ * the new one back to back (a sign-in, a reload): a clear landing after the
+ * bind left no account bound, and every download refused to start.
+ */
+const accountCalls = createCallQueue()
+
 /** Binds the engine to an account; `accountKey` is the opaque download owner. */
 export async function setDownloadsAccount(accountKey: string): Promise<DownloadView[]> {
   ensureStarted()
-  const downloads = await invoke<DownloadView[]>('downloads_set_account', { accountKey })
+  const downloads = await accountCalls(() => invoke<DownloadView[]>('downloads_set_account', { accountKey }))
   if (accountKey !== boundAccount) resetForAccount(accountKey)
   setRecords(downloads)
   publish({ loading: false })
@@ -336,14 +346,16 @@ export async function setDownloadsAccount(accountKey: string): Promise<DownloadV
  */
 export async function adoptDownloads(fromAccountKey: string, toAccountKey: string): Promise<void> {
   ensureStarted()
-  const downloads = await invoke<DownloadView[]>('downloads_adopt_account', { fromAccountKey, toAccountKey })
+  const downloads = await accountCalls(() =>
+    invoke<DownloadView[]>('downloads_adopt_account', { fromAccountKey, toAccountKey }),
+  )
   if (boundAccount !== toAccountKey) return
   setRecords(downloads)
   publish({ loading: false })
 }
 
 export async function clearDownloadsAccount(): Promise<void> {
-  await invoke('downloads_clear_account')
+  await accountCalls(() => invoke('downloads_clear_account'))
   resetForAccount(null)
 }
 
