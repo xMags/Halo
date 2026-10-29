@@ -209,6 +209,7 @@ internal fun SearchScreen(
                                     record(trimmed)
                                     onOpenDetail(item.metaRef())
                                 },
+                                itemMenu = posterMenu(remember(saved) { saved.map { it.metaPreview() } }),
                                 posterWidth = posterWidth,
                                 showLabels = true,
                                 gutter = gutter,
@@ -239,6 +240,7 @@ internal fun SearchScreen(
                                 record(trimmed)
                                 onOpenDetail(item.metaRef())
                             },
+                            itemMenu = posterMenu(group.metas),
                             posterWidth = posterWidth,
                             showLabels = true,
                             gutter = gutter,

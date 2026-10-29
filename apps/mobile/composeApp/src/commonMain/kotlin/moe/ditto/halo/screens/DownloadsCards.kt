@@ -68,6 +68,7 @@ import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.HaloType
+import moe.ditto.halo.ui.longPressClickable
 import moe.ditto.halo.ui.monoStyle
 
 /**
@@ -140,6 +141,8 @@ internal fun DownloadTransferCard(
     onResume: () -> Unit,
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The long-press menu. A tap on a transfer does nothing; its buttons act. */
+    menu: (() -> Unit)? = null,
 ) {
     // The card is as tall as its words, and the art stretches to meet them.
     // Sized the other way round — art holding its own 2:3 — a queued card with
@@ -158,6 +161,7 @@ internal fun DownloadTransferCard(
             .clip(CardShape)
             .background(Brush.linearGradient(CardFill))
             .border(1.dp, HaloColors.GlassBorder, CardShape)
+            .longPressClickable(onClick = {}, role = null, onLongPress = menu)
             .padding(CardPadding),
     ) {
         Box(Modifier.matchParentSize()) {
@@ -243,6 +247,7 @@ internal fun DownloadReadyRow(
     onPlay: () -> Unit,
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
+    menu: (() -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -250,7 +255,7 @@ internal fun DownloadReadyRow(
             .clip(CardShape)
             .background(Brush.linearGradient(if (selected) SelectedCardFill else CardFill))
             .border(1.dp, if (selected) SelectedCardBorder else HaloColors.GlassBorder, CardShape)
-            .clickable(role = Role.Button, onClick = onClick)
+            .longPressClickable(onClick = onClick, onLongPress = menu)
             .padding(CardPadding),
         horizontalArrangement = Arrangement.spacedBy(CardGap),
         verticalAlignment = Alignment.CenterVertically,

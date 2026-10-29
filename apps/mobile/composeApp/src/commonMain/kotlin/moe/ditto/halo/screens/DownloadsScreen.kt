@@ -310,6 +310,7 @@ private fun DownloadsList(
                     onResume = { scope.launch { downloads.resume(entry.videoId) } },
                     onRemove = { onRemove(entry) },
                     modifier = Modifier.padding(start = gutter, end = gutter, bottom = HaloSpacing.Sm + 2.dp),
+                    menu = LocalTitleMenus.current?.let { menus -> { menus.openDownload(entry) } },
                 )
             }
         }
@@ -364,6 +365,7 @@ private fun LazyListScope.readyRows(
             onPlay = { onPlay(entry) },
             onRemove = { onRemove(entry) },
             modifier = Modifier.padding(start = gutter, end = gutter, bottom = HaloSpacing.Sm),
+            menu = LocalTitleMenus.current?.let { menus -> { menus.openDownload(entry) } },
         )
     }
 }

@@ -63,6 +63,7 @@ import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.HeroScrim
 import moe.ditto.halo.ui.MetaLine
 import moe.ditto.halo.ui.PosterItem
+import moe.ditto.halo.ui.longPressClickable
 import moe.ditto.halo.ui.rememberResponsive
 
 /**
@@ -248,6 +249,7 @@ internal fun HomeScreen(
                     title = "Recently watched",
                     items = shelves.recentlyWatched.map { it.posterItem() },
                     onItemClick = { onOpenDetail(it.metaRef()) },
+                    itemMenu = posterMenu(shelves.recentlyWatched),
                     posterWidth = responsive.shelfPosterWidth,
                     gutter = gutter,
                     gap = responsive.catalogRowGap,
@@ -265,6 +267,7 @@ internal fun HomeScreen(
                         library.value.orEmpty().count { !it.isRemoved },
                     items = shelves.library.map { it.posterItem() },
                     onItemClick = { onOpenDetail(it.metaRef()) },
+                    itemMenu = posterMenu(shelves.library),
                     posterWidth = responsive.shelfPosterWidth,
                     gutter = gutter,
                     gap = responsive.catalogRowGap,
@@ -322,11 +325,14 @@ private fun ContinueWatchingRow(
             }
         }
     }
+    val menus = LocalTitleMenus.current
     CatalogRow(
         title = "Continue watching",
         source = "${entries.size} IN PROGRESS",
         items = items,
         onItemClick = onItemClick,
+        // A card's key is its item id, the same `type:metaId` form.
+        itemMenu = menus?.let { m -> { item -> entries.firstOrNull { it.itemId == item.key }?.let(m::openContinue) } },
         posterWidth = posterWidth,
         gutter = gutter,
         gap = gap,
@@ -379,6 +385,7 @@ private fun HomeCatalogRow(
         source = spec.source,
         items = remember(metas) { metas.orEmpty().map { it.posterItem() } },
         onItemClick = { onOpenDetail(it.metaRef()) },
+        itemMenu = posterMenu(metas.orEmpty()),
         posterWidth = posterWidth,
         isLoading = metas == null && state.error == null,
         gutter = gutter,
@@ -401,6 +408,7 @@ private fun FeaturedHero(
     onOpen: () -> Unit,
     onPlay: () -> Unit,
 ) {
+    val menus = LocalTitleMenus.current
     Box(
         Modifier
             .padding(start = gutter, end = gutter)
@@ -409,7 +417,7 @@ private fun FeaturedHero(
             .height(height)
             .clip(RoundedCornerShape(HaloRadius.Xl))
             .background(HaloColors.Surface)
-            .clickable(onClick = onOpen),
+            .longPressClickable(onClick = onOpen, role = null, onLongPress = menus?.let { { it.openPoster(card) } }),
     ) {
         // Wide art when the addon has it, the poster cropped otherwise — a
         // hero with no image at all reads as a broken layout.
