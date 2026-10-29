@@ -5,13 +5,21 @@
   gap: 14px;
   padding: 0 var(--gu);
 }
-/* The native GridView: items 4px apart (GridViewItem's 0,0,4,4 margin), and
-   each card carries the 4px band above its art that it lifts into on hover. */
+/* The native GridView's 4px between items, and each card carries the 4px
+   band above its art that it lifts into on hover. Unlike the native grid's
+   fixed-width items, the columns share the whole width: as many as fit at the
+   poster width, stretched to fill the row, so a wide window leaves no empty
+   band at the right. The loading placeholders stretch the same way. */
 .lib-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--pw), 1fr));
   gap: 4px;
   padding: 16px var(--gu) 32px;
+}
+.lib-grid > .poster,
+.lib-grid > .poster-skeleton {
+  width: auto;
+  min-width: 0;
 }
 .lib-grid > .poster {
   padding-top: 4px;
