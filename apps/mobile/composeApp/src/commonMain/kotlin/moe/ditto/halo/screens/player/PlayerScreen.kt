@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -209,6 +210,47 @@ internal fun PlayerScreen(
         }
     }
 
+    // What waits for this item's file to be open, from the latest open. A
+    // retry cancels it before loading again: after a failure the engine
+    // reports nothing more for the failed load, so a wait left behind would
+    // only ever fire on the retry's load, alongside the retry's own.
+    var openFollowUps by remember(item) { mutableStateOf<Job?>(null) }
+
+    /**
+     * Loads this item, then, once its file is open, puts it back where it was
+     * left and adds a download's own subtitle. The first open and the error
+     * card's retry both go through here, because a reload starts the file from
+     * the top with none of its added subtitles. [onOpened] runs after those,
+     * still only once the file is open.
+     *
+     * The follow-ups are launched into the caller's scope so that they never
+     * hold up what the caller does next.
+     */
+    suspend fun CoroutineScope.openItem(onOpened: () -> Unit = {}) {
+        openFollowUps?.cancel()
+        playback.play(item)
+        openFollowUps = launch {
+            // Back to where this video was left, once its file is open and its
+            // length known. Playback is not held for it: the history is normally
+            // cached already, and when it is not the wait for it is bounded.
+            launch {
+                val saved = graph.watchStates.loadedProgressFor(context.videoId, ResumeHistoryWaitMillis)
+                    ?: return@launch
+                val opened = playback.state.first { it.current == item && it.durationSeconds != null }
+                resumePosition(saved, opened.durationSeconds)?.let { playback.seekTo(it) }
+            }
+            // A downloaded video carries its subtitle beside it, added directly
+            // rather than through the addon path: the file is already here, and
+            // the network this would otherwise ask may not be. Only once the file
+            // is open (its length known; a pause report alone can mark it playing
+            // mid-load), because mpv refuses a subtitle while a load is pending and
+            // nothing reports that refusal.
+            playback.state.first { it.current == item && it.durationSeconds != null }
+            context.localSubtitlePath?.let { path -> playback.addSubtitle(path) }
+            onOpened()
+        }
+    }
+
     // Stored appearance first, then the source: applying it afterwards would
     // show the first caption in the wrong size and correct it a frame later.
     // The write-back is debounced because the size slider emits continuously
@@ -219,28 +261,7 @@ internal fun PlayerScreen(
         val settings = graph.settings.current()
         val stored = subtitleStyleOf(settings)
         playback.applySubtitleStyle(stored)
-        playback.play(item)
-        // Back to where this video was left, once its file is open and its
-        // length known. Playback is not held for it: the history is normally
-        // cached already, and when it is not the wait for it is bounded.
-        launch {
-            val saved = graph.watchStates.loadedProgressFor(context.videoId, ResumeHistoryWaitMillis)
-                ?: return@launch
-            val opened = playback.state.first { it.current == item && it.durationSeconds != null }
-            resumePosition(saved, opened.durationSeconds)?.let { playback.seekTo(it) }
-        }
-        // A downloaded video carries its subtitle beside it, added directly
-        // rather than through the addon path: the file is already here, and
-        // the network this would otherwise ask may not be. Only once the file
-        // is open (its length known; a pause report alone can mark it playing
-        // mid-load), because mpv refuses a subtitle while a load is pending and
-        // nothing reports that refusal.
-        context.localSubtitlePath?.let { path ->
-            launch {
-                playback.state.first { it.current == item && it.durationSeconds != null }
-                playback.addSubtitle(path)
-            }
-        }
+        openItem()
 
         val storedPreference = SubtitlePreference(stored.scale, stored.font)
         playback.state
@@ -327,11 +348,15 @@ internal fun PlayerScreen(
     // to pick between them. Re-running on a later track list would fight the
     // viewer, so the guard is a claim rather than a comparison.
     var selectionApplied by remember(item) { mutableStateOf(false) }
+    // Bumped when a retry hands the claim back, so the selection runs again
+    // even if nothing else it watches has changed by then.
+    var selectionRound by remember(item) { mutableStateOf(0) }
     // A download has no addon query; otherwise its first answer has to be in,
     // since the query starts out as an empty result that is not fetching yet.
     val addonSubtitlesKnown = context.isDownload || addonSubtitleState.value != null || addonSubtitleState.error != null
     LaunchedEffect(
         item,
+        selectionRound,
         ownState,
         state.tracks,
         fingerprintSettled,
@@ -921,7 +946,27 @@ internal fun PlayerScreen(
         if (state.status == PlaybackStatus.Failed) {
             PlaybackErrorCard(
                 engineMessage = state.error,
-                onRetry = { scope.launch { playback.play(item) } },
+                onRetry = {
+                    // The reload drops every subtitle the failed one had, so
+                    // whatever was being added or shown from an addon is over.
+                    externalSubtitleSelection.supersede()
+                    externalSubtitleJob?.cancel()
+                    subtitleLoadError = null
+                    controller.selectAddonSubtitle(null)
+                    scope.launch {
+                        openItem(
+                            // Handed back only once the file is open again: the
+                            // addon results are already in, so a claim handed
+                            // back at once would choose while the load is
+                            // pending, before the file's own tracks exist and
+                            // when mpv would refuse an addon subtitle.
+                            onOpened = {
+                                selectionApplied = false
+                                selectionRound += 1
+                            },
+                        )
+                    }
+                },
                 onPickAnotherSource = { leaveTo(onPickAnotherSource) },
             )
         }
