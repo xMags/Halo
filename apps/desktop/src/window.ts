@@ -18,6 +18,14 @@ export function toggleMaximizeWindow(): void {
   void getCurrentWindow().toggleMaximize()
 }
 
+/**
+ * Tells the shell the page has rendered, which is when the window, created
+ * hidden, is shown: before then it would be a black frame with no title bar.
+ */
+export function revealWindow(): void {
+  void invoke('app_ready').catch(() => undefined)
+}
+
 export function closeWindow(): void {
   void getCurrentWindow().close()
 }

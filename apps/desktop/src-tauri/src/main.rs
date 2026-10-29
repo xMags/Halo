@@ -21,7 +21,9 @@ mod window_icon;
 mod window_menu;
 mod window_placement;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
@@ -526,6 +528,35 @@ async fn scrub_preview_request(
     Ok(tauri::ipc::Response::new(scrub_preview::encode(frame)))
 }
 
+/// The main window starts hidden (`visible: false` in tauri.conf.json) and is
+/// shown once the page has rendered. It is undecorated, its title bar and
+/// buttons are part of the page, so showing it before then gave a black
+/// rectangle with nothing to move, minimise or close for as long as WebView2
+/// and the app's code took to load.
+struct WindowReveal(AtomicBool);
+
+/// A page that never reports in (a load failure, a crash) still gets a window,
+/// so the app can never start invisible.
+const REVEAL_FALLBACK: Duration = Duration::from_secs(4);
+
+/// Shows and focuses the main window, once; later calls do nothing. Runs on
+/// the main thread: window calls belong there.
+fn reveal_main_window(app: &tauri::AppHandle) {
+    if app.state::<WindowReveal>().0.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// The page has committed its first render.
+#[tauri::command]
+fn app_ready(app: tauri::AppHandle) {
+    reveal_main_window(&app);
+}
+
 fn main() {
     // Before any window exists, or an overlay's hook DLL is already in.
     injection_guard::refuse_extension_points();
@@ -534,12 +565,14 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(window_placement::FullscreenPlacement::default())
+        .manage(WindowReveal(AtomicBool::new(false)))
         .manage(discord::PresenceService::new(
             false,
             Box::new(discord::NamedPipeTransport::default()),
             discord::RETRY_DELAY,
         ))
         .invoke_handler(tauri::generate_handler![
+            app_ready,
             mpv_cmd,
             mpv_set,
             mpv_get,
@@ -588,6 +621,13 @@ fn main() {
 
             let window = app.get_webview_window("main").expect("main window");
             let hwnd = window.hwnd()?.0 as isize;
+
+            let reveal = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(REVEAL_FALLBACK);
+                let on_main = reveal.clone();
+                let _ = reveal.run_on_main_thread(move || reveal_main_window(&on_main));
+            });
 
             // `transparent: true` in tauri.conf.json is required so wry gives
             // the WebView2 a transparent background — but tao also blur-behinds
