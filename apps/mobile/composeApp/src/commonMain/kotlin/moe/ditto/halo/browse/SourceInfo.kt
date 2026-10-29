@@ -94,14 +94,24 @@ private val Quality720 = ignoreCase("""\b720p?\b|\bhd\b""")
 private val Quality480 = ignoreCase("""\b480p?\b""")
 private val QualitySd = ignoreCase("""\b(sd|cam|ts)\b""")
 
-private fun matchQuality(text: String): SourceQuality? = when {
-    Quality2160.containsMatchIn(text) -> SourceQuality.P2160
-    Quality1440.containsMatchIn(text) -> SourceQuality.P1440
-    Quality1080.containsMatchIn(text) -> SourceQuality.P1080
-    Quality720.containsMatchIn(text) -> SourceQuality.P720
-    Quality480.containsMatchIn(text) -> SourceQuality.P480
-    QualitySd.containsMatchIn(text) -> SourceQuality.SD
-    else -> null
+/**
+ * Tokens that read as a quality but are not: the DTS-HD audio codec ("HD"
+ * would claim 720p) and a `.ts` file extension ending a line ("TS" would
+ * claim a telesync).
+ */
+private val QualityLookalikes = Regex("""\bdts[-. ]?hd\b|\.ts$""", setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE))
+
+private fun matchQuality(source: String): SourceQuality? {
+    val text = source.replace(QualityLookalikes, " ")
+    return when {
+        Quality2160.containsMatchIn(text) -> SourceQuality.P2160
+        Quality1440.containsMatchIn(text) -> SourceQuality.P1440
+        Quality1080.containsMatchIn(text) -> SourceQuality.P1080
+        Quality720.containsMatchIn(text) -> SourceQuality.P720
+        Quality480.containsMatchIn(text) -> SourceQuality.P480
+        QualitySd.containsMatchIn(text) -> SourceQuality.SD
+        else -> null
+    }
 }
 
 private val DolbyVisionWords = ignoreCase("""\b(dolby[ .]?vision|dovi)\b""")

@@ -46,7 +46,15 @@ function searchText(stream: Stream): string {
     .join('\n')
 }
 
-function matchQuality(text: string): Quality | null {
+/**
+ * Tokens that read as a quality but are not: the DTS-HD audio codec ("HD"
+ * would claim 720p) and a `.ts` file extension ending a line ("TS" would
+ * claim a telesync).
+ */
+const QUALITY_LOOKALIKES = /\bdts[-. ]?hd\b|\.ts$/gim
+
+function matchQuality(source: string): Quality | null {
+  const text = source.replace(QUALITY_LOOKALIKES, ' ')
   if (/\b(2160p?|4k|uhd)\b/i.test(text)) return '2160p'
   if (/\b1440p\b/i.test(text)) return '1440p'
   if (/\b1080p?\b|\bfullhd\b/i.test(text)) return '1080p'

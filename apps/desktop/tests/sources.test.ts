@@ -209,3 +209,14 @@ test('audio codecs read with their channel count glued on', () => {
   // A letter after the name is another word, not this codec.
   assert.equal(audio('Film.1080p.Ddplus.x264'), null)
 })
+
+test('the DTS-HD codec and a .ts extension are not read as a quality', () => {
+  const quality = (title: string) => parseStreamInfo({ url: 'https://cdn.test/x', title }).quality
+  assert.equal(quality('Movie.BluRay.DTS-HD.MA.5.1-GRP'), null)
+  assert.equal(quality('Movie.BluRay.DTSHD-GRP'), null)
+  assert.equal(quality('Movie.Remux-GRP.ts\n💾 20 GB'), null)
+  // The real tokens still count.
+  assert.equal(quality('Movie.HD.WEB.DTS-HD-GRP'), '720p')
+  assert.equal(quality('Movie.2023.TS.x264-GRP'), 'SD')
+  assert.equal(quality('Movie.1080p.DTS-HD.MA.5.1'), '1080p')
+})
