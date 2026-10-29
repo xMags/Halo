@@ -49,6 +49,7 @@ import moe.ditto.halo.api.MetaPreview
 import moe.ditto.halo.api.playableFromPreview
 import moe.ditto.halo.browse.CatalogRowSpec
 import moe.ditto.halo.browse.ContinueEntry
+import moe.ditto.halo.browse.catalogExtra
 import moe.ditto.halo.browse.catalogRows
 import moe.ditto.halo.browse.homeShelves
 import moe.ditto.halo.browse.matchesTypeFilter
@@ -94,6 +95,11 @@ internal fun HomeScreen(
     // Tombstones included: the shelf derivation filters them itself, because it
     // also has to keep a removed entry from naming a watch-state row.
     val library by remember(graph) { graph.library.observe() }.collectAsState(QueryState())
+    // Only for the language rows' language. Until it is known (or known not to
+    // load) those rows wait, rather than load in the default language first.
+    val settings by remember(graph) { graph.settings.observe() }.collectAsState(QueryState())
+    val settingsReady = settings.value != null || settings.error != null
+    val catalogLanguage = settings.value?.catalogLanguage
 
     val allRows = remember(addons.value) { catalogRows(addons.value.orEmpty()) }
     val rows = remember(allRows, filter) {
@@ -277,9 +283,14 @@ internal fun HomeScreen(
         }
 
         items(items = rows, key = { it.key }) { spec ->
+            val extra = remember(spec, catalogLanguage) { catalogExtra(spec.languageChoices, catalogLanguage) }
+            // A language row's earlier result belongs to the language it was asked in.
+            val knownKey = if (extra.isEmpty()) spec.key else "${spec.key}|$extra"
             HomeCatalogRow(
                 graph = graph,
                 spec = spec,
+                extra = extra,
+                ready = spec.languageChoices == null || settingsReady,
                 // Catalog rows run narrower than the personal shelves on
                 // purpose: those are a handful of cards, these are an endless
                 // strip.
@@ -287,8 +298,8 @@ internal fun HomeScreen(
                 gutter = gutter,
                 gap = responsive.catalogRowGap,
                 bottomPadding = rowGap,
-                known = knownCatalogs[spec.key],
-                onKnown = { knownCatalogs[spec.key] = it },
+                known = knownCatalogs[knownKey],
+                onKnown = { knownCatalogs[knownKey] = it },
                 onOpenDetail = onOpenDetail,
             )
         }
@@ -365,6 +376,10 @@ private val BodyStateHeight = 420.dp
 private fun HomeCatalogRow(
     graph: SessionGraph,
     spec: CatalogRowSpec,
+    /** What the catalog is asked with: a language row's chosen language, or nothing. */
+    extra: Map<String, String>,
+    /** False while a language row waits to learn its language. */
+    ready: Boolean,
     posterWidth: Dp,
     gutter: Dp,
     gap: Dp,
@@ -374,8 +389,8 @@ private fun HomeCatalogRow(
     onKnown: (List<MetaPreview>) -> Unit,
     onOpenDetail: (MetaRef) -> Unit,
 ) {
-    val state by remember(graph, spec.key) {
-        graph.browse.catalog(spec.addonId, spec.type, spec.catalogId)
+    val state by remember(graph, spec.key, extra, ready) {
+        graph.browse.catalog(spec.addonId, spec.type, spec.catalogId, enabled = ready, extra = extra)
     }.collectAsState(QueryState(value = known))
     LaunchedEffect(state.value) { state.value?.let(onKnown) }
 

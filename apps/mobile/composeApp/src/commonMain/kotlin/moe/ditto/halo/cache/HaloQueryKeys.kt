@@ -21,7 +21,13 @@ sealed class HaloKey(override val id: String, val staleMs: Long) : QueryKey {
         val addonId: String,
         val type: String,
         val catalogId: String,
-    ) : HaloKey("catalog/$addonId/$type/$catalogId", 10.minutes.inWholeMilliseconds)
+        /** What the catalog is asked with (a language row's language); each answer is its own entry. */
+        val extra: Map<String, String> = emptyMap(),
+    ) : HaloKey(
+        "catalog/$addonId/$type/$catalogId" +
+            extra.entries.sortedBy { it.key }.joinToString("") { "/${it.key}=${it.value}" },
+        10.minutes.inWholeMilliseconds,
+    )
 
     data class Meta(val type: String, val metaId: String) :
         HaloKey("meta/$type/$metaId", 10.minutes.inWholeMilliseconds)

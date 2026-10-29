@@ -232,6 +232,12 @@ data class UserSettings(val raw: JsonObject = EmptySettings) {
     val playbackRate: Double? get() = double("playbackRate")
     val autoplayNextEpisode: Boolean? get() = boolean("autoplayNextEpisode")
 
+    /**
+     * The language Home's language rows (TMDB's "Language" row) are asked for,
+     * as the row names it ("Hindi"); null leaves each row on its own default.
+     */
+    val catalogLanguage: String? get() = string("catalogLanguage")
+
     fun withPreferredAudioLang(value: String?) = put("preferredAudioLang", value?.let(::JsonPrimitive))
 
     fun withPreferredSubtitleLang(value: String?) = put("preferredSubtitleLang", value?.let(::JsonPrimitive))
@@ -249,6 +255,8 @@ data class UserSettings(val raw: JsonObject = EmptySettings) {
     fun withPlaybackRate(value: Double?) = put("playbackRate", value?.let(::JsonPrimitive))
 
     fun withAutoplayNextEpisode(value: Boolean?) = put("autoplayNextEpisode", value?.let(::JsonPrimitive))
+
+    fun withCatalogLanguage(value: String?) = put("catalogLanguage", value?.let(::JsonPrimitive))
 
     /** Sets [key], or removes it when [value] is null. Every other key survives untouched. */
     private fun put(key: String, value: JsonElement?): UserSettings =

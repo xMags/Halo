@@ -23,6 +23,7 @@ import moe.ditto.halo.api.AddonEntry
 import moe.ditto.halo.api.AddonsResponse
 import moe.ditto.halo.api.Me
 import moe.ditto.halo.api.UserSettings
+import moe.ditto.halo.browse.homeLanguageChoices
 import moe.ditto.halo.device.DefaultAddonUrls
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloSpacing
@@ -70,6 +71,8 @@ internal fun SettingsContent(
     onToggleCatalogs: (AddonEntry, AddonOwnership) -> Unit,
     onRemoveAddon: (AddonEntry, AddonOwnership) -> Unit,
     onOpenLanguage: (SettingsLanguageKind) -> Unit,
+    /** Opens the language picker for Home's language rows, with the languages they offer. */
+    onOpenCatalogLanguage: (List<String>) -> Unit,
     onAutoplayChange: (Boolean) -> Unit,
     onSignOut: () -> Unit,
     onSignIn: () -> Unit,
@@ -181,6 +184,28 @@ internal fun SettingsContent(
                         }
                     }
                 }
+            }
+        }
+
+        // Only when an installed addon has a language row (TMDB's "Language"
+        // row); with none, there is nothing for the setting to change.
+        val languageChoices = state.addons?.let { homeLanguageChoices(it.user + it.global) }
+        if (languageChoices != null) {
+            item(key = "home-label") { SettingsGroupLabel("Home") }
+            item(key = "home-card") {
+                SettingsCard {
+                    SettingValueRow(
+                        label = "Language rows",
+                        value = preferences.catalogLanguage?.takeIf { it in languageChoices } ?: "Addon default",
+                        enabled = state.settings != null && canMutate,
+                        onClick = { onOpenCatalogLanguage(languageChoices) },
+                    )
+                }
+                Text(
+                    text = "Rows such as TMDB's Language row show titles in this language.",
+                    style = HaloType.Caption,
+                    modifier = Modifier.padding(top = HaloSpacing.Sm, start = HaloSpacing.Xs),
+                )
             }
         }
 

@@ -40,9 +40,10 @@ class BrowseRepository(
         type: String,
         catalogId: String,
         enabled: Boolean = true,
+        extra: Map<String, String> = emptyMap(),
     ): Flow<QueryState<List<MetaPreview>>> {
-        val key = HaloKey.Catalog(addonId, type, catalogId)
-        return cache.query(key, key.staleMs, enabled) { client.getCatalog(addonId, type, catalogId).metas }
+        val key = HaloKey.Catalog(addonId, type, catalogId, extra)
+        return cache.query(key, key.staleMs, enabled) { client.getCatalog(addonId, type, catalogId, extra).metas }
     }
 
     /** Full metadata, from the first effective addon that can describe the id. */
