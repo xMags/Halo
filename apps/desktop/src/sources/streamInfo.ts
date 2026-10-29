@@ -109,6 +109,16 @@ function matchChannels(text: string, codec: string): string {
 
 const SIZE_RE = /(\d+(?:[.,]\d+)?)\s*(GB|GiB|MB|MiB)\b/i
 
+/**
+ * Whole bytes. A size read from text ("29.35 GB") multiplies out to a
+ * fraction, and an addon can send one too; anything that counts bytes, such as
+ * the download engine, refuses a fraction outright.
+ */
+function wholeBytes(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value) || value <= 0) return null
+  return Math.round(value)
+}
+
 function matchSize(text: string): number | null {
   const match = SIZE_RE.exec(text)
   if (!match) return null
@@ -194,7 +204,7 @@ export function parseStreamInfo(stream: Stream): StreamInfo {
     dynamicRange: matchDynamicRange(text),
     codec: matchCodec(text),
     audio: matchAudio(text),
-    sizeBytes: stream.behaviorHints?.videoSize ?? matchSize(text),
+    sizeBytes: wholeBytes(stream.behaviorHints?.videoSize) ?? wholeBytes(matchSize(text)),
     cached: matchCached(text),
     languages: matchLanguages(text),
     detail: detailLine(stream, filename),
