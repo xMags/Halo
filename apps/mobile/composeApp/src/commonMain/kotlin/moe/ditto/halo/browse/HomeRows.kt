@@ -12,6 +12,8 @@ data class ContinueEntry(
     val progress: Float,
     /** The video left partway, which is what resuming the card plays. */
     val videoId: String,
+    /** How much of that video is left, in seconds. */
+    val remainingSec: Double = 0.0,
 )
 
 /** Home's three personal shelves, above the catalog rows. */
@@ -84,7 +86,7 @@ private fun continueWatching(
         // one thing to resume, and would otherwise collide on the list key too.
         .filter { (state, _) -> seen.add(state.itemId) }
         .mapNotNull { (state, fraction) ->
-            watchStateMeta(state, library)?.let { ContinueEntry(it, state.itemId, fraction.toFloat(), state.videoId) }
+            watchStateMeta(state, library)?.let { ContinueEntry(it, state.itemId, fraction.toFloat(), state.videoId, state.durationSec - state.positionSec) }
         }
 }
 
