@@ -196,6 +196,8 @@ data class MetaDetail(
     override val behaviorHints: MetaBehaviorHints? = null,
     /** ISO date of the first release (Cinemeta), finer than [releaseInfo]'s year. */
     val released: String? = null,
+    /** Local certificate such as `U/A 13+` (TMDB). */
+    val ageRating: String? = null,
     /** YouTube trailers, as `{ ytId }` (Cinemeta, TMDB). */
     val trailerStreams: List<TrailerStream> = emptyList(),
     /** The older trailer list: `{ source: <YouTube id>, type: "Trailer" }`. */

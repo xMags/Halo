@@ -116,6 +116,22 @@ private val Tiers = listOf(
     "480p" to "SD",
 )
 
+/** The source quality each of [Tiers] stands for, by the same index. */
+private val TierQualities = listOf(
+    SourceQuality.P2160,
+    SourceQuality.P1440,
+    SourceQuality.P1080,
+    SourceQuality.P720,
+    SourceQuality.P480,
+    SourceQuality.P480,
+)
+
+/**
+ * The badge the source picker stamps on this group's best quality. A group
+ * mixes dynamic ranges, so the tag names the tier rather than any one range.
+ */
+val QualityGroup.medal: Medal get() = medalFor(TierQualities.getOrNull(rank), null)
+
 /**
  * What the addons offer for one video, grouped the way the picker shows it.
  * Tiers that share a label (576p and 480p both read `SD`) count together, at
