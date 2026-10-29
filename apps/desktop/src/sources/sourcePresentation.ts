@@ -6,8 +6,8 @@
  *
  * The field vocabulary is the native display source's: `quality` is `2160p`
  * … `SD`, `range` is `SDR`/`DV`/`HDR10`/`HLG`/`HDR`, and anything the parser
- * could not identify is the literal `UNKNOWN`, which the sheet must describe
- * as "not listed" rather than guess at.
+ * could not identify is the literal `UNKNOWN`, which the sheet leaves out
+ * rather than guess at.
  */
 
 import type { Medal, MedalFinish } from '../components/medal'
@@ -68,26 +68,25 @@ export interface DeviceContext {
   durationSeconds: number
 }
 
-export interface DetailChip {
+/** One fact in a source's details: a short label, then what the release says. */
+export interface DetailRow {
   label: string
-  muted: boolean
+  value: string
 }
 
+/**
+ * A source's details as a short list. A fact the release does not name is
+ * left out rather than spelled out as "not listed", so the list is only as
+ * long as what is known.
+ */
 export interface SourceDetails {
-  resolution: string
-  picture: string
-  codec: string
-  sound: string
-  channels: string
-  audioLanguages: DetailChip[]
-  subtitles: DetailChip[]
+  rows: DetailRow[]
   provider: string
+  /** `Cached`, `Caching now`, `Not cached`, or empty when the addon did not say. */
   cacheLabel: string
   cacheGood: boolean
-  lineLabel: string
-  mbpsLabel: string
-  headroom: string
-  meterFraction: number
+  /** Null when the size or runtime is missing, so nothing could be measured. */
+  bandwidth: { label: string; note: string; fraction: number } | null
 }
 
 interface LanguageTag {
@@ -181,7 +180,7 @@ function rangeDetail(range: string): string {
 }
 
 function soundDetail(audio: string): string {
-  if (!audio || audio === NOT_PARSED) return 'Not listed'
+  if (!audio || audio === NOT_PARSED) return ''
   const text = audio.toUpperCase()
   if (text === 'ATMOS') return 'Dolby Atmos'
   if (text === 'TRUEHD') return 'Dolby TrueHD'
@@ -299,53 +298,47 @@ export function metaLine(entry: Pick<SourceEntry, 'codec' | 'audio' | 'size'>): 
     .join(SEPARATOR)
 }
 
-export function detailsFor(
-  entry: SourceEntry,
-  device: DeviceContext,
-  maximumNeededMbps: number,
-): SourceDetails {
-  const audioLanguages: DetailChip[] = splitTokens(entry.languages)
+export function detailsFor(entry: SourceEntry, device: DeviceContext): SourceDetails {
+  const hdr = entry.range && entry.range !== 'SDR' && entry.range !== NOT_PARSED ? rangeDetail(entry.range) : ''
+  const picture = [dimensions(entry.tier, entry.quality) ?? '', hdr, codecName(entry.codec)]
+  const languages = splitTokens(entry.languages)
     .filter((token) => token !== NOT_PARSED)
-    .map((token) => ({ label: languageName(token).toUpperCase(), muted: false }))
-  // An empty tile reads as a rendering fault, so absence is said out loud.
-  if (audioLanguages.length === 0) audioLanguages.push({ label: 'NOT LISTED', muted: true })
-  const subtitles: DetailChip[] = entry.subtitleLanguages.map((track) => ({
-    label: languageName(track).toUpperCase(),
-    muted: false,
-  }))
-  if (subtitles.length === 0) subtitles.push({ label: 'NONE INCLUDED', muted: true })
+    .map(languageName)
+  const sound = [soundDetail(entry.audio), languages.join(', ')]
+  const subtitles = entry.subtitleLanguages.map(languageName)
+
+  const rows: DetailRow[] = []
+  const add = (label: string, parts: string[]) => {
+    const value = parts.filter((part) => part.length > 0).join(SEPARATOR)
+    if (value) rows.push({ label, value })
+  }
+  add('Picture', picture)
+  add('Sound', sound)
+  // Subtitles are the one fact whose absence is worth saying: it decides a pick.
+  add('Subtitles', [subtitles.length > 0 ? subtitles.join(', ') : 'None'])
 
   const cache: Record<SourceStatus, { label: string; good: boolean }> = {
-    instant: { label: 'Already cached for you', good: true },
+    instant: { label: 'Cached', good: true },
     caching: { label: 'Caching now', good: false },
-    uncached: { label: 'Not cached yet', good: false },
-    unknown: { label: 'Cache state not reported', good: false },
+    uncached: { label: 'Not cached', good: false },
+    unknown: { label: '', good: false },
   }
 
-  const audio = entry.audio.toUpperCase()
-  const space = audio.indexOf(' ')
-  const maximum = maximumNeededMbps > 0 ? maximumNeededMbps : entry.neededMbps
   const measured = entry.neededMbps > 0
+  const line = device.lineMbps
   return {
-    resolution: dimensions(entry.tier, entry.quality) ?? 'Resolution not listed',
-    // Every chip is set in the mono plate, which is drawn for upper case.
-    picture: !entry.range || entry.range === 'SDR' ? 'SDR' : rangeDetail(entry.range).toUpperCase(),
-    codec: codecName(entry.codec) || 'Codec not listed',
-    sound: soundDetail(entry.audio),
-    channels: space === -1 ? 'Channels not listed' : audio.slice(space + 1),
-    audioLanguages,
-    subtitles,
+    rows,
     provider: entry.provider || 'An addon',
     cacheLabel: cache[entry.status].label,
     cacheGood: cache[entry.status].good,
-    lineLabel: maximum > 0 ? `HEAVIEST HERE ${whole(maximum)} MBPS` : 'BANDWIDTH NOT MEASURED',
-    mbpsLabel: measured ? `${whole(entry.neededMbps)} Mbps` : 'Not available',
-    headroom: !measured
-      ? 'File size or runtime is not listed'
-      : device.lineMbps > 0
-        ? `${whole((entry.neededMbps / device.lineMbps) * 100)}% of your ${whole(device.lineMbps)} Mbps line`
-        : 'Line speed has not been measured yet',
-    meterFraction: measured && maximum > 0 ? Math.min(1, Math.max(0, entry.neededMbps / maximum)) : 0,
+    bandwidth: measured
+      ? {
+          label: `${whole(entry.neededMbps)} Mbps`,
+          note: line > 0 ? `${whole((entry.neededMbps / line) * 100)}% of your ${whole(line)} Mbps line` : '',
+          // Measured against the viewer's own line, the only scale that decides anything.
+          fraction: line > 0 ? Math.min(1, entry.neededMbps / line) : 0,
+        }
+      : null,
   }
 }
 

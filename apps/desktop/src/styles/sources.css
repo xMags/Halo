@@ -377,9 +377,6 @@
 .btn.sx-btn {
   border-bottom-color: var(--ces);
 }
-.sx-h40 {
-  height: 40px;
-}
 /* The pick's and the saved copy's actions: the phone's 46dp buttons, at the desktop's scale. */
 .sx-h44 {
   height: 44px;
@@ -651,23 +648,22 @@
   color: var(--su);
 }
 .sx-card-details {
-  padding: 18px;
+  padding: 12px 16px 14px;
   border-top: 1px solid var(--dv);
   background: var(--sb);
 }
 
-/* Details: the release name and any warning, then tiles, as the native
-   SourceDetailsTemplate lays them out. */
+/* Details: the release name and any warning, a short fact list, then actions. */
 .sx-details-file {
   font: 400 12px var(--mono);
-  color: var(--t2);
+  color: var(--t3);
   overflow-wrap: anywhere;
 }
 .sx-warning {
   display: flex;
   align-items: flex-start;
   gap: 7px;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--ca);
 }
 .sx-details {
@@ -675,92 +671,62 @@
   flex-direction: column;
   gap: 10px;
 }
-.sx-tile-pair {
+.sx-facts {
+  margin: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 16px;
+  row-gap: 6px;
+  font-size: 13px;
 }
-.sx-tile {
+/* Each fact's pair joins the list's grid, so the labels share one column. */
+.sx-fact {
+  display: contents;
+}
+.sx-fact dt {
+  color: var(--t3);
+}
+.sx-fact dd {
+  margin: 0;
   min-width: 0;
-  padding: 13px 15px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  border-radius: 8px;
-  background: linear-gradient(var(--tt), var(--tb));
-  border: 1px solid var(--cts);
-}
-.sx-tile-9 {
-  gap: 9px;
-}
-.sx-tile-caption {
-  font: 400 12px var(--mono);
-  letter-spacing: 0.12em;
-  color: var(--t4);
-}
-.sx-tile-caption-row {
-  display: flex;
-  justify-content: space-between;
-}
-.sx-wrap-9 {
-  column-gap: 9px;
-  row-gap: 3px;
-}
-.sx-wrap-10 {
-  column-gap: 10px;
-  row-gap: 3px;
-}
-.sx-wrap-comes {
-  column-gap: 9px;
-  row-gap: 7px;
-  align-items: center;
-}
-.sx-tile-mono {
-  font: 700 16px var(--mono);
-  color: var(--t1);
-}
-.sx-tile-data {
-  font: 400 12px var(--mono);
-  color: var(--t3);
-}
-.sx-tile-word {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--t1);
-}
-.sx-tile-note {
-  font-size: 14px;
-  color: var(--t3);
-}
-.sx-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 4px;
+  color: var(--t1);
 }
-.sx-chip {
-  padding: 3px 8px;
-  border-radius: 4px;
-  background: var(--ct);
-  border: 1px solid var(--cts);
-  font: 400 12px var(--mono);
-  letter-spacing: 0.11em;
-  color: var(--t2);
+.sx-fact-from {
+  flex-wrap: nowrap;
 }
-.sx-chip-muted {
-  color: var(--t4);
+.sx-fact-note {
+  color: var(--t3);
 }
-.sx-chip-start {
-  align-self: flex-start;
+.sx-meter {
+  flex: 0 0 100%;
+  position: relative;
+  height: 3px;
+  border-radius: 1.5px;
+  background: var(--cst);
+}
+.sx-meter > span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 1.5px;
+  background: var(--ac);
 }
 .sx-cache {
+  flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 9px;
+  gap: 5px;
+  padding: 1px 7px;
   border-radius: 4px;
   background: var(--ct);
   border: 1px solid var(--cts);
-  font-size: 13px;
+  font-size: 12px;
   color: var(--t3);
 }
 .sx-cache-dot {
@@ -773,28 +739,6 @@
   background: var(--sut);
   border-color: var(--sus);
   color: var(--su);
-}
-/* WinUI's determinate ProgressBar: a hairline track under a 4px indicator. */
-.sx-progress {
-  position: relative;
-  height: 4px;
-}
-.sx-progress-track {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 1.5px;
-  height: 1px;
-  border-radius: 0.5px;
-  background: var(--cst);
-}
-.sx-progress-fill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  border-radius: 1.5px;
-  background: var(--ac);
 }
 
 /* Footer: "How this list was built", and the resolve laid bare behind it. */
