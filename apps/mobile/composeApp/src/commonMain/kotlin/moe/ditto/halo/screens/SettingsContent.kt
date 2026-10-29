@@ -1,5 +1,8 @@
 package moe.ditto.halo.screens
 
+import moe.ditto.halo.ui.monoStyle
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.ditto.halo.api.AddonEntry
@@ -77,6 +81,8 @@ internal fun SettingsContent(
     onSignOut: () -> Unit,
     onSignIn: () -> Unit,
     onOpenDebugGate: (() -> Unit)?,
+    /** The account's picture at a given size; the screen supplies it, as it needs the session. */
+    accountAvatar: @Composable (Dp) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val responsive = rememberResponsive()
@@ -267,6 +273,8 @@ internal fun SettingsContent(
             item(key = "account-label") { SettingsGroupLabel("Account") }
             item(key = "account-card") {
                 SettingsCard {
+                    ProfileRow(name = "This phone", caption = "NOT SIGNED IN", avatar = { accountAvatar(ProfileAvatarSize) })
+                    SettingsDivider()
                     Text(
                         text = "Your library, history and addons are kept on this phone. Sign in to sync them.",
                         style = HaloType.Body.copy(color = HaloColors.TextDim),
@@ -278,10 +286,19 @@ internal fun SettingsContent(
             }
         }
 
-        if (state.signedIn) item(key = "server-label") { SettingsGroupLabel("Server") }
+        if (state.signedIn) item(key = "server-label") { SettingsGroupLabel("Server & account") }
         if (state.signedIn) item(key = "server-card") {
             val connected = state.account != null || state.addons != null || state.settings != null
+            val account = state.account
             SettingsCard {
+                ProfileRow(
+                    name = account?.let { accountDisplayName(it.username) } ?: "…",
+                    caption = accountLabel(account),
+                    avatar = { accountAvatar(ProfileAvatarSize) },
+                )
+                SettingsDivider()
+                StaticSettingRow(label = "Signed in as", value = account?.username ?: "…")
+                SettingsDivider()
                 StaticSettingRow(label = "Latency", value = state.latencyMillis?.let { "$it ms" } ?: "...")
                 SettingsDivider()
                 StatusRow(connected = connected)
@@ -312,6 +329,18 @@ internal fun SettingsContent(
                 Text("Sign Out", color = HaloColors.Danger, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
         }
+
+        // Who made it and under what terms, as the desktop's About panel says.
+        item(key = "credits") {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = HaloSpacing.Lg),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text("© 2026 cryguy, Last Projects & Shy", style = monoStyle(11.5.sp, color = HaloColors.TextDim))
+                Text("GPL-3.0 license", style = monoStyle(11.5.sp, color = HaloColors.TextDim))
+            }
+        }
     }
 }
 
@@ -320,3 +349,5 @@ private fun addonsNotMovedMessage(names: List<String>): String {
     return "${names.joinToString(", ")} could not be added to your account because " +
         "${if (one) "it" else "they"} did not load. You can add ${if (one) "it" else "them"} again above."
 }
+
+private val ProfileAvatarSize = 48.dp
