@@ -120,6 +120,8 @@ internal sealed interface BackgroundDownloadEvent {
         override val jobId: String,
         val downloadedBytes: Long,
         val totalBytes: Long,
+        /** Connections currently receiving, or null where the platform cannot say. */
+        val connections: Int? = null,
     ) : BackgroundDownloadEvent
 
     data class Completed(

@@ -14,6 +14,8 @@ internal data class TransferProgress(
     /** Zero when the source declared no size. */
     val totalBytes: Long,
     val validator: String?,
+    /** Connections receiving bytes when this was reported; zero once the run has ended. */
+    val connections: Int = 0,
 )
 
 /**

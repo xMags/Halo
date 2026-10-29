@@ -184,6 +184,8 @@ class HttpRangeTransferTest {
         // The first report precedes the first byte, so a pause inside the
         // throttle window still leaves a validator to resume against.
         assertEquals(0, reports.first().downloadedBytes)
+        // The one connection whose response carried it.
+        assertEquals(1, reports.first().connections)
     }
 }
 

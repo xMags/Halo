@@ -1,12 +1,22 @@
 package moe.ditto.halo.screens
 
+import androidx.compose.ui.unit.Dp
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import moe.ditto.halo.api.Stream
+import moe.ditto.halo.api.StreamBehaviorHints
 import moe.ditto.halo.api.WatchState
+import moe.ditto.halo.browse.MedalFinish
+import moe.ditto.halo.browse.medalFor
+import moe.ditto.halo.browse.parseSourceInfo
 import moe.ditto.halo.downloads.DownloadEntry
 import moe.ditto.halo.downloads.DownloadStatus
 import moe.ditto.halo.downloads.StorageSpace
 import moe.ditto.halo.screens.player.streamBadges
 import moe.ditto.halo.ui.formatBytes
 import moe.ditto.halo.ui.formatSpeed
+import moe.ditto.halo.ui.languageLabel
+import kotlin.time.Instant
 
 /**
  * Everything the Downloads screen decides before it draws anything.
@@ -20,11 +30,13 @@ import moe.ditto.halo.ui.formatSpeed
 private const val MetaSeparator = " · "
 
 /**
- * The screen's two lists: what is still arriving, and what is on the device.
+ * The screen's two lists: the queue, which is everything still arriving in any
+ * state, and the grid of what is on the device.
  *
  * Ordering comes from [groupDownloads] rather than from a sort of its own, so a
- * season stays in episode order and the most recent title stays on top —
- * the list is flat here, but it is the same order the grouped screen settled on.
+ * season stays in episode order and the most recent title stays on top. Both
+ * lists are flat, but in the order the grouped screen settled on, which keeps a
+ * season's episodes side by side in the grid without a header per show.
  */
 internal data class DownloadSections(
     val active: List<DownloadEntry>,
@@ -52,13 +64,66 @@ internal fun downloadPoster(entry: DownloadEntry, sections: DownloadSections): S
     entry.media.poster ?: sections.posters[entry.itemId]
 
 /**
- * The line under a card's title: the show, for an episode.
- *
- * Null for a film, whose name is already the title line — a second line
- * repeating it would only push the figures down.
+ * The landscape art the queue rows and grid cards are drawn with: the episode's
+ * own still where the addon gave one, else the poster, which a 16:9 crop still
+ * shows as this title rather than as a grey tile.
  */
-internal fun downloadRowSubtitle(entry: DownloadEntry): String? =
-    entry.media.showTitle.takeIf { entry.media.isEpisode }
+internal fun downloadArt(entry: DownloadEntry, sections: DownloadSections): String? =
+    entry.media.episodeThumbnail ?: downloadPoster(entry, sections)
+
+/**
+ * The line under the header: how many of each state there are, with the
+ * states that have none left out. Empty when there is nothing at all, where
+ * the empty screen's own message says it better.
+ */
+internal fun downloadsSummary(entries: List<DownloadEntry>): String {
+    fun count(status: DownloadStatus) = entries.count { it.status == status }
+    return listOf(
+        count(DownloadStatus.Downloading) to "downloading",
+        count(DownloadStatus.Queued) to "waiting",
+        count(DownloadStatus.Paused) to "paused",
+        count(DownloadStatus.Failed) to "failed",
+        count(DownloadStatus.Done) to "ready",
+    ).filter { (count, _) -> count > 0 }
+        .joinToString(MetaSeparator) { (count, label) -> "$count $label" }
+}
+
+/**
+ * How many connections the running transfers are receiving over, or null when
+ * that is unknown: nothing is running, or a platform that cannot say is
+ * running it. Unknown is never zero, because a pill reading "0 connections"
+ * over a moving chart would be a false statement.
+ */
+internal fun aggregateConnections(entries: List<DownloadEntry>): Int? {
+    val running = entries.filter { it.status == DownloadStatus.Downloading }
+    if (running.isEmpty()) return null
+    val counts = running.map { it.connections ?: return null }
+    return counts.sum().takeIf { it > 0 }
+}
+
+/** `1` → `"1 connection"`, `6` → `"6 connections"`. */
+internal fun connectionsLabel(count: Int): String = "$count ${if (count == 1) "connection" else "connections"}"
+
+/**
+ * The episode and its show, split for a queue row that sets the three in
+ * different weights: the tag in mono, the show as the title, the episode's own
+ * name dimmed after it. A film is only its title.
+ */
+internal data class QueueRowTitles(val tag: String?, val title: String, val subtitle: String?)
+
+internal fun queueRowTitles(entry: DownloadEntry): QueueRowTitles = QueueRowTitles(
+    tag = entry.media.episodeTag,
+    title = entry.media.showTitle,
+    subtitle = entry.media.episodeName.takeIf { entry.media.isEpisode },
+)
+
+/** What a grid card is called: a film by its name, an episode by its show and its own name. */
+internal fun downloadCardTitle(entry: DownloadEntry): String =
+    if (entry.media.isEpisode) {
+        listOfNotNull(entry.media.showTitle, entry.media.episodeName).joinToString(MetaSeparator)
+    } else {
+        entry.media.showTitle
+    }
 
 /**
  * What this file is, read out of the source's own naming by the player's badge
@@ -72,13 +137,60 @@ internal fun downloadQualityLabel(entry: DownloadEntry): String =
         name = entry.media.streamName,
     ).joinToString(MetaSeparator)
 
+/** The badge over a card's art: its label, and whether it earns the gold finish. */
+internal data class DownloadQualityBadge(val label: String, val gold: Boolean)
+
+/**
+ * The source picker's quality medal (`4K HDR`, `1080p FHD`) for the badge over
+ * a card's art, so a download reads the way its source did when it was chosen.
+ * Gold is kept for the top tier, as it is there. Null when the source's naming
+ * does not state a quality, rather than a badge that guesses.
+ */
+internal fun downloadQualityBadge(entry: DownloadEntry): DownloadQualityBadge? {
+    val info = parseSourceInfo(
+        Stream(
+            name = entry.media.streamName,
+            title = entry.media.streamTitle,
+            behaviorHints = StreamBehaviorHints(filename = entry.media.filename),
+        ),
+    )
+    if (info.quality == null) return null
+    val medal = medalFor(info)
+    val label = listOfNotNull(medal.plate, medal.tag).joinToString(" ")
+    return DownloadQualityBadge(label = label, gold = medal.finish == MedalFinish.Gold)
+}
+
+/** The subtitle kept with a file, as a card's meta line ends: its language, or that there is none. */
+internal fun downloadSubtitleTag(entry: DownloadEntry): String {
+    val subtitle = entry.subtitle ?: return "NO SUBS"
+    return subtitle.lang?.trim()?.takeIf { it.isNotEmpty() }?.uppercase() ?: "SUBS"
+}
+
+/** `2160p · HEVC · 20 GB · ENG`: what a finished file is, under its card. */
+internal fun downloadCardMeta(entry: DownloadEntry): String = listOfNotNull(
+    downloadQualityLabel(entry).takeIf { it.isNotEmpty() },
+    downloadSizeLabel(entry).takeIf { it.isNotEmpty() },
+    downloadSubtitleTag(entry),
+).joinToString(MetaSeparator)
+
+/**
+ * The mono line under the detail pane's title. An entry carries no year or
+ * runtime, so this is what it is and, for an episode, which show it belongs to.
+ */
+internal fun downloadDetailMeta(entry: DownloadEntry): String =
+    if (entry.media.isEpisode) {
+        "SERIES$MetaSeparator${entry.media.showTitle.uppercase()}"
+    } else {
+        "MOVIE"
+    }
+
 /**
  * The figure at the top of the screen, in bytes per second.
  *
  * A sum rather than the one live entry's rate, even though the coordinator runs
  * one transfer at a time: the aggregate stays correct if that ever changes, and
  * with one transfer it *is* that transfer's rate. Only a downloading entry
- * contributes — a paused one keeps no rate, and a queued one has never had one.
+ * contributes: a paused one keeps no rate, and a queued one has never had one.
  */
 internal fun aggregateRate(entries: List<DownloadEntry>): Long =
     entries.filter { it.status == DownloadStatus.Downloading }.sumOf { it.bytesPerSecond }
@@ -94,15 +206,10 @@ internal fun rateFigure(bytesPerSecond: Long): String = formatSpeed(bytesPerSeco
 
 private const val IdleRate = "0.0 MB/s"
 
-/** What sits where the rate does on a card, per status. */
-internal fun downloadRateLabel(entry: DownloadEntry): String = when (entry.status) {
-    DownloadStatus.Downloading -> rateFigure(entry.bytesPerSecond)
-    // The queue is a state, not a slow transfer: showing 0.0 MB/s here would
-    // read as a stalled link rather than as a turn not yet taken.
-    DownloadStatus.Queued -> "Queued"
-    DownloadStatus.Paused -> "Paused"
-    DownloadStatus.Failed -> "Failed"
-    DownloadStatus.Done -> "Downloaded"
+/** The rate split into its number and its unit, which the panel sets at two sizes. */
+internal fun rateParts(bytesPerSecond: Long): Pair<String, String> {
+    val figure = rateFigure(bytesPerSecond)
+    return figure.substringBeforeLast(' ') to figure.substringAfterLast(' ')
 }
 
 /** True while bytes are actually moving, which is what every animation keys off. */
@@ -139,10 +246,35 @@ internal fun downloadEtaLabel(entry: DownloadEntry): String? {
     return entry.secondsRemaining?.let(::formatRemaining)
 }
 
+/** `0.48` → `"48%"`, or null when the source never said how big the file is. */
+internal fun downloadPercentLabel(entry: DownloadEntry): String? =
+    entry.fraction?.let { "${(it * 100).toInt()}%" }
+
+/**
+ * The mono figures under a queue row's bar, most important first. A running
+ * transfer says how far, how much and how long; a stopped one says why it is
+ * stopped before how far it got. Queued rows have none: their caption is all
+ * there is to say.
+ */
+internal fun queueRowMeta(entry: DownloadEntry): List<String> {
+    val progress = listOfNotNull(downloadBytesLabel(entry), downloadPercentLabel(entry))
+    return when (entry.status) {
+        DownloadStatus.Downloading ->
+            progress.ifEmpty { listOf("Starting…") } + listOfNotNull(downloadEtaLabel(entry))
+        DownloadStatus.Paused -> listOf("Paused") + progress
+        DownloadStatus.Failed -> listOf("Failed") + progress
+        DownloadStatus.Queued, DownloadStatus.Done -> emptyList()
+    }
+}
+
+/** The caption a queued row carries instead of a bar: its turn has not come. */
+internal fun queueRowCaption(entry: DownloadEntry): String? =
+    "Up next".takeIf { entry.status == DownloadStatus.Queued }
+
 /** `3` → `"3 items"`, for a section's right-hand count. */
 internal fun itemCountLabel(count: Int): String = "$count ${if (count == 1) "item" else "items"}"
 
-/** The same, with what those items weigh — the finished section carries both. */
+/** The same, with what those items weigh, since the finished section carries both. */
 internal fun readyCountLabel(entries: List<DownloadEntry>): String {
     val bytes = entries.sumOf { entry -> entry.totalBytes.takeIf { it > 0 } ?: entry.downloadedBytes }
     val size = formatBytes(bytes)
@@ -150,14 +282,21 @@ internal fun readyCountLabel(entries: List<DownloadEntry>): String {
     return if (size.isEmpty()) count else "$count$MetaSeparator$size"
 }
 
-/** The queue line beside the throughput figure. */
-internal fun queueLine(active: List<DownloadEntry>): String {
-    if (active.isEmpty()) return "queue empty"
-    val downloading = active.count { it.status == DownloadStatus.Downloading }
-    val waiting = active.size - downloading
-    if (downloading == 0) return "${itemCountLabel(active.size)} waiting"
-    if (waiting == 0) return "1 transfer"
-    return "1 transfer$MetaSeparator$waiting waiting"
+/**
+ * The finished section's caption. The device class is all the app knows of the
+ * device, so a tablet is named as one and anything else stays a device, the
+ * word the delete confirmation already uses.
+ */
+internal fun readySectionLabel(isTablet: Boolean): String = if (isTablet) "On this tablet" else "On this device"
+
+/**
+ * Columns in the finished grid: as many cells of at least [minCell] as fit
+ * across [available] with [gap] between them, never fewer than one, and never
+ * more than [maxColumns] where a layout caps it.
+ */
+internal fun readyGridColumns(available: Dp, minCell: Dp, gap: Dp, maxColumns: Int? = null): Int {
+    val fit = ((available.value + gap.value) / (minCell.value + gap.value)).toInt().coerceAtLeast(1)
+    return maxColumns?.let { fit.coerceAtMost(it.coerceAtLeast(1)) } ?: fit
 }
 
 /**
@@ -175,11 +314,26 @@ internal fun watchedFraction(state: WatchState?): Float? {
 private const val MinVisibleWatched = 0.02f
 
 /** The facts table in the detail pane, holding only what an entry actually knows. */
-internal fun downloadFacts(entry: DownloadEntry): List<Pair<String, String>> = buildList {
+internal fun downloadFacts(entry: DownloadEntry, nowMs: Long, zone: TimeZone): List<Pair<String, String>> = buildList {
     downloadQualityLabel(entry).takeIf { it.isNotEmpty() }?.let { add("Quality" to it) }
-    downloadSizeLabel(entry).takeIf { it.isNotEmpty() }?.let { add("File size" to it) }
-    entry.subtitle?.lang?.let { add("Subtitle" to it) }
+    downloadSizeLabel(entry).takeIf { it.isNotEmpty() }?.let { add("Size" to it) }
+    entry.subtitle?.lang?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Subtitle" to languageLabel(it)) }
+    downloadAddedLabel(entry.createdAt, nowMs, zone)?.let { add("Added" to it) }
 }
+
+/**
+ * `29 Oct`, or `29 Oct 2025` outside the current year. Null for a timestamp
+ * that cannot be a real one, which an entry migrated without a date carries.
+ */
+internal fun downloadAddedLabel(createdAt: Long, nowMs: Long, zone: TimeZone): String? {
+    if (createdAt <= 0) return null
+    val day = Instant.fromEpochMilliseconds(createdAt).toLocalDateTime(zone).date
+    val year = Instant.fromEpochMilliseconds(nowMs).toLocalDateTime(zone).year
+    val label = "${day.day} ${ShortMonths[day.month.ordinal]}"
+    return if (day.year == year) label else "$label ${day.year}"
+}
+
+private val ShortMonths = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 /** Two of these figures, and the third is what is left. */
 internal data class StorageMeter(
@@ -187,8 +341,14 @@ internal data class StorageMeter(
     val downloadsFraction: Float,
     /** Share taken by everything else on the device, 0..1. */
     val otherFraction: Float,
-    val usedLine: String,
-    val freeLine: String,
+    /** The big number: what the downloads weigh, without its unit. */
+    val downloadsFigure: String,
+    /** What follows it: the unit, and the volume it is part of. */
+    val ofTotalLine: String,
+    /** The legend's three values. */
+    val downloadsLabel: String,
+    val otherLabel: String,
+    val freeLabel: String,
 )
 
 /**
@@ -203,14 +363,19 @@ internal fun storageMeter(space: StorageSpace, downloadBytes: Long): StorageMete
     val downloads = downloadBytes.coerceIn(0, used)
     val other = used - downloads
     val total = space.totalBytes.toFloat()
+    val totalLabel = formatBytes(space.totalBytes)
+    // A figure with nothing in it borrows the volume's unit, so an empty
+    // library reads as "0 GB of 225 GB" rather than as a bare zero.
+    val emptyLabel = "0 ${totalLabel.substringAfterLast(' ')}"
+    val downloadsLabel = formatBytes(downloads).ifEmpty { emptyLabel }
     return StorageMeter(
         downloadsFraction = downloads / total,
         otherFraction = other / total,
-        usedLine = listOfNotNull(
-            formatBytes(downloads).takeIf { it.isNotEmpty() }?.let { "$it of downloads" },
-            formatBytes(used).takeIf { it.isNotEmpty() }?.let { "$it used" },
-        ).joinToString(MetaSeparator),
-        freeLine = "${formatBytes(space.freeBytes)} free of ${formatBytes(space.totalBytes)}",
+        downloadsFigure = downloadsLabel.substringBeforeLast(' '),
+        ofTotalLine = "${downloadsLabel.substringAfterLast(' ')} of $totalLabel",
+        downloadsLabel = downloadsLabel,
+        otherLabel = formatBytes(other).ifEmpty { emptyLabel },
+        freeLabel = formatBytes(space.freeBytes).ifEmpty { emptyLabel },
     )
 }
 
@@ -229,7 +394,7 @@ internal enum class QueueControl(val label: String) {
 }
 
 /**
- * The control the queue currently offers, or null when it offers neither —
+ * The control the queue currently offers, or null when it offers neither:
  * nothing running to stop, and nothing stopped to start.
  */
 internal fun queueControl(active: List<DownloadEntry>): QueueControl? = when {
