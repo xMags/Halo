@@ -99,6 +99,7 @@ class DirectionAUiInstrumentedTest {
                                     kind == SettingsLanguageKind.Audio || kind == SettingsLanguageKind.Subtitles,
                                 )
                             },
+                            onOpenCatalogLanguage = {},
                             onAutoplayChange = { autoplay = it },
                             onSignOut = { signedOut = true },
                             onSignIn = {},

@@ -83,11 +83,12 @@ internal fun ShelfScreen(
             onItemClick = { onOpenDetail(it.metaRef()) },
             itemMenu = posterMenu(items),
             modifier = Modifier.fillMaxSize(),
-            // This screen covers the tab bar, so only the system bar is cleared.
+            // The tab bar stays up over this screen, so the last row stops
+            // short of it, as on every tab.
             contentPadding = PaddingValues(
                 start = responsive.gutter,
                 end = responsive.gutter,
-                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + HaloSpacing.Lg,
+                bottom = responsive.bottomContentPadding,
             ),
             horizontalGap = responsive.posterGridGap,
             verticalGap = responsive.posterGridRowGap,

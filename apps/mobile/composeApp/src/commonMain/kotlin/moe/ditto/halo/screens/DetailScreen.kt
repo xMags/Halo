@@ -276,6 +276,8 @@ internal fun DetailScreen(
                         },
                         onSelect = { key -> chosenSeason = key.toIntOrNull() },
                         onClose = { seasonSheetOpen = false },
+                        // The tab bar draws over this screen's sheets.
+                        bottomClearance = responsive.floatingBarClearance,
                     )
                     SelectSheet(
                         visible = pageSheetOpen,
@@ -285,6 +287,7 @@ internal fun DetailScreen(
                         },
                         onSelect = { key -> key.toIntOrNull()?.let { page = it } },
                         onClose = { pageSheetOpen = false },
+                        bottomClearance = responsive.floatingBarClearance,
                     )
                 }
                 metaState.error != null -> CenterMessage("No installed addon could describe this title.")
@@ -381,7 +384,6 @@ private fun DetailBody(
     onOpenDetail: (MetaRef) -> Unit,
     onOpenShelf: (ShelfSnapshot) -> Unit,
 ) {
-    val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val tablet = responsive.isTablet
     val gutter = if (tablet) responsive.gutter else PhoneGutter
     val menus = LocalTitleMenus.current
@@ -401,9 +403,9 @@ private fun DetailBody(
             // The rail floats over the leading edge, and the hero is the one
             // thing here that would otherwise run under it.
             start = responsive.contentInsetStart,
-            // This screen covers the tab bar at every size, so there is nothing
-            // at the bottom to clear — only margin under the last row.
-            bottom = bottomInset + responsive.pick(HaloSpacing.Lg, HaloLayout.TabletBottomPadding),
+            // The tab bar stays up over this screen, so the last row stops
+            // short of it, as on every tab.
+            bottom = responsive.bottomContentPadding,
         ),
     ) {
         item(key = "hero") {
