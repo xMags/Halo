@@ -5,13 +5,19 @@ import moe.ditto.halo.resources.halo_mark
 import moe.ditto.halo.resources.Res
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -35,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +55,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.MetaPreview
@@ -59,6 +67,7 @@ import moe.ditto.halo.browse.catalogRows
 import moe.ditto.halo.browse.homeShelves
 import moe.ditto.halo.browse.matchesTypeFilter
 import moe.ditto.halo.cache.QueryState
+import moe.ditto.halo.sync.LibraryRepository
 import moe.ditto.halo.ui.CatalogRow
 import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloAsyncImage
@@ -165,6 +174,11 @@ internal fun HomeScreen(
 
     val gutter = responsive.gutter
     val rowGap = responsive.pick(HaloSpacing.Lg, 26.dp)
+    // A tablet held sideways gets the desktop's banner and Continue watching.
+    val wide = usesWideHome(responsive)
+    val scope = rememberCoroutineScope()
+    val featuredItemId = featured?.let { LibraryRepository.itemId(it.type, it.id) }
+    val featuredInLibrary = library.value.orEmpty().any { it.id == featuredItemId && !it.isRemoved }
     // Each catalog row's last result, by row key, for as long as Home is up.
     // The list disposes a row once it scrolls away, and the cache only hands
     // the result back a coroutine hop after the row reappears, so without this
@@ -225,6 +239,40 @@ internal fun HomeScreen(
 
         featured?.let { card ->
             item(key = "featured") {
+                val select = { picked: Int ->
+                    featuredIndex = picked
+                    autoAdvance = false
+                }
+                val open = { onOpenDetail(MetaRef(card.type, card.id)) }
+                val play = {
+                    // A TMDB-listed film names its playable id only in its
+                    // full meta, so its title page is the way in.
+                    if (card.type == MovieType && card.playableFromPreview) onPlayMovie(card) else open()
+                }
+                if (wide) {
+                    WideFeaturedHero(
+                        card = card,
+                        height = wideFeaturedHeight(responsive),
+                        gutter = gutter,
+                        inLibrary = featuredInLibrary,
+                        count = previews.size,
+                        index = featuredIndex,
+                        onSelect = select,
+                        onOpen = open,
+                        onPlay = play,
+                        onToggleLibrary = {
+                            scope.launch {
+                                // A rejected write marks the cache stale, which corrects the button.
+                                runCatching {
+                                    if (featuredInLibrary) graph.library.remove(LibraryRepository.itemId(card.type, card.id))
+                                    else graph.library.add(card)
+                                }
+                            }
+                        },
+                        modifier = Modifier.padding(bottom = HaloSpacing.Lg),
+                    )
+                    return@item
+                }
                 FeaturedHero(
                     card = card,
                     height = responsive.homeHeroHeight,
@@ -255,6 +303,20 @@ internal fun HomeScreen(
 
         if (shelves.continueWatching.isNotEmpty()) {
             item(key = "shelf-continue") {
+                if (wide) {
+                    WideContinueRow(
+                        graph = graph,
+                        entries = shelves.continueWatching,
+                        onOpen = { onOpenDetail(MetaRef(it.meta.type, it.meta.id)) },
+                        onSeeAll = {
+                            onOpenShelf(ShelfSnapshot("Continue watching", null, shelves.continueWatching.map { it.meta }))
+                        },
+                        gutter = gutter,
+                        gap = responsive.catalogRowGap,
+                        bottomPadding = rowGap,
+                    )
+                    return@item
+                }
                 ContinueWatchingRow(
                     graph = graph,
                     entries = shelves.continueWatching,
@@ -475,14 +537,16 @@ private fun FeaturedHero(
         // same screen, same host, loaded fine. The box is already a fixed size,
         // so filling it needs no deferred measurement pass. The scrim below is
         // a plain gradient with nothing to fetch, so it can keep matching.
-        Crossfade(targetState = card, animationSpec = tween(FeaturedFadeMs), label = "featured-art") { shown ->
+        FeaturedArt(card) { shown ->
+            HaloAsyncImage(
+                url = shown.background ?: shown.poster,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+            )
+            HeroScrim(Modifier.matchParentSize())
+        }
+        FeaturedText(card, Modifier.fillMaxSize()) { shown ->
             Box(Modifier.fillMaxSize()) {
-                HaloAsyncImage(
-                    url = shown.background ?: shown.poster,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                HeroScrim(Modifier.matchParentSize())
                 Column(
                     Modifier
                         .align(Alignment.BottomStart)
@@ -529,13 +593,51 @@ private fun FeaturedHero(
 /** How long the art takes to change under a viewer who did not ask it to. */
 private const val FeaturedFadeMs = 400
 
+/**
+ * The featured art, crossfaded when the title changes and only then: keyed by
+ * id, so the fuller record of the same title arriving does not fade it again.
+ */
+@Composable
+internal fun FeaturedArt(card: MetaCard, content: @Composable BoxScope.(MetaCard) -> Unit) {
+    AnimatedContent(
+        targetState = card,
+        contentKey = { it.id },
+        transitionSpec = { fadeIn(tween(FeaturedFadeMs)) togetherWith fadeOut(tween(FeaturedFadeMs)) },
+        label = "featured-art",
+        modifier = Modifier.fillMaxSize(),
+    ) { shown ->
+        Box(Modifier.fillMaxSize()) { content(shown) }
+    }
+}
+
+/**
+ * The featured title's text. The old text leaves at once and the new one
+ * rises in with its art, as on the desktop: crossfading the two put both
+ * titles over each other, half drawn, for the length of the fade.
+ */
+@Composable
+internal fun FeaturedText(card: MetaCard, modifier: Modifier, content: @Composable (MetaCard) -> Unit) {
+    AnimatedContent(
+        targetState = card,
+        contentKey = { it.id },
+        transitionSpec = {
+            (fadeIn(tween(FeaturedFadeMs)) + slideInVertically(tween(FeaturedFadeMs)) { it / 40 }) togetherWith
+                fadeOut(snap())
+        },
+        label = "featured-text",
+        modifier = modifier,
+    ) { shown ->
+        content(shown)
+    }
+}
+
 private val DotHeight = 4.dp
 private val DotWidth = 8.dp
 private val DotWidthActive = 22.dp
 
 /** Which of the featured titles is showing, and a way to go straight to one. */
 @Composable
-private fun FeaturedDots(count: Int, index: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+internal fun FeaturedDots(count: Int, index: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),

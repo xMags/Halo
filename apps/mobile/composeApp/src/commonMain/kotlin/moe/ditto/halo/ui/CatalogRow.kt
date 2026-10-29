@@ -67,49 +67,7 @@ fun CatalogRow(
     if (!isLoading && items.isEmpty()) return
 
     Column(modifier.padding(bottom = bottomPadding)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = gutter, end = gutter, bottom = HaloSpacing.Sm + 2.dp),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
-        ) {
-            // The heading and its source line take whatever "See all" leaves.
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
-            ) {
-                Text(
-                    text = title,
-                    style = HaloType.Heading,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                source?.let {
-                    Text(
-                        text = it,
-                        style = monoStyle(11.sp, color = HaloColors.TextDim),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        // Sits on the heading's baseline rather than its box bottom.
-                        modifier = Modifier.padding(bottom = 3.dp),
-                    )
-                }
-            }
-            if (onSeeAll != null && !isLoading) {
-                Text(
-                    text = "See all",
-                    color = HaloColors.AccentLight,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(HaloRadius.Sm))
-                        .clickable(role = Role.Button, onClick = onSeeAll)
-                        .padding(horizontal = HaloSpacing.Xs, vertical = 2.dp),
-                )
-            }
-        }
+        RowHeading(title = title, source = source, gutter = gutter, onSeeAll = onSeeAll.takeIf { !isLoading })
         LazyRow(
             contentPadding = PaddingValues(horizontal = gutter),
             horizontalArrangement = Arrangement.spacedBy(gap),
@@ -137,6 +95,58 @@ fun CatalogRow(
                     onLongPress = itemMenu?.let { open -> { open(item) } },
                 )
             }
+        }
+    }
+}
+
+/**
+ * A row's heading: its title, the short mono line beside it, and "See all" at
+ * the end. Shared by every kind of row, so poster rows and Continue watching's
+ * wide cards cannot drift apart.
+ */
+@Composable
+fun RowHeading(title: String, source: String?, gutter: Dp, onSeeAll: (() -> Unit)?) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = gutter, end = gutter, bottom = HaloSpacing.Sm + 2.dp),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
+    ) {
+        // The heading and its source line take whatever "See all" leaves.
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
+        ) {
+            Text(
+                text = title,
+                style = HaloType.Heading,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            source?.let {
+                Text(
+                    text = it,
+                    style = monoStyle(11.sp, color = HaloColors.TextDim),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // Sits on the heading's baseline rather than its box bottom.
+                    modifier = Modifier.padding(bottom = 3.dp),
+                )
+            }
+        }
+        if (onSeeAll != null) {
+            Text(
+                text = "See all",
+                color = HaloColors.AccentLight,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(HaloRadius.Sm))
+                    .clickable(role = Role.Button, onClick = onSeeAll)
+                    .padding(horizontal = HaloSpacing.Xs, vertical = 2.dp),
+            )
         }
     }
 }
