@@ -222,7 +222,7 @@ export function getAccountClient(): HaloClient | null {
   return client
 }
 
-/** First boot of an account or of this PC: install Cinemeta + OpenSubtitles so the app isn't empty. */
+/** First boot of an account: install the built-in addons so the app isn't empty. */
 export async function seedDefaultAddons(): Promise<void> {
   try {
     const existing = await getClient().getAddons()
@@ -230,5 +230,22 @@ export async function seedDefaultAddons(): Promise<void> {
     await getClient().putAddons([...DEFAULT_ADDON_URLS])
   } catch {
     // Best-effort seed — first login must still succeed if a default is down.
+  }
+}
+
+/**
+ * Halo without an account always has the built-in addons (Cinemeta,
+ * OpenSubtitles, The Movie Database). Any missing one is added after this
+ * PC's own: a first run may have had no network, and a later version may add
+ * to the list. Built-ins cannot be removed (Settings), so this never undoes a
+ * choice. An account is left alone: its admin decides what it carries.
+ */
+export async function topUpDeviceAddons(): Promise<void> {
+  try {
+    const installed = (await getClient().getAddons()).user.flatMap((addon) => (addon.transportUrl ? [addon.transportUrl] : []))
+    const missing = DEFAULT_ADDON_URLS.filter((url) => !installed.includes(url))
+    if (missing.length > 0) await getClient().putAddons([...installed, ...missing])
+  } catch {
+    // Best effort: the next start tries again.
   }
 }

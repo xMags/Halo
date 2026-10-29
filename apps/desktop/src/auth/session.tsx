@@ -9,8 +9,8 @@ import {
   onUnauthorized,
   rememberDeviceProfile,
   restoreSession,
-  seedDefaultAddons,
   sessionAddon,
+  topUpDeviceAddons,
   type SessionKind,
 } from '../api'
 import { signOutLocal } from './localAuth'
@@ -100,11 +100,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     })
   }, [switchTo])
 
-  // A first run without an account may have had no network for the default
-  // addons. Retried on every start until they are in; a no-op afterwards.
+  // A first run without an account may have had no network for the built-in
+  // addons, and a newer version may add one. Retried on every start; a no-op
+  // once they are all in.
   useEffect(() => {
     if (state !== 'device') return
-    void seedDefaultAddons().then(() => queryClient.invalidateQueries({ queryKey: ['addons'] }))
+    void topUpDeviceAddons().then(() => queryClient.invalidateQueries({ queryKey: ['addons'] }))
   }, [state, queryClient])
 
   const signedIn = useCallback(
@@ -130,7 +131,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // into an account, or the person signed out after a move that failed.
     const profile = getDeviceProfile() ?? (await readDeviceProfile()) ?? (await createDeviceProfile())
     activateDevice(profile)
-    await seedDefaultAddons()
+    await topUpDeviceAddons()
     switchTo('device')
   }, [switchTo])
 
