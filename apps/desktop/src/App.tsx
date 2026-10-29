@@ -11,6 +11,7 @@ import { Detail } from './browse/detail/Detail'
 import { Downloads } from './downloads/Downloads'
 import { Home } from './home/Home'
 import { Library } from './browse/Library'
+import { History } from './history/History'
 import { Login } from './auth/Login'
 import { Player } from './player/Player'
 import { Search } from './search/Search'
@@ -161,6 +162,8 @@ function Stack() {
       return <Search />
     case 'library':
       return <Library />
+    case 'history':
+      return <History />
     case 'downloads':
       return <Downloads />
     case 'settings':

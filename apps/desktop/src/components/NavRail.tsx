@@ -15,6 +15,7 @@ const ITEMS: Array<{ section: Section; label: string; glyph: FluentGlyph }> = [
   { section: 'home', label: 'Home', glyph: 'home' },
   { section: 'search', label: 'Search', glyph: 'search' },
   { section: 'library', label: 'Library', glyph: 'library' },
+  { section: 'history', label: 'History', glyph: 'clock' },
   { section: 'downloads', label: 'Downloads', glyph: 'downloads' },
   { section: 'settings', label: 'Settings', glyph: 'settings' },
 ]
@@ -30,7 +31,7 @@ interface NavRailProps {
 
 /**
  * The navigation pane, drawn as the native WinUI Halo Desktop draws its
- * NavigationView: a pane toggle, the five sections under a MENU header, three
+ * NavigationView: a pane toggle, the six sections under a MENU header, three
  * shortcuts back into whatever is half-watched, and the account at the foot.
  *
  * The toggle collapses the pane to its 48px compact strip, where only the

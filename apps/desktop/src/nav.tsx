@@ -15,7 +15,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
  */
 
 /** Top-level rail destinations. Selecting one resets the stack to it. */
-export type Section = 'home' | 'search' | 'library' | 'downloads' | 'settings'
+export type Section = 'home' | 'search' | 'library' | 'history' | 'downloads' | 'settings'
 
 export interface PlayerParams {
   url: string
@@ -72,6 +72,7 @@ export type Screen =
   | { name: 'home' }
   | { name: 'search' }
   | { name: 'library' }
+  | { name: 'history' }
   | { name: 'downloads' }
   | { name: 'settings' }
   | { name: 'detail'; type: string; id: string }
