@@ -174,6 +174,15 @@ internal fun downloadCardMeta(entry: DownloadEntry): String = listOfNotNull(
 ).joinToString(MetaSeparator)
 
 /**
+ * A phone poster's shorter line: the size and the subtitle. The quality is on
+ * the badge over the art, and a third of a phone's width has room for no more.
+ */
+internal fun downloadPosterMeta(entry: DownloadEntry): String = listOfNotNull(
+    downloadSizeLabel(entry).takeIf { it.isNotEmpty() },
+    downloadSubtitleTag(entry),
+).joinToString(MetaSeparator)
+
+/**
  * The mono line under the detail pane's title. An entry carries no year or
  * runtime, so this is what it is and, for an episode, which show it belongs to.
  */
