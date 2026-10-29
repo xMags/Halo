@@ -142,7 +142,9 @@ const backdropUrl = (imdbId: string) => `https://images.metahub.space/background
  * offers exactly that way, beside using Halo without an account and a
  * username & password form for a self-hosted server. Every async step is
  * tagged with an attempt number so a cancelled or superseded attempt can
- * never overwrite a newer one.
+ * never overwrite a newer one. Asking the server runs on its own count: it
+ * fills in the step only while that step is still "discovering", so it cannot
+ * replace a form opened meanwhile, and nothing else can orphan it.
  */
 export function Login() {
   const { state, signedIn, continueWithoutAccount, cancelSignIn } = useSession()
@@ -154,22 +156,40 @@ export function Login() {
   const [password, setPassword] = useState('')
   const [detailsOpen, setDetailsOpen] = useState(false)
   const attempt = useRef(0)
+  const discovery = useRef(0)
+  /** What asking the server found, once it has answered. */
+  const discovered = useRef<RestingStep | null>(null)
 
   async function discover() {
-    const id = ++attempt.current
+    const id = ++discovery.current
+    discovered.current = null
     setStep({ kind: 'discovering' })
+    let found: RestingStep
     try {
-      const config = await new HaloClient({ baseUrl: builtInServer, fetch: nativeFetch }).getAuthConfig()
-      if (id === attempt.current) setStep(readyStep(config))
+      found = readyStep(await new HaloClient({ baseUrl: builtInServer, fetch: nativeFetch }).getAuthConfig())
     } catch (err) {
-      if (id === attempt.current) setStep({ kind: 'unreachable', detail: err instanceof Error ? err.message : String(err) })
+      found = { kind: 'unreachable', detail: err instanceof Error ? err.message : String(err) }
     }
+    if (id !== discovery.current) return
+    discovered.current = found
+    setStep((current) => {
+      if (current.kind === 'discovering') return found
+      // The form opened while asking goes back to the answer, not a spinner.
+      if (current.kind === 'custom' && current.back.kind === 'discovering') return { ...current, back: found }
+      return current
+    })
+  }
+
+  /** A step to return to; "discovering" means the server's answer when it has come. */
+  function settled(back: RestingStep): RestingStep {
+    return back.kind === 'discovering' ? (discovered.current ?? back) : back
   }
 
   useEffect(() => {
     void discover()
     return () => {
       attempt.current++
+      discovery.current++
     }
     // Discovery runs once per mount; Retry calls it again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -229,7 +249,7 @@ export function Login() {
    */
   async function submitCustom(event: FormEvent, back: RestingStep) {
     event.preventDefault()
-    const fail = (error: string) => setStep({ kind: 'custom', error, back })
+    const fail = (error: string) => setStep({ kind: 'custom', error, back: settled(back) })
     let address: string
     try {
       address = parseServerAddress(server)
@@ -319,7 +339,8 @@ export function Login() {
     } catch (err) {
       if (id !== attempt.current) return
       setDeviceError(`Halo could not set up on this PC: ${err instanceof Error ? err.message : String(err)}`)
-      setStep(previous)
+      // Back where it was; a server answer that came meanwhile is shown now.
+      setStep(previous.kind === 'discovering' ? settled(previous) : previous)
     }
   }
 
@@ -456,7 +477,7 @@ export function Login() {
                   <button type="submit" className="si-btn si-btn-primary si-submit">
                     Sign in
                   </button>
-                  <button type="button" className="si-link" onClick={() => setStep(step.back)}>
+                  <button type="button" className="si-link" onClick={() => setStep(settled(step.back))}>
                     {backLabel(step.back)}
                   </button>
                 </form>
