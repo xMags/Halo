@@ -41,9 +41,11 @@ export interface DownloadRow {
   downloadedLine: string
   /** The queue row's mono line: `1.2 of 4.0 GB`, then percent, then time left or the state. */
   transferMeta: string[]
-  /** The ready card's title: the show and episode title for an episode. */
+  /** The ready card's title: the movie, or the show for an episode. */
   cardTitle: string
-  /** The ready card's mono line: `2160p · HEVC · 20.0 GB · ENG`. */
+  /** The episode's own title under the show's, empty for a movie. */
+  cardSub: string
+  /** The ready card's mono line: `HEVC · 20.0 GB · ENG`; the badge over the art carries the quality. */
   cardMeta: string
   /** The card's quality badge (`4K HDR`), gold for the gold medal; none when the release named no quality. */
   qualityBadge: { label: string; gold: boolean } | null
@@ -179,9 +181,9 @@ export function rowOf(item: DownloadView): DownloadRow {
   const shownSub = sub === name ? '' : sub
   const downloadedLine = downloadedLineOf(item, total)
   const tag = media.episode_label || media.media_type.toUpperCase() || 'VIDEO'
-  // Only what the release name actually stated: an unparsed quality or codec
-  // is left out rather than printed as UNKNOWN on a card.
-  const cardMeta = [info.quality, info.codec, downloadedLine, language ? language.toUpperCase() : 'NO SUBS']
+  // Only what the release name actually stated: an unparsed codec is left out
+  // rather than printed as UNKNOWN. The quality is the badge's, not repeated here.
+  const cardMeta = [info.codec, downloadedLine, language ? language.toUpperCase() : 'NO SUBS']
   return {
     id: item.job_id,
     tag,
@@ -194,7 +196,8 @@ export function rowOf(item: DownloadView): DownloadRow {
     tone: toneOf(state),
     downloadedLine,
     transferMeta: transferMetaOf(item, total, progress),
-    cardTitle: media.show_name && shownSub ? `${name} · ${shownSub}` : name,
+    cardTitle: name,
+    cardSub: media.show_name ? shownSub : '',
     cardMeta: cardMeta.filter((part): part is string => Boolean(part)).join(' · '),
     qualityBadge: info.quality
       ? { label: medal.tag ? `${medal.plate} ${medal.tag}` : medal.plate, gold: medal.finish === 'gold' }
@@ -388,6 +391,12 @@ export interface ChartBar {
 
 /** The shortest bar, so an idle minute still reads as a whole row. */
 export const CHART_FLOOR = 0.04
+/**
+ * The window's peak reaches this share of the chart, not all of it. A steady
+ * transfer then reads as a row of bars with air above them rather than one
+ * solid wall, and a new peak has somewhere to rise to.
+ */
+export const CHART_CEILING = 0.88
 /** How many of the newest bars draw at full strength. */
 const LIT_BARS = 4
 
@@ -403,7 +412,7 @@ export function chartBars(throughput: readonly number[]): ChartBar[] {
   const samples = [...new Array<number>(THROUGHPUT_SLOTS - taken.length).fill(0), ...taken]
   const peak = Math.max(0, ...samples)
   return samples.map((value, index) => {
-    const share = peak > 0 ? Math.min(1, Math.max(0, value) / peak) : 0
+    const share = peak > 0 ? Math.min(1, Math.max(0, value) / peak) * CHART_CEILING : 0
     const lit = index >= THROUGHPUT_SLOTS - LIT_BARS
     return {
       fraction: Math.max(CHART_FLOOR, share),
