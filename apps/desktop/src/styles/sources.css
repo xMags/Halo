@@ -415,8 +415,19 @@
 .sx-pad-18 {
   padding: 0 18px;
 }
+/* Copying is the quiet action: no fill until hovered. */
 .sx-copy {
-  padding: 0 15px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--t2);
+}
+.sx-copy:hover {
+  background: var(--ct);
+  color: var(--t1);
 }
 .sx-actions {
   display: flex;
@@ -648,65 +659,103 @@
   color: var(--su);
 }
 .sx-card-details {
-  padding: 12px 16px 14px;
+  padding: 14px 16px 16px;
   border-top: 1px solid var(--dv);
   background: var(--sb);
+  animation: sx-details-in 160ms ease-out;
+}
+@keyframes sx-details-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sx-card-details {
+    animation: none;
+  }
 }
 
-/* Details: the release name and any warning, a short fact list, then actions. */
+/* Details: the release name and any warning, the facts as a grid of cells
+   split by hairlines, then the actions. */
+.sx-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* Two lines at most, broken between words; the whole name is in the tooltip
+   and one click away in Copy. */
 .sx-details-file {
-  font: 400 12px var(--mono);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font: 400 12px/1.5 var(--mono);
   color: var(--t3);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .sx-warning {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 7px;
   font-size: 13px;
   color: var(--ca);
 }
-.sx-details {
+.sx-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--dv);
+  border: 1px solid var(--dv);
+}
+.sx-fact {
+  min-width: 0;
+  padding: 10px 12px 11px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 4px;
+  background: var(--m);
 }
-.sx-facts {
-  margin: 0;
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  column-gap: 16px;
-  row-gap: 6px;
-  font-size: 13px;
+.sx-fact-wide {
+  grid-column: 1 / -1;
 }
-/* Each fact's pair joins the list's grid, so the labels share one column. */
-.sx-fact {
-  display: contents;
+.sx-fact-label {
+  font: 400 11px var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--t4);
 }
-.sx-fact dt {
-  color: var(--t3);
-}
-.sx-fact dd {
-  margin: 0;
+.sx-fact-value {
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   column-gap: 8px;
-  row-gap: 4px;
+  row-gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--t1);
 }
-.sx-fact-from {
-  flex-wrap: nowrap;
+.sx-fact-value > .ellipsis {
+  min-width: 0;
+  max-width: 100%;
 }
-.sx-fact-note {
+.sx-bw-value {
+  font: 600 14px var(--mono);
+}
+.sx-bw-note {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
   color: var(--t3);
 }
 .sx-meter {
   flex: 0 0 100%;
   position: relative;
-  height: 3px;
-  border-radius: 1.5px;
+  height: 4px;
+  border-radius: 2px;
   background: var(--cst);
 }
 .sx-meter > span {
@@ -714,30 +763,29 @@
   left: 0;
   top: 0;
   bottom: 0;
-  border-radius: 1.5px;
+  border-radius: 2px;
   background: var(--ac);
+}
+/* More than the line can carry: the bar takes the warning's colour. */
+.sx-meter-over > span {
+  background: var(--ca);
 }
 .sx-cache {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 1px 7px;
-  border-radius: 4px;
-  background: var(--ct);
-  border: 1px solid var(--cts);
+  gap: 6px;
   font-size: 12px;
+  font-weight: 400;
   color: var(--t3);
 }
 .sx-cache-dot {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: currentColor;
 }
 .sx-cache-good {
-  background: var(--sut);
-  border-color: var(--sus);
   color: var(--su);
 }
 
