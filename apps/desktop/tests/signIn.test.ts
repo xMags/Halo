@@ -8,7 +8,7 @@ import {
   loopbackWaitFailure,
   SignInRefusedError,
 } from '../src/auth/signInFailure'
-import { parseServerUrl } from '../src/serverUrl'
+import { parseServerAddress, parseServerUrl } from '../src/serverUrl'
 
 // ---------------------------------------------------------------------------
 // The built-in server address
@@ -97,4 +97,14 @@ test("the local form's errors use the native app's words", () => {
   assert.equal(localSignInMessage({ status: 401 }), 'The username or password is incorrect.')
   assert.equal(localSignInMessage({ status: 429 }), 'Too many attempts. Try again later.')
   assert.equal(localSignInMessage(new TypeError('offline')), "Can't connect to Halo. Try again.")
+})
+
+test('a typed server address gets https, keeps its path and refuses what is not an address', () => {
+  assert.equal(parseServerAddress(' halo.example.com/ '), 'https://halo.example.com')
+  assert.equal(parseServerAddress('https://halo.example.com/api/'), 'https://halo.example.com/api')
+  assert.equal(parseServerAddress('http://localhost:8787'), 'http://localhost:8787')
+  assert.throws(() => parseServerAddress(''), /Enter your server/)
+  assert.throws(() => parseServerAddress('http://halo.example.com'), /https/)
+  assert.throws(() => parseServerAddress('https://user:pw@halo.example.com'), /only the server/)
+  assert.throws(() => parseServerAddress('https://halo.example.com/?x=1'), /only the server/)
 })

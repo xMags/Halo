@@ -1,184 +1,616 @@
-/* ── Auth (Login) ────────────────────────────────────────────────────── */
-.auth-screen {
-  position: fixed;
-  inset: 0;
+/* Sign-in: a frosted card over a fan of posters on the halo ring, with real
+   backdrops crossfading behind, the design Last Music and RainFrames share,
+   in Halo's accent. Dark in both themes, like the player: the art is the
+   point, and the card's glass is drawn for a dark ground. */
+.si-screen {
+  --si-accent: #60cdff;
+  --si-accent-fill: #4cc2ff;
+  --si-ink2: rgba(255, 255, 255, 0.8);
+  --si-ink3: rgba(255, 255, 255, 0.62);
+  --si-stroke: rgba(255, 255, 255, 0.1);
+  --si-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  position: relative;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--m);
   overflow: hidden;
+  background: #0b0c10;
+  color: #fff;
+  font-size: 14px;
 }
-.auth-stage {
+
+/* A real backdrop, blurred and dimmed, slowly crossfading between three. */
+.si-backdrop {
+  position: absolute;
+  inset: -60px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(30px) saturate(1.25) brightness(0.42);
+  opacity: 0;
+  animation: siBackdrop 27s linear infinite;
+  pointer-events: none;
+}
+.si-backdrop-2 {
+  animation-delay: 9s;
+}
+.si-backdrop-3 {
+  animation-delay: 18s;
+}
+@keyframes siBackdrop {
+  0% {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+  6% {
+    opacity: 1;
+  }
+  33% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.si-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 70% 45%, rgba(11, 12, 16, 0.15) 0%, rgba(11, 12, 16, 0.7) 55%, rgba(11, 12, 16, 0.95) 100%),
+    linear-gradient(90deg, rgba(11, 12, 16, 0.85) 0%, rgba(11, 12, 16, 0.2) 55%, rgba(11, 12, 16, 0.5) 100%);
+}
+.si-glow {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+}
+.si-glow-a {
+  left: -300px;
+  top: -340px;
+  width: 840px;
+  height: 580px;
+  background: radial-gradient(closest-side, rgba(96, 205, 255, 0.16), transparent);
+}
+.si-glow-c {
+  left: 48%;
+  top: 38%;
+  width: 760px;
+  height: 420px;
+  background: radial-gradient(closest-side, rgba(76, 194, 255, 0.14), transparent);
+}
+/* Over the art rather than a band above it. */
+.si-screen .titlebar {
+  background: linear-gradient(180deg, rgba(11, 12, 16, 0.6), transparent);
+}
+
+/* The stage measures itself: a window too narrow for the fan keeps the card
+   alone and centred, and one too short scrolls rather than clipping it. */
+.si-stage {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-height: 0;
+  overflow: auto;
+  container-type: size;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: auto;
+}
+/* The deck spans the card and the fan's full reach, so centring it centres
+   the whole composition; the card sits on the deck's vertical middle. */
+.si-deck {
   position: relative;
-  z-index: 1;
-}
-.auth-col {
-  width: 404px;
-  max-width: calc(100% - 48px);
+  width: 1060px;
+  min-height: 600px;
+  margin: auto;
   display: flex;
-  flex-direction: column;
-}
-.logo-lockup {
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 12px;
 }
-.logo-mark {
-  width: 26px;
-  height: 26px;
+@container (max-width: 1100px) {
+  .si-fan {
+    display: none;
+  }
+  .si-deck {
+    width: auto;
+    justify-content: center;
+  }
 }
-.logo-word {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 2.24px;
-  color: var(--t1);
+
+/* The fan: five posters on the halo ring, mirror-image about the centre one. */
+.si-fan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
-.auth-title {
-  margin-top: 26px;
-  font-family: var(--display);
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--t1);
+.si-ring {
+  position: absolute;
+  left: 412px;
+  top: 220px;
+  width: 660px;
+  height: 200px;
+  border-radius: 50%;
+  border: 2px solid rgba(96, 205, 255, 0.5);
+  box-shadow: 0 0 50px rgba(76, 194, 255, 0.32), inset 0 0 34px rgba(76, 194, 255, 0.18);
+  transform: rotate(-10deg);
+  animation: siRing 1.5s var(--si-ease) 0.55s both;
+}
+@keyframes siRing {
+  from {
+    transform: rotate(-26deg) scale(0.7);
+    opacity: 0;
+  }
+  to {
+    transform: rotate(-10deg) scale(1);
+    opacity: 1;
+  }
+}
+.si-poster {
+  position: absolute;
+  width: 172px;
+  height: 258px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #1a1c22;
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transform: rotate(var(--rot));
+  animation: siFan 1.15s var(--si-ease) both;
+}
+.si-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.si-poster::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), transparent 38%);
+}
+@keyframes siFan {
+  from {
+    transform: translateX(var(--from)) rotate(0deg);
+    opacity: 0;
+  }
+  to {
+    transform: rotate(var(--rot));
+    opacity: 1;
+  }
+}
+/* Neighbours 112 px out from the centre poster (x 742), the outer pair 204 px,
+   each pair at the same height so the arc dips symmetrically. */
+.si-poster-1 {
+  left: 452px;
+  top: 213px;
+  z-index: 1;
+  --rot: -12deg;
+  --from: -260px;
+  animation-delay: 0.6s;
+}
+.si-poster-2 {
+  left: 544px;
+  top: 171px;
+  z-index: 2;
+  --rot: -6deg;
+  --from: -350px;
+  animation-delay: 0.48s;
+}
+.si-poster-3 {
+  left: 640px;
+  top: 137px;
+  width: 204px;
+  height: 306px;
+  z-index: 4;
+  --rot: 0deg;
+  --from: -440px;
+  animation-delay: 0.36s;
+}
+.si-poster-4 {
+  left: 768px;
+  top: 171px;
+  z-index: 2;
+  --rot: 6deg;
+  --from: -560px;
+  animation-delay: 0.48s;
+}
+.si-poster-5 {
+  left: 860px;
+  top: 213px;
+  z-index: 1;
+  --rot: 12deg;
+  --from: -650px;
+  animation-delay: 0.6s;
+}
+.si-chip {
+  position: absolute;
+  z-index: 2;
+  left: 10px;
+  top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  font: 700 10.5px/1 var(--mono);
+  letter-spacing: 0.08em;
+}
+.si-chip-offline {
+  color: #7fdcff;
+}
+.si-chip-gold {
+  color: #f4d27a;
+}
+
+/* The card: dark frosted glass. */
+.si-card {
+  position: relative;
+  z-index: 6;
+  width: 460px;
+  box-sizing: border-box;
+  padding: 32px 34px 24px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--si-stroke);
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(26, 28, 35, 0.78), rgba(18, 20, 26, 0.84));
+  backdrop-filter: blur(26px) saturate(1.4);
+  box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55), 0 10px 26px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  animation: siRise 0.7s var(--si-ease) both;
+}
+.si-card > * {
+  animation: siRise 0.6s var(--si-ease) both;
+}
+.si-card > :nth-child(2) {
+  animation-delay: 0.08s;
+}
+.si-card > :nth-child(3) {
+  animation-delay: 0.14s;
+}
+.si-card > :nth-child(4) {
+  animation-delay: 0.2s;
+}
+.si-card > :nth-child(n + 5) {
+  animation-delay: 0.26s;
+}
+@keyframes siRise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.si-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--si-ink3);
+}
+.si-meta-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+}
+/* Centred, like everything the card says; the form fields keep their labels
+   over the field they name. */
+.si-title {
+  margin: 32px 0 0;
   text-align: center;
+  font: 800 52px/1.02 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+  letter-spacing: -0.035em;
 }
-.auth-sub {
-  margin-top: 14px;
+.si-title span {
+  color: var(--si-accent);
+  font-style: italic;
+  font-weight: 700;
+}
+.si-tagline {
+  margin: 16px auto 0;
+  max-width: 33ch;
   text-align: center;
+  font-size: 15.5px;
+  line-height: 1.5;
+  color: var(--si-ink2);
+}
+.si-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.si-chips li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 14px;
+  border: 1px solid var(--si-stroke);
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 12.5px;
+  color: var(--si-ink2);
+}
+.si-chips .fluent-icon {
+  color: var(--si-accent);
+}
+
+.si-action {
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.si-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.si-btn {
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-radius: 10px;
   font-size: 15px;
-  color: var(--t2);
+  font-weight: 600;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: filter 0.15s, background 0.15s;
 }
-.field-block {
-  margin-top: 12px;
+.si-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.si-btn-primary {
+  border: 0;
+  background: linear-gradient(180deg, #6fd2ff, #3db6f5);
+  color: #00131d;
+  box-shadow: 0 10px 28px rgba(76, 194, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.si-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+.si-btn-quiet {
+  border: 1px solid var(--si-stroke);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+.si-btn-quiet:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+}
+.si-btn:focus-visible,
+.si-link:focus-visible,
+.si-help:focus-visible {
+  outline: 2px solid var(--si-accent);
+  outline-offset: 2px;
+}
+.si-submit {
+  margin-top: 6px;
+}
+.si-after-wait {
+  margin-top: 8px;
+}
+.si-link {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--si-accent);
+  font-size: 13px;
+  cursor: pointer;
+}
+.si-link:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.si-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.field-label {
-  font-size: 14px;
-  color: var(--t2);
+.si-field label {
+  font-size: 13px;
+  color: var(--si-ink2);
 }
-.auth-error {
-  margin-top: 10px;
-  text-align: center;
-  font-size: 15px;
-  color: var(--cr);
-}
-.auth-help {
-  margin-top: 12px;
-  padding: 4px 8px;
-  align-self: center;
-  font-size: 14px;
-  color: var(--ac);
-}
-/* The native LoginBody without its own top margin (inside cards). */
-.auth-body {
-  text-align: center;
-  font-size: 15px;
-  color: var(--t2);
-}
-.auth-center {
-  text-align: center;
-}
-.auth-ring {
-  display: flex;
-  justify-content: center;
-}
-/* Waiting for the browser: HaloCardBrush on HaloCardStrokeBrush, radius 6. */
-.auth-card {
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  background: var(--cd);
-  border: 1px solid var(--cs);
-  border-radius: 6px;
-}
-.auth-status {
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-.auth-status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--ac);
-}
-.auth-account {
-  margin-top: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 13px;
-}
-.auth-avatar {
-  width: 40px;
+.si-field input {
   height: 40px;
-  border-radius: 999px;
-  object-fit: cover;
-}
-.auth-account-text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.auth-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--t1);
-}
-.auth-setup {
-  margin-top: 16px;
-  text-align: center;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom-color: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font: inherit;
   font-size: 14px;
-  color: var(--t3);
+  outline: none;
 }
-.auth-setup button {
-  color: var(--ac);
+.si-field input::placeholder {
+  color: rgba(255, 255, 255, 0.42);
 }
-.auth-details-toggle {
-  margin-top: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--t3);
-}
-.auth-details {
-  margin-top: 4px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  background: var(--cd);
-  border: 1px solid var(--cs);
-  border-radius: 4px;
-}
-.auth-details-error {
-  font: 400 12px/1.4 var(--mono);
-  color: var(--cr);
-  overflow-wrap: anywhere;
+.si-field input:focus {
+  border-bottom: 2px solid var(--si-accent-fill);
+  background: rgba(8, 10, 14, 0.7);
 }
 
-/* Using Halo without an account: set apart below the sign-in itself. */
-.auth-alt {
-  margin-top: 26px;
-  padding-top: 18px;
-  display: flex;
-  flex-direction: column;
-  border-top: 1px solid var(--cs);
-}
-.auth-alt-note {
-  margin-top: 8px;
+.si-error {
   text-align: center;
   font-size: 13px;
-  color: var(--t3);
+  line-height: 1.45;
+  color: #ff99a4;
+}
+.si-wait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.si-wait-head {
+  font-size: 20px;
+  font-weight: 600;
+}
+.si-wait p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--si-ink2);
+}
+.si-done {
+  font-size: 22px;
+  text-align: center;
+}
+.si-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  font: 500 11px/1.3 var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--si-ink3);
+}
+/* Sits in the status line where a dot would, so headings keep the card's edge. */
+.si-spinner {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: var(--si-accent-fill);
+  animation: siSpin 0.9s linear infinite;
+}
+@keyframes siSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.si-account {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--si-stroke);
+  background: rgba(255, 255, 255, 0.045);
+}
+.si-avatar {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(140deg, #6fd2ff, #2b6fd6);
+  color: #00131d;
+  font-weight: 700;
+  font-size: 18px;
+}
+.si-account-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.si-account-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+.si-account-label {
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--si-accent);
+}
+.si-bar {
+  position: relative;
+  margin-top: 6px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.si-bar i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 38%;
+  border-radius: 2px;
+  background: var(--si-accent-fill);
+  animation: siSweep 1.3s var(--si-ease) infinite;
+}
+@keyframes siSweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+.si-details-toggle {
+  color: var(--si-ink3);
+}
+.si-details {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  font: 400 12px/1.45 var(--mono);
+  color: var(--si-ink3);
+  word-break: break-word;
+}
+
+.si-foot {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+/* Same face, size and case as its neighbour, so the two share a baseline. */
+.si-help {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--si-accent);
+  cursor: pointer;
+}
+.si-help:hover {
+  color: #99e3ff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .si-backdrop {
+    animation: none;
+  }
+  .si-backdrop-1 {
+    opacity: 1;
+  }
+  .si-ring,
+  .si-poster,
+  .si-card,
+  .si-card > * {
+    animation: none;
+  }
 }

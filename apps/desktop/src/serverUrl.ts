@@ -28,3 +28,30 @@ export function parseServerUrl(raw: string | undefined): string {
   return url.href.replace(/\/+$/, '')
 }
 
+
+/**
+ * A server address typed into the sign-in form, for a self-hosted Halo server
+ * with its own accounts. The same rules as the built-in address, said for a
+ * person rather than a build: https unless the server is on this PC, and only
+ * the address itself. A bare host gets https in front. Throws an Error whose
+ * message is meant for the form.
+ */
+export function parseServerAddress(raw: string): string {
+  let value = raw.trim()
+  if (!value) throw new Error('Enter your server’s address.')
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) value = `https://${value}`
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error('That isn’t a server address.')
+  }
+  const loopback = url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]'
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
+    throw new Error('Use an https address. Plain http only works for a server on this PC.')
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error('Enter only the server’s address.')
+  }
+  return url.href.replace(/\/+$/, '')
+}

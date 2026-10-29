@@ -5,6 +5,7 @@ import {
   clearLocalSession,
   getLocalAccessToken,
   getLocalDownloadOwner,
+  getLocalSessionServerUrl,
   loadLocalSession,
   refreshLocalToken,
   setLocalDownloadOwner,
@@ -40,6 +41,14 @@ const SERVER_URL = parseServerUrl(import.meta.env.VITE_HALO_SERVER_URL)
 const SESSION_SERVER_KEY = 'halo.serverUrl'
 
 /**
+ * The server the app is talking to: the built-in one, or a self-hosted server
+ * a username & password session was opened on from the sign-in form. Only
+ * those sessions can name another server; every other kind is the built-in
+ * server's.
+ */
+let activeServerUrl = SERVER_URL
+
+/**
  * Which auth flavor the active session uses; drives token providers and
  * sign-out. A sign-in add-on's sessions are `addon:<its mode>`.
  */
@@ -63,7 +72,13 @@ if (import.meta.env.DEV) {
   })
 }
 
+/** The server the app is talking to now (see `activeServerUrl`). */
 export function getServerUrl(): string {
+  return activeServerUrl
+}
+
+/** The server this build signs in to, whatever is active. */
+export function getBuiltInServerUrl(): string {
   return SERVER_URL
 }
 
@@ -71,11 +86,12 @@ export function getServerUrl(): string {
  * A session persisted by a build for another server (the same machine ran a
  * build for a different one) must never reach this server. It is wiped
  * locally only: signing out of the other server is not this build's call.
+ * A username & password session is the exception: it records the server it
+ * was opened on and only ever talks to that one, so it is kept.
  */
 function forgetSessionsFromAnotherServer(): void {
   if (localStorage.getItem(SESSION_SERVER_KEY) === SERVER_URL) return
   clearOidcSession()
-  clearLocalSession()
   for (const addon of installedSignInAddons) addon.clear()
   localStorage.setItem(SESSION_SERVER_KEY, SERVER_URL)
 }
@@ -150,8 +166,9 @@ export function restoreSession(): SessionKind | null {
 export function activateSession(kind: SessionKind): SessionKind {
   const tokens = providerFor(kind)
   sessionKind = kind
+  activeServerUrl = kind === 'local' ? (getLocalSessionServerUrl() ?? SERVER_URL) : SERVER_URL
   client = new HaloClient({
-    baseUrl: SERVER_URL,
+    baseUrl: activeServerUrl,
     fetch: nativeFetch,
     getAccessToken: tokens.get,
     refreshAccessToken: tokens.refresh,
@@ -162,6 +179,7 @@ export function activateSession(kind: SessionKind): SessionKind {
       client = null
       backend = null
       sessionKind = null
+      activeServerUrl = SERVER_URL
       unauthorizedHandler?.()
     },
   })
@@ -173,6 +191,7 @@ export function activateSession(kind: SessionKind): SessionKind {
 export function activateDevice(profile: DeviceProfile): void {
   client = null
   sessionKind = null
+  activeServerUrl = SERVER_URL
   deviceProfile = profile
   backend = new DeviceBackend({ fetch: nativeFetch, store: nativeDeviceStore })
 }
@@ -209,6 +228,7 @@ export function deactivateSession(): void {
   client = null
   backend = null
   sessionKind = null
+  activeServerUrl = SERVER_URL
 }
 
 /** The backend every screen uses: the account's, or this PC's without one. */
