@@ -1,5 +1,6 @@
 import type { MetaPreview } from '@halo/core'
 import { ArtImage } from './ArtImage'
+import { metahubPosterUrl } from './artworkUrl'
 import { useTitleMenu } from '../browse/titleMenu'
 import { useNav } from '../nav'
 
@@ -35,7 +36,7 @@ export function PosterCard({ meta, showKind, metaLine, onBeforePress }: Props) {
       onContextMenu={(event) => titleMenu.forPoster(event, meta, onBeforePress)}
     >
       <div className="art poster-art">
-        <ArtImage src={meta.poster} label={meta.name} lazy />
+        <ArtImage src={meta.poster} fallback={metahubPosterUrl(meta.id)} label={meta.name} lazy />
         {showKind && <div className="poster-badge">{meta.type.toUpperCase()}</div>}
       </div>
       <div className="card-title ellipsis">{meta.name}</div>

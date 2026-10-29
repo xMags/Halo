@@ -1,6 +1,7 @@
 import type { MetaPreview } from '@halo/core'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArtImage } from '../components/ArtImage'
+import { metahubPosterUrl } from '../components/artworkUrl'
 import { FluentIcon } from '../components/FluentIcon'
 import { PosterCard } from '../components/PosterCard'
 import { SearchBox } from '../components/SearchBox'
@@ -338,7 +339,7 @@ function TopMatchCard({ meta, onOpen }: { meta: MetaPreview; onOpen: () => void 
       }}
     >
       <div className="art top-match-art">
-        <ArtImage src={meta.poster} label={meta.name} />
+        <ArtImage src={meta.poster} fallback={metahubPosterUrl(meta.id)} label={meta.name} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7, paddingTop: 2, minWidth: 0 }}>
         <div className="top-match-title ellipsis">{meta.name}</div>
