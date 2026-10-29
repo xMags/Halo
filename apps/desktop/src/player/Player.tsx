@@ -30,6 +30,7 @@ import { useNav, type PlayerParams } from '../nav'
 import {
   classifyVideoQuality,
   resolvePlayerShortcut,
+  resumePosition,
   shouldRunUpNextCountdown,
   upNextCancelAction,
   videoTopMarginRatio,
@@ -435,19 +436,16 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
               } else {
                 void refreshTracks()
               }
-              // Resume once per mount: prior unfinished position wins (mobile
-              // parity). Duration comes from mpv directly — the observed
+              // Resume once per mount, exactly where it was left (see
+              // resumePosition). Duration comes from mpv directly — the observed
               // `duration` prop event can land after file-loaded.
               if (!resumeAppliedRef.current) {
                 resumeAppliedRef.current = true
                 void (async () => {
-                  const prior = priorStateRef.current
-                  if (!resumeRef.current) return
-                  if (!prior || prior.watched || prior.positionSec <= 30) return
+                  if (!resumeRef.current || !priorStateRef.current) return
                   const total = Number((await mpvGet('duration').catch(() => null)) ?? 0)
-                  if (total > 0 && prior.positionSec / total < 0.95) {
-                    await mpvCmd('seek', prior.positionSec, 'absolute')
-                  }
+                  const position = resumePosition(priorStateRef.current, total)
+                  if (position != null) await mpvCmd('seek', position, 'absolute')
                 })()
               }
             }

@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalDensity
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -79,6 +80,9 @@ private const val SettingsWriteDelayMillis = 800L
  * is a couple of hundred writes rather than thousands.
  */
 private const val WatchStateReportMillis = 30_000L
+
+/** How long opening a video may wait for the history it resumes from. */
+private const val ResumeHistoryWaitMillis = 5_000L
 
 /**
  * The playback screen.
@@ -202,6 +206,15 @@ internal fun PlayerScreen(
         val stored = subtitleStyleOf(settings)
         playback.applySubtitleStyle(stored)
         playback.play(item)
+        // Back to where this video was left, once its file is open and its
+        // length known. Playback is not held for it: the history is normally
+        // cached already, and when it is not the wait for it is bounded.
+        launch {
+            val saved = graph.watchStates.loadedProgressFor(context.videoId, ResumeHistoryWaitMillis)
+                ?: return@launch
+            val opened = playback.state.first { it.current == item && it.durationSeconds != null }
+            resumePosition(saved, opened.durationSeconds)?.let { playback.seekTo(it) }
+        }
         // A downloaded video carries its subtitle beside it. Added straight
         // after the source rather than through the addon path: the file is
         // already here, and the network this would otherwise ask may not be.

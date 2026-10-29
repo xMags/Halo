@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { WatchState } from '@halo/core'
 import {
   bufferingIndicatorDelayMs,
   bufferingIndicatorHoldMs,
   classifyVideoQuality,
   resolvePlayerShortcut,
+  resumePosition,
   scrubPreviewOffset,
   shouldRequestScrubPreview,
   shouldRunUpNextCountdown,
@@ -89,4 +91,30 @@ test('scrub previews skip tiny moves and keep the card inside the track', () => 
   assert.equal(scrubPreviewOffset(500, 200, 1000), 400)
   assert.equal(scrubPreviewOffset(990, 200, 1000), 800)
   assert.equal(scrubPreviewOffset(50, 200, 150), 0)
+})
+
+test('resumePosition opens exactly where the video was left', () => {
+  const saved = (positionSec: number, extra: Partial<WatchState> = {}): WatchState => ({
+    videoId: 'tt1',
+    itemId: 'tt1',
+    positionSec,
+    durationSec: 10_000,
+    watched: false,
+    updatedAt: 1,
+    ...extra,
+  })
+  assert.equal(resumePosition(saved(1669), 9949), 1669)
+  // Anything recorded is something the title page offers to resume.
+  assert.equal(resumePosition(saved(12), 9949), 12)
+  // Close to the end still resumes until the row is marked watched.
+  assert.equal(resumePosition(saved(9400), 9949), 9400)
+  assert.equal(resumePosition(saved(9400, { watched: true }), 9949), null)
+  // Nothing saved, nothing to go back to.
+  assert.equal(resumePosition(null, 9949), null)
+  assert.equal(resumePosition(saved(0), 9949), null)
+  assert.equal(resumePosition(saved(1669, { removedAt: 5 }), 9949), null)
+  // A shorter cut than the one watched starts from the top.
+  assert.equal(resumePosition(saved(6000), 5400), null)
+  // An unknown length does not stop the resume.
+  assert.equal(resumePosition(saved(1669), 0), 1669)
 })
