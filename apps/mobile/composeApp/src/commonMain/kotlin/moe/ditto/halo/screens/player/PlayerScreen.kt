@@ -476,10 +476,13 @@ internal fun PlayerScreen(
         surface.Content(Modifier.fillMaxSize())
 
         // The video is also the control surface. This sits below the chrome, so
-        // a tap on a button reaches the button rather than the video.
+        // a tap on a button reaches the button rather than the video. A swipe
+        // that starts on a system edge is the system's, so it adjusts nothing.
+        val edgeGuard = rememberSystemEdgeTouchGuard()
         Box(
             Modifier
                 .fillMaxSize()
+                .ignoreTouchesFromSystemEdges(edgeGuard)
                 .playerGestures(
                     onTap = controller::toggleChrome,
                     onDoubleTapLeft = {

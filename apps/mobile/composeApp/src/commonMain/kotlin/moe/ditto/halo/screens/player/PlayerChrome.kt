@@ -571,11 +571,15 @@ private fun TransportRow(
         )
 
         var trackWidthPx by remember { mutableIntStateOf(0) }
+        // The hit area reaches into the home-swipe band below the bar, and a
+        // swipe home that starts there must not seek.
+        val edgeGuard = rememberSystemEdgeTouchGuard()
         Box(
             modifier = Modifier
                 .weight(1f)
                 .height(TransportHitHeight)
                 .onSizeChanged { trackWidthPx = it.width }
+                .ignoreTouchesFromSystemEdges(edgeGuard)
                 // Tap and drag are separate detectors on purpose. A tap that
                 // never exceeds touch slop must seek without ever opening a
                 // scrub, and a drag must not commit the position it started at.
