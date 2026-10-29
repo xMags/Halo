@@ -219,10 +219,18 @@ internal fun PlayerScreen(
             val opened = playback.state.first { it.current == item && it.durationSeconds != null }
             resumePosition(saved, opened.durationSeconds)?.let { playback.seekTo(it) }
         }
-        // A downloaded video carries its subtitle beside it. Added straight
-        // after the source rather than through the addon path: the file is
-        // already here, and the network this would otherwise ask may not be.
-        context.localSubtitlePath?.let { playback.addSubtitle(it) }
+        // A downloaded video carries its subtitle beside it, added directly
+        // rather than through the addon path: the file is already here, and
+        // the network this would otherwise ask may not be. Only once the file
+        // is open (its length known; a pause report alone can mark it playing
+        // mid-load), because mpv refuses a subtitle while a load is pending and
+        // nothing reports that refusal.
+        context.localSubtitlePath?.let { path ->
+            launch {
+                playback.state.first { it.current == item && it.durationSeconds != null }
+                playback.addSubtitle(path)
+            }
+        }
 
         val storedPreference = SubtitlePreference(stored.scale, stored.font)
         playback.state
