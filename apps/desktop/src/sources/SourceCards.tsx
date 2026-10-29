@@ -1,8 +1,8 @@
 import type { Ref } from 'react'
 import { FluentIcon } from '../components/FluentIcon'
-import { QualityBadge } from '../components/QualityBadge'
-import { badgeTierLabel, isPremiumTier, type MetaLine, type SourceEntry } from './sourcePresentation'
+import { medalFor, type MetaLine, type SourceEntry } from './sourcePresentation'
 import type { Pick, SourceRow } from './sourcesModel'
+import { QualityMedal } from './QualityMedal'
 import { SourceDetailsPanel } from './SourceDetailsPanel'
 
 /** Instant is green, on-disk accent, caching amber; anything that waits is grey. */
@@ -19,16 +19,8 @@ function toneOf(entry: SourceEntry): string {
   }
 }
 
-function Badge({ entry, labelSize }: { entry: SourceEntry; labelSize?: number }) {
-  // Only high dynamic range earns the qualifier; standard range is the norm.
-  return (
-    <QualityBadge
-      tier={badgeTierLabel(entry.tier)}
-      detail={entry.hdr ? 'HDR' : undefined}
-      gold={isPremiumTier(entry.tier)}
-      {...(labelSize ? { labelSize } : {})}
-    />
-  )
+function Badge({ entry, large }: { entry: SourceEntry; large?: boolean }) {
+  return <QualityMedal medal={medalFor(entry)} large={large} />
 }
 
 function MetaStrip({ meta }: { meta: MetaLine }) {
@@ -110,7 +102,7 @@ export function PickCard({
         </div>
         <div className="sx-pick-grid">
           <span className="sx-pick-badge">
-            <Badge entry={entry} labelSize={13} />
+            <Badge entry={entry} large />
           </span>
           <div className="sx-pick-text">
             <div className="sx-pick-why">{pick.headline}</div>

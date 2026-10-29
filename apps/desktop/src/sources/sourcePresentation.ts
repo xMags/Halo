@@ -270,6 +270,46 @@ export function isPremiumTier(tier: QualityTier): boolean {
   return tier === TIER.ultraHd
 }
 
+/** The medal's metal: one per tier, so the finish alone says how good the picture is. */
+export type MedalFinish = 'gold' | 'silver' | 'bronze' | 'plain'
+
+/**
+ * A source's quality badge: the resolution on the dark plate, and a tag
+ * beside it naming the dynamic range or, without one, the tier. Below HD there
+ * is no tag at all, so the plate fills the badge instead of leaving an empty
+ * box. The phone's `medalFor`, so both pickers stamp a source alike.
+ */
+export interface Medal {
+  plate: string
+  tag: string | null
+  finish: MedalFinish
+}
+
+export function medalFor(entry: Pick<SourceEntry, 'quality' | 'range' | 'tier'>): Medal {
+  const plate = entry.quality === '2160p' ? '4K' : entry.quality === NOT_PARSED ? '—' : entry.quality
+  const tierTag: Record<QualityTier, string | null> = {
+    [TIER.ultraHd]: 'UHD',
+    [TIER.fullHd]: 'FHD',
+    [TIER.hd]: 'HD',
+    [TIER.lower]: null,
+  }
+  const tag =
+    entry.range === 'DV'
+      ? 'DV'
+      : isHdr(entry.range)
+        ? 'HDR'
+        : entry.quality === '1440p'
+          ? 'QHD'
+          : tierTag[entry.tier]
+  const finishes: Record<QualityTier, MedalFinish> = {
+    [TIER.ultraHd]: 'gold',
+    [TIER.fullHd]: 'silver',
+    [TIER.hd]: 'bronze',
+    [TIER.lower]: 'plain',
+  }
+  return { plate, tag, finish: finishes[entry.tier] }
+}
+
 export function speedOf(status: SourceStatus): StartSpeed {
   if (status === 'instant' || status === 'ondisk') return SPEED.immediate
   if (status === 'caching') return SPEED.shortWait
