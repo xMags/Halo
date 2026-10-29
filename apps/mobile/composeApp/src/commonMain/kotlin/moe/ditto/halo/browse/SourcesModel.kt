@@ -13,9 +13,9 @@ import kotlin.math.roundToLong
  * groups them, and what the page says about each one. Pure, so the page feeds
  * it the query result and renders what comes back.
  *
- * The desktop also lists finished downloads as sources "on this device". The
- * phone does not: a download plays from the Downloads tab, so here its state
- * is shown on the row it was saved from instead.
+ * A finished download is not one of these sources: the page shows it in a
+ * card of its own above them (`OfflineCard`), since it plays offline whatever
+ * the addons answer, and the row it was saved from carries its state.
  */
 
 /** How the page talks about picture: coarser than the parsed resolution. */

@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -229,6 +232,9 @@ internal fun SourcesPicker(
     // subject rather than of any one row.
     val downloads by graph.downloads.entries.collectAsState()
     val download = remember(downloads, videoId) { downloads.firstOrNull { it.videoId == videoId } }
+    // A finished copy leads the list: nothing an addon offers starts faster.
+    val menus = LocalTitleMenus.current
+    val offline = download?.takeIf { it.status == DownloadStatus.Done && menus != null }
     val downloadsAvailable = graph.downloads.isAvailable
     var refusal by remember { mutableStateOf<String?>(null) }
     // A second source for a video already held is a replacement, and a
@@ -267,6 +273,8 @@ internal fun SourcesPicker(
                 saveStateOf = saveState,
                 onSave = save,
                 refusal = refusal,
+                offline = offline,
+                onPlayOffline = { entry -> menus?.playDownload(entry) },
                 runtimeSeconds = (runtimeMinutes(meta.value?.runtime) ?: 0) * 60.0,
                 rules = choiceRules(settings.value),
                 onOpenPlayback = onOpenPlayback,
@@ -426,6 +434,12 @@ internal fun StreamsContent(
     onSave: (SourceEntry) -> Unit = {},
     /** Why the last download was not accepted; shown above the sources. */
     refusal: String? = null,
+    /**
+     * This video's finished download. It leads the list, and shows above any
+     * loading or failure too: a saved file plays whatever the addons answer.
+     */
+    offline: DownloadEntry? = null,
+    onPlayOffline: (DownloadEntry) -> Unit = {},
     /** The video's length, for what each file asks of the line; zero when unknown. */
     runtimeSeconds: Double = 0.0,
     rules: List<ChoiceRule> = emptyList(),
@@ -463,6 +477,11 @@ internal fun StreamsContent(
             )
         }
         val body = Modifier.fillMaxWidth().weight(1f)
+        if (offline != null && state !is StreamsContentState.Sources) {
+            Box(Modifier.padding(contentPadding.horizontalOnly())) {
+                OfflineCard(entry = offline, onPlay = { onPlayOffline(offline) })
+            }
+        }
         when (state) {
             is StreamsContentState.Loading -> Box(body, contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = HaloColors.AccentLight)
@@ -490,6 +509,8 @@ internal fun StreamsContent(
                         state = state,
                         resolve = resolve,
                         view = view,
+                        offline = offline,
+                        onPlayOffline = onPlayOffline,
                         refusal = refusal,
                         onRetry = onRetry,
                         onPlay = { entry -> onPlay(entry.addon, entry.stream) },
@@ -516,6 +537,9 @@ private fun ColumnScope.SourcesList(
     state: StreamsContentState.Sources,
     resolve: SourcesResolve,
     view: SourcesView,
+    /** This video's finished download, shown above everything addons offer. */
+    offline: DownloadEntry?,
+    onPlayOffline: (DownloadEntry) -> Unit,
     refusal: String?,
     onRetry: () -> Unit,
     onPlay: (SourceEntry) -> Unit,
@@ -548,6 +572,9 @@ private fun ColumnScope.SourcesList(
     // No tab-bar allowance in the default padding: this screen covers the
     // bar, and the rail it is shown in on a tablet has none to cover.
     LazyColumn(modifier = modifier, contentPadding = contentPadding) {
+        offline?.let { entry ->
+            item(key = "offline") { OfflineCard(entry = entry, onPlay = { onPlayOffline(entry) }) }
+        }
         if (refusal != null) {
             item(key = "download-refusal") { RefusalNotice(refusal) }
         }
@@ -676,4 +703,11 @@ internal fun safeAddonFailure(error: AddonError): String {
         "invalid_response" -> "$name returned invalid data."
         else -> "$name is unavailable."
     }
+}
+
+/** The padding's sides alone, for a block that sits above a list using it. */
+@Composable
+private fun PaddingValues.horizontalOnly(): PaddingValues {
+    val direction = LocalLayoutDirection.current
+    return PaddingValues(start = calculateStartPadding(direction), end = calculateEndPadding(direction))
 }

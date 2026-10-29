@@ -79,6 +79,9 @@ internal class TitleMenus(
 
     fun openDownload(entry: DownloadEntry) = present(forDownload(entry))
 
+    /** Plays a finished download, as the Downloads tab and "Play offline" do. */
+    fun playDownload(entry: DownloadEntry) = navigation.playDownload(entry)
+
     /**
      * A film plays from here. A series needs its title page to pick an
      * episode, unless it was left partway, which it resumes.
