@@ -96,61 +96,64 @@
 }
 
 /* ── Tokens: light ─────────────────────────────────────────────────────── */
+/* The dark palette's family in daylight: a cool off-white ground, white
+   surfaces with blue-grey strokes, slate ink, and Halo's blue deepened until
+   white text on it and it on white both read. Not the native WinUI greys. */
 :root[data-theme='light'] {
-  --m: #f3f3f3;
-  --ly: rgba(255, 255, 255, 0.62);
-  --nvl: rgba(255, 255, 255, 0.502);
-  --nvs: rgba(0, 0, 0, 0.059);
-  --cd: rgba(255, 255, 255, 0.702);
-  --cs: rgba(0, 0, 0, 0.059);
-  --ct: rgba(255, 255, 255, 0.702);
-  --cts: rgba(0, 0, 0, 0.059);
-  --cth: rgba(0, 0, 0, 0.039);
-  --sb: rgba(0, 0, 0, 0.039);
-  --sbp: rgba(0, 0, 0, 0.024);
-  --t1: rgba(0, 0, 0, 0.894);
-  --t2: rgba(0, 0, 0, 0.69);
-  --t3: rgba(0, 0, 0, 0.584);
-  --t4: rgba(0, 0, 0, 0.361);
-  --ac: #005fb8;
-  --aa: #0067c0;
+  --m: #f4f6fa;
+  --ly: rgba(255, 255, 255, 0.7);
+  --nvl: rgba(255, 255, 255, 0.55);
+  --nvs: rgba(16, 24, 40, 0.06);
+  --cd: rgba(255, 255, 255, 0.82);
+  --cs: rgba(16, 24, 40, 0.08);
+  --ct: rgba(255, 255, 255, 0.85);
+  --cts: rgba(16, 24, 40, 0.09);
+  --cth: rgba(16, 24, 40, 0.045);
+  --sb: rgba(16, 24, 40, 0.035);
+  --sbp: rgba(16, 24, 40, 0.022);
+  --t1: #0e1220;
+  --t2: #3b4354;
+  --t3: #5d6577;
+  --t4: #8a92a3;
+  --ac: #0070e0;
+  --aa: #0070e0;
   --oa: #ffffff;
-  --at: rgba(0, 95, 184, 0.102);
-  --su: #0f7b0f;
-  --sut: rgba(15, 123, 15, 0.102);
-  --sus: rgba(15, 123, 15, 0.278);
-  --ca: #9d5d00;
-  --cat: rgba(157, 93, 0, 0.129);
-  --cas: rgba(157, 93, 0, 0.239);
-  --cr: #c42b1c;
-  --crt: rgba(196, 43, 28, 0.078);
-  --crs: rgba(196, 43, 28, 0.341);
+  --at: rgba(0, 112, 224, 0.1);
+  --su: #13875a;
+  --sut: rgba(19, 135, 90, 0.1);
+  --sus: rgba(19, 135, 90, 0.28);
+  --ca: #a45f00;
+  --cat: rgba(164, 95, 0, 0.12);
+  --cas: rgba(164, 95, 0, 0.24);
+  --cr: #d1343b;
+  --crt: rgba(209, 52, 59, 0.08);
+  --crs: rgba(209, 52, 59, 0.34);
   --df: #c42b1c;
   --dh: #d13a2a;
-  --tt: rgba(0, 0, 0, 0.043);
-  --tb: rgba(0, 0, 0, 0.024);
-  --dv: rgba(0, 0, 0, 0.059);
-  --ns: rgba(0, 95, 184, 0.102);
-  --p1: #e4e4e8;
-  --p2: #efeff2;
+  --tt: rgba(16, 24, 40, 0.035);
+  --tb: rgba(16, 24, 40, 0.02);
+  --dv: rgba(16, 24, 40, 0.08);
+  --ns: rgba(0, 112, 224, 0.1);
+  --p1: #e6e9f0;
+  --p2: #eff1f6;
   --ps: url('../assets/stripe-light.png');
-  --chd: rgba(0, 95, 184, 0.239);
-  --pt: rgba(0, 0, 0, 0.38);
-  --hs1: rgba(243, 243, 243, 0.969);
-  --hs2: rgba(243, 243, 243, 0.659);
-  --ds: rgba(243, 243, 243, 0.988);
-  --fl: #f9f9f9;
-  --crb: #fde7e9;
-  --ib: rgba(0, 95, 184, 0.059);
-  --is: rgba(0, 95, 184, 0.2);
-  --bmf: rgba(0, 0, 0, 0.078);
-  --cst: rgba(0, 0, 0, 0.447);
-  --ces: rgba(0, 0, 0, 0.161);
-  --chs: rgba(0, 0, 0, 0.22);
-  --chsh: rgba(0, 0, 0, 0.3);
+  --chd: rgba(0, 112, 224, 0.24);
+  --pt: rgba(16, 24, 40, 0.38);
+  --hs1: rgba(244, 246, 250, 0.96);
+  --hs2: rgba(244, 246, 250, 0.5);
+  --ds: rgba(244, 246, 250, 0.985);
+  --fl: #fafbfd;
+  --crb: #fdeaea;
+  --ib: rgba(0, 112, 224, 0.06);
+  --is: rgba(0, 112, 224, 0.22);
+  --bmf: rgba(16, 24, 40, 0.07);
+  --cst: rgba(16, 24, 40, 0.42);
+  --ces: rgba(16, 24, 40, 0.14);
+  --chs: rgba(16, 24, 40, 0.2);
+  --chsh: rgba(16, 24, 40, 0.25);
   --tfa: #ffffff;
-  --tps: rgba(0, 0, 0, 0.62);
-  --tpt: rgba(0, 0, 0, 0.447);
+  --tps: rgba(16, 24, 40, 0.6);
+  --tpt: rgba(16, 24, 40, 0.44);
   --ctd: rgba(249, 249, 249, 0.302);
   --caf2: rgba(0, 0, 0, 0.024);
   --caf3: rgba(0, 0, 0, 0.059);
@@ -164,17 +167,17 @@
   --bdt: #f4f4f6;
   --bdi: rgba(0, 0, 0, 0.659);
   --bds: rgba(0, 0, 0, 0.122);
-  --glow-a: rgba(0, 95, 184, 0.075);
-  --glow-b: rgba(120, 80, 200, 0.055);
+  --glow-a: rgba(0, 112, 224, 0.07);
+  --glow-b: rgba(120, 80, 200, 0.05);
   color-scheme: light;
 }
 
 /* Covers the frame before the stored theme is stamped on the root. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
-    --m: #f3f3f3;
-    --ly: rgba(255, 255, 255, 0.62);
-    --t1: rgba(0, 0, 0, 0.894);
+    --m: #f4f6fa;
+    --ly: rgba(255, 255, 255, 0.7);
+    --t1: #0e1220;
     color-scheme: light;
   }
 }

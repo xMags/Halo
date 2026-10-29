@@ -35,6 +35,11 @@
   inset: 0;
   background: linear-gradient(90deg, var(--hs1) 0%, var(--hs2) 52%, transparent 92%);
 }
+/* Light keeps the art: the haze stays behind the text and is gone by the
+   middle, rather than whitening the whole picture. */
+:root[data-theme='light'] .hero-scrim {
+  background: linear-gradient(90deg, var(--hs1) 0%, var(--hs1) 24%, var(--hs2) 46%, transparent 68%);
+}
 .hero-body {
   position: absolute;
   left: 40px;
