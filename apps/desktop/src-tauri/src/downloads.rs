@@ -9,29 +9,27 @@ mod naming;
 mod rate;
 mod redirect;
 mod relocate;
+mod segmented;
+mod segments;
 
 use crate::secure_fs::{atomic_replace, os_error_code, protect, unprotect};
 use containment::{is_within_approved_root, resolve_roots, same_path, strip_verbatim};
 use futures_util::StreamExt;
 use naming::{download_file_name, is_safe_file_name, safe_language, subtitle_extension};
-use rate::RateWindow;
 use redirect::{is_redirect_status, next_redirect_target};
-use reqwest::header::{
-    HeaderMap, HeaderName, HeaderValue, CONTENT_RANGE, ETAG, IF_RANGE, LAST_MODIFIED, LOCATION,
-    RANGE,
-};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue, IF_RANGE, LOCATION, RANGE};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
-use std::fs::{self, OpenOptions};
-use std::io::{Seek, SeekFrom, Write};
+use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, Notify};
 
@@ -304,6 +302,9 @@ impl DownloadRecord {
 /// Every file one download may own on disk.
 struct FileSet {
     part: PathBuf,
+    /// The part's segment table, and the copy written before it replaces it.
+    table: PathBuf,
+    table_temp: PathBuf,
     subtitle: Option<PathBuf>,
     target: PathBuf,
 }
@@ -311,8 +312,12 @@ struct FileSet {
 impl FileSet {
     fn new(root: &str, file_name: &str, subtitle: Option<&str>) -> Self {
         let target = PathBuf::from(root).join(file_name);
+        let part = part_path(&target);
+        let table = segments::table_path(&part);
         Self {
-            part: part_path(&target),
+            table_temp: segments::table_temp_path(&table),
+            table,
+            part,
             subtitle: subtitle
                 .filter(|name| is_safe_file_name(name))
                 .map(|name| PathBuf::from(root).join(name)),
@@ -322,6 +327,8 @@ impl FileSet {
     fn contains(&self, path: &Path) -> bool {
         same_path(&self.target, path)
             || same_path(&self.part, path)
+            || same_path(&self.table, path)
+            || same_path(&self.table_temp, path)
             || self
                 .subtitle
                 .as_deref()
@@ -1420,255 +1427,30 @@ impl DownloadManager {
         let part = record.part();
         let target = record.target();
         let root = PathBuf::from(&record.root_path);
-        let known_total = record.total_bytes;
-        let mut partial = fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
-        if known_total > 0 && partial > known_total {
-            return Err(TransferError::Permanent(DownloadFailureCode::InvalidRange));
-        }
-        if partial > 0 && partial == known_total {
-            // Every byte arrived but the final rename did not happen.
-            atomic_replace(&part, &target)
-                .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
-            let subtitle = self.fetch_latest_subtitle(job_id, &target, cancel).await;
-            return Ok(Transferred {
-                bytes: partial,
-                total: known_total,
-                validator: record.validator.clone(),
-                subtitle,
-            });
-        }
-        if partial > 0 && record.validator.is_none() {
-            // Without ETag or Last-Modified there is no safe If-Range value.
-            // Restarting loses bytes, appending could silently corrupt a film.
-            partial = 0;
-        }
-
-        let mut opened = self
-            .open_get(
-                &request.url,
-                &request.headers,
-                (partial > 0).then_some(partial),
-                record.validator.as_deref(),
-            )
-            .await?;
-        let (content_range, response_validator) = loop {
-            let response = &opened.response;
-            let status = response.status().as_u16();
-            classify_http_status(status)?;
-            if partial > 0 && status == 200 {
-                partial = 0;
-            }
-            let mut content_range = None;
-            if status == 206 {
-                let range = parse_content_range(response.headers().get(CONTENT_RANGE))
-                    .ok_or(TransferError::Permanent(DownloadFailureCode::InvalidRange))?;
-                let length_matches = response
-                    .content_length()
-                    .is_none_or(|length| length == range.end - range.start + 1);
-                if range.start != partial
-                    || (known_total > 0 && range.total != known_total)
-                    || !length_matches
-                {
-                    return Err(TransferError::Permanent(DownloadFailureCode::InvalidRange));
-                }
-                content_range = Some(range);
-            }
-            let response_validator = response
-                .headers()
-                .get(ETAG)
-                .or_else(|| response.headers().get(LAST_MODIFIED))
-                .and_then(|v| v.to_str().ok())
-                .map(str::to_owned);
-            if partial > 0 {
-                if let (Some(saved), Some(fresh)) =
-                    (record.validator.as_ref(), response_validator.as_ref())
-                {
-                    if saved != fresh {
-                        return Err(TransferError::Permanent(DownloadFailureCode::InvalidRange));
-                    }
-                }
-            }
-            if partial > 0 && status == 206 && opened.crossed_origin {
-                // A ranged answer from another origin may describe a different
-                // object. Take the whole file from the original URL instead.
-                opened = self
-                    .open_get(&request.url, &request.headers, None, None)
-                    .await?;
-                partial = 0;
-                continue;
-            }
-            break (content_range, response_validator);
+        let job = segmented::TransferJob {
+            client: &self.client,
+            url: &request.url,
+            headers: &request.headers,
+            part: &part,
+            root: &root,
+            known_total: record.total_bytes,
+            validator: record.validator.as_deref(),
+            size_hint: record.media.video_size,
         };
-        let response = opened.response;
-        let total = match content_range {
-            Some(range) => range.total,
-            None => response
-                .content_length()
-                .unwrap_or(record.media.video_size.unwrap_or(0)),
+        let host = JobHost {
+            manager: self,
+            job_id,
         };
-        self.update_response_metadata(job_id, response_validator.clone(), total)
-            .await
-            .map_err(|_| TransferError::Permanent(DownloadFailureCode::Unknown))?;
-
-        fs::create_dir_all(&root)
-            .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
-        if available_bytes(&root)
-            .is_some_and(|free| !has_sufficient_space(free, total.saturating_sub(partial)))
-        {
-            return Err(TransferError::Permanent(DownloadFailureCode::StorageFull));
-        }
-        let mut file = if partial == 0 {
-            OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&part)
-        } else {
-            OpenOptions::new().write(true).open(&part)
-        }
-        .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
-        if partial > 0 {
-            file.seek(SeekFrom::Start(partial))
-                .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
-        }
-
-        let started = Instant::now();
-        let mut rate = RateWindow::new(RATE_WINDOW, started, partial);
-        let mut written = partial;
-        let mut last_progress = started;
-        let mut last_durable = started;
-        let mut last_space_check = started;
-        let mut unchecked_bytes = 0u64;
-        let mut idle = Duration::ZERO;
-        let mut stream = response.bytes_stream();
-        loop {
-            if cancel.load(Ordering::SeqCst) {
-                return Err(TransferError::Paused);
-            }
-            let next = match tokio::time::timeout(CANCEL_POLL, stream.next()).await {
-                Ok(next) => next,
-                Err(_) => {
-                    idle += CANCEL_POLL;
-                    if idle >= READ_TIMEOUT {
-                        return Err(TransferError::Retryable(DownloadFailureCode::Network));
-                    }
-                    continue;
-                }
-            };
-            idle = Duration::ZERO;
-            let Some(chunk) = next else { break };
-            let chunk =
-                chunk.map_err(|_| TransferError::Retryable(DownloadFailureCode::Network))?;
-            let now = Instant::now();
-            unchecked_bytes += chunk.len() as u64;
-            // Rechecked every few megabytes rather than on every chunk: the
-            // reserve absorbs what lands in between, and a response that never
-            // states its size still cannot eat into the reserve.
-            if unchecked_bytes >= SPACE_CHECK_BYTES
-                || now.duration_since(last_space_check) >= PROGRESS_INTERVAL
-            {
-                let needed = total.saturating_sub(written).max(chunk.len() as u64);
-                if available_bytes(&root).is_some_and(|free| !has_sufficient_space(free, needed)) {
-                    return Err(TransferError::Permanent(DownloadFailureCode::StorageFull));
-                }
-                unchecked_bytes = 0;
-                last_space_check = now;
-            }
-            if cancel.load(Ordering::SeqCst) {
-                return Err(TransferError::Paused);
-            }
-            file.write_all(&chunk)
-                .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
-            written += chunk.len() as u64;
-            if now.duration_since(last_progress) >= PROGRESS_INTERVAL {
-                let durable = now.duration_since(last_durable) >= DURABLE_INTERVAL;
-                if durable {
-                    file.sync_data()
-                        .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
-                    last_durable = now;
-                }
-                // Persisting only after a flush keeps the stored byte count at
-                // or below what is actually on disk.
-                self.update_progress(job_id, written, total, rate.record(now, written), durable)
-                    .await;
-                last_progress = now;
-            }
-        }
-        if cancel.load(Ordering::SeqCst) {
-            return Err(TransferError::Paused);
-        }
-        file.sync_all()
-            .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
-        drop(file);
-        if total > 0 && written < total {
-            return Err(TransferError::Retryable(DownloadFailureCode::Network));
-        }
-        if total > 0 && written > total {
-            return Err(TransferError::Permanent(DownloadFailureCode::InvalidRange));
-        }
+        let finished = segmented::download(&job, cancel, &host).await?;
         atomic_replace(&part, &target)
             .map_err(|_| TransferError::Permanent(DownloadFailureCode::StorageFull))?;
         let subtitle = self.fetch_latest_subtitle(job_id, &target, cancel).await;
         Ok(Transferred {
-            bytes: written,
-            total: total.max(written),
-            validator: response_validator,
+            bytes: finished.bytes,
+            total: finished.total.max(finished.bytes),
+            validator: finished.validator,
             subtitle,
         })
-    }
-
-    /// GET with the source's headers, following redirects by hand: at most
-    /// five hops, never out of https, and the protected headers stop at the
-    /// first hop that leaves the original origin.
-    async fn open_get(
-        &self,
-        url: &str,
-        headers: &HashMap<String, String>,
-        range_start: Option<u64>,
-        validator: Option<&str>,
-    ) -> Result<OpenedResponse, TransferError> {
-        let mut current = Url::parse(url)
-            .map_err(|_| TransferError::Permanent(DownloadFailureCode::SourceRejected))?;
-        let protected = header_map(headers)?;
-        let mut forward_headers = true;
-        let mut crossed_origin = false;
-        let mut hops = 0;
-        loop {
-            let mut builder = self.client.get(current.clone());
-            if forward_headers {
-                builder = builder.headers(protected.clone());
-            }
-            if let Some(start) = range_start {
-                builder = builder.header(RANGE, format!("bytes={start}-"));
-                if let Some(value) = validator {
-                    builder = builder.header(IF_RANGE, value);
-                }
-            }
-            let response = builder
-                .send()
-                .await
-                .map_err(|_| TransferError::Retryable(DownloadFailureCode::Network))?;
-            if !is_redirect_status(response.status().as_u16()) {
-                return Ok(OpenedResponse {
-                    response,
-                    crossed_origin,
-                });
-            }
-            let target = response
-                .headers()
-                .get(LOCATION)
-                .and_then(|value| value.to_str().ok())
-                .and_then(|location| next_redirect_target(&current, location, hops))
-                .ok_or(TransferError::Permanent(
-                    DownloadFailureCode::SourceRejected,
-                ))?;
-            if !target.same_origin {
-                forward_headers = false;
-                crossed_origin = true;
-            }
-            current = target.url;
-            hops += 1;
-        }
     }
 
     /// The subtitle the request carries now: it may have been attached after
@@ -1720,8 +1502,7 @@ impl DownloadManager {
         temporary: &Path,
         cancel: &Arc<AtomicBool>,
     ) -> Option<()> {
-        let response = self
-            .open_get(&subtitle.url, &subtitle.headers, None, None)
+        let response = open_get(&self.client, &subtitle.url, &subtitle.headers, None, None)
             .await
             .ok()?
             .response;
@@ -1904,6 +1685,25 @@ impl DownloadManager {
     }
 }
 
+/// Reports one job's transfer to its index record.
+struct JobHost<'a> {
+    manager: &'a DownloadManager,
+    job_id: &'a str,
+}
+
+impl segmented::TransferHost for JobHost<'_> {
+    async fn response_metadata(&self, validator: Option<String>, total: u64) -> Result<(), String> {
+        self.manager
+            .update_response_metadata(self.job_id, validator, total)
+            .await
+    }
+    async fn progress(&self, bytes: u64, total: u64, rate: u64, persist: bool) {
+        self.manager
+            .update_progress(self.job_id, bytes, total, rate, persist)
+            .await;
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DirectoryInfo {
     pub path: String,
@@ -1915,6 +1715,60 @@ pub struct DirectoryInfo {
 pub struct PlaybackFiles {
     pub video_path: String,
     pub subtitle_path: Option<String>,
+}
+
+/// GET with the source's headers, following redirects by hand: at most
+/// five hops, never out of https, and the protected headers stop at the
+/// first hop that leaves the original origin.
+async fn open_get(
+    client: &reqwest::Client,
+    url: &str,
+    headers: &HashMap<String, String>,
+    range_start: Option<u64>,
+    validator: Option<&str>,
+) -> Result<OpenedResponse, TransferError> {
+    let mut current = Url::parse(url)
+        .map_err(|_| TransferError::Permanent(DownloadFailureCode::SourceRejected))?;
+    let protected = header_map(headers)?;
+    let mut forward_headers = true;
+    let mut crossed_origin = false;
+    let mut hops = 0;
+    loop {
+        let mut builder = client.get(current.clone());
+        if forward_headers {
+            builder = builder.headers(protected.clone());
+        }
+        if let Some(start) = range_start {
+            builder = builder.header(RANGE, format!("bytes={start}-"));
+            if let Some(value) = validator {
+                builder = builder.header(IF_RANGE, value);
+            }
+        }
+        let response = builder
+            .send()
+            .await
+            .map_err(|_| TransferError::Retryable(DownloadFailureCode::Network))?;
+        if !is_redirect_status(response.status().as_u16()) {
+            return Ok(OpenedResponse {
+                response,
+                crossed_origin,
+            });
+        }
+        let target = response
+            .headers()
+            .get(LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|location| next_redirect_target(&current, location, hops))
+            .ok_or(TransferError::Permanent(
+                DownloadFailureCode::SourceRejected,
+            ))?;
+        if !target.same_origin {
+            forward_headers = false;
+            crossed_origin = true;
+        }
+        current = target.url;
+        hops += 1;
+    }
 }
 
 /// Download state lives in local app data, beside the webview's own data.
@@ -2019,7 +1873,10 @@ fn remove_files(
     resolved_roots: &[PathBuf],
     preserve: Option<&FileSet>,
 ) -> Result<(), RemoveError> {
-    let paths = std::iter::once(&files.part)
+    // The part goes before its table: a full-length part must never be left
+    // without the table that says which of its bytes arrived.
+    let paths = [&files.part, &files.table, &files.table_temp]
+        .into_iter()
         .chain(files.subtitle.as_ref())
         .chain(std::iter::once(&files.target));
     for path in paths {
@@ -2104,8 +1961,10 @@ fn choose_file_name(
             break;
         }
         let target = directory.join(&name);
+        let part = part_path(&target);
         let taken = target.exists()
-            || part_path(&target).exists()
+            || part.exists()
+            || segments::table_path(&part).exists()
             || entries
                 .values()
                 .any(|entry| same_path(&entry.target(), &target));
