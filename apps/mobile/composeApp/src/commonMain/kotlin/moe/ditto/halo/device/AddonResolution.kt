@@ -11,6 +11,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import moe.ditto.halo.api.AddonError
 import moe.ditto.halo.api.AddonSource
 import moe.ditto.halo.api.AddonStreams
@@ -18,6 +19,8 @@ import moe.ditto.halo.api.AddonSubtitles
 import moe.ditto.halo.api.CatalogResponse
 import moe.ditto.halo.api.HaloJson
 import moe.ditto.halo.api.Manifest
+import moe.ditto.halo.api.MetaExtras
+import moe.ditto.halo.api.MetaPerson
 import moe.ditto.halo.api.MetaResponse
 import moe.ditto.halo.api.MetaVideo
 import moe.ditto.halo.api.NextEpisodeResult
@@ -33,11 +36,49 @@ import kotlin.time.Instant
  * `manifest.ts` and `nextVideo.ts`, which the API server runs for signed-in
  * users; keep them in step, so Halo answers the same with or without an
  * account.
- *
- * One deliberate omission: the shared resolver also asks an installed TMDB
- * addon for a pictured cast. This app shows no cast, so that request is not
- * made.
  */
+
+/**
+ * Addons that answer an IMDb id with a pictured cast (`app_extras.cast`), by
+ * manifest id. The TMDB addon does, though its manifest only claims its own
+ * `tmdb:` ids, so resolution would never otherwise ask it.
+ */
+private val PicturedCastAddons = setOf("tmdb-addon")
+private val ImdbId = Regex("^tt\\d{1,10}$")
+private const val MaxCast = 40
+private const val MaxCastText = 200
+private const val MaxPhotoUrl = 1_000
+
+/**
+ * Addon output is untrusted: names and parts as bounded text, photos only as
+ * https URLs. Null when nobody is pictured. [extras] is the meta's
+ * `app_extras` object, as the addon sent it.
+ */
+internal fun sanitizeCast(extras: JsonElement?): List<MetaPerson>? {
+    val raw = ((extras as? JsonObject)?.get("cast") as? JsonArray) ?: return null
+    val cast = mutableListOf<MetaPerson>()
+    for (entry in raw) {
+        if (cast.size >= MaxCast) break
+        val person = entry as? JsonObject ?: continue
+        val name = boundedText(person["name"]) ?: continue
+        cast += MetaPerson(name = name, character = boundedText(person["character"]), photo = httpsUrl(person["photo"]))
+    }
+    return cast.takeIf { list -> list.any { it.photo != null } }
+}
+
+private fun boundedText(value: JsonElement?): String? {
+    val text = (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim() ?: return null
+    return text.takeIf { it.isNotEmpty() && it.length <= MaxCastText }
+}
+
+private fun httpsUrl(value: JsonElement?): String? {
+    val url = (value as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+    if (url.length > MaxPhotoUrl) return null
+    return url.takeIf { HttpsUrl.matches(it) }
+}
+
+/** An absolute https URL with a host, as `new URL()` would accept and report as https. */
+private val HttpsUrl = Regex("^https://[^\\s/?#]+[^\\s]*$", RegexOption.IGNORE_CASE)
 
 /** Per-addon request budget for every resolution call, the server's. */
 internal const val ResolveTimeoutMillis = 10_000L
@@ -114,6 +155,38 @@ internal class AddonResolver(
             }
         }
         return null
+    }
+
+    /**
+     * The title page's meta: [meta], plus the cast with photos from an
+     * installed TMDB addon when the answering addon sent none (Cinemeta sends
+     * names only). Both requests run at once; the cast is best-effort, so its
+     * failure never fails the meta. `resolveMetaWithCast` in the shared core.
+     */
+    suspend fun metaWithCast(addons: List<ResolvableAddon>, type: String, id: String): MetaResponse? = coroutineScope {
+        // The TMDB addon's manifest claims only its own `tmdb:` ids, so the
+        // id is not checked against its prefixes here.
+        val castSource = if (ImdbId.matches(id)) {
+            addons.firstOrNull { it.manifest.id in PicturedCastAddons && it.manifest.supportsResource("meta", type) }
+        } else {
+            null
+        }
+        val cast = castSource?.let { source -> async { picturedCast(source, type, id) } }
+        val response = meta(addons, type, id)
+        val pictured = cast?.await()
+        if (response == null || pictured == null || response.meta.appExtras?.cast.orEmpty().any { it.photo != null }) {
+            return@coroutineScope response
+        }
+        response.copy(meta = response.meta.copy(appExtras = (response.meta.appExtras ?: MetaExtras()).copy(cast = pictured)))
+    }
+
+    private suspend fun picturedCast(addon: ResolvableAddon, type: String, id: String): List<MetaPerson>? = try {
+        val json = fetch(resourceUrl(addon.transportUrl, "meta", type, id))
+        sanitizeCast(((json as? JsonObject)?.get("meta") as? JsonObject)?.get("app_extras"))
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (_: Exception) {
+        null
     }
 
     /** Asks every stream-capable addon at once; playable streams grouped by addon, plus each failure. */

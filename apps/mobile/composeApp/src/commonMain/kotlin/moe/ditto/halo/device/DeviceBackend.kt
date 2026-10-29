@@ -116,7 +116,7 @@ internal class DeviceBackend(
 
     override suspend fun getMeta(type: String, id: String): MetaResponse {
         if (type.isEmpty() || id.isEmpty()) throw apiError(400, "type and id are required")
-        return resolver.meta(resolvableAddons(), type, id) ?: throw apiError(404, "no metadata found")
+        return resolver.metaWithCast(resolvableAddons(), type, id) ?: throw apiError(404, "no metadata found")
     }
 
     override suspend fun getStreams(type: String, videoId: String): StreamsResult {

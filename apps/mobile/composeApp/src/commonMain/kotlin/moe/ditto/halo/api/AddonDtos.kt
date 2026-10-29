@@ -1,5 +1,6 @@
 package moe.ditto.halo.api
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -193,7 +194,34 @@ data class MetaDetail(
     val director: List<String> = emptyList(),
     val writer: List<String> = emptyList(),
     override val behaviorHints: MetaBehaviorHints? = null,
+    /** ISO date of the first release (Cinemeta), finer than [releaseInfo]'s year. */
+    val released: String? = null,
+    /** YouTube trailers, as `{ ytId }` (Cinemeta, TMDB). */
+    val trailerStreams: List<TrailerStream> = emptyList(),
+    /** The older trailer list: `{ source: <YouTube id>, type: "Trailer" }`. */
+    val trailers: List<LegacyTrailer> = emptyList(),
+    /** Extras beyond the core spec; TMDB puts the cast with photos here. */
+    @SerialName("app_extras")
+    val appExtras: MetaExtras? = null,
 ) : MetaCard
+
+@Serializable
+data class TrailerStream(val title: String? = null, val ytId: String? = null)
+
+@Serializable
+data class LegacyTrailer(val source: String? = null, val type: String? = null)
+
+@Serializable
+data class MetaExtras(val cast: List<MetaPerson> = emptyList())
+
+/** One credited person, as addons that send pictures (TMDB) describe them. */
+@Serializable
+data class MetaPerson(
+    val name: String,
+    /** The part played; absent for crew. */
+    val character: String? = null,
+    val photo: String? = null,
+)
 
 @Serializable
 data class StreamBehaviorHints(
