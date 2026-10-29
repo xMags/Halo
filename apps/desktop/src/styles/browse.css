@@ -72,6 +72,19 @@
   width: auto;
   min-width: 0;
 }
+/* The end of a paging grid: a spinner while the next page loads, or why it
+   could not and a retry. Also what the scroll position is watched against. */
+.catalog-more {
+  min-height: 56px;
+  margin-top: -16px;
+  padding: 0 24px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--t3);
+}
 .catalog-empty {
   flex: 1;
   display: flex;

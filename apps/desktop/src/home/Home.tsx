@@ -12,6 +12,7 @@ import { HeroSkeleton, PosterCardSkeleton, ShelfSkeleton } from '../components/S
 import { movieVideoId, playableFromPreview } from '../browse/playableVideo'
 import { useTitleMenu } from '../browse/titleMenu'
 import { useSettings } from '../settings/syncedSettings'
+import { supportsSkip } from '../browse/catalogPaging'
 import { catalogExtra } from './catalogLanguage'
 import { continueSheetParams, useContinueShelf } from './continueShelf'
 import { formatClock, videoIdTag } from '../format'
@@ -504,7 +505,26 @@ function CatalogShelf({ shelf, filter }: { shelf: BrowsableCatalog; filter: Home
           type="button"
           className="btn-link"
           aria-label="See all shelf items"
-          onClick={() => push({ name: 'catalog', title, source, items: items.map((meta) => ({ meta })) })}
+          onClick={() =>
+            push({
+              name: 'catalog',
+              title,
+              source,
+              items: items.map((meta) => ({ meta })),
+              ...(supportsSkip(shelf.catalog)
+                ? {
+                    more: {
+                      addonId: shelf.addonId,
+                      type: shelf.catalog.type,
+                      id: shelf.catalog.id,
+                      extra,
+                      firstPage: metas ?? [],
+                      filter,
+                    },
+                  }
+                : {}),
+            })
+          }
         >
           See all
         </button>

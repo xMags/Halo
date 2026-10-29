@@ -177,7 +177,7 @@ function Stack() {
       // context menu) must start fresh, not inherit its season and scroll.
       return <Detail key={`${screen.type}:${screen.id}`} type={screen.type} id={screen.id} />
     case 'catalog':
-      return <Catalog title={screen.title} source={screen.source} items={screen.items} />
+      return <Catalog title={screen.title} source={screen.source} items={screen.items} more={screen.more} />
     case 'player':
       return null // handled by Shell
   }
