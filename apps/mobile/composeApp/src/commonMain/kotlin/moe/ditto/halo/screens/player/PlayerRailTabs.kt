@@ -85,7 +85,8 @@ internal fun SubtitleTracksTab(
         selected = tracks.selectedSubtitleId == null && selectedAddonId == null,
         onClick = { onSelectTrack(null) },
     )
-    tracks.subtitles.forEach { track ->
+    // Added addon subtitles are listed once, under FROM ADDONS below.
+    inFileSubtitleTracks(tracks.subtitles, addonSubtitles).forEach { track ->
         RailSelectableRow(
             label = track.label,
             detail = subtitleDetail(track),

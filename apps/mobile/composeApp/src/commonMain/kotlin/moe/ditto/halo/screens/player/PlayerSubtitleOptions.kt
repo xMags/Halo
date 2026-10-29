@@ -53,6 +53,53 @@ internal fun subtitleFileFormat(url: String): String? {
     }
 }
 
+/**
+ * The file's own subtitle tracks, which is what the rail lists under "IN THIS
+ * FILE".
+ *
+ * An addon subtitle becomes an engine track once it is added, under its option
+ * id as the title, and it already has its row among the addon results. Listing
+ * it here too would show the same subtitle twice. Other added tracks, such as
+ * a download's own subtitle, have no row elsewhere and stay.
+ */
+internal fun inFileSubtitleTracks(
+    tracks: List<PlayerTrack>,
+    addonSubtitles: List<AddonSubtitleOption>,
+): List<PlayerTrack> {
+    if (addonSubtitles.isEmpty()) return tracks
+    val addonIds = addonSubtitles.mapTo(HashSet()) { it.id }
+    return tracks.filterNot { it.external && it.label in addonIds }
+}
+
+/** What the SUBTITLES chip reads, and the format beside it. */
+internal data class SubtitleChipText(val value: String, val badge: String?)
+
+/**
+ * The chip names the subtitle being shown the way the rail does.
+ *
+ * An addon subtitle is named by its language and the format its URL names,
+ * because the engine knows it only as an added file: its track carries the
+ * option id as a title and whatever codec mpv detected. Anything else reads the
+ * engine's selected track. The format sits beside the value so ellipsising a
+ * long track name cannot hide it.
+ */
+internal fun subtitleChipText(
+    tracks: PlayerTracks,
+    addonSubtitles: List<AddonSubtitleOption>,
+    selectedAddonId: String?,
+): SubtitleChipText {
+    val addon = selectedAddonId?.let { id -> addonSubtitles.firstOrNull { it.id == id } }
+    if (addon != null) {
+        return SubtitleChipText(value = languageLabel(addon.lang), badge = addon.format?.let { ".$it" })
+    }
+    val selected = tracks.subtitles.firstOrNull { it.id == tracks.selectedSubtitleId }
+        ?: return SubtitleChipText(value = "Off", badge = null)
+    return SubtitleChipText(
+        value = selected.language ?: selected.label,
+        badge = subtitleBadge(selected.codec)?.let { ".$it" },
+    )
+}
+
 /** Addon results that are all in one language, under the name of that language. */
 internal data class SubtitleLanguageGroup(
     val language: String,
@@ -288,7 +335,11 @@ internal suspend fun applySubtitleSelection(
             playback.selectSubtitleTrack(selection.trackId)
         }
         is SubtitleSelection.External -> {
-            playback.addSubtitle(selection.option.url)
+            playback.addSubtitle(
+                selection.option.url,
+                title = selection.option.id,
+                lang = selection.option.lang,
+            )
             onAddonSelected(selection.option.id)
         }
     }

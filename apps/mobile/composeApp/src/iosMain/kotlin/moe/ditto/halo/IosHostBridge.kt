@@ -184,7 +184,8 @@ interface HaloIosPlayerHost {
     fun setSubtitleOutline(widthPixels: Double)
     fun setSubtitleShadow(offsetPixels: Double)
     fun setSubtitleLift(percent: Int)
-    fun addSubtitle(url: String)
+    /** Null [title] or [lang] is left off mpv's `sub-add`; see `subAddArguments`. */
+    fun addSubtitle(url: String, title: String?, lang: String?)
     fun teardown()
     fun destroyAndRecreateCore()
 }
@@ -197,6 +198,7 @@ internal data class PlayerTrackJson(
     val codec: String? = null,
     val channels: Int? = null,
     val sampleRateHz: Int? = null,
+    val external: Boolean = false,
 )
 
 @Serializable
@@ -237,10 +239,10 @@ internal class IosPlayerEventBridge : HaloIosPlayerEventSink {
             PlayerEvent.TracksChanged(
                 PlayerTracks(
                     audio = parsed.audio.map {
-                        PlayerTrack(it.id, it.label, it.language, it.codec, it.channels, it.sampleRateHz)
+                        PlayerTrack(it.id, it.label, it.language, it.codec, it.channels, it.sampleRateHz, it.external)
                     },
                     subtitles = parsed.subtitles.map {
-                        PlayerTrack(it.id, it.label, it.language, it.codec, it.channels, it.sampleRateHz)
+                        PlayerTrack(it.id, it.label, it.language, it.codec, it.channels, it.sampleRateHz, it.external)
                     },
                     selectedAudioId = parsed.selectedAudioId,
                     selectedSubtitleId = parsed.selectedSubtitleId,
@@ -463,8 +465,8 @@ internal class IosPlayerHostAdapter(
         host.setSubtitleLift(percent)
     }
 
-    override suspend fun addSubtitle(url: String) {
-        host.addSubtitle(url)
+    override suspend fun addSubtitle(url: String, title: String?, lang: String?) {
+        host.addSubtitle(url, title, lang)
     }
 
     override suspend fun teardown() {

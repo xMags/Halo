@@ -182,7 +182,7 @@ class PlaybackHostTest {
             subtitleCalls += "lift=$percent"
         }
 
-        override suspend fun addSubtitle(url: String) = Unit
+        override suspend fun addSubtitle(url: String, title: String?, lang: String?) = Unit
 
         override suspend fun releaseVideoOutput() {
             videoReleases += 1

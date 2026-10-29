@@ -96,6 +96,12 @@ private const val ResumeHistoryWaitMillis = 5_000L
 private const val FingerprintTimeoutMillis = 10_000L
 
 /**
+ * What a download's own subtitle is called in the engine's track list. Without
+ * a title mpv would name it after its file on disk.
+ */
+private const val DownloadedSubtitleTitle = "Downloaded subtitle"
+
+/**
  * The playback screen.
  *
  * Everything except the video is chrome layered over a native render surface,
@@ -246,7 +252,9 @@ internal fun PlayerScreen(
             // mid-load), because mpv refuses a subtitle while a load is pending and
             // nothing reports that refusal.
             playback.state.first { it.current == item && it.durationSeconds != null }
-            context.localSubtitlePath?.let { path -> playback.addSubtitle(path) }
+            context.localSubtitlePath?.let { path ->
+                playback.addSubtitle(path, title = DownloadedSubtitleTitle, lang = context.localSubtitleLang)
+            }
             onOpened()
         }
     }
@@ -396,7 +404,9 @@ internal fun PlayerScreen(
                             sourceUrl = selection.option.url,
                         )
                     },
-                    addToPlayer = playback::addSubtitle,
+                    addToPlayer = { path ->
+                        playback.addSubtitle(path, title = selection.option.id, lang = selection.option.lang)
+                    },
                     onLoaded = { controller.selectAddonSubtitle(selection.option.id) },
                 )
             } catch (cancellation: CancellationException) {
@@ -715,7 +725,16 @@ internal fun PlayerScreen(
         ) {
             PlayerBottomBar(
                 metrics = metrics,
-                chips = playerChips(state, controller, context),
+                chips = playerChips(
+                    state = state,
+                    controller = controller,
+                    context = context,
+                    subtitleChip = subtitleChipText(
+                        tracks = state.tracks,
+                        addonSubtitles = addonSubtitles,
+                        selectedAddonId = controller.selectedAddonSubtitleId,
+                    ),
+                ),
                 positionSeconds = state.positionSeconds,
                 durationSeconds = state.durationSeconds,
                 // The cache's own reach. Before the engine reports one there is
@@ -863,7 +882,9 @@ internal fun PlayerScreen(
                                         sourceUrl = option.url,
                                     )
                                 },
-                                addToPlayer = playback::addSubtitle,
+                                addToPlayer = { path ->
+                                    playback.addSubtitle(path, title = option.id, lang = option.lang)
+                                },
                                 onLoaded = {
                                     controller.selectAddonSubtitle(option.id)
                                     graph.subtitleChoices.remember(
@@ -992,11 +1013,12 @@ private fun playerChips(
     state: PlayerState,
     controller: PlayerScreenController,
     context: PlaybackContext,
+    subtitleChip: SubtitleChipText,
 ): List<PlayerChip> = listOfNotNull(
     PlayerChip(
         kicker = "SUBTITLES",
-        value = subtitleChipValue(state.tracks),
-        badge = subtitleChipBadge(state.tracks),
+        value = subtitleChip.value,
+        badge = subtitleChip.badge,
         active = controller.rail == RailTab.Subtitles,
         onClick = { controller.openRail(RailTab.Subtitles) },
         width = SubtitleChipWidth,
@@ -1022,20 +1044,6 @@ private fun playerChips(
         )
     },
 )
-
-/**
- * The value stays useful when a source exposes only a long filename. The format
- * sits beside the heading so ellipsising that filename cannot hide it.
- */
-private fun subtitleChipValue(tracks: PlayerTracks): String {
-    val selected = tracks.subtitles.firstOrNull { it.id == tracks.selectedSubtitleId } ?: return "Off"
-    return selected.language ?: selected.label
-}
-
-private fun subtitleChipBadge(tracks: PlayerTracks): String? {
-    val selected = tracks.subtitles.firstOrNull { it.id == tracks.selectedSubtitleId } ?: return null
-    return subtitleBadge(selected.codec)?.let { ".$it" }
-}
 
 private fun audioChipValue(tracks: PlayerTracks): String {
     val selected = tracks.audio.firstOrNull { it.id == tracks.selectedAudioId }

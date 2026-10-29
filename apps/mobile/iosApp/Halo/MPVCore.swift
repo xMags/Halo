@@ -237,9 +237,22 @@ final class MPVCore {
         perform { handle in self.setInt64(handle, "sub-pos", Int64(100 - percent)) }
     }
 
-    func addSubtitle(url: String) {
-        // Re-select an already-added URL rather than creating a duplicate row.
-        perform { handle in self.command(handle, "sub-add", [url, "cached"]) }
+    /// `sub-add <url> cached [<title> [<lang>]]`, mirroring the Kotlin
+    /// `subAddArguments`. `cached` re-selects an already-added URL rather than
+    /// creating a duplicate row. Without a title mpv names the track after the
+    /// file, which for a cached addon subtitle is a digest. The arguments are
+    /// positional, so a language with no title takes an empty title, which mpv
+    /// treats as none. Blank values count as absent.
+    func addSubtitle(url: String, title: String?, lang: String?) {
+        let namedTitle = title.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        let namedLang = lang.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        var built = [url, "cached"]
+        if namedTitle != nil || namedLang != nil {
+            built.append(namedTitle ?? "")
+            if let namedLang { built.append(namedLang) }
+        }
+        let args = built
+        perform { handle in self.command(handle, "sub-add", args) }
     }
 
     func setVideoDecodingSuspended(_ suspended: Bool) {
@@ -451,6 +464,9 @@ final class MPVCore {
             if let sampleRate = (entry["demux-samplerate"] as? NSNumber)?.intValue {
                 track["sampleRateHz"] = sampleRate
             }
+            // Added with sub-add rather than carried by the media; the Kotlin
+            // side hides the addon ones from the file's own list.
+            track["external"] = (entry["external"] as? NSNumber)?.boolValue ?? false
             let selected = (entry["selected"] as? NSNumber)?.boolValue ?? false
             if type == "audio" {
                 audio.append(track)

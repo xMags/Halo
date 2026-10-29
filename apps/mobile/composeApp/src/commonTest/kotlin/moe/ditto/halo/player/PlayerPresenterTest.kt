@@ -337,12 +337,13 @@ class PlayerPresenterTest {
         presenter.setSubtitleDelay(1.5)
         presenter.setSubtitleScale(2.0)
         presenter.setSubtitleFont("Courier New")
-        presenter.addSubtitle("http://127.0.0.1:18787/media/sample4k.ass")
+        presenter.addSubtitle("http://127.0.0.1:18787/media/sample4k.ass", title = "opensubs:42", lang = "eng")
 
         assertEquals(listOf(1.5), port.subtitleDelays)
         assertEquals(listOf(2.0), port.subtitleScales)
         assertEquals(listOf<String?>("Courier New"), port.subtitleFonts)
         assertEquals(listOf("http://127.0.0.1:18787/media/sample4k.ass"), port.addedSubtitles)
+        assertEquals(listOf<Pair<String?, String?>>("opensubs:42" to "eng"), port.addedSubtitleNames)
         assertEquals(1.5, presenter.state.subtitleDelaySeconds)
         assertEquals(2.0, presenter.state.subtitleScale)
         assertEquals("Courier New", presenter.state.subtitleFont)
@@ -459,6 +460,7 @@ class PlayerPresenterTest {
         val shadowOffsets = mutableListOf<Double>()
         val lifts = mutableListOf<Int>()
         val addedSubtitles = mutableListOf<String>()
+        val addedSubtitleNames = mutableListOf<Pair<String?, String?>>()
         var teardownCount = 0
             private set
 
@@ -511,8 +513,9 @@ class PlayerPresenterTest {
             lifts += percent
         }
 
-        override suspend fun addSubtitle(url: String) {
+        override suspend fun addSubtitle(url: String, title: String?, lang: String?) {
             addedSubtitles += url
+            addedSubtitleNames += title to lang
         }
 
         override suspend fun teardown() {

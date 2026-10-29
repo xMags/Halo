@@ -266,7 +266,8 @@ internal class AndroidMpvPlayerHost(
         enqueue("subtitle-shadow") { it.setSubtitleShadow(offsetPixels) }
 
     suspend fun setSubtitleLift(percent: Int) = enqueue("subtitle-lift") { it.setSubtitleLift(percent) }
-    suspend fun addSubtitle(url: String) = enqueue("subtitle-add") { it.addSubtitle(url) }
+    suspend fun addSubtitle(url: String, title: String?, lang: String?) =
+        enqueue("subtitle-add") { it.addSubtitle(url, title, lang) }
 
     suspend fun teardown() = enqueue("teardown") {
         teardownCount += 1
@@ -415,7 +416,8 @@ internal class AndroidPlayerPort(
     override suspend fun setSubtitleOutline(widthPixels: Double) = host.setSubtitleOutline(widthPixels)
     override suspend fun setSubtitleShadow(offsetPixels: Double) = host.setSubtitleShadow(offsetPixels)
     override suspend fun setSubtitleLift(percent: Int) = host.setSubtitleLift(percent)
-    override suspend fun addSubtitle(url: String) = host.addSubtitle(url)
+    override suspend fun addSubtitle(url: String, title: String?, lang: String?) =
+        host.addSubtitle(url, title, lang)
     override suspend fun releaseVideoOutput() = host.releaseVideoBlocking()
     override suspend fun teardown() = host.teardown()
 }

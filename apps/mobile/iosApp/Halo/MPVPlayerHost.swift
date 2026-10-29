@@ -230,8 +230,8 @@ final class MPVPlayerHost: NSObject, HaloIosPlayerHost {
         core.setSubtitleLift(percent: percent)
     }
 
-    func addSubtitle(url: String) {
-        core.addSubtitle(url: url)
+    func addSubtitle(url: String, title: String?, lang: String?) {
+        core.addSubtitle(url: url, title: title, lang: lang)
     }
 
     func teardown() {

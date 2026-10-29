@@ -172,6 +172,8 @@ data class PlayerRoute(
     val isDownload: Boolean = false,
     /** A subtitle file stored beside a download, added to the engine directly. */
     val localSubtitlePath: String? = null,
+    /** The language the download's subtitle was saved in, when the addon said. */
+    val localSubtitleLang: String? = null,
 )
 
 /**
@@ -200,6 +202,7 @@ internal fun PlayerRoute.playbackContext(): PlaybackContext = PlaybackContext(
     streamTitle = streamTitle,
     isDownload = isDownload,
     localSubtitlePath = localSubtitlePath,
+    localSubtitleLang = localSubtitleLang,
 )
 
 /**
@@ -256,6 +259,7 @@ internal fun DownloadEntry.playerRoute(files: DownloadFiles): PlayerRoute = Play
     streamTitle = media.streamTitle,
     isDownload = true,
     localSubtitlePath = files.subtitlePath,
+    localSubtitleLang = subtitle?.lang?.takeIf { files.subtitlePath != null },
 )
 
 /**
