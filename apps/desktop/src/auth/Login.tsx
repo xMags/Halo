@@ -593,9 +593,7 @@ export function Login() {
 function Intro() {
   return (
     <>
-      <p className="si-tagline">
-        Stream from your addons, download for the trip, and pick up where you left off on any device.
-      </p>
+      <p className="si-tagline">Stream your addons, download for later, pick up on any device.</p>
       <ul className="si-chips" aria-label="Includes">
         <li>
           <FluentIcon glyph="globe" size={13} />
