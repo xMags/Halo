@@ -1,58 +1,61 @@
 /* ── Tokens: dark (default) ────────────────────────────────────────────── */
 /* `.theme-dark` re-scopes a subtree to this palette whatever the app theme:
-   the title page sits on the title's own dark art in both themes. */
+   the title page sits on the title's own dark art in both themes.
+   The dark values are the mobile app's palette (HaloColors: #0A0C11 ground,
+   blue-grey surfaces, #4CC2FF accent) by choice, not the native WinUI greys;
+   the token names still follow the native brushes. */
 :root,
 :root[data-theme='dark'],
 .theme-dark {
-  --m: #202020;
-  --ly: rgba(58, 58, 58, 0.302);
+  --m: #0a0c11;
+  --ly: rgba(28, 32, 42, 0.35);
   /* WinUI's NavigationView content grid: LayerFillColorDefault and
      CardStrokeColorDefault, drawn under the content host. */
-  --nvl: rgba(58, 58, 58, 0.298);
-  --nvs: rgba(0, 0, 0, 0.098);
-  --cd: rgba(255, 255, 255, 0.051);
-  --cs: rgba(255, 255, 255, 0.082);
-  --ct: rgba(255, 255, 255, 0.059);
-  --cts: rgba(255, 255, 255, 0.071);
-  --cth: rgba(255, 255, 255, 0.082);
-  --sb: rgba(255, 255, 255, 0.059);
-  --sbp: rgba(255, 255, 255, 0.042);
-  --t1: #ffffff;
-  --t2: rgba(255, 255, 255, 0.784);
-  --t3: rgba(255, 255, 255, 0.545);
-  --t4: rgba(255, 255, 255, 0.365);
-  --ac: #60cdff;
+  --nvl: rgba(20, 22, 29, 0.35);
+  --nvs: rgba(0, 0, 0, 0.2);
+  --cd: rgba(30, 34, 46, 0.55);
+  --cs: rgba(60, 68, 86, 0.55);
+  --ct: rgba(40, 46, 60, 0.6);
+  --cts: rgba(60, 68, 86, 0.5);
+  --cth: rgba(52, 60, 78, 0.6);
+  --sb: rgba(40, 46, 60, 0.5);
+  --sbp: rgba(40, 46, 60, 0.35);
+  --t1: #f4f6fb;
+  --t2: #c7cdd9;
+  --t3: #8b93a5;
+  --t4: #6f7789;
+  --ac: #4cc2ff;
   --aa: #4cc2ff;
   --oa: #000000;
-  --at: rgba(96, 205, 255, 0.141);
-  --su: #6ccb5f;
-  --sut: rgba(108, 203, 95, 0.141);
-  --sus: rgba(108, 203, 95, 0.278);
-  --ca: #fce100;
-  --cat: rgba(252, 225, 0, 0.129);
-  --cas: rgba(252, 225, 0, 0.239);
-  --cr: #ff99a4;
-  --crt: rgba(255, 153, 164, 0.078);
-  --crs: rgba(255, 153, 164, 0.341);
+  --at: rgba(10, 132, 255, 0.16);
+  --su: #5dd39e;
+  --sut: rgba(93, 211, 158, 0.12);
+  --sus: rgba(93, 211, 158, 0.28);
+  --ca: #ffd479;
+  --cat: rgba(255, 212, 121, 0.12);
+  --cas: rgba(255, 212, 121, 0.24);
+  --cr: #ff6b6b;
+  --crt: rgba(255, 107, 107, 0.08);
+  --crs: rgba(255, 107, 107, 0.34);
   --df: #c42b1c;
   --dh: #d13a2a;
   --tt: rgba(255, 255, 255, 0.043);
   --tb: rgba(255, 255, 255, 0.024);
-  --dv: rgba(255, 255, 255, 0.082);
-  --ns: rgba(96, 205, 255, 0.141);
-  --p1: #2a2b2f;
-  --p2: #232428;
+  --dv: rgba(60, 68, 86, 0.55);
+  --ns: rgba(10, 132, 255, 0.2);
+  --p1: #1c202a;
+  --p2: #14161d;
   /* HaloPlaceholderStripe, the asset behind every empty art slot. */
   --ps: url('../assets/stripe-dark.png');
-  --chd: rgba(96, 205, 255, 0.278);
+  --chd: rgba(10, 132, 255, 0.32);
   --pt: rgba(255, 255, 255, 0.341);
-  --hs1: rgba(24, 24, 26, 0.961);
-  --hs2: rgba(24, 24, 26, 0.62);
-  --ds: rgba(32, 32, 32, 0.98);
-  --fl: #2c2c2c;
-  --crb: #442726;
-  --ib: rgba(96, 205, 255, 0.078);
-  --is: rgba(96, 205, 255, 0.278);
+  --hs1: rgba(10, 12, 17, 0.961);
+  --hs2: rgba(10, 12, 17, 0.62);
+  --ds: rgba(20, 22, 29, 0.98);
+  --fl: #1c202a;
+  --crb: #2a161a;
+  --ib: rgba(10, 132, 255, 0.1);
+  --is: rgba(10, 132, 255, 0.32);
   --bmf: rgba(255, 255, 255, 0.122);
   /* WinUI control strokes: strong (progress track) and the button bottom edge. */
   --cst: rgba(255, 255, 255, 0.545);
@@ -63,7 +66,7 @@
   /* WinUI text boxes: the focused fill (ControlFillColorInputActive) and the
      placeholder ink at rest and while focused (TextFillColorSecondary and
      TextFillColorTertiary). */
-  --tfa: rgba(30, 30, 30, 0.702);
+  --tfa: rgba(10, 12, 17, 0.75);
   --tps: rgba(255, 255, 255, 0.773);
   --tpt: rgba(255, 255, 255, 0.529);
   /* WinUI states the toggle, combo box and disabled buttons draw with:
@@ -79,15 +82,15 @@
   --aad: rgba(255, 255, 255, 0.157);
   --oad: rgba(255, 255, 255, 0.529);
   /* ControlSolidFillColorDefault: the slider thumb's opaque ring. */
-  --csf: #454545;
+  --csf: #2a3040;
   /* Quality badge, muted tone: fill, plate, tier ink, detail ink, stroke. */
   --bdf: rgba(255, 255, 255, 0.122);
-  --bdp: #1b1b1f;
+  --bdp: #14161d;
   --bdt: rgba(255, 255, 255, 0.784);
   --bdi: rgba(255, 255, 255, 0.608);
   --bds: rgba(255, 255, 255, 0.149);
   /* Ambient glows behind the shell. */
-  --glow-a: rgba(96, 205, 255, 0.129);
+  --glow-a: rgba(10, 132, 255, 0.12);
   --glow-b: rgba(168, 120, 255, 0.102);
   color-scheme: dark;
 }
