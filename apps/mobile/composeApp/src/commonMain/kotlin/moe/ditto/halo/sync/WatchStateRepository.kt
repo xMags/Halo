@@ -1,6 +1,8 @@
 package moe.ditto.halo.sync
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.api.HaloBackend
 import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.auth.EpochClock
@@ -27,6 +29,19 @@ class WatchStateRepository(
     /** Progress for one video, from whatever is cached. */
     suspend fun progressFor(videoId: String): WatchState? =
         cache.peek<List<WatchState>>(HaloKey.WatchStates)?.firstOrNull { it.videoId == videoId }
+
+    /**
+     * Progress for one video, loading the history when nothing is cached yet,
+     * for up to [waitMillis]. Null when there is none, or when the history could
+     * not be had in time: playback must not wait on the server.
+     */
+    suspend fun loadedProgressFor(videoId: String, waitMillis: Long): WatchState? {
+        val rows = cache.peek<List<WatchState>>(HaloKey.WatchStates)
+            ?: withTimeoutOrNull(waitMillis) {
+                observe().first { it.value != null || it.error != null }.value
+            }
+        return rows?.firstOrNull { it.videoId == videoId }
+    }
 
     /**
      * Records a progress sample, or returns null when the sample is not worth

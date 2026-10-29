@@ -1,3 +1,4 @@
+import type { WatchState } from '@halo/core'
 import type { Medal } from '../components/medal'
 
 export type PlayerShortcut =
@@ -144,4 +145,27 @@ export function scrubPreviewOffset(pointerX: number, cardWidth: number, hostWidt
   const rightmost = hostWidth - cardWidth
   if (!Number.isFinite(pointerX) || rightmost <= 0) return 0
   return Math.min(rightmost, Math.max(0, pointerX - cardWidth / 2))
+}
+
+/**
+ * Where a video opens: exactly where it was left, whenever there is a place to
+ * go back to.
+ *
+ * That is the same test Home and the title page use to offer "Resume" (a saved
+ * position that is not marked watched), so whatever says Resume resumes.
+ * Nothing near the start or the end is second-guessed: a position is only
+ * recorded past the first seconds, and the end is already handled by the row
+ * being marked watched.
+ *
+ * The one refusal is a position past the end of the file being opened, which
+ * happens when another source is a shorter cut; that starts from the top.
+ * `durationSec` is the opened file's own length, 0 when it is unknown.
+ */
+export function resumePosition(saved: WatchState | null | undefined, durationSec: number): number | null {
+  // A removal from the history is a removal of the place too.
+  if (!saved || saved.watched || saved.removedAt != null) return null
+  const position = saved.positionSec
+  if (!Number.isFinite(position) || position <= 0) return null
+  if (durationSec > 0 && position >= durationSec) return null
+  return position
 }
