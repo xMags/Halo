@@ -170,8 +170,8 @@ internal fun BufferingOverlay(
 }
 
 /**
- * The brightness and volume readout, plus a wash over whichever half of the
- * screen is being dragged. The wash is the part that answers "why did the
+ * The brightness and volume readout, plus a wash over whichever side's drag
+ * zone is being dragged. The wash is the part that answers "why did the
  * brightness change when I meant the volume", which is the only mistake this
  * gesture pair invites.
  */
@@ -182,7 +182,7 @@ internal fun GestureHudOverlay(hud: GestureHudValue, modifier: Modifier = Modifi
             Modifier
                 .align(if (hud.kind == GestureHudKind.Brightness) Alignment.CenterStart else Alignment.CenterEnd)
                 .fillMaxHeight()
-                .fillMaxWidth(0.5f)
+                .fillMaxWidth(DragZoneFraction)
                 .background(
                     Brush.horizontalGradient(
                         if (hud.kind == GestureHudKind.Brightness) {

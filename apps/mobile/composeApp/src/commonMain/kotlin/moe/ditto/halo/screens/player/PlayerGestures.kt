@@ -132,9 +132,27 @@ internal class OneFingerVerticalDrag(private val slopPx: Float) {
     }
 }
 
-/** Left half is brightness, right half is volume, as every mobile player does. */
-internal fun verticalDragTarget(startX: Float, widthPx: Float): VerticalDragTarget =
-    if (widthPx > 0f && startX > widthPx / 2f) VerticalDragTarget.Volume else VerticalDragTarget.Brightness
+/**
+ * How much of the width each side's drag owns. The middle between them adjusts
+ * nothing, so a hand reaching across the picture, or a sloppy pinch, does not
+ * change brightness or volume by accident.
+ */
+internal const val DragZoneFraction = 1f / 3f
+
+/**
+ * Left third is brightness, right third is volume; a drag starting in the
+ * middle third is no drag at all (null).
+ */
+internal fun verticalDragTarget(startX: Float, widthPx: Float): VerticalDragTarget? {
+    // An unmeasured surface has no zones; brightness is the safer default,
+    // since it changes nothing outside this window.
+    if (widthPx <= 0f) return VerticalDragTarget.Brightness
+    return when {
+        startX <= widthPx * DragZoneFraction -> VerticalDragTarget.Brightness
+        startX >= widthPx * (1f - DragZoneFraction) -> VerticalDragTarget.Volume
+        else -> null
+    }
+}
 
 /**
  * The video's own gestures.
@@ -193,6 +211,9 @@ internal fun Modifier.playerGestures(
         // volume too. See [OneFingerVerticalDrag].
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
+            // Where the finger lands decides; the middle of the picture is no
+            // drag, and the touch is left alone for the tap and pinch.
+            val target = verticalDragTarget(down.position.x, size.width.toFloat()) ?: return@awaitEachGesture
             val drag = OneFingerVerticalDrag(viewConfiguration.touchSlop)
             while (true) {
                 val event = awaitPointerEvent()
@@ -207,8 +228,7 @@ internal fun Modifier.playerGestures(
                 when (step) {
                     OneFingerDragStep.None -> Unit
                     is OneFingerDragStep.Start -> {
-                        val startX = (change ?: down).position.x
-                        onDragStart(verticalDragTarget(startX, size.width.toFloat()), size.height.toFloat())
+                        onDragStart(target, size.height.toFloat())
                         onDrag(step.totalPx)
                     }
                     is OneFingerDragStep.Move -> onDrag(step.totalPx)
