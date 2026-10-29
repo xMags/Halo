@@ -104,3 +104,20 @@ export function historyTime(timestamp: number, now = Date.now()): string {
   if (daysAgo < 7) return date.toLocaleDateString(undefined, { weekday: 'long' })
   return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
+
+/**
+ * The entries whose title contains every word of `query`, ignoring case and
+ * accents, so "spider verse" finds "Spider-Man: Across the Spider-Verse".
+ */
+export function searchHistory(entries: HistoryEntry[], query: string): HistoryEntry[] {
+  const words = foldForSearch(query).split(/\s+/).filter(Boolean)
+  if (words.length === 0) return entries
+  return entries.filter((entry) => {
+    const name = foldForSearch(entry.name)
+    return words.every((word) => name.includes(word))
+  })
+}
+
+function foldForSearch(text: string): string {
+  return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+}

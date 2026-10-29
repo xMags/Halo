@@ -15,6 +15,7 @@ export function SearchBox({
   large = false,
   autoFocus = false,
   inputRef,
+  placeholder = 'Search movies and series',
 }: {
   value: string
   onChange: (value: string) => void
@@ -23,6 +24,7 @@ export function SearchBox({
   large?: boolean
   autoFocus?: boolean
   inputRef?: Ref<HTMLInputElement>
+  placeholder?: string
 }) {
   const ownRef = useRef<HTMLInputElement | null>(null)
   const setRefs = (node: HTMLInputElement | null) => {
@@ -35,7 +37,7 @@ export function SearchBox({
     <div className={`search-box ${large ? 'search-box-lg' : ''}`}>
       <input
         ref={setRefs}
-        placeholder="Search movies and series"
+        placeholder={placeholder}
         value={value}
         autoFocus={autoFocus}
         spellCheck={false}

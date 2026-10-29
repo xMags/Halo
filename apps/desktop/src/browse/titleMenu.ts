@@ -6,6 +6,7 @@ import { confirmDeleteFromDevice, reportDownloadActionFailure } from '../downloa
 import { deleteReady, readyDownloadFor, showInExplorer } from '../downloads/downloadsStore'
 import { runtimeMinutes, videoIdTag } from '../format'
 import { continueSheetParams } from '../home/continueShelf'
+import type { HistoryEntry } from '../history/historyRows'
 import type { ContinueCard } from '../home/homeRows'
 import { useNav } from '../nav'
 import { libraryItemFromMeta, useReportWatchState, useUpsertLibrary } from '../queries'
@@ -283,5 +284,42 @@ export function useTitleMenu() {
     ])
   }
 
-  return { forPoster, forContinue, forEpisode }
+  /**
+   * A History row: one video played. Left partway it resumes; finished, it
+   * plays again from the start (the player only resumes unfinished rows).
+   * `play` is the row's own opener, which fetches the details the sheet needs.
+   * Earlier episodes are offered only when the show's details are cached, so
+   * a right click never fetches.
+   */
+  const forHistory = (event: MenuEvent, entry: HistoryEntry, play: () => void) => {
+    const meta = cachedMeta(entry.type, entry.metaId)
+    const video = meta?.videos?.find((candidate) => candidate.id === entry.videoId)
+    const idTag = videoIdTag(entry.videoId, entry.metaId)
+    const tag = idTag === 'MOVIE' || idTag === 'SERIES' ? null : idTag
+    const playLabel = entry.finished ? (tag ? `Play ${tag} again` : 'Play again') : tag ? `Resume ${tag}` : 'Resume'
+    const target: WatchMarkTarget = {
+      videoId: entry.videoId,
+      itemId: entry.itemId,
+      name: entry.name,
+      ...(entry.poster ? { poster: entry.poster } : {}),
+    }
+    const saved = downloadEntries(entry.videoId)
+    show(event, [
+      { kind: 'item', label: playLabel, glyph: entry.finished ? 'retry' : 'play', onSelect: play },
+      saved.play,
+      {
+        kind: 'item',
+        label: 'Open details',
+        glyph: 'info',
+        onSelect: () => push({ name: 'detail', type: entry.type, id: entry.metaId }),
+      },
+      SEPARATOR,
+      watchedEntry(target, meta?.runtime, tag ?? undefined),
+      meta && video ? earlierEntry(meta, entry.itemId, video) : null,
+      libraryEntry({ id: entry.metaId, type: entry.type, name: entry.name, ...(entry.poster ? { poster: entry.poster } : {}) }),
+      ...saved.manage,
+    ])
+  }
+
+  return { forPoster, forContinue, forEpisode, forHistory }
 }

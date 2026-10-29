@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { LibraryItem, WatchState } from '@halo/core'
-import { buildHistory, groupHistory } from '../src/history/historyRows.ts'
+import { buildHistory, groupHistory, searchHistory } from '../src/history/historyRows.ts'
 
 function row(partial: Partial<WatchState> & Pick<WatchState, 'itemId' | 'videoId' | 'updatedAt'>): WatchState {
   return { positionSec: 600, durationSec: 3000, watched: false, name: 'Title', ...partial } as WatchState
@@ -79,4 +79,19 @@ test('rows group into today, yesterday, earlier this week and months by local ca
       [september, 1],
     ],
   )
+})
+
+test('search keeps the titles holding every word, ignoring case and accents', () => {
+  const history = buildHistory(
+    [
+      row({ itemId: 'movie:a', videoId: 'a', updatedAt: 3, name: 'Spider-Man: Across the Spider-Verse' }),
+      row({ itemId: 'movie:b', videoId: 'b', updatedAt: 2, name: 'Amélie' }),
+      row({ itemId: 'movie:c', videoId: 'c', updatedAt: 1, name: 'Spider Baby' }),
+    ],
+    [],
+    'all',
+  )
+  assert.deepEqual(searchHistory(history, 'spider verse').map((entry) => entry.videoId), ['a'])
+  assert.deepEqual(searchHistory(history, 'AMELIE').map((entry) => entry.videoId), ['b'])
+  assert.equal(searchHistory(history, '   ').length, 3)
 })

@@ -1,8 +1,11 @@
 import type { MetaDetail } from '@halo/core'
 import { useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type MouseEvent } from 'react'
 import { getClient } from '../api'
+import { useTitleMenu } from '../browse/titleMenu'
 import { ArtImage } from '../components/ArtImage'
+import { FluentIcon } from '../components/FluentIcon'
+import { SearchBox } from '../components/SearchBox'
 import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { formatTimeLeft, videoIdTag } from '../format'
@@ -10,7 +13,7 @@ import { continueSheetParams } from '../home/continueShelf'
 import type { HomeFilter } from '../home/homeRows'
 import { useNav } from '../nav'
 import { useLibrary, useWatchStates } from '../queries'
-import { buildHistory, groupHistory, historyTime, type HistoryEntry } from './historyRows'
+import { buildHistory, groupHistory, historyTime, searchHistory, type HistoryEntry } from './historyRows'
 
 const FILTERS: ReadonlyArray<{ value: HomeFilter; label: string }> = [
   { value: 'all', label: 'All' },
@@ -20,25 +23,29 @@ const FILTERS: ReadonlyArray<{ value: HomeFilter; label: string }> = [
 
 /**
  * Everything played, newest first, one row per video, from the synced watch
- * history. Read only: nothing here saves to the library or removes history.
+ * history. The history itself is read only: a row's menu marks watched or
+ * saves to the library, as the same title's menu does anywhere else, but
+ * nothing here deletes history.
  */
 export function History() {
   const { data: watchStates, isLoading, error } = useWatchStates()
   const { data: library } = useLibrary()
   const [filter, setFilter] = useState<HomeFilter>('all')
+  const [query, setQuery] = useState('')
 
   const groups = useMemo(
-    () => groupHistory(buildHistory(watchStates, library, filter)),
-    [watchStates, library, filter],
+    () => groupHistory(searchHistory(buildHistory(watchStates, library, filter), query)),
+    [watchStates, library, filter, query],
   )
   const hasAny = (watchStates?.length ?? 0) > 0
+  const searching = query.trim() !== ''
 
   return (
     <div className="view view-col">
-      <SectionHeader title="History" />
-      <div className="lib-bar">
+      <SectionHeader title="History">
+        <SearchBox value={query} onChange={setQuery} placeholder="Search history" />
         <Segmented options={FILTERS} value={filter} onChange={setFilter} />
-      </div>
+      </SectionHeader>
 
       <div className="history-scroll">
         {error && <div className="state-note error-text">{String(error)}</div>}
@@ -47,14 +54,23 @@ export function History() {
           <div className="state-note">Nothing watched yet. What you play shows up here.</div>
         )}
         {hasAny && groups.length === 0 && (
-          <div className="state-note">No {filter === 'movie' ? 'movies' : 'series'} in your history.</div>
+          <div className="state-note">
+            {searching
+              ? `Nothing in your history matches “${query.trim()}”.`
+              : `No ${filter === 'movie' ? 'movies' : 'series'} in your history.`}
+          </div>
         )}
         {groups.map((group) => (
           <section key={group.label} className="history-group">
-            <h2 className="history-label">{group.label}</h2>
-            {group.entries.map((entry) => (
-              <HistoryRow key={entry.videoId} entry={entry} />
-            ))}
+            <h2 className="history-label">
+              {group.label}
+              <span className="history-count">{group.entries.length}</span>
+            </h2>
+            <div className="history-grid">
+              {group.entries.map((entry) => (
+                <HistoryRow key={entry.videoId} entry={entry} />
+              ))}
+            </div>
           </section>
         ))}
       </div>
@@ -67,10 +83,12 @@ export function History() {
  * as a continue card does; finished, it opens the title page. The row itself
  * fetches nothing, so a long history costs no requests: the episode tag comes
  * from the video id, and the title's details are asked for only on a click.
+ * Right-click, the menu key or the More button open the title menu.
  */
 function HistoryRow({ entry }: { entry: HistoryEntry }) {
   const { push, openSheet } = useNav()
   const queryClient = useQueryClient()
+  const titleMenu = useTitleMenu()
   const tag = videoIdTag(entry.videoId, entry.metaId)
   const progress = entry.finished || entry.durationSec <= 0 ? 0 : entry.positionSec / entry.durationSec
   const state = entry.finished
@@ -78,12 +96,10 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
     : entry.durationSec > 0
       ? formatTimeLeft(entry.positionSec, entry.durationSec).toUpperCase()
       : 'STARTED'
+  const played = new Date(entry.updatedAt).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })
 
-  const open = async () => {
-    if (entry.finished) {
-      push({ name: 'detail', type: entry.type, id: entry.metaId })
-      return
-    }
+  /** The sources sheet for this video: resumes it, or plays it again once finished. */
+  const play = async () => {
     // The details name the episode and its runtime; the sheet still opens
     // without them when they cannot be fetched.
     const meta = await queryClient
@@ -95,24 +111,56 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
       .catch(() => undefined)
     openSheet(continueSheetParams({ ...entry, kind: 'resume' }, meta))
   }
+  const openDetails = () => push({ name: 'detail', type: entry.type, id: entry.metaId })
+  const showMenu = (event: MouseEvent<HTMLElement>) => titleMenu.forHistory(event, entry, () => void play())
 
   return (
-    <button type="button" className="history-row" onClick={() => void open()} title={entry.name}>
-      <div className="art history-thumb">
-        <ArtImage src={entry.poster} lazy />
-        {progress > 0 && (
-          <div className="art-progress">
-            <div style={{ width: `${Math.round(progress * 100)}%` }} />
-          </div>
-        )}
-      </div>
-      <div className="history-body">
-        <div className="history-title ellipsis">{entry.name}</div>
-        <div className="card-meta">
-          {tag} · {state}
+    <div className="history-row" onContextMenu={showMenu}>
+      <button
+        type="button"
+        className="history-open"
+        onClick={() => (entry.finished ? openDetails() : void play())}
+        title={entry.finished ? `${entry.name}: open details` : `${entry.name}: resume`}
+      >
+        <div className="art history-thumb">
+          <ArtImage src={entry.poster} lazy />
+          {progress > 0 && (
+            <div className="art-progress">
+              <div style={{ width: `${Math.round(progress * 100)}%` }} />
+            </div>
+          )}
         </div>
+        <div className="history-body">
+          <div className="history-title ellipsis">{entry.name}</div>
+          <div className="card-meta">
+            {tag} · {state}
+          </div>
+          <div className="history-time" title={played}>
+            {historyTime(entry.updatedAt)}
+          </div>
+        </div>
+      </button>
+      <div className="history-actions">
+        <button
+          type="button"
+          className="icon-btn icon-btn-bare"
+          aria-label={entry.finished ? 'Play again' : 'Resume'}
+          title={entry.finished ? 'Play again' : 'Resume'}
+          onClick={() => void play()}
+        >
+          <FluentIcon glyph={entry.finished ? 'retry' : 'play'} />
+        </button>
+        <button
+          type="button"
+          className="icon-btn icon-btn-bare"
+          aria-label="More options"
+          aria-haspopup="menu"
+          title="More options"
+          onClick={showMenu}
+        >
+          <FluentIcon glyph="more" />
+        </button>
       </div>
-      <div className="history-time">{historyTime(entry.updatedAt)}</div>
-    </button>
+    </div>
   )
 }
