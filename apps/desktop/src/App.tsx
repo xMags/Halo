@@ -139,7 +139,7 @@ function Shell() {
     <div className="shell">
       <div className="glow glow-a" />
       <div className="glow glow-b" />
-      <TitleBar />
+      <TitleBar account />
       <div className="shell-body">
         <NavRail open={paneOpen} onToggle={() => setPaneOpen((open) => !open)} />
         <div className="content">
