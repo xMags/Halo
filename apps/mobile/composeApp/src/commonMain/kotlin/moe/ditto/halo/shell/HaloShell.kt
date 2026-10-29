@@ -443,6 +443,9 @@ private class Tab(
     val activeIcon: ImageVector,
 )
 
+/** The rail's Search entry; the tab bar has none, as Home's search box sits right above it. */
+private val RailSearch = Tab(SearchRoute, "Search", HaloIcons.Search, HaloIcons.Search)
+
 private val tabs = listOf(
     Tab(HomeRoute, "Home", HaloIcons.HomeOutline, HaloIcons.Home),
     Tab(LibraryRoute, "Library", HaloIcons.BookmarkOutline, HaloIcons.Bookmark),
@@ -551,6 +554,7 @@ private fun HaloNavRail(
     val entry by navController.currentBackStackEntryAsState()
     val destination = entry?.destination
     val onTabItself = current != null && destination?.hierarchy?.any { it.hasRoute(current.route::class) } == true
+    val onSearch = destination?.hierarchy?.any { it.hasRoute(SearchRoute::class) } == true
 
     AnimatedVisibility(
         visible = !destination.coversRail(),
@@ -583,13 +587,26 @@ private fun HaloNavRail(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(RailTabGap),
                 ) {
-                    tabs.forEach { tab ->
-                        val selected = tab == current
+                    tabs.forEachIndexed { index, tab ->
                         RailTabButton(
                             tab = tab,
-                            selected = selected,
+                            // Search, while open, is the one lit: the tab it
+                            // was opened over stays underneath, unlit.
+                            selected = tab == current && !onSearch,
                             onClick = { navController.pressTab(tab, current, onTabItself) },
                         )
+                        // Second, as on the desktop's rail. Search is not a tab
+                        // but a screen opened over one; this opens it, and the
+                        // tabs close it again as they close any pushed screen.
+                        if (index == 0) {
+                            RailTabButton(
+                                tab = RailSearch,
+                                selected = onSearch,
+                                onClick = {
+                                    if (!onSearch) navController.navigate(SearchRoute) { launchSingleTop = true }
+                                },
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.weight(1f))
