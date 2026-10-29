@@ -158,6 +158,13 @@ export interface WatchState {
   /** Denormalized display fields (per-row LWW like the rest of the state). */
   name?: string
   poster?: string
+  /**
+   * Set when the video was removed from the watch history: the row is then a
+   * tombstone that forgets its progress, kept so the removal wins over stale
+   * copies. Servers never return tombstones; playing the video again writes a
+   * newer row without it.
+   */
+  removedAt?: number
   /** Client-set; the server keeps whichever write is newest (LWW). */
   updatedAt: number
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `watch_states` ADD `removed_at` integer;

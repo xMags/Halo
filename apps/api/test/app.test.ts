@@ -133,6 +133,24 @@ describe('watch-state LWW (per user)', () => {
     expect(rows[0]!.updatedAt).toBe(2000)
   })
 
+  it('keeps a removal from the history out of reads, past stale copies, until a newer play', async () => {
+    await app.request('/watch-state', authed(token, [state({ positionSec: 100, updatedAt: 1000 })]))
+    let res = await app.request(
+      '/watch-state',
+      authed(token, [state({ positionSec: 0, durationSec: 0, removedAt: 2000, updatedAt: 2000 })]),
+    )
+    expect(await res.json()).toEqual([])
+    await app.request('/watch-state', authed(token, [state({ positionSec: 150, updatedAt: 1500 })]))
+    res = await app.request('/watch-state', authed(token))
+    expect(await res.json()).toEqual([])
+
+    res = await app.request('/watch-state', authed(token, [state({ positionSec: 30, updatedAt: 3000 })]))
+    const rows = (await res.json()) as WatchState[]
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.positionSec).toBe(30)
+    expect(rows[0]!.removedAt).toBeUndefined()
+  })
+
   it('round-trips the denormalized name and poster', async () => {
     await app.request(
       '/watch-state',

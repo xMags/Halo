@@ -323,6 +323,23 @@ test('watch history: a newer report replaces the row whole, an older one is igno
   assert.equal(rows[0]!.name, undefined)
 })
 
+test('watch history: a removal is kept but never returned, outlasts stale copies, and a newer play brings the video back', async () => {
+  const { backend } = makeBackend({})
+  await backend.putWatchStates([watch('tt1', 10, { name: 'Gone' }), watch('tt2', 10)])
+  let rows = await backend.putWatchStates([watch('tt1', 20, { positionSec: 0, durationSec: 0, removedAt: 20 })])
+  assert.deepEqual(rows.map((s) => s.videoId), ['tt2'])
+
+  rows = await backend.putWatchStates([watch('tt1', 15, { name: 'Stale copy' })])
+  assert.deepEqual(rows.map((s) => s.videoId), ['tt2'])
+  assert.deepEqual(await backend.getWatchStates(), rows)
+
+  rows = await backend.putWatchStates([watch('tt1', 30, { positionSec: 12 })])
+  assert.equal(rows.find((s) => s.videoId === 'tt1')?.positionSec, 12)
+  assert.equal(rows.find((s) => s.videoId === 'tt1')?.removedAt, undefined)
+
+  await rejectsWithStatus(backend.putWatchStates([watch('tt3', 1, { removedAt: 1.5 })]), 400)
+})
+
 test('settings: newer replaces, older is ignored, unknown keys pass through, invalid values are refused', async () => {
   const { backend } = makeBackend({})
   assert.deepEqual(await backend.getSettings(), { value: {}, updatedAt: 0 })

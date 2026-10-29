@@ -103,6 +103,9 @@ export const watchStates = sqliteTable(
     // by older clients backfill on their next report.
     name: text('name'),
     poster: text('poster'),
+    // Set on a removal from the watch history: the row becomes a tombstone so
+    // the removal outlasts stale copies, and reads leave it out.
+    removedAt: integer('removed_at'),
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => [

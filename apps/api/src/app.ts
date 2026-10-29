@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, notInArray, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { z } from 'zod'
@@ -126,6 +126,7 @@ const watchStatesSchema = z.array(
     watched: z.boolean(),
     name: z.string().min(1).max(512).optional(),
     poster: z.string().url().optional(),
+    removedAt: z.number().int().positive().optional(),
     updatedAt: z.number().int().positive(),
   }),
 )
@@ -427,10 +428,18 @@ export function createApp(config: AppConfig) {
     return c.json(db.select().from(libraryItems).where(eq(libraryItems.userId, user.id)).all().map(rowToLibraryItem))
   })
 
+  /** The user's watch history without removal tombstones, which no client is ever sent. */
+  const liveWatchStates = (userId: string) =>
+    db
+      .select()
+      .from(watchStates)
+      .where(and(eq(watchStates.userId, userId), isNull(watchStates.removedAt)))
+      .all()
+      .map(rowToWatchState)
+
   authed.get('/watch-state', (c) => {
     const user = c.get('user')
-    const rows = db.select().from(watchStates).where(eq(watchStates.userId, user.id)).all()
-    return c.json(rows.map(rowToWatchState))
+    return c.json(liveWatchStates(user.id))
   })
 
   authed.put('/watch-state', async (c) => {
@@ -450,6 +459,8 @@ export function createApp(config: AppConfig) {
               watched: sql`excluded.watched`,
               name: sql`excluded.name`,
               poster: sql`excluded.poster`,
+              // A newer play over a removal clears it, bringing the video back.
+              removedAt: sql`excluded.removed_at`,
               updatedAt: sql`excluded.updated_at`,
             },
             setWhere: sql`excluded.updated_at > ${watchStates.updatedAt}`,
@@ -457,7 +468,7 @@ export function createApp(config: AppConfig) {
           .run()
       }
     })
-    return c.json(db.select().from(watchStates).where(eq(watchStates.userId, user.id)).all().map(rowToWatchState))
+    return c.json(liveWatchStates(user.id))
   })
 
   authed.get('/settings', (c) => {

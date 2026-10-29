@@ -30,6 +30,7 @@ import {
   addonUrlsProblem,
   libraryItemProblem,
   mergeLibrary,
+  liveWatchStates,
   mergeWatchStates,
   settingsProblem,
   watchStateProblem,
@@ -245,8 +246,9 @@ export class DeviceBackend implements HaloBackend {
     })
   }
 
-  getWatchStates(): Promise<WatchState[]> {
-    return this.readList<WatchState>('watchStates', 'states')
+  /** Removed rows stay stored, so the removal outlasts stale copies, but are never returned, as on the server. */
+  async getWatchStates(): Promise<WatchState[]> {
+    return liveWatchStates(await this.readList<WatchState>('watchStates', 'states'))
   }
 
   async putWatchStates(states: WatchState[]): Promise<WatchState[]> {
@@ -256,7 +258,7 @@ export class DeviceBackend implements HaloBackend {
     return this.exclusive('watchStates', async () => {
       const merged = mergeWatchStates(await this.readList<WatchState>('watchStates', 'states'), states)
       await this.writeDocument('watchStates', 'states', merged)
-      return merged
+      return liveWatchStates(merged)
     })
   }
 
