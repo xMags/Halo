@@ -482,9 +482,10 @@ function AddonsSection() {
     // only way to know the switch should still be drawn.
     const hasCatalogs = !shadowed && (item.manifest.catalogs.length > 0 || item.hideCatalogs)
 
-    let lockTitle: string | null = null
-    if (!editable) lockTitle = 'Managed by the server admin'
-    else if (builtIn) lockTitle = 'Built into Halo, so it cannot be removed'
+    // Only your own additions can be removed here. The built-in addons are
+    // what Halo needs to browse at all, and global ones are managed on the
+    // server, so neither offers the button rather than a disabled one.
+    const removable = scope === 'yours' && !builtIn
 
     return (
       <div
@@ -563,15 +564,17 @@ function AddonsSection() {
               <FluentIcon glyph="globe" size={14} />
             </button>
           )}
-          <button
-            type="button"
-            className="icon-btn icon-btn-bare icon-btn-28 icon-btn-danger"
-            title={lockTitle ?? 'Remove addon'}
-            disabled={lockTitle !== null || listBusy}
-            onClick={() => void remove(item, scope)}
-          >
-            <FluentIcon glyph="delete" size={14} />
-          </button>
+          {removable && (
+            <button
+              type="button"
+              className="icon-btn icon-btn-bare icon-btn-28 icon-btn-danger"
+              title="Remove addon"
+              disabled={listBusy}
+              onClick={() => void remove(item, scope)}
+            >
+              <FluentIcon glyph="delete" size={14} />
+            </button>
+          )}
         </span>
       </div>
     )

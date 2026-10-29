@@ -200,10 +200,14 @@
   padding: 13px 14px;
   border-top: 1px solid var(--dv);
 }
+/* One button's width even when a row has none (built-in and global addons
+   cannot be removed), so the catalog switches still line up down the list. */
 .addon-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 2px;
+  min-width: 28px;
 }
 .addon-row:first-child {
   border-top: 0;

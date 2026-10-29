@@ -245,9 +245,9 @@ internal fun AddonRow(
             }
             if (removable) {
                 Icon(
-                    imageVector = HaloIcons.Close,
+                    imageVector = HaloIcons.Trash,
                     contentDescription = "Remove ${addon.manifest.name}",
-                    tint = HaloColors.TextDim,
+                    tint = HaloColors.Danger,
                     modifier = Modifier
                         .clickable(role = Role.Button) { onRemove(addon, ownership) }
                         .padding(HaloSpacing.Xs)
