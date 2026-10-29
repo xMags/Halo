@@ -153,7 +153,10 @@ internal fun rememberThroughputHistory(rate: () -> Long): ThroughputHistory {
  * and the panel closes up to the readouts rather than holding an empty band.
  *
  * [wide] sets storage beside the chart; otherwise it stacks under it, which is
- * what a phone has room for.
+ * what a phone has room for. A phone also drops the rate and chart while
+ * nothing is downloading: a resting zero over a flat chart is most of its
+ * screen spent saying nothing. The history keeps sampling meanwhile (it lives
+ * with the screen, not here), so the chart returns whole when a transfer starts.
  */
 @Composable
 internal fun QueuePanel(
@@ -204,22 +207,28 @@ internal fun QueuePanel(
                 StorageColumn(meter, Modifier.width(StorageColumnWidth).fillMaxHeight())
             }
         } else {
-            ThroughputColumn(
-                bytesPerSecond = bytesPerSecond,
-                connections = connections,
-                idle = idle,
-                history = history,
-                compact = !wide,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            meter?.let {
-                Box(
-                    Modifier
-                        .padding(vertical = if (wide) HaloSpacing.Md else HaloSpacing.Sm + 4.dp)
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(HaloColors.Border),
+            // Kept when it is all the panel would show, so the card is never empty.
+            val showRate = wide || !idle || meter == null
+            if (showRate) {
+                ThroughputColumn(
+                    bytesPerSecond = bytesPerSecond,
+                    connections = connections,
+                    idle = idle,
+                    history = history,
+                    compact = !wide,
+                    modifier = Modifier.fillMaxWidth(),
                 )
+            }
+            meter?.let {
+                if (showRate) {
+                    Box(
+                        Modifier
+                            .padding(vertical = if (wide) HaloSpacing.Md else HaloSpacing.Sm + 4.dp)
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(HaloColors.Border),
+                    )
+                }
                 if (wide) StorageColumn(it, Modifier.fillMaxWidth()) else StorageStrip(it)
             }
         }
