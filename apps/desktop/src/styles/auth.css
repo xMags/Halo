@@ -316,12 +316,12 @@
   font-style: italic;
   font-weight: 700;
 }
+/* In the mono face of the app's shelf captions ("8 IN PROGRESS"). */
 .si-tagline {
   margin: 16px auto 0;
-  max-width: 33ch;
+  max-width: 40ch;
   text-align: center;
-  font-size: 15.5px;
-  line-height: 1.5;
+  font: 400 13.5px/1.65 var(--mono);
   color: var(--si-ink2);
 }
 .si-chips {
