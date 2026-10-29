@@ -132,10 +132,10 @@ internal fun SettingsContent(
                                 busy = state.pendingAction?.endsWith(addon.id) == true,
                                 onToggleCatalogs = onToggleCatalogs,
                                 onRemove = onRemoveAddon,
-                                // Without an account the built-in addons are all
-                                // there is to browse, and they come back on the
-                                // next start anyway, as on the desktop app.
-                                removable = state.signedIn || addon.transportUrl !in DefaultAddonUrls,
+                                // The built-in addons are what Halo needs to browse
+                                // at all, so they have no delete button, signed in
+                                // or not, as on the desktop app.
+                                removable = addon.transportUrl !in DefaultAddonUrls,
                             )
                             if (index != state.addons.user.lastIndex) SettingsDivider()
                         }
@@ -173,6 +173,9 @@ internal fun SettingsContent(
                                 busy = state.pendingAction?.endsWith(addon.id) == true,
                                 onToggleCatalogs = onToggleCatalogs,
                                 onRemove = onRemoveAddon,
+                                // Global addons are managed on the server, never
+                                // removed from an app, admin or not.
+                                removable = false,
                             )
                             if (index != globalAddons.lastIndex) SettingsDivider()
                         }
