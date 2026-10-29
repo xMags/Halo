@@ -186,7 +186,11 @@ internal fun PlayerScreen(
     // Not before the engine has the file open: the warm-up decode reads the
     // same source playback is starting on, and racing it there would trade a
     // smooth first scrub for a stuttering first second.
-    val playbackOpen = state.status == PlaybackStatus.Playing || state.status == PlaybackStatus.Paused
+    // The playback owner outlives this screen, so until this item's load is
+    // published its state still describes whatever played before. Everything
+    // here that acts on playback state for this item checks it is this item's.
+    val ownState = state.current == item
+    val playbackOpen = ownState && (state.status == PlaybackStatus.Playing || state.status == PlaybackStatus.Paused)
     LaunchedEffect(scrubFrames, controller.chromeVisible, playbackOpen) {
         if (controller.chromeVisible && playbackOpen) {
             scrubFrames.warm(state.positionSeconds)
@@ -290,8 +294,12 @@ internal fun PlayerScreen(
     // to pick between them. Re-running on a later track list would fight the
     // viewer, so the guard is a claim rather than a comparison.
     var selectionApplied by remember(item) { mutableStateOf(false) }
-    LaunchedEffect(item, state.tracks, addonSubtitleState.isFetching) {
-        if (selectionApplied || addonSubtitleState.isFetching) return@LaunchedEffect
+    // A download has no addon query; otherwise its first answer has to be in,
+    // since the query starts out as an empty result that is not fetching yet.
+    val addonSubtitlesKnown = context.isDownload || addonSubtitleState.value != null || addonSubtitleState.error != null
+    LaunchedEffect(item, ownState, state.tracks, addonSubtitleState.isFetching, addonSubtitlesKnown) {
+        if (!ownState || selectionApplied) return@LaunchedEffect
+        if (addonSubtitleState.isFetching || !addonSubtitlesKnown) return@LaunchedEffect
         if (state.tracks.subtitles.isEmpty() && addonSubtitles.isEmpty()) return@LaunchedEffect
 
         val selection = resolveSubtitleSelection(
@@ -396,8 +404,8 @@ internal fun PlayerScreen(
             }
         }
     }
-    LaunchedEffect(item, state.status) {
-        if (state.status != PlaybackStatus.Playing) {
+    LaunchedEffect(item, ownState, state.status) {
+        if (ownState && state.status != PlaybackStatus.Playing) {
             reportProgressBestEffort {
                 reportProgress(graph, context, playback.state.value, metaState.value)
             }
@@ -417,9 +425,9 @@ internal fun PlayerScreen(
     // The engine reaching the end is what raises the card; the countdown, both
     // buttons and the advance all run through the controller's single claim, so
     // whichever happens first wins and the rest become no-ops.
-    LaunchedEffect(state.status, upNext) {
+    LaunchedEffect(ownState, state.status, upNext) {
         val next = upNext ?: return@LaunchedEffect
-        if (state.status != PlaybackStatus.Ended) return@LaunchedEffect
+        if (!ownState || state.status != PlaybackStatus.Ended) return@LaunchedEffect
         controller.showUpNext { leaveTo { onSelectEpisode(EpisodeChoice.Resolved(next)) } }
     }
 

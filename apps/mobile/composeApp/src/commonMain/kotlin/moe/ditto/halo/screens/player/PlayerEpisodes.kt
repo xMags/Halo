@@ -164,6 +164,8 @@ internal suspend fun reportProgress(
     state: PlayerState,
     meta: MetaDetail?,
 ) {
+    // State still describing another video must never be written as this one's.
+    if (state.current?.id != context.videoId) return
     val duration = state.durationSeconds ?: return
     graph.watchStates.report(
         videoId = context.videoId,

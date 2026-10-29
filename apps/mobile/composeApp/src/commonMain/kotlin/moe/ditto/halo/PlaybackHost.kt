@@ -53,7 +53,9 @@ internal class PlaybackHost(private val playerPort: PlayerPort) {
      * that tore down on the way out would work exactly once per launch.
      */
     suspend fun play(item: MediaItem) {
-        playerPresenter.start(item)
+        // Published before the load is awaited, so a screen for the new item
+        // never reads the previous one's position, tracks or end as its own.
+        playerPresenter.start(item, onLoading = ::publish)
         // `pause` belongs to the core, not to the file: whatever paused the
         // previous source is still in force when the next one loads, and the
         // iOS core additionally loads paused on purpose so automation is not

@@ -24,6 +24,32 @@ class PlayerPresenterTest {
     }
 
     @Test
+    fun aNewItemIsLoadingBeforeItsLoadIsAwaited() = runTest {
+        val port = RecordingPlayerPort()
+        val presenter = PlayerPresenter(port)
+        presenter.start(first)
+        presenter.onEvent(PlayerEvent.Ready(durationSeconds = 1_200.0))
+        presenter.onEvent(PlayerEvent.PositionChanged(900.0))
+        presenter.onEvent(PlayerEvent.NaturalEnd)
+
+        var seen: PlayerState? = null
+        var loadsWhenSeen: List<MediaItem>? = null
+        presenter.start(second) {
+            seen = presenter.state
+            loadsWhenSeen = port.loads.toList()
+        }
+
+        // What an observer is shown while the load is still in flight: the new
+        // item, loading, with nothing of the old one's position or end.
+        assertEquals(second, seen?.current)
+        assertEquals(PlaybackStatus.Loading, seen?.status)
+        assertEquals(0.0, seen?.positionSeconds)
+        assertNull(seen?.durationSeconds)
+        assertEquals(listOf(first), loadsWhenSeen)
+        assertEquals(listOf(first, second), port.loads)
+    }
+
+    @Test
     fun naturalEndWithoutNextIsTerminalButDoesNotTeardown() = runTest {
         val port = RecordingPlayerPort()
         val presenter = PlayerPresenter(port)
