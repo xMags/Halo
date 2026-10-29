@@ -499,7 +499,17 @@ internal fun PlayerScreen(
     // The system gesture and button take the same path as the button drawn
     // here; a back that skipped the wind-down would hang the app just as
     // reliably as no wind-down at all.
-    BackHandler(enabled = !leaving, onBack = leave)
+    //
+    // Enabled for the whole life of the screen, including the wind-down. A
+    // disabled handler hands the next press to the navigation host, which pops
+    // this screen at once (taking the render surface away before the decoder
+    // has let go of it) and then lets the deferred navigation pop the page
+    // beneath it as well. A press while leaving is swallowed instead: the exit
+    // already under way is the answer to it.
+    BackHandler(enabled = true) {
+        if (leaving) return@BackHandler
+        leave()
+    }
 
     val paused = state.status != PlaybackStatus.Playing
 
