@@ -140,13 +140,21 @@ internal class OneFingerVerticalDrag(private val slopPx: Float) {
 internal const val DragZoneFraction = 1f / 3f
 
 /**
- * Left third is brightness, right third is volume; a drag starting in the
- * middle third is no drag at all (null).
+ * How much of the height at the top and at the bottom adjusts nothing either.
+ * That is where the player's bars and the timeline sit, so a swipe aimed at
+ * them, or a hand resting there, leaves brightness and volume alone.
  */
-internal fun verticalDragTarget(startX: Float, widthPx: Float): VerticalDragTarget? {
+internal const val DragEdgeFraction = 0.15f
+
+/**
+ * Left third is brightness, right third is volume; a drag starting in the
+ * middle third, or in the top or bottom band, is no drag at all (null).
+ */
+internal fun verticalDragTarget(startX: Float, startY: Float, widthPx: Float, heightPx: Float): VerticalDragTarget? {
     // An unmeasured surface has no zones; brightness is the safer default,
     // since it changes nothing outside this window.
-    if (widthPx <= 0f) return VerticalDragTarget.Brightness
+    if (widthPx <= 0f || heightPx <= 0f) return VerticalDragTarget.Brightness
+    if (startY < heightPx * DragEdgeFraction || startY > heightPx * (1f - DragEdgeFraction)) return null
     return when {
         startX <= widthPx * DragZoneFraction -> VerticalDragTarget.Brightness
         startX >= widthPx * (1f - DragZoneFraction) -> VerticalDragTarget.Volume
@@ -211,9 +219,15 @@ internal fun Modifier.playerGestures(
         // volume too. See [OneFingerVerticalDrag].
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            // Where the finger lands decides; the middle of the picture is no
-            // drag, and the touch is left alone for the tap and pinch.
-            val target = verticalDragTarget(down.position.x, size.width.toFloat()) ?: return@awaitEachGesture
+            // Where the finger lands decides; the middle of the picture and
+            // its top and bottom bands are no drag, and the touch is left
+            // alone for the tap and pinch.
+            val target = verticalDragTarget(
+                startX = down.position.x,
+                startY = down.position.y,
+                widthPx = size.width.toFloat(),
+                heightPx = size.height.toFloat(),
+            ) ?: return@awaitEachGesture
             val drag = OneFingerVerticalDrag(viewConfiguration.touchSlop)
             while (true) {
                 val event = awaitPointerEvent()
