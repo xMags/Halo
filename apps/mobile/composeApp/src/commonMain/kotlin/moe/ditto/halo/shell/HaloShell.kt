@@ -179,13 +179,13 @@ internal fun HaloShell(
                 // no animation, which is also what the platform does with a tab
                 // bar. Only a push onto a covering screen animates, and it animates
                 // in the direction it travels.
-                enterTransition = { if (targetState.destination.coversChrome()) pushEnter() else EnterTransition.None },
-                exitTransition = { if (targetState.destination.coversChrome()) pushExit() else ExitTransition.None },
+                enterTransition = { if (targetState.destination.isPushed()) pushEnter() else EnterTransition.None },
+                exitTransition = { if (targetState.destination.isPushed()) pushExit() else ExitTransition.None },
                 popEnterTransition = {
-                    if (initialState.destination.coversChrome()) popEnter() else EnterTransition.None
+                    if (initialState.destination.isPushed()) popEnter() else EnterTransition.None
                 },
                 popExitTransition = {
-                    if (initialState.destination.coversChrome()) popExit() else ExitTransition.None
+                    if (initialState.destination.isPushed()) popExit() else ExitTransition.None
                 },
             ) {
                 composable<HomeRoute> {
@@ -373,6 +373,35 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.popEnter(): EnterT
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.popExit(): ExitTransition =
     slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, PushSpec)
 
+/** True for destinations pushed over a tab. See [PushedRoutes]. */
+private fun NavDestination?.isPushed(): Boolean =
+    this != null && PushedRoutes.any { route -> hierarchy.any { it.hasRoute(route) } }
+
+/**
+ * The tab the current screen belongs to: the destination itself when it is a
+ * tab, else the last tab shown, which a title page or a "See all" grid was
+ * pushed over and keeps lit underneath it.
+ */
+@Composable
+private fun rememberCurrentTab(destination: NavDestination?): Tab? {
+    var lastTab by remember { mutableStateOf<Tab?>(null) }
+    val own = tabs.firstOrNull { tab -> destination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true }
+    LaunchedEffect(own) { if (own != null) lastTab = own }
+    return own ?: lastTab
+}
+
+/**
+ * A tab press: another tab switches to it; the lit tab, pressed from a screen
+ * pushed over it, goes back to the tab's own screen, as a platform tab bar
+ * does. Pressed on its own screen it does nothing.
+ */
+private fun NavHostController.pressTab(tab: Tab, current: Tab?, onTabItself: Boolean) {
+    when {
+        tab != current -> switchTab(tab.route)
+        !onTabItself -> popBackStack(tab.route, inclusive = false)
+    }
+}
+
 /** True for destinations that replace the shell chrome. See [ChromeCoveringRoutes]. */
 private fun NavDestination?.coversChrome(): Boolean =
     this != null && ChromeCoveringRoutes.any { route -> hierarchy.any { it.hasRoute(route) } }
@@ -413,6 +442,8 @@ private val TabIconSize = 24.dp
 private fun HaloTabBar(navController: NavHostController, modifier: Modifier = Modifier) {
     val entry by navController.currentBackStackEntryAsState()
     val destination = entry?.destination
+    val current = rememberCurrentTab(destination)
+    val onTabItself = current != null && destination?.hierarchy?.any { it.hasRoute(current.route::class) } == true
 
     // Screens that own the whole viewport hide the bar rather than having it
     // float over their controls. It leaves downwards, with the push, instead
@@ -436,14 +467,11 @@ private fun HaloTabBar(navController: NavHostController, modifier: Modifier = Mo
                     .height(TabBarHeight),
             ) {
                 tabs.forEach { tab ->
-                    val selected = destination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true
                     TabButton(
                         tab = tab,
-                        selected = selected,
+                        selected = tab == current,
                         modifier = Modifier.weight(1f),
-                        onClick = {
-                            if (!selected) navController.switchTab(tab.route)
-                        },
+                        onClick = { navController.pressTab(tab, current, onTabItself) },
                     )
                 }
             }
@@ -498,6 +526,8 @@ private fun TabButton(tab: Tab, selected: Boolean, onClick: () -> Unit, modifier
 private fun HaloNavRail(navController: NavHostController, modifier: Modifier = Modifier) {
     val entry by navController.currentBackStackEntryAsState()
     val destination = entry?.destination
+    val current = rememberCurrentTab(destination)
+    val onTabItself = current != null && destination?.hierarchy?.any { it.hasRoute(current.route::class) } == true
 
     AnimatedVisibility(
         visible = !destination.coversRail(),
@@ -531,11 +561,11 @@ private fun HaloNavRail(navController: NavHostController, modifier: Modifier = M
                     verticalArrangement = Arrangement.spacedBy(RailTabGap),
                 ) {
                     tabs.forEach { tab ->
-                        val selected = destination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true
+                        val selected = tab == current
                         RailTabButton(
                             tab = tab,
                             selected = selected,
-                            onClick = { if (!selected) navController.switchTab(tab.route) },
+                            onClick = { navController.pressTab(tab, current, onTabItself) },
                         )
                     }
                 }

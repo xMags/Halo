@@ -147,7 +147,7 @@ class PlayerScreenInstrumentedTest {
         rule.onNodeWithContentDescription("Back").performClick()
         // Back lands on the title, not on Home: entering the player pops the
         // sources route it was chosen from.
-        rule.waitUntil(10_000) { nodesWithText(SourcesLabel).isNotEmpty() }
+        rule.waitUntil(10_000) { rule.onAllNodes(TitlePageMarker).fetchSemanticsNodes().isNotEmpty() }
 
         activityRule.scenario.onActivity { activity ->
             assertEquals(ActivityInfo.SCREEN_ORIENTATION_FULL_USER, activity.requestedOrientation)
@@ -195,12 +195,15 @@ class PlayerScreenInstrumentedTest {
         // sits at the bottom of a landscape hero, under the floating tab bar
         // that is drawn over it: a click aimed at the button lands on the tab,
         // which is invisible to the test because occlusion is not part of what
-        // "displayed" means here. The artwork's centre is clear, and the detail
-        // screen it opens has no tab bar over its Sources button.
+        // "displayed" means here. The artwork's centre is clear. On the title
+        // page the play button sits right under the hero, clear of the tab bar.
         rule.waitUntil(15_000) { nodesWithText(FeaturedTitle).isNotEmpty() }
         rule.onAllNodes(hasText(FeaturedTitle)).onFirst().performClick()
-        rule.waitUntil(10_000) { nodesWithText(SourcesLabel).isNotEmpty() }
-        rule.onAllNodes(hasText(SourcesLabel)).onFirst().performScrollTo().performClick()
+        // Home's hero has a Play button too, so the title page is told by its
+        // library tile, and its play button only once Home's has gone.
+        rule.waitUntil(10_000) { rule.onAllNodes(TitlePageMarker).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(10_000) { rule.onAllNodes(TitlePlayButton).fetchSemanticsNodes().size == 1 }
+        rule.onNode(TitlePlayButton).performScrollTo().performClick()
 
         rule.waitUntil(10_000) { nodesWithText(FirstSourceFilename).isNotEmpty() }
         rule.onAllNodes(hasText(FirstSourceFilename)).onFirst().performClick()
@@ -258,7 +261,11 @@ class PlayerScreenInstrumentedTest {
 
         /** The fixture catalog's first movie, which is also the Home hero. */
         const val FeaturedTitle = "The Matrix"
-        const val SourcesLabel = "Sources"
+        /** The title page's library tile, which no other screen has. */
+        val TitlePageMarker = hasText("In library") or hasText("Add to library")
+
+        /** The title page's play button, which resumes a film left partway. */
+        val TitlePlayButton = hasText("Play") or hasText("Resume")
         const val FirstSourceFilename = "tt0133093.2160p.WEB-DL.DDP5.1.HDR.HEVC.mkv"
     }
 }

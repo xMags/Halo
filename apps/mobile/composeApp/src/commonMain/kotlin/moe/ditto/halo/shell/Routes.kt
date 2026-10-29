@@ -273,15 +273,21 @@ internal fun StreamsRoute.downloadMedia(addon: AddonSource, stream: Stream, url:
 }
 
 /**
- * Destinations that replace the shell's chrome instead of living under it.
- *
- * The tab bar floats over content, so a screen like this would otherwise have a
- * translucent bar sitting on top of its own controls. Being in this list is all
- * a screen needs to do: it drives both the bar's visibility and the directional
- * push, so neither is decided screen by screen.
+ * Destinations pushed over a tab rather than switched to: they slide in from
+ * the trailing edge and back out, where a tab switch cuts.
+ */
+internal val PushedRoutes =
+    listOf(SearchRoute::class, DetailRoute::class, ShelfRoute::class, StreamsRoute::class, PlayerRoute::class)
+
+/**
+ * Pushed destinations that also replace the shell's chrome instead of living
+ * under it: the ones whose own controls run to the bottom of the screen (a
+ * keyboard, the source list, the player), where the floating tab bar would sit
+ * on top of them. A title page and a "See all" grid keep the bar, so the tabs
+ * stay one tap away while browsing, and leave room under their last row.
  */
 internal val ChromeCoveringRoutes =
-    listOf(SearchRoute::class, DetailRoute::class, ShelfRoute::class, StreamsRoute::class, PlayerRoute::class)
+    listOf(SearchRoute::class, StreamsRoute::class, PlayerRoute::class)
 
 /**
  * The same player, playing something else. Used when another episode resolved
