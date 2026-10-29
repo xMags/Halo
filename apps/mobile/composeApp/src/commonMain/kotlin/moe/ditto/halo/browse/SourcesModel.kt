@@ -237,17 +237,20 @@ enum class MedalFinish { Gold, Silver, Bronze, Plain }
  */
 data class Medal(val plate: String, val tag: String?, val finish: MedalFinish)
 
-fun medalFor(info: SourceInfo): Medal {
-    val tier = tierOf(info.quality)
-    val plate = when (info.quality) {
+fun medalFor(info: SourceInfo): Medal = medalFor(info.quality, info.dynamicRange)
+
+/** [medalFor] from the two facts it reads, for a badge that stands for more than one source. */
+fun medalFor(quality: SourceQuality?, dynamicRange: String?): Medal {
+    val tier = tierOf(quality)
+    val plate = when (quality) {
         SourceQuality.P2160 -> "4K"
         null -> "—"
-        else -> info.quality.label
+        else -> quality.label
     }
     val tag = when {
-        info.dynamicRange == "DV" -> "DV"
-        info.dynamicRange != null -> "HDR"
-        info.quality == SourceQuality.P1440 -> "QHD"
+        dynamicRange == "DV" -> "DV"
+        dynamicRange != null -> "HDR"
+        quality == SourceQuality.P1440 -> "QHD"
         else -> when (tier) {
             QualityTier.UltraHd -> "UHD"
             QualityTier.FullHd -> "FHD"

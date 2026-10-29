@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
@@ -75,6 +76,8 @@ fun HaloAsyncImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    /** Which part of the art a crop keeps; a title's backdrop favours its upper part. */
+    alignment: Alignment = Alignment.Center,
     placeholder: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     if (url.isNullOrBlank()) {
@@ -99,6 +102,7 @@ fun HaloAsyncImage(
             contentDescription = contentDescription,
             modifier = Modifier.fillMaxSize(),
             contentScale = contentScale,
+            alignment = alignment,
         )
         // Kept composed through the whole fade: dropping it the moment the load
         // succeeds would swap the skeleton out in one frame, with nothing left

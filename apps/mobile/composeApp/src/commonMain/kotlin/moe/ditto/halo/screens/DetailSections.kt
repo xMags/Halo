@@ -446,7 +446,7 @@ internal fun CastRow(credits: List<Credit>, gutter: Dp, onOpen: (Credit) -> Unit
 }
 
 /** Up to two letters for a portrait with no picture. */
-private fun initialsOf(name: String): String =
+internal fun initialsOf(name: String): String =
     name.split(' ', '.', '-', '_').filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }.ifEmpty { "?" }
 
 /** Facts the addon sends, as label and value rows on one card. */

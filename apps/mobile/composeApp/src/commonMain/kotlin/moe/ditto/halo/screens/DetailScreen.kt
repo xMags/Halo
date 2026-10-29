@@ -155,7 +155,19 @@ internal fun DetailScreen(
     // which is when the page starts running under the status bar.
     val density = LocalDensity.current
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val barThresholdPx = with(density) { (responsive.detailHeroHeight - statusBarTop - CompactBarHeight).toPx() }
+    // A tablet held sideways gets the desktop's page, whose bar comes in once
+    // the Play button near the hero's foot has gone under it.
+    val wide = usesWideDetail(responsive)
+    val barThreshold = if (wide) {
+        wideDetailHeroHeight(responsive) - WidePlayButtonLift - statusBarTop - WideCompactBarHeight
+    } else {
+        responsive.detailHeroHeight - statusBarTop - CompactBarHeight
+    }
+    val barThresholdPx = with(density) { barThreshold.toPx() }
+    val pageGutter = if (wide) wideDetailGutter(responsive) else responsive.gutter
+    // What the wide page's compact bar plays, set while the title is shown.
+    var compactPlay: PlayTarget? = null
+    var compactPlayAction: () -> Unit = {}
     val heroScrolledAway by remember(listState, barThresholdPx) {
         derivedStateOf {
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > barThresholdPx
@@ -235,7 +247,40 @@ internal fun DetailScreen(
                         addons.value?.let { pickGenreCatalog(it, type, meta.genres) }
                     }
 
-                    DetailBody(
+                    val playTarget = playTargetOf(isSeries, targetVideo, resumeState, progress[targetVideoId])
+                    compactPlay = playTarget
+                    compactPlayAction = { openSources(targetVideo) }
+                    if (wide) {
+                        DetailWideBody(
+                            modifier = Modifier.glassSource(bodyHaze),
+                            listState = listState,
+                            graph = graph,
+                            meta = meta,
+                            isSeries = isSeries,
+                            seasons = seasons,
+                            activeSeason = activeSeason,
+                            episodes = pages.getOrNull(shownPage)?.episodes ?: episodes,
+                            episodeCount = episodes.size,
+                            pageLabels = pages.map { it.label },
+                            page = shownPage,
+                            progress = progress,
+                            resumeState = resumeState,
+                            playTarget = playTarget,
+                            availability = availability,
+                            streamsLoading = streams.value == null && streams.error == null,
+                            inLibrary = inLibrary,
+                            downloaded = downloaded,
+                            similarSource = similarSource,
+                            responsive = responsive,
+                            onPlay = { openSources(targetVideo) },
+                            onToggleLibrary = toggleLibrary,
+                            onOpenSeasons = { seasonSheetOpen = true },
+                            onOpenPages = { pageSheetOpen = true },
+                            onPlayEpisode = { openSources(it) },
+                            onOpenDetail = onOpenDetail,
+                            onOpenShelf = onOpenShelf,
+                        )
+                    } else DetailBody(
                         modifier = Modifier.glassSource(bodyHaze),
                         listState = listState,
                         graph = graph,
@@ -249,7 +294,7 @@ internal fun DetailScreen(
                         page = shownPage,
                         progress = progress,
                         resumeState = resumeState,
-                        playTarget = playTargetOf(isSeries, targetVideo, resumeState, progress[targetVideoId]),
+                        playTarget = playTarget,
                         availability = availability,
                         streamsLoading = streams.value == null && streams.error == null,
                         inLibrary = inLibrary,
@@ -296,11 +341,22 @@ internal fun DetailScreen(
                 }
             }
 
-            CompactBar(
-                visible = heroScrolledAway,
-                title = metaState.value?.name.orEmpty(),
-                titleStart = responsive.contentInsetStart + responsive.gutter + 44.dp + HaloSpacing.Md,
-            )
+            if (wide) {
+                WideCompactBar(
+                    visible = heroScrolledAway,
+                    title = metaState.value?.name.orEmpty(),
+                    playTarget = compactPlay,
+                    titleStart = responsive.contentInsetStart + pageGutter + 44.dp + HaloSpacing.Md,
+                    endPadding = pageGutter,
+                    onPlay = compactPlayAction,
+                )
+            } else {
+                CompactBar(
+                    visible = heroScrolledAway,
+                    title = metaState.value?.name.orEmpty(),
+                    titleStart = responsive.contentInsetStart + responsive.gutter + 44.dp + HaloSpacing.Md,
+                )
+            }
 
             // Above everything except the sheets: the hero runs under the status
             // bar, so there is no bar to put a back button in.
@@ -309,8 +365,9 @@ internal fun DetailScreen(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(
-                        start = responsive.contentInsetStart + responsive.gutter,
-                        top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + HaloSpacing.Xs,
+                        start = responsive.contentInsetStart + pageGutter,
+                        top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+                            if (wide) (WideCompactBarHeight - 44.dp) / 2 else HaloSpacing.Xs,
                     ),
             )
 
@@ -510,7 +567,7 @@ private fun DetailBody(
 }
 
 /** Years, then seasons for a series or length for a film, then up to two genres. */
-private fun heroFacts(meta: MetaDetail, isSeries: Boolean, seasons: List<Int>): List<String> {
+internal fun heroFacts(meta: MetaDetail, isSeries: Boolean, seasons: List<Int>): List<String> {
     val numbered = seasons.count { it != 0 }
     return listOfNotNull(
         meta.releaseInfo ?: formatReleaseDate(meta.released)?.takeLast(4),
@@ -626,7 +683,7 @@ private fun LazyListScope.episodeSection(
  * only when the catalog turns out to have nothing (or fails before answering).
  */
 @Composable
-private fun SimilarRow(
+internal fun SimilarRow(
     graph: SessionGraph,
     meta: MetaDetail,
     source: moe.ditto.halo.browse.GenreCatalog,
@@ -634,6 +691,9 @@ private fun SimilarRow(
     gutter: Dp,
     onOpenDetail: (MetaRef) -> Unit,
     onOpenShelf: (ShelfSnapshot) -> Unit,
+    /** Where the row sits: under the section above it, or framed as a panel. */
+    modifier: Modifier = Modifier.padding(top = SectionGap),
+    posterWidth: Dp = responsive.shelfPosterWidth,
 ) {
     val state by remember(graph, source) {
         graph.browse.catalog(source.addonId, meta.type, source.catalogId, extra = mapOf("genre" to source.genre))
@@ -651,7 +711,7 @@ private fun SimilarRow(
     if (titles == null && state.error != null) return
     if (titles != null && titles.isEmpty()) return
     val label = source.genre.uppercase()
-    Box(Modifier.padding(top = SectionGap)) {
+    Box(modifier) {
         CatalogRow(
             title = "More like this",
             source = label,
@@ -660,7 +720,7 @@ private fun SimilarRow(
             onItemClick = { onOpenDetail(it.metaRef()) },
             itemMenu = titles?.let { posterMenu(it) },
             onSeeAll = titles?.let { { onOpenShelf(ShelfSnapshot("More like this", label, it)) } },
-            posterWidth = responsive.shelfPosterWidth,
+            posterWidth = posterWidth,
             gutter = gutter,
             gap = responsive.catalogRowGap,
             bottomPadding = 0.dp,
