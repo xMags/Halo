@@ -314,7 +314,7 @@ export function useTitleMenu() {
       Boolean(cachedWatchStates()) && {
         kind: 'item',
         label: 'Remove from Continue watching',
-        glyph: 'close',
+        glyph: 'delete',
         danger: true,
         onSelect: () => void removeTitle(card.itemId, card.name),
       },
