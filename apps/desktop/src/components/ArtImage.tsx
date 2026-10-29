@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { cardArtworkUrl } from './artworkUrl'
 
 /**
- * Artwork from an addon, with the placeholder as its fallback.
+ * Artwork from an addon, then an optional second source, then the placeholder.
  *
  * Addons hand out poster and still URLs that 404 often enough to matter (a
  * catalog row outlives the CDN behind it), and a bare `<img>` answers that
@@ -15,25 +15,32 @@ import { cardArtworkUrl } from './artworkUrl'
  */
 export function ArtImage({
   src,
+  fallback,
   label,
   lazy,
 }: {
   src: string | undefined
+  /** Tried when [src] is missing or fails, before the placeholder. */
+  fallback?: string
   /** Printed on the placeholder when the art is missing or fails. */
   label?: string
   lazy?: boolean
 }) {
-  const [failed, setFailed] = useState(false)
+  const sources = [src, fallback].filter((url): url is string => Boolean(url))
+  const [failures, setFailures] = useState(0)
+  const current = sources[failures]
 
-  if (!src || failed) return label ? <div className="art-label">{label}</div> : null
+  if (!current) return label ? <div className="art-label">{label}</div> : null
   return (
     <img
+      // Keyed by the URL so a fallback starts as a fresh image, not the failed one.
+      key={current}
       // Card-sized art: a huge original shrunk this far pixelates.
-      src={cardArtworkUrl(src)}
+      src={cardArtworkUrl(current)}
       alt=""
       draggable={false}
       loading={lazy ? 'lazy' : undefined}
-      onError={() => setFailed(true)}
+      onError={() => setFailures((count) => count + 1)}
     />
   )
 }

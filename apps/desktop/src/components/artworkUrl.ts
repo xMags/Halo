@@ -17,3 +17,17 @@ const TMDB_ORIGINAL = /^(https:\/\/image\.tmdb\.org\/t\/p\/)original\//
 export function cardArtworkUrl(url: string, width = 500): string {
   return url.replace(TMDB_ORIGINAL, `$1w${width}/`)
 }
+
+const IMDB_ID = /^tt\d+$/
+
+/**
+ * Stremio's own poster for an IMDb title, which is what an addon's catalog
+ * falls back on when its art does not load. Addons hand out poster links that
+ * are dead (a stale Amazon image) or mangled at the source (MediaFusion has
+ * served Amazon links with `[redacted]` cut into the image id). Undefined for
+ * an id that is not a bare IMDb id, since metahub knows no other kind.
+ */
+export function metahubPosterUrl(id: string | undefined): string | undefined {
+  if (!id || !IMDB_ID.test(id)) return undefined
+  return `https://images.metahub.space/poster/medium/${id}/img`
+}

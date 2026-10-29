@@ -4,6 +4,7 @@ import { useMemo, useState, type MouseEvent } from 'react'
 import { getClient } from '../api'
 import { useTitleMenu } from '../browse/titleMenu'
 import { ArtImage } from '../components/ArtImage'
+import { metahubPosterUrl } from '../components/artworkUrl'
 import { showDialog } from '../components/Dialog'
 import { FluentIcon } from '../components/FluentIcon'
 import { SearchBox } from '../components/SearchBox'
@@ -153,7 +154,7 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
         title={entry.finished ? `${entry.name}: open details` : `${entry.name}: resume`}
       >
         <div className="art history-thumb">
-          <ArtImage src={entry.poster} lazy />
+          <ArtImage src={entry.poster} fallback={metahubPosterUrl(entry.metaId)} lazy />
           {progress > 0 && (
             <div className="art-progress">
               <div style={{ width: `${Math.round(progress * 100)}%` }} />
