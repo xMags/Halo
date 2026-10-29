@@ -4,12 +4,14 @@ import type { Stream } from '@halo/core'
 import {
   detailsFor,
   formatStreamSize,
+  medalFor,
   metaLineFor,
   ordinal,
   pickHeadline,
   reasonFor,
   sanitizeAddonName,
   statusLabel,
+  tierOf,
   type DeviceContext,
 } from '../src/sources/sourcePresentation.ts'
 import {
@@ -182,4 +184,15 @@ test('details spell out what is and is not known', () => {
   assert.equal(details.lineLabel, 'HEAVIEST HERE 7 MBPS')
   assert.equal(details.headroom, 'Line speed has not been measured yet')
   assert.equal(details.meterFraction, 1)
+})
+
+test('medals are gold, silver and bronze by tier, tagged by range, and tagless below HD', () => {
+  const medal = (quality: string, range = 'SDR') => medalFor({ quality, range, tier: tierOf(quality) })
+  assert.deepEqual(medal('2160p', 'DV'), { plate: '4K', tag: 'DV', finish: 'gold' })
+  assert.deepEqual(medal('2160p'), { plate: '4K', tag: 'UHD', finish: 'gold' })
+  assert.deepEqual(medal('1080p', 'HDR10'), { plate: '1080p', tag: 'HDR', finish: 'silver' })
+  assert.deepEqual(medal('1440p'), { plate: '1440p', tag: 'QHD', finish: 'silver' })
+  assert.deepEqual(medal('720p'), { plate: '720p', tag: 'HD', finish: 'bronze' })
+  assert.deepEqual(medal('480p'), { plate: '480p', tag: null, finish: 'plain' })
+  assert.deepEqual(medal('UNKNOWN'), { plate: '—', tag: null, finish: 'plain' })
 })
