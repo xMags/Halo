@@ -172,8 +172,11 @@ body.player-active .titlebar {
 .pchip-on .pchip-kicker {
   color: #60cdff;
 }
+/* A line tall even when empty, so every chip in the row stands the same
+   height whatever its value. */
 .pchip-value {
   max-width: 210px;
+  min-height: 1lh;
   font-size: 14px;
   color: #fff;
 }

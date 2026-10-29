@@ -159,7 +159,10 @@ interface MpvTrack {
 }
 
 function trackLabel(track: MpvTrack): string {
-  return track.title ?? (track.lang ? languageLabel(track.lang) : `Track ${track.id}`)
+  // A blank title is no title: some files name their tracks with empty strings.
+  const title = track.title?.trim()
+  if (title) return title
+  return track.lang ? languageLabel(track.lang) : `Track ${track.id}`
 }
 
 /**
