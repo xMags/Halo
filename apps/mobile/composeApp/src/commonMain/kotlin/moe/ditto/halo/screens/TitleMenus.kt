@@ -316,6 +316,26 @@ internal class TitleMenus(
     }
 
     /**
+     * Clears the whole watch history, whatever the filter shows, after asking:
+     * it forgets where every video stopped and what was watched, on every
+     * device the history syncs to.
+     */
+    fun clearHistory() {
+        val count = graph.watchStates.cached()?.size ?: return
+        if (count == 0) return
+        confirm(
+            MenuConfirmation(
+                title = "Clear your watch history?",
+                subject = null,
+                body = "This forgets all $count videos you have played: where you stopped, what you watched, " +
+                    "and everything in Continue watching. It cannot be undone.",
+                confirmLabel = "Clear history",
+                onConfirm = { act { graph.watchStates.remove(graph.watchStates.cached().orEmpty()) } },
+            ),
+        )
+    }
+
+    /**
      * Takes a title off Continue watching by forgetting every video of it: a
      * show is offered by its latest unfinished episode, so forgetting that one
      * alone would only bring an earlier one back. Asks first when that is more

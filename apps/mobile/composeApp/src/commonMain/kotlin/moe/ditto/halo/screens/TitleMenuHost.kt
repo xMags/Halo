@@ -18,7 +18,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,8 +67,15 @@ internal fun rememberTitleMenuHost(graph: SessionGraph, navigation: TitleNavigat
  * has to be seen on whichever screen the menu was opened from. The
  * confirmation comes after the menu, so it draws over one still sliding away.
  */
+// BackHandler is still marked experimental in Compose 1.11; the opt-in is
+// scoped to this function, as in SourcesRail.
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun TitleMenuOverlays(host: TitleMenuHost, messageModifier: Modifier) {
+    // Back closes the topmost sheet instead of leaving the screen under it.
+    BackHandler(enabled = host.menu != null || host.confirmation != null) {
+        if (host.confirmation != null) host.confirmation = null else host.menu = null
+    }
     TitleMenuSheet(menu = host.menu, onDismiss = { host.menu = null })
 
     val pending = host.confirmation

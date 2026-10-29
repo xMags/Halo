@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
@@ -27,6 +28,7 @@ import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.shell.StreamsRoute
 import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloColors
+import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.PosterGrid
 import moe.ditto.halo.ui.Segmented
 import moe.ditto.halo.ui.rememberResponsive
@@ -163,6 +165,13 @@ private fun HistoryView(
                 onFilterChange = onFilterChange,
                 views = views,
             )
+            val menus = LocalTitleMenus.current
+            if (menus != null && !watchStates.value.isNullOrEmpty()) {
+                ClearHistoryButton(
+                    onClick = menus::clearHistory,
+                    modifier = Modifier.fillMaxWidth().padding(top = HaloSpacing.Md),
+                )
+            }
         },
         gutter = responsive.gutter,
         bottomPadding = responsive.bottomContentPadding,
