@@ -104,8 +104,7 @@ export function Search() {
     [active, library, query, typeFilter],
   )
   const results = useMemo(() => {
-    const shownAbove = new Set(fromLibrary.map(metaKey))
-    if (topMatch) shownAbove.add(metaKey(topMatch))
+    const shownAbove = topMatch ? [...fromLibrary, topMatch] : fromLibrary
     const lists = groups.map((group) => group.metas.filter((meta) => !typeFilter || meta.type === typeFilter))
     return interleave(lists, shownAbove)
   }, [groups, fromLibrary, topMatch, typeFilter])
