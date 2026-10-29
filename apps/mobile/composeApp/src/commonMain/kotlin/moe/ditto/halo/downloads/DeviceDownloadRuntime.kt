@@ -178,7 +178,7 @@ internal class DeviceDownloadRuntime(
             val retained = latest
                 ?.ownedFileNames()
                 .orEmpty()
-                .filterNot { it == fileName || it == "$fileName.part" }
+                .filterNot { it == fileName || it == "$fileName.part" || it.startsWith("$fileName.part.") }
                 .distinct()
             val next = DownloadEntry(
                 media = normalizedMedia,
@@ -539,7 +539,11 @@ internal class DeviceDownloadRuntime(
         fileSystem.createDirectories(root)
         var next = _entries.value.map { entry ->
             if (entry.status == DownloadStatus.Done) return@map entry
-            val written = fileSystem.metadataOrNull(root / entry.partFileName)?.size ?: return@map entry
+            val part = root / entry.partFileName
+            val size = fileSystem.metadataOrNull(part)?.size ?: return@map entry
+            // A part written by several connections has holes, so its record,
+            // not its length, says how much of it is real.
+            val written = SegmentSidecar.read(fileSystem, part)?.doneBytes ?: size
             entry.copy(downloadedBytes = written)
         }
         next = next.map { entry ->
@@ -580,6 +584,7 @@ internal class DeviceDownloadRuntime(
         buildList {
             add(fileName)
             add(partFileName)
+            addAll(partRecordFileNames)
             subtitle?.let { add(it.fileName) }
             addAll(retainedFileNames)
         }

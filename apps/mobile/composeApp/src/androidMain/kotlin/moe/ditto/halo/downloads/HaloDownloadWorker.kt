@@ -14,6 +14,8 @@ import java.net.URI
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import moe.ditto.halo.auth.SystemEpochClock
+import okhttp3.Dispatcher
+import okhttp3.Protocol
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -54,6 +56,22 @@ internal class HaloDownloadWorker(
                     // silence, so the socket waits as long as it does.
                     connectTimeout(ConnectTimeoutSeconds, TimeUnit.SECONDS)
                     readTimeout(HttpRangeTransfer.DefaultStallTimeoutMs, TimeUnit.MILLISECONDS)
+                    // Ktor sends every call through OkHttp's dispatcher, whose
+                    // default of five calls per host would quietly hold a
+                    // segmented transfer below its connection limit. Ktor
+                    // installs its own dispatcher before this block runs, so
+                    // this one is the one that applies.
+                    dispatcher(
+                        Dispatcher().apply {
+                            maxRequestsPerHost = MaxRequestsPerHost
+                            maxRequests = MaxRequests
+                        },
+                    )
+                    // HTTP/2 would carry every connection to one host as a
+                    // stream of a single TCP connection, which a CDN limiting
+                    // speed per connection throttles as one. HTTP/1.1 gives
+                    // each segment a socket of its own.
+                    protocols(listOf(Protocol.HTTP_1_1))
                 }
             }
         }
@@ -136,6 +154,8 @@ internal class HaloDownloadWorker(
 
 private const val LogTag = "HaloDownload"
 private const val ConnectTimeoutSeconds = 30L
+private const val MaxRequestsPerHost = 16
+private const val MaxRequests = 64
 
 private val DownloadFailure.isTransient: Boolean
     get() = code == DownloadFailureCode.Network || code == DownloadFailureCode.ServerUnavailable

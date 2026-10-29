@@ -72,6 +72,7 @@ internal object DownloadPaths {
             entries.forEach { entry ->
                 add(entry.fileName)
                 add(entry.partFileName)
+                addAll(entry.partRecordFileNames)
                 entry.subtitle?.let { add(it.fileName) }
                 addAll(entry.retainedFileNames)
             }

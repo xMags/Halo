@@ -64,14 +64,31 @@ class DownloadPathsTest {
         fileSystem.createDirectories(directory)
         val kept = entry(videoId = "kept", fileName = "kept.mkv", subtitle = DownloadSubtitle("kept.srt"))
         val partial = entry(videoId = "partial", status = DownloadStatus.Paused, fileName = "partial.mkv")
-        listOf("kept.mkv", "kept.srt", "partial.mkv.part", "stray.mkv", "stray.mkv.part").forEach {
+        listOf(
+            "kept.mkv",
+            "kept.srt",
+            "partial.mkv.part",
+            "partial.mkv.part.segments",
+            "partial.mkv.part.segments.tmp",
+            "stray.mkv",
+            "stray.mkv.part",
+            "stray.mkv.part.segments",
+        ).forEach {
             fileSystem.write(directory / it) { writeUtf8("x") }
         }
 
         DownloadPaths.sweepOrphans(fileSystem, directory, listOf(kept, partial))
 
         assertEquals(
-            listOf("kept.mkv", "kept.srt", "partial.mkv.part"),
+            // A partial file's segment record is part of it: sweeping it would
+            // leave a part with holes that reads as whole.
+            listOf(
+                "kept.mkv",
+                "kept.srt",
+                "partial.mkv.part",
+                "partial.mkv.part.segments",
+                "partial.mkv.part.segments.tmp",
+            ),
             fileSystem.list(directory).map { it.name }.sorted(),
         )
     }

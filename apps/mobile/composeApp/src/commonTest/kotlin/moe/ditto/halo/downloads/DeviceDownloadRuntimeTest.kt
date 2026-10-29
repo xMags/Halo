@@ -256,6 +256,7 @@ class DeviceDownloadRuntimeTest {
         testScheduler.advanceUntilIdle()
         val first = world.entry("first")
         world.fileSystem.write("/downloads/${first.partFileName}".toPath()) { writeUtf8("partial") }
+        world.fileSystem.write("/downloads/${first.partFileName}.segments".toPath()) { writeUtf8("{}") }
         val cancelGate = CompletableDeferred<Unit>()
         world.port.cancelGate = cancelGate
 
@@ -270,6 +271,7 @@ class DeviceDownloadRuntimeTest {
         testScheduler.advanceUntilIdle()
 
         assertFalse(world.fileSystem.exists("/downloads/${first.partFileName}".toPath()))
+        assertFalse(world.fileSystem.exists("/downloads/${first.partFileName}.segments".toPath()))
         assertEquals(DownloadStatus.Downloading, world.status("second"))
     }
 

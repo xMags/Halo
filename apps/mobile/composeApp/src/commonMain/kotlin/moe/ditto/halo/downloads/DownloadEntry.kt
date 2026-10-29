@@ -151,6 +151,14 @@ internal data class DownloadEntry(
     /** The partially transferred file, which is what resume appends to. */
     val partFileName: String get() = "$fileName.part"
 
+    /**
+     * The partial file's segment record and its in-flight replacement, present
+     * once more than one connection has written to it. They belong to the part
+     * and go wherever it goes.
+     */
+    val partRecordFileNames: List<String>
+        get() = listOf(SegmentSidecar.fileNameFor(partFileName), SegmentSidecar.tempFileNameFor(partFileName))
+
     /** Progress as 0..1, or null when the total is unknown and there is nothing to divide by. */
     val fraction: Float?
         get() {
