@@ -195,8 +195,11 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["signInAddonCallbackPath"] = signInAddonCallbackPath
         // Emulator is x86_64; keep arm64 so an eventual device install works.
+        // A build for sharing can narrow this, e.g. -PhaloAbis=arm64-v8a for phones only.
         ndk {
-            abiFilters += listOf("x86_64", "arm64-v8a")
+            abiFilters += providers.gradleProperty("haloAbis").orNull
+                ?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
+                ?: listOf("x86_64", "arm64-v8a")
         }
     }
 
