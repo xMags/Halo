@@ -401,6 +401,12 @@ body.player-active .titlebar {
   color: #fff;
   font-weight: 600;
 }
+/* Greyed out where the selected track ignores the choice; the active one
+   stays marked so the saved setting is still readable. */
+.ptray-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .prail-body {
   flex: 1;
   min-height: 0;

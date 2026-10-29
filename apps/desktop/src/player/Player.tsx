@@ -32,6 +32,9 @@ import {
   resolvePlayerShortcut,
   resumePosition,
   shouldRunUpNextCountdown,
+  subtitleControls,
+  subtitleFormat,
+  trackStylingNote,
   upNextCancelAction,
   videoTopMarginRatio,
 } from './playerLogic'
@@ -1051,6 +1054,8 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
 
   const activeSub = subTracks.find((t) => t.selected)
   const activeAudio = audioTracks.find((t) => t.selected)
+  const activeSubFormat = subtitleFormat(activeSub?.codec)
+  const subControls = subtitleControls(activeSubFormat, prefs.subtitleTrackStyling)
   const activeExternalSub = useMemo(
     () =>
       (subs.data?.groups ?? [])
@@ -1555,7 +1560,9 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
                             </span>
                           </div>
                           <div className="pcard-note" style={{ marginTop: 3 }}>
-                            mpv sub-scale, live
+                            {activeSubFormat === 'bitmap'
+                              ? 'Bitmap track, scaled but not restyled'
+                              : 'mpv sub-scale, live'}
                           </div>
                           <input
                             type="range"
@@ -1600,6 +1607,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
                                     : ''
                                 }`}
                                 style={{ fontSize: 14 }}
+                                disabled={!subControls.looks}
                                 onClick={() =>
                                   updateSettings.mutate({ subtitleOutline: option.key })
                                 }
@@ -1615,6 +1623,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
                             <Toggle
                               label="Subtitle shadow"
                               on={settings.subtitleShadow ?? true}
+                              disabled={!subControls.looks}
                               onChange={(next) => updateSettings.mutate({ subtitleShadow: next })}
                             />
                           </div>
@@ -1626,12 +1635,12 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
                             <Toggle
                               label="Keep a styled track's own look"
                               on={prefs.subtitleTrackStyling}
+                              disabled={!subControls.trackStyling}
                               onChange={(next) => setLocalPrefs({ subtitleTrackStyling: next })}
                             />
                           </div>
                           <div className="pcard-note" style={{ marginTop: 3 }}>
-                            On, a styled track keeps its own look. A plain text track always follows
-                            the settings here.
+                            {trackStylingNote(activeSubFormat, prefs.subtitleTrackStyling)}
                           </div>
                           <div className="ptray ptray-4" style={{ marginTop: 12 }}>
                             {SUBTITLE_FONTS.map((font) => (
@@ -1644,6 +1653,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
                                     : ''
                                 }`}
                                 style={{ fontSize: 14 }}
+                                disabled={!subControls.looks}
                                 onClick={() =>
                                   updateSettings.mutate({ subtitleFontFamily: font.family })
                                 }
