@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.browse.MinSearchTermLength
 import moe.ditto.halo.browse.savedSearchMatches
 import moe.ditto.halo.cache.QueryState
@@ -73,7 +73,7 @@ private const val DebounceMs = 350L
  */
 @Composable
 internal fun SearchScreen(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     onOpenDetail: (MetaRef) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,

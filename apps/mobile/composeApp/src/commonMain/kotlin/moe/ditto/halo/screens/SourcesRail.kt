@@ -47,7 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.AddonSource
 import moe.ditto.halo.api.Stream
 import moe.ditto.halo.downloads.DownloadMedia
@@ -92,7 +92,7 @@ internal class SourcesRequest(
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun SourcesRail(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     /** The video whose sources are shown; null closes the rail. */
     request: SourcesRequest?,
     onClose: () -> Unit,

@@ -1,7 +1,7 @@
 package moe.ditto.halo.downloads
 
 import kotlinx.coroutines.CancellationException
-import moe.ditto.halo.api.HaloClient
+import moe.ditto.halo.api.HaloBackend
 import moe.ditto.halo.player.StreamVideoHasher
 import moe.ditto.halo.player.SubtitleFileCache
 import moe.ditto.halo.player.VideoFingerprint
@@ -42,17 +42,17 @@ internal object NoDownloadSubtitles : DownloadSubtitleSource {
  * makes, and the player's own rail still offers the rest whenever there is a
  * network to fetch them with.
  *
- * The file goes through Halo's authenticated proxy like every other addon
- * subtitle, and lands in the downloads directory rather than the purgeable
+ * The file is fetched like every other addon subtitle (through Halo's
+ * authenticated proxy when signed in), and lands in the downloads directory rather than the purgeable
  * subtitle cache: the system reclaiming it would leave a downloaded film with
  * no captions and no way to fetch them.
  */
 internal class AddonDownloadSubtitles(
-    private val client: HaloClient,
+    private val client: HaloBackend,
     private val hasher: StreamVideoHasher,
     private val settings: SettingsRepository,
     private val storage: DownloadStoragePort,
-    /** Seam for tests; the real one streams through the proxy onto disk. */
+    /** Seam for tests; the real one streams the file onto disk. */
     private val cacheFor: (String) -> SubtitleFileCache = { directory -> SubtitleFileCache(client, directory) },
 ) : DownloadSubtitleSource {
 

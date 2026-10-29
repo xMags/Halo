@@ -20,7 +20,7 @@ import io.ktor.http.Url
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.AddonEntry
 import moe.ditto.halo.api.UserSettings
 import moe.ditto.halo.cache.QueryState
@@ -41,17 +41,19 @@ private sealed interface SettingsOverlay {
     data class Language(val kind: SettingsLanguageKind) : SettingsOverlay
     data class Remove(val entry: AddonEntry, val ownership: AddonOwnership) : SettingsOverlay
 }
-/** The original app's settings surface, backed by the signed-in graph. */
+/** The original app's settings surface, backed by the session graph. */
 @Composable
 internal fun SettingsScreen(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     onSignOut: () -> Unit,
+    onSignIn: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenDebugGate: (() -> Unit)? = null,
 ) {
     val addonsState by remember(graph) { graph.addons.observe() }.collectAsState(QueryState())
     val accountState by remember(graph) { graph.account.observe() }.collectAsState(QueryState())
     val settingsState by remember(graph) { graph.settings.observe() }.collectAsState(QueryState())
+    val addonsNotMoved by graph.addonsNotMoved.collectAsState()
     val scope = rememberCoroutineScope()
 
     var userAddonUrl by remember { mutableStateOf("") }
@@ -65,11 +67,13 @@ internal fun SettingsScreen(
     // small authenticated request is timed end to end, the same path every
     // screen's calls take, and re-measured while the screen stays open. A
     // failed probe keeps the last reading: the Status row reports outages.
+    // Without an account there is no server to time.
     LaunchedEffect(graph) {
+        val client = graph.accountClient ?: return@LaunchedEffect
         while (true) {
             val started = TimeSource.Monotonic.markNow()
             try {
-                graph.client.getMe()
+                client.getMe()
                 latencyMillis = started.elapsedNow().inWholeMilliseconds
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -189,6 +193,8 @@ internal fun SettingsScreen(
     }
 
     val uiState = SettingsUiState(
+        signedIn = graph.signedIn,
+        addonsNotMoved = addonsNotMoved,
         latencyMillis = latencyMillis,
         addons = addonsState.value,
         account = accountState.value,
@@ -223,6 +229,7 @@ internal fun SettingsScreen(
                     onOpenLanguage = { overlay = SettingsOverlay.Language(it) },
                     onAutoplayChange = ::updateAutoplay,
                     onSignOut = onSignOut,
+                    onSignIn = onSignIn,
                     onOpenDebugGate = onOpenDebugGate,
                 )
             }

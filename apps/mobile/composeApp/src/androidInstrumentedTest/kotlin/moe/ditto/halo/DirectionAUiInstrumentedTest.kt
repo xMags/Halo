@@ -101,6 +101,7 @@ class DirectionAUiInstrumentedTest {
                             },
                             onAutoplayChange = { autoplay = it },
                             onSignOut = { signedOut = true },
+                            onSignIn = {},
                             onOpenDebugGate = null,
                         )
                     }

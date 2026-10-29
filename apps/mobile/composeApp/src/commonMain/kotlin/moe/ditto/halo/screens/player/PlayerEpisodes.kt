@@ -2,7 +2,7 @@ package moe.ditto.halo.screens.player
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
-import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.AddonSource
 import moe.ditto.halo.api.AddonStreams
 import moe.ditto.halo.api.MetaDetail
@@ -128,7 +128,7 @@ internal sealed interface EpisodeChoice {
  * screen a viewer would have reached by choosing the episode from the title.
  */
 internal suspend fun resolveEpisodePlayback(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     current: PlaybackContext,
     video: MetaVideo,
 ): EpisodeChoice {
@@ -137,7 +137,7 @@ internal suspend fun resolveEpisodePlayback(
     val needsSource = EpisodeChoice.NeedsSource(video.id, tag, name, video.thumbnail)
 
     val results = try {
-        graph.client.getStreams(current.type, video.id).results
+        graph.backend.getStreams(current.type, video.id).results
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (_: Throwable) {
@@ -159,7 +159,7 @@ internal suspend fun resolveEpisodePlayback(
  * so this does not second-guess it.
  */
 internal suspend fun reportProgress(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     context: PlaybackContext,
     state: PlayerState,
     meta: MetaDetail?,
@@ -224,11 +224,11 @@ private const val ExitReportTimeoutMillis = 2_000L
  * state on top of a picture that has just ended.
  */
 internal suspend fun nextEpisodePlayback(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     current: PlaybackContext,
 ): PlaybackContext? {
     val result = try {
-        graph.client.getNextEpisode(
+        graph.backend.getNextEpisode(
             type = current.type,
             metaId = current.metaId,
             videoId = current.videoId,

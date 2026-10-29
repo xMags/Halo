@@ -3,6 +3,8 @@ package moe.ditto.halo.auth
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
+import moe.ditto.halo.device.PlatformDeviceStore
+import moe.ditto.halo.sync.FakeStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -68,6 +70,38 @@ class SessionControllerTest {
 
         assertEquals(SessionState.SignedOut, controller.state.value)
         assertNull(storage.read(AuthStorageKeys.LocalSession))
+    }
+
+    @Test
+    fun continuingWithoutAnAccountIsRememberedUntilASessionReplacesIt() = runTest {
+        val storage = InMemorySecureStorage()
+        val profile = PlatformDeviceStore(storage, FakeStore())
+        val controller = SessionController(storage, LoginGateway(IssuedToken("t", now + 1_000_000)), clock, backgroundScope, deviceProfile = profile)
+        controller.restore()
+        assertEquals(SessionState.SignedOut, controller.state.value)
+
+        controller.continueWithoutAccount()
+        assertEquals(SessionState.Device, controller.state.value)
+        assertTrue(profile.hasProfile())
+
+        // A later launch goes straight back to it.
+        val relaunched = SessionController(storage, NoNetworkGateway(), clock, backgroundScope, deviceProfile = profile)
+        relaunched.restore()
+        assertEquals(SessionState.Device, relaunched.state.value)
+
+        // Opening sign-in leaves the phone's data alone, and signing in wins over it.
+        val generation = controller.sessionGeneration.value
+        controller.startSignIn()
+        assertEquals(SessionState.SignedOut, controller.state.value)
+        assertEquals(generation + 1, controller.sessionGeneration.value)
+        assertTrue(profile.hasProfile())
+        controller.signIn("https://halo.local", "testuser", "hunter22")
+        controller.continueWithoutAccount()
+        assertEquals(SessionState.SignedIn(SessionKind.Local, "https://halo.local"), controller.state.value)
+
+        val signedInLaunch = SessionController(storage, NoNetworkGateway(), clock, backgroundScope, deviceProfile = profile)
+        signedInLaunch.restore()
+        assertEquals(SessionState.SignedIn(SessionKind.Local, "https://halo.local"), signedInLaunch.state.value)
     }
 
     @Test

@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
-import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.MetaDetail
 import moe.ditto.halo.api.MetaVideo
@@ -85,7 +85,7 @@ import moe.ditto.halo.ui.rememberResponsive
  */
 @Composable
 internal fun DetailScreen(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     type: String,
     metaId: String,
     onBack: () -> Unit,

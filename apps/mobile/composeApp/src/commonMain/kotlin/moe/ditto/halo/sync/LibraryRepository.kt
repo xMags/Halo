@@ -2,7 +2,7 @@ package moe.ditto.halo.sync
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import moe.ditto.halo.api.HaloClient
+import moe.ditto.halo.api.HaloBackend
 import moe.ditto.halo.api.LibraryItem
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.auth.EpochClock
@@ -18,7 +18,7 @@ import moe.ditto.halo.cache.QueryState
  * its next write would resurrect it.
  */
 class LibraryRepository(
-    private val client: HaloClient,
+    private val client: HaloBackend,
     private val cache: QueryCache,
     private val clock: EpochClock,
 ) {

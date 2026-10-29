@@ -6,7 +6,7 @@ import io.ktor.http.Url
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import moe.ditto.halo.api.HaloClient
+import moe.ditto.halo.api.HaloBackend
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
@@ -28,12 +28,13 @@ internal class SubtitleFileTooLargeException : SubtitleFileException("This subti
 /**
  * Resolves addon subtitles into files libmpv can open without credentials.
  *
- * Remote files always pass through Halo's authenticated proxy. They are
- * streamed into a temporary file, bounded while streaming even when the server
+ * Remote files come through [HaloBackend.openSubtitleFile]: Halo's
+ * authenticated proxy when signed in, the addon's host without an account.
+ * They are streamed into a temporary file, bounded while streaming even when the server
  * omits Content-Length, and become visible only through an atomic move.
  */
 internal class SubtitleFileCache(
-    private val client: HaloClient,
+    private val client: HaloBackend,
     cacheDirectory: String,
     private val fileSystem: FileSystem = subtitleFileSystem(),
     private val maxBytes: Long = MaxSubtitleBytes,
@@ -71,7 +72,7 @@ internal class SubtitleFileCache(
     }
 
     private suspend fun download(sourceUrl: String, temporary: Path) {
-        val response = client.getAddonProxyResponse(sourceUrl)
+        val response = client.openSubtitleFile(sourceUrl)
         val declaredSize = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
         if (declaredSize != null && declaredSize > maxBytes) throw SubtitleFileTooLargeException()
 

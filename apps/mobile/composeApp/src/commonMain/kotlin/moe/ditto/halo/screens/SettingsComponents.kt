@@ -175,6 +175,8 @@ internal fun AddonRow(
     busy: Boolean,
     onToggleCatalogs: (AddonEntry, AddonOwnership) -> Unit,
     onRemove: (AddonEntry, AddonOwnership) -> Unit,
+    /** False for an addon that must stay installed, such as a built-in one without an account. */
+    removable: Boolean = true,
 ) {
     // A personal copy the global entry stands in for: still removable, but its
     // catalogs belong to the global copy, so there is nothing to show or hide.
@@ -241,15 +243,17 @@ internal fun AddonRow(
                         },
                 )
             }
-            Icon(
-                imageVector = HaloIcons.Close,
-                contentDescription = "Remove ${addon.manifest.name}",
-                tint = HaloColors.TextDim,
-                modifier = Modifier
-                    .clickable(role = Role.Button) { onRemove(addon, ownership) }
-                    .padding(HaloSpacing.Xs)
-                    .size(19.dp),
-            )
+            if (removable) {
+                Icon(
+                    imageVector = HaloIcons.Close,
+                    contentDescription = "Remove ${addon.manifest.name}",
+                    tint = HaloColors.TextDim,
+                    modifier = Modifier
+                        .clickable(role = Role.Button) { onRemove(addon, ownership) }
+                        .padding(HaloSpacing.Xs)
+                        .size(19.dp),
+                )
+            }
         } else {
             Text("Managed", color = HaloColors.TextDim, fontSize = 11.5.sp)
         }

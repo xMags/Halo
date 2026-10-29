@@ -44,7 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
-import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.AddonError
 import moe.ditto.halo.api.AddonSource
 import moe.ditto.halo.api.AddonStreams
@@ -84,7 +84,7 @@ import moe.ditto.halo.ui.rememberResponsive
  */
 @Composable
 internal fun StreamsScreen(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     type: String,
     videoId: String,
     /** What is being played, for the header. An episode reads "Show · S01E02". */
@@ -151,7 +151,7 @@ internal fun StreamsScreen(
  */
 @Composable
 internal fun SourcesPicker(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     type: String,
     videoId: String,
     onPlay: (AddonSource, Stream) -> Unit,
@@ -239,14 +239,14 @@ internal fun SourcesPicker(
 private const val ReplaceKey = "replace"
 
 /** Starts a download and returns what stopped it, or null when it took. */
-private suspend fun beginDownload(graph: SignedInGraph, media: DownloadMedia): String? =
+private suspend fun beginDownload(graph: SessionGraph, media: DownloadMedia): String? =
     when (val result = graph.downloads.start(media)) {
         is DownloadStartResult.NotEnoughSpace -> notEnoughSpaceMessage(result)
         is DownloadStartResult.Failed -> result.message
         else -> null
     }
 
-private suspend fun beginReplacement(graph: SignedInGraph, media: DownloadMedia): String? =
+private suspend fun beginReplacement(graph: SessionGraph, media: DownloadMedia): String? =
     when (val result = graph.downloads.replace(media)) {
         is DownloadStartResult.NotEnoughSpace -> notEnoughSpaceMessage(result)
         is DownloadStartResult.Failed -> result.message

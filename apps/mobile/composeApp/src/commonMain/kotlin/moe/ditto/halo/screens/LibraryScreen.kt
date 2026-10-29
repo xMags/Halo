@@ -16,7 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
-import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloColors
@@ -31,7 +31,7 @@ import moe.ditto.halo.ui.rememberResponsive
  */
 @Composable
 internal fun LibraryScreen(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     onOpenSearch: () -> Unit,
     onOpenDetail: (MetaRef) -> Unit,
     modifier: Modifier = Modifier,

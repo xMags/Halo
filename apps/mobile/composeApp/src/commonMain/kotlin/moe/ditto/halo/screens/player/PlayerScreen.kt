@@ -37,7 +37,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import moe.ditto.halo.NativePlayerSurface
 import moe.ditto.halo.PlaybackHost
-import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.AddonSubtitles
 import moe.ditto.halo.api.VideoFitMode
 import moe.ditto.halo.cache.QueryState
@@ -102,7 +102,7 @@ private const val WatchStateReportMillis = 30_000L
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun PlayerScreen(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     playback: PlaybackHost,
     surface: NativePlayerSurface,
     /** See [moe.ditto.halo.PlatformDependencies.bundledSubtitleFonts]. */

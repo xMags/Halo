@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import moe.ditto.halo.SignedInGraph
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.downloads.DownloadEntry
@@ -71,7 +71,7 @@ import moe.ditto.halo.ui.rememberResponsive
  */
 @Composable
 internal fun DownloadsScreen(
-    graph: SignedInGraph,
+    graph: SessionGraph,
     /** Plays a download from the device. Nothing here touches the network. */
     onPlay: (DownloadEntry) -> Unit,
     modifier: Modifier = Modifier,
