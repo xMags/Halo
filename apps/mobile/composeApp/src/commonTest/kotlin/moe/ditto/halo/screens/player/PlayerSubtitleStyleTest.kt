@@ -16,13 +16,15 @@ import kotlin.test.assertNull
 class PlayerSubtitleStyleTest {
 
     @Test
-    fun emptySettingsProduceTheRenderersOwnAppearance() {
+    fun emptySettingsProduceTheDesktopsDefaultAppearance() {
         val style = subtitleStyleOf(UserSettings.Empty)
 
         assertEquals(1.0, style.scale)
         assertNull(style.font)
         assertEquals(SubtitleStyle.DefaultOutlineWidthPixels, style.outlineWidthPixels)
-        assertEquals(0.0, style.shadowOffsetPixels)
+        // Shadow unset is on, as the desktop applies it.
+        assertEquals(2.0, style.shadowOffsetPixels)
+        assertEquals(0.0, subtitleStyleOf(UserSettings.Empty.withSubtitleShadow(false)).shadowOffsetPixels)
     }
 
     @Test
@@ -37,7 +39,7 @@ class PlayerSubtitleStyleTest {
 
         assertEquals(1.5, style.scale)
         assertEquals("JetBrains Mono", style.font)
-        assertEquals(1.0, style.outlineWidthPixels)
+        assertEquals(1.5, style.outlineWidthPixels)
         assertEquals(2.0, style.shadowOffsetPixels)
     }
 
@@ -58,6 +60,7 @@ class PlayerSubtitleStyleTest {
         // which has to leave the renderer's own weight alone.
         assertEquals(0.0, outlineWidthPixels(SubtitleOutline.None))
         assertEquals(SubtitleStyle.DefaultOutlineWidthPixels, outlineWidthPixels(null))
+        assertEquals(4.5, outlineWidthPixels(SubtitleOutline.Thick))
     }
 
     @Test
