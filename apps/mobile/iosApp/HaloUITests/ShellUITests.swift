@@ -35,13 +35,13 @@ final class ShellUITests: XCTestCase {
                 "Missing tab: \(tab)"
             )
         }
-        assertText(containing: "Watch")
+        assertText(containing: "Search movies")
     }
 
     func testTabsSwitchContent() {
         launch()
         signIn()
-        assertText(containing: "Watch")
+        assertText(containing: "Search movies")
 
         tapButton("Library")
         assertText(containing: "Library")

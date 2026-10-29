@@ -54,7 +54,7 @@ fun homeShelves(
             type = type,
         ),
         library = active
-            .filter { type == null || it.type == type }
+            .filter { matchesTypeFilter(type, it.type) }
             .sortedByDescending { it.addedAt }
             .map { MetaPreview(id = metaIdOf(it.id, it.type), type = it.type, name = it.name, poster = it.poster) },
     )
@@ -102,7 +102,7 @@ private fun recentlyWatched(
         .sortedByDescending { it.updatedAt }
         .filter { seen.add(it.itemId) }
         .mapNotNull { watchStateMeta(it, library) }
-        .filter { type == null || it.type == type }
+        .filter { matchesTypeFilter(type, it.type) }
         .take(RecentlyWatchedLimit)
 }
 
@@ -133,3 +133,15 @@ private fun watchStateMeta(state: WatchState, library: Map<String, LibraryItem>)
 private fun typeOf(itemId: String): String? = itemId.substringBefore(':', missingDelimiterValue = "").ifEmpty { null }
 
 private fun metaIdOf(itemId: String, type: String): String = itemId.substring(type.length + 1)
+
+/**
+ * Whether a title of [type] shows under the All / Movies / Series filter,
+ * [filter] being null for All. Anything that is not a series counts as a
+ * movie, as on the desktop app, so a title of an addon's own type (Kitsu's
+ * "anime", say) is not lost from both filtered views.
+ */
+fun matchesTypeFilter(filter: String?, type: String): Boolean = when (filter) {
+    null -> true
+    "series" -> type == "series"
+    else -> type != "series"
+}
