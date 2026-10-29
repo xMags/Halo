@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { LibraryItem, WatchState } from '@halo/core'
 import {
   buildContinueShelf,
+  buildRecentlyWatchedRow,
   catalogShelfLabels,
   isHomeCatalogType,
   itemMetaId,
@@ -228,4 +229,52 @@ test('a name ending on a plural noun takes the kind in front of it', () => {
   assert.equal(catalogShelfLabels('New Arrivals', 'series', 'Addon').title, 'New Series Arrivals')
   // A single word is the whole name; the kind goes behind it as usual.
   assert.equal(catalogShelfLabels('Releases', 'movie', 'Addon').title, 'Releases Movies')
+})
+
+test('recently watched lists distinct titles newest first, at any progress', () => {
+  const shelf = buildRecentlyWatchedRow(
+    [
+      row({ itemId: 'series:a', videoId: 'a:1:1', updatedAt: 10, name: 'Show' }),
+      row({ itemId: 'series:a', videoId: 'a:1:2', updatedAt: 30, name: 'Show', watched: true }),
+      row({ itemId: 'movie:b', videoId: 'b', updatedAt: 20, name: 'Finished', positionSec: 3000 }),
+    ],
+    [],
+    new Set(),
+    'all',
+  )
+  assert.deepEqual(shelf.map((meta) => [meta.type, meta.id, meta.name]), [
+    ['series', 'a', 'Show'],
+    ['movie', 'b', 'Finished'],
+  ])
+})
+
+test('recently watched leaves out what continue watching offers and follows the filter', () => {
+  const states = [
+    row({ itemId: 'series:a', videoId: 'a:1:1', updatedAt: 30 }),
+    row({ itemId: 'movie:b', videoId: 'b', updatedAt: 20 }),
+    row({ itemId: 'anime:kitsu:1', videoId: 'kitsu:1:1', updatedAt: 10 }),
+  ]
+  assert.deepEqual(buildRecentlyWatchedRow(states, [], new Set(['series:a']), 'all').map((m) => m.id), ['b', 'kitsu:1'])
+  // Anything that is not a series counts as a movie.
+  assert.deepEqual(buildRecentlyWatchedRow(states, [], new Set(), 'movie').map((m) => m.id), ['b', 'kitsu:1'])
+  assert.deepEqual(buildRecentlyWatchedRow(states, [], new Set(), 'series').map((m) => m.id), ['a'])
+})
+
+test('recently watched takes names from the library when a row has none, drops unnamed rows, and stops at fifteen', () => {
+  const library = [{ id: 'movie:b', type: 'movie', name: 'From library', poster: 'https://p.test/b.jpg', addedAt: 1, updatedAt: 1 }]
+  const shelf = buildRecentlyWatchedRow(
+    [
+      row({ itemId: 'movie:b', videoId: 'b', updatedAt: 2, name: undefined }),
+      row({ itemId: 'movie:c', videoId: 'c', updatedAt: 1, name: undefined }),
+    ],
+    library,
+    new Set(),
+    'all',
+  )
+  assert.deepEqual(shelf, [{ id: 'b', type: 'movie', name: 'From library', poster: 'https://p.test/b.jpg' }])
+
+  const many = Array.from({ length: 20 }, (_, i) => row({ itemId: `movie:t${i}`, videoId: `t${i}`, updatedAt: i, name: `Title ${i}` }))
+  const capped = buildRecentlyWatchedRow(many, [], new Set(), 'all')
+  assert.equal(capped.length, 15)
+  assert.equal(capped[0]!.name, 'Title 19')
 })
