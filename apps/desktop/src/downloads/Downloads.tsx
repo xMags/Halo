@@ -582,7 +582,7 @@ function QueueRow({
         {row.canRetry && (
           <RowIconButton glyph="retry" label="Retry this source" onClick={() => resumeTransfer(row.id)} />
         )}
-        <RowIconButton glyph="close" label="Cancel transfer" danger onClick={onCancel} />
+        <RowIconButton glyph="delete" label="Cancel transfer" danger onClick={onCancel} />
       </div>
     </RowFrame>
   )
@@ -724,7 +724,7 @@ function DetailPane({
               title="Cancel transfer"
               onClick={onCancel}
             >
-              <FluentIcon glyph="close" size={13} />
+              <FluentIcon glyph="delete" size={13} />
             </button>
           </div>
           {row.requiresNewSource && (
