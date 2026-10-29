@@ -25,7 +25,47 @@ class SearchMergeTest {
     fun titlesShownElsewhereAreLeftOut() {
         assertEquals(
             listOf("movie:tt2"),
-            keys(interleaveTitles(listOf(listOf(title("tt1"), title("tt2"))), exclude = setOf("movie:tt1"))),
+            keys(interleaveTitles(listOf(listOf(title("tt1"), title("tt2"))), exclude = listOf(title("tt1")))),
+        )
+    }
+
+    private fun dated(id: String, name: String, releaseInfo: String? = null, type: String = "movie") =
+        MetaPreview(id = id, type = type, name = name, releaseInfo = releaseInfo)
+
+    @Test
+    fun oneTitleNamedByTwoAddonsWithDifferentIdsAppearsOnce() {
+        val cinemeta = listOf(dated("tt1160419", "Dune", "2021"), dated("tt15239678", "Dune: Part Two", "2024"))
+        val tmdb = listOf(dated("tmdb:438631", "Dune", "2021"), dated("tmdb:693134", "Dune Part Two", "2024"))
+        val series = listOf(
+            dated("tt10466872", "Dune: Prophecy", "2024–", "series"),
+            dated("tmdb:90228", "Dune: Prophecy", "2024-2025", "series"),
+        )
+
+        // The better-ranked copy stays: Cinemeta's, which comes first.
+        assertEquals(
+            listOf("movie:tt1160419", "series:tt10466872", "movie:tt15239678"),
+            keys(interleaveTitles(listOf(cinemeta, tmdb, series))),
+        )
+    }
+
+    @Test
+    fun sameNamedTitlesFromOtherYearsOrKindsOrWithoutAYearStaySeparate() {
+        val lists = listOf(
+            listOf(dated("tt1160419", "Dune", "2021"), dated("tt0087182", "Dune", "1984")),
+            listOf(dated("tt0142032", "Dune", "2000", "series"), dated("tmdb:1", "Dune"), dated("tmdb:2", "Dune")),
+        )
+        assertEquals(
+            listOf("movie:tt1160419", "series:tt0142032", "movie:tt0087182", "movie:tmdb:1", "movie:tmdb:2"),
+            keys(interleaveTitles(lists)),
+        )
+    }
+
+    @Test
+    fun aCopyFromAnotherAddonOfWhatIsShownAboveIsLeftOut() {
+        val top = dated("tt1160419", "Dune", "2021")
+        assertEquals(
+            listOf("movie:tt9"),
+            keys(interleaveTitles(listOf(listOf(dated("tmdb:438631", "Dune", "2021"), title("tt9"))), exclude = listOf(top))),
         )
     }
 

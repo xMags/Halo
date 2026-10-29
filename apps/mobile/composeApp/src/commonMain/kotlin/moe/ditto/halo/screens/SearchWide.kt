@@ -158,8 +158,7 @@ internal fun WideSearchScreen(
         if (!searching) emptyList() else savedSearchMatches(library.value, trimmed).map { it.metaPreview() }.filter(matchesFilter)
     }
     val merged = remember(groups, fromLibrary, topMatch, filter) {
-        val shownAbove = fromLibrary.map(::titleKey).toMutableSet()
-        topMatch?.let { shownAbove += titleKey(it) }
+        val shownAbove = fromLibrary + listOfNotNull(topMatch)
         interleaveTitles(groups.orEmpty().map { group -> group.metas.filter(matchesFilter) }, shownAbove)
     }
     val suggestions = if (fieldFocused) suggestedSearches(history, term) else emptyList()
