@@ -1,6 +1,6 @@
 import avatar from '../assets/user-avatar.png'
 import { useAccountPicture } from '../auth/accountPicture'
-import { accountLabel, DEVICE_ACCOUNT_LABEL, DEVICE_ACCOUNT_NAME } from '../auth/accountLabel'
+import { accountDisplayName, accountLabel, DEVICE_ACCOUNT_LABEL, DEVICE_ACCOUNT_NAME } from '../auth/accountLabel'
 import { useSession } from '../auth/session'
 import { useTitleMenu } from '../browse/titleMenu'
 import { useDownloads } from '../downloads/downloadsStore'
@@ -63,7 +63,7 @@ export function NavRail({ open, onToggle }: NavRailProps) {
   const { cards } = useContinueShelf({ enabled: open })
   const jump = open ? cards.slice(0, JUMP_LIMIT) : []
   const onDevice = state === 'device'
-  const name = onDevice ? DEVICE_ACCOUNT_NAME : me?.username ?? ''
+  const name = onDevice ? DEVICE_ACCOUNT_NAME : me ? accountDisplayName(me.username) : ''
   const role = onDevice ? DEVICE_ACCOUNT_LABEL : accountLabel(me)
   // The account's own picture when it has one; the stock avatar otherwise.
   const picture = useAccountPicture()

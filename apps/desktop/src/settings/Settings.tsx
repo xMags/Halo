@@ -21,7 +21,8 @@ import {
   useSetAddons,
   useSetGlobalAddons,
 } from '../queries'
-import { accountLabel, DEVICE_ACCOUNT_LABEL, DEVICE_ACCOUNT_NAME } from '../auth/accountLabel'
+import { accountDisplayName, accountLabel, DEVICE_ACCOUNT_LABEL, DEVICE_ACCOUNT_NAME } from '../auth/accountLabel'
+import { useAccountPicture } from '../auth/accountPicture'
 import { describeStatus, useServerStatus } from '../auth/serverStatus'
 import { RAIL_ANCHOR_FRACTION, activeSettingsSection, isScrolledToEnd } from './settingsRail'
 import { languageChoices } from '../home/catalogLanguage'
@@ -901,11 +902,6 @@ function SubtitlesSection() {
 
 /* ── Server & account ────────────────────────────────────────────────────── */
 
-/** The username with its first letter raised, as the native account card shows it. */
-function displayName(username: string): string {
-  return username.charAt(0).toUpperCase() + username.slice(1)
-}
-
 function AccountSection() {
   const { state } = useSession()
   return state === 'device' ? <DeviceAccountSection /> : <SignedInAccountSection />
@@ -955,6 +951,8 @@ function SignedInAccountSection() {
   const { data: build } = useBuildInfo()
   const status = useServerStatus()
 
+  // The account's own picture when it has one; the stock avatar otherwise.
+  const picture = useAccountPicture()
   const statusLine = describeStatus(status)
   const statusTone =
     status.state === 'connected' ? 'connected' : status.state === 'probing' ? 'checking' : 'down'
@@ -975,9 +973,9 @@ function SignedInAccountSection() {
       sub="Library, watch progress and addon order sync through this server."
     >
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 13, padding: 14 }}>
-        <img className="set-avatar" src={avatar} alt="" draggable={false} />
+        <img className="set-avatar" src={picture ?? avatar} alt="" draggable={false} />
         <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>{me ? displayName(me.username) : '…'}</span>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>{me ? accountDisplayName(me.username) : '…'}</span>
           <span className="mono">{accountLabel(me)}</span>
         </span>
         <span className={`status-pill status-pill-${statusTone}`}>{statusLine}</span>
