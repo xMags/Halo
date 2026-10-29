@@ -120,23 +120,48 @@ export function libraryMatches(library: readonly LibraryItem[] | undefined, quer
     }))
 }
 
+/** The first four-digit year of a release line: `2021`, `2016–2025` and `2024-` all give their start. */
+function releaseYear(releaseInfo: string | undefined): string | null {
+  return releaseInfo?.match(/\d{4}/)?.[0] ?? null
+}
+
+/**
+ * Every identity a title can be recognised by. Addons name the same title by
+ * different ids (Cinemeta's IMDb `tt…`, TMDB's own numbers), so besides its id
+ * a title is known by its kind, name and year together: "Dune" from 2021 is
+ * one film whichever addon lists it. Without a year a name alone is not
+ * trusted, since remakes share names.
+ */
+export function titleIdentities(meta: Pick<MetaPreview, 'type' | 'id' | 'name' | 'releaseInfo'>): string[] {
+  const identities = [metaKey(meta)]
+  const year = releaseYear(meta.releaseInfo)
+  const name = folded(meta.name).replace(/[^\p{L}\p{N}]+/gu, '')
+  if (year && name) identities.push(`${meta.type}|${name}|${year}`)
+  return identities
+}
+
 /**
  * Several ranked lists as one: every list's first title, then every list's
- * second, and so on, each title once. Taking turns keeps each addon's own
- * ranking without letting the first addon's long tail bury the others' best.
- * Titles in `exclude` are left out (they are shown elsewhere on the screen).
+ * second, and so on, each title once even when two addons name it by different
+ * ids (see `titleIdentities`). Taking turns keeps each addon's own ranking
+ * without letting the first addon's long tail bury the others' best; of two
+ * copies of a title, the better-ranked one stays. Titles shown elsewhere on
+ * the screen are passed in `exclude` and left out.
  */
-export function interleave(lists: readonly (readonly MetaPreview[])[], exclude: ReadonlySet<string> = new Set()): MetaPreview[] {
-  const seen = new Set(exclude)
+export function interleave(
+  lists: readonly (readonly MetaPreview[])[],
+  exclude: readonly MetaPreview[] = [],
+): MetaPreview[] {
+  const seen = new Set(exclude.flatMap(titleIdentities))
   const merged: MetaPreview[] = []
   const longest = Math.max(0, ...lists.map((list) => list.length))
   for (let rank = 0; rank < longest; rank += 1) {
     for (const list of lists) {
       const meta = list[rank]
       if (!meta) continue
-      const key = metaKey(meta)
-      if (seen.has(key)) continue
-      seen.add(key)
+      const identities = titleIdentities(meta)
+      if (identities.some((identity) => seen.has(identity))) continue
+      identities.forEach((identity) => seen.add(identity))
       merged.push(meta)
     }
   }
