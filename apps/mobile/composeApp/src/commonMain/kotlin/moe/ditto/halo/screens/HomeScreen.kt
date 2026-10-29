@@ -83,6 +83,12 @@ internal fun HomeScreen(
     onOpenDetail: (MetaRef) -> Unit,
     /** Movies play straight from the featured card; series open their detail screen instead. */
     onPlayMovie: (MetaCard) -> Unit,
+    /** A row's "See all": the grid of everything it holds. */
+    onOpenShelf: (ShelfSnapshot) -> Unit,
+    /** Recently watched's "See all": the whole history, in the Library tab. */
+    onOpenHistory: () -> Unit,
+    /** My library's "See all": the Library tab, which is that grid with its filter. */
+    onOpenLibrary: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val responsive = rememberResponsive()
@@ -242,6 +248,7 @@ internal fun HomeScreen(
                     graph = graph,
                     entries = shelves.continueWatching,
                     onItemClick = { onOpenDetail(it.metaRef()) },
+                    onSeeAll = onOpenShelf,
                     posterWidth = responsive.shelfPosterWidth,
                     gutter = gutter,
                     gap = responsive.catalogRowGap,
@@ -256,6 +263,7 @@ internal fun HomeScreen(
                     items = shelves.recentlyWatched.map { it.posterItem() },
                     onItemClick = { onOpenDetail(it.metaRef()) },
                     itemMenu = posterMenu(shelves.recentlyWatched),
+                    onSeeAll = onOpenHistory,
                     posterWidth = responsive.shelfPosterWidth,
                     gutter = gutter,
                     gap = responsive.catalogRowGap,
@@ -274,6 +282,7 @@ internal fun HomeScreen(
                     items = shelves.library.map { it.posterItem() },
                     onItemClick = { onOpenDetail(it.metaRef()) },
                     itemMenu = posterMenu(shelves.library),
+                    onSeeAll = onOpenLibrary,
                     posterWidth = responsive.shelfPosterWidth,
                     gutter = gutter,
                     gap = responsive.catalogRowGap,
@@ -300,6 +309,7 @@ internal fun HomeScreen(
                 known = knownCatalogs[knownKey],
                 onKnown = { knownCatalogs[knownKey] = it },
                 onOpenDetail = onOpenDetail,
+                onOpenShelf = onOpenShelf,
             )
         }
     }
@@ -315,6 +325,7 @@ private fun ContinueWatchingRow(
     graph: SessionGraph,
     entries: List<ContinueEntry>,
     onItemClick: (PosterItem) -> Unit,
+    onSeeAll: (ShelfSnapshot) -> Unit,
     posterWidth: Dp,
     gutter: Dp,
     gap: Dp,
@@ -336,9 +347,15 @@ private fun ContinueWatchingRow(
         }
     }
     val menus = LocalTitleMenus.current
+    val source = "${entries.size} IN PROGRESS"
     CatalogRow(
         title = "Continue watching",
-        source = "${entries.size} IN PROGRESS",
+        source = source,
+        // The cards as shown, posters recovered here included. No source line:
+        // the grid's own count already says how many are in progress.
+        onSeeAll = {
+            onSeeAll(ShelfSnapshot("Continue watching", null, entries.map { it.meta }))
+        },
         items = items,
         onItemClick = onItemClick,
         // A card's key is its item id, the same `type:metaId` form.
@@ -387,6 +404,7 @@ private fun HomeCatalogRow(
     known: List<MetaPreview>?,
     onKnown: (List<MetaPreview>) -> Unit,
     onOpenDetail: (MetaRef) -> Unit,
+    onOpenShelf: (ShelfSnapshot) -> Unit,
 ) {
     val state by remember(graph, spec.key, extra, ready) {
         graph.browse.catalog(spec.addonId, spec.type, spec.catalogId, enabled = ready, extra = extra)
@@ -400,6 +418,7 @@ private fun HomeCatalogRow(
         items = remember(metas) { metas.orEmpty().map { it.posterItem() } },
         onItemClick = { onOpenDetail(it.metaRef()) },
         itemMenu = posterMenu(metas.orEmpty()),
+        onSeeAll = { onOpenShelf(ShelfSnapshot(spec.title, spec.source, metas.orEmpty())) },
         posterWidth = posterWidth,
         isLoading = metas == null && state.error == null,
         gutter = gutter,

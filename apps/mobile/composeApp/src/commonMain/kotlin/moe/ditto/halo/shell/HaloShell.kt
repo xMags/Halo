@@ -34,6 +34,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
@@ -73,6 +76,7 @@ import moe.ditto.halo.screens.DetailScreen
 import moe.ditto.halo.screens.DownloadsScreen
 import moe.ditto.halo.screens.HomeScreen
 import moe.ditto.halo.screens.LibraryScreen
+import moe.ditto.halo.screens.LibraryView
 import moe.ditto.halo.screens.MetaRef
 import moe.ditto.halo.player.PlayerSystemPort
 import moe.ditto.halo.player.VideoFrameSource
@@ -82,6 +86,8 @@ import moe.ditto.halo.screens.player.EpisodeChoice
 import moe.ditto.halo.screens.player.PlayerScreen
 import moe.ditto.halo.screens.SearchScreen
 import moe.ditto.halo.screens.SettingsScreen
+import moe.ditto.halo.screens.ShelfScreen
+import moe.ditto.halo.screens.ShelfSnapshots
 import moe.ditto.halo.screens.StreamsScreen
 import moe.ditto.halo.screens.SourcesRequest
 import moe.ditto.halo.ui.HaloColors
@@ -147,6 +153,10 @@ internal fun HaloShell(
         openDownloadsEvents.collect { navController.switchTab(DownloadsRoute) }
     }
 
+    val shelves = remember { ShelfSnapshots() }
+    // Home's "See all" on Recently watched and My library opens a Library view.
+    var libraryView by remember { mutableStateOf<LibraryView?>(null) }
+
     val titleMenus = rememberTitleMenuHost(
         graph = graph,
         navigation = TitleNavigation(
@@ -184,6 +194,22 @@ internal fun HaloShell(
                         onOpenSearch = { navController.navigate(SearchRoute) },
                         onOpenDetail = { navController.openDetail(it) },
                         onPlayMovie = { meta -> navController.navigate(movieSources(meta)) },
+                        onOpenShelf = { snapshot -> navController.navigate(ShelfRoute(shelves.put(snapshot))) },
+                        onOpenHistory = {
+                            libraryView = LibraryView.History
+                            navController.switchTab(LibraryRoute)
+                        },
+                        onOpenLibrary = {
+                            libraryView = LibraryView.Saved
+                            navController.switchTab(LibraryRoute)
+                        },
+                    )
+                }
+                composable<ShelfRoute> { entry ->
+                    ShelfScreen(
+                        snapshot = shelves[entry.toRoute<ShelfRoute>().key],
+                        onBack = { navController.popBackStack() },
+                        onOpenDetail = { navController.openDetail(it) },
                     )
                 }
                 composable<SearchRoute> {
@@ -198,6 +224,8 @@ internal fun HaloShell(
                         graph = graph,
                         onOpenDetail = { navController.openDetail(it) },
                         onOpenSources = { navController.navigate(it) },
+                        requestedView = libraryView,
+                        onViewRequestTaken = { libraryView = null },
                     )
                 }
                 composable<DetailRoute> { entry ->

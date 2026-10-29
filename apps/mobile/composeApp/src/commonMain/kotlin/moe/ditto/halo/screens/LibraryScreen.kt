@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,11 +48,19 @@ internal fun LibraryScreen(
     onOpenDetail: (MetaRef) -> Unit,
     onOpenSources: (StreamsRoute) -> Unit,
     modifier: Modifier = Modifier,
+    /** A view another screen asked to open on (Home's "See all"), taken once and then cleared. */
+    requestedView: LibraryView? = null,
+    onViewRequestTaken: () -> Unit = {},
 ) {
     val responsive = rememberResponsive()
     var filter by remember { mutableStateOf(MediaTypeFilter.All) }
     // Saved by name, so the view chosen survives opening a title and coming back.
     var view by rememberSaveable { mutableStateOf(SavedView) }
+    LaunchedEffect(requestedView) {
+        val requested = requestedView ?: return@LaunchedEffect
+        view = if (requested == LibraryView.History) HistoryView else SavedView
+        onViewRequestTaken()
+    }
     val views: @Composable () -> Unit = {
         Segmented(options = listOf(SavedView, HistoryView), value = view, onChange = { view = it })
     }
@@ -175,6 +184,9 @@ private fun HistoryView(
         onOpenDetail = onOpenDetail,
     )
 }
+
+/** The Library tab's two views, for a screen that opens the tab on one of them. */
+internal enum class LibraryView { Saved, History }
 
 private const val LibraryTitle = "Library"
 private const val SavedView = "Saved"

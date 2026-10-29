@@ -50,6 +50,15 @@ data object SearchRoute
 data class DetailRoute(val type: String, val metaId: String)
 
 /**
+ * A Home row's "See all": everything the row held, as a grid. The row itself
+ * is a snapshot kept by the shell under [key] rather than carried here, since a
+ * catalog can run to a hundred titles; after a process death the key finds
+ * nothing and the screen says so, as a row that failed to load would.
+ */
+@Serializable
+data class ShelfRoute(val key: String)
+
+/**
  * One video's playable sources.
  *
  * The naming is carried rather than re-derived because only the screen that
@@ -272,7 +281,7 @@ internal fun StreamsRoute.downloadMedia(addon: AddonSource, stream: Stream, url:
  * push, so neither is decided screen by screen.
  */
 internal val ChromeCoveringRoutes =
-    listOf(SearchRoute::class, DetailRoute::class, StreamsRoute::class, PlayerRoute::class)
+    listOf(SearchRoute::class, DetailRoute::class, ShelfRoute::class, StreamsRoute::class, PlayerRoute::class)
 
 /**
  * The same player, playing something else. Used when another episode resolved
