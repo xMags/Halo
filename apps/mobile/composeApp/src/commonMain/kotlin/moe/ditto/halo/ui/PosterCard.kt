@@ -1,6 +1,5 @@
 package moe.ditto.halo.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,8 +59,10 @@ fun PosterCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     showLabel: Boolean = false,
+    /** Opens the card's long-press menu; null leaves long presses doing nothing. */
+    onLongPress: (() -> Unit)? = null,
 ) {
-    Column(modifier.clickable(onClick = onClick)) {
+    Column(modifier.longPressClickable(onClick = onClick, role = null, onLongPress = onLongPress)) {
         HaloAsyncImage(
             url = item.posterUrl,
             contentDescription = item.title,
@@ -127,6 +128,8 @@ fun PosterGrid(
      * it to spare.
      */
     header: @Composable (() -> Unit)? = null,
+    /** Opens a card's long-press menu; null leaves long presses doing nothing. */
+    itemMenu: ((PosterItem) -> Unit)? = null,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
@@ -139,7 +142,12 @@ fun PosterGrid(
             item(key = "grid-header", span = { GridItemSpan(maxLineSpan) }) { header() }
         }
         items(items = items, key = { it.key }) { item ->
-            PosterCard(item = item, onClick = { onItemClick(item) }, showLabel = showLabels)
+            PosterCard(
+                item = item,
+                onClick = { onItemClick(item) },
+                showLabel = showLabels,
+                onLongPress = itemMenu?.let { open -> { open(item) } },
+            )
         }
     }
 }

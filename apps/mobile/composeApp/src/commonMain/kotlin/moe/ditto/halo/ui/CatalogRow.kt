@@ -55,6 +55,8 @@ fun CatalogRow(
      * catalog comes from ("CINEMETA") or what a shelf counts ("2 IN PROGRESS").
      */
     source: String? = null,
+    /** Opens a card's long-press menu; null leaves long presses doing nothing. */
+    itemMenu: ((PosterItem) -> Unit)? = null,
 ) {
     if (!isLoading && items.isEmpty()) return
 
@@ -106,6 +108,7 @@ fun CatalogRow(
                     onClick = { onItemClick(item) },
                     modifier = Modifier.width(posterWidth),
                     showLabel = showLabels,
+                    onLongPress = itemMenu?.let { open -> { open(item) } },
                 )
             }
         }

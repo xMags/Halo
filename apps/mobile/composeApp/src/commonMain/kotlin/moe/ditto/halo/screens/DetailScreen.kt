@@ -73,6 +73,7 @@ import moe.ditto.halo.ui.ResponsiveInfo
 import moe.ditto.halo.ui.SelectOption
 import moe.ditto.halo.ui.SelectSheet
 import moe.ditto.halo.ui.glassSource
+import moe.ditto.halo.ui.longPressClickable
 import moe.ditto.halo.ui.monoStyle
 import moe.ditto.halo.ui.rememberResponsive
 
@@ -249,6 +250,7 @@ private fun DetailBody(
 ) {
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val tablet = responsive.isTablet
+    val menus = LocalTitleMenus.current
 
     LazyColumn(
         modifier.fillMaxSize(),
@@ -284,6 +286,7 @@ private fun DetailBody(
                     video = video,
                     state = progress[video.id],
                     onClick = { onPlayEpisode(video) },
+                    menu = menus?.let { m -> { m.openEpisode(meta, video) { onPlayEpisode(video) } } },
                 )
             }
             return@LazyColumn
@@ -306,6 +309,7 @@ private fun DetailBody(
                         video = video,
                         state = progress[video.id],
                         onClick = { onPlayEpisode(video) },
+                        menu = menus?.let { m -> { m.openEpisode(meta, video) { onPlayEpisode(video) } } },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -660,12 +664,12 @@ private fun SeasonRow(
 private const val MinVisibleProgress = 0.02
 
 @Composable
-private fun EpisodeRow(video: MetaVideo, state: WatchState?, onClick: () -> Unit) {
+private fun EpisodeRow(video: MetaVideo, state: WatchState?, onClick: () -> Unit, menu: (() -> Unit)?) {
     val fraction = state?.takeIf { it.durationSec > 0 }?.let { it.positionSec / it.durationSec } ?: 0.0
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onClick)
+            .longPressClickable(onClick = onClick, onLongPress = menu)
             .padding(horizontal = HaloSpacing.Md, vertical = HaloSpacing.Sm),
         horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm + 2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -745,6 +749,7 @@ private fun EpisodeCard(
     video: MetaVideo,
     state: WatchState?,
     onClick: () -> Unit,
+    menu: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val fraction = state?.takeIf { it.durationSec > 0 }?.let { it.positionSec / it.durationSec } ?: 0.0
@@ -753,7 +758,7 @@ private fun EpisodeCard(
             .clip(EpisodeCardShape)
             .background(EpisodeCardFill)
             .border(1.dp, EpisodeCardBorder, EpisodeCardShape)
-            .clickable(role = Role.Button, onClick = onClick)
+            .longPressClickable(onClick = onClick, onLongPress = menu)
             .padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Md - 4.dp),
     ) {

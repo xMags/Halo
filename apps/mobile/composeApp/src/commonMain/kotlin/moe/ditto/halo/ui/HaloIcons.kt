@@ -238,6 +238,30 @@ object HaloIcons {
         )
     }
 
+    /** Material `info` (outlined): a title menu's "Open details". */
+    val Info: ImageVector by lazy {
+        icon(
+            "M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" +
+                "m0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z",
+        )
+    }
+
+    /** Material `undo`: "Mark as unwatched". */
+    val Undo: ImageVector by lazy {
+        icon(
+            "M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 " +
+                "3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z",
+        )
+    }
+
+    /** Material `done_all`: "Mark earlier episodes as watched". */
+    val DoneAll: ImageVector by lazy {
+        icon(
+            "M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19" +
+                "l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z",
+        )
+    }
+
     val Refresh: ImageVector by lazy {
         icon(
             "M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-8 8s3.58 8 8 8c3.73 0 6.84-2.55 " +

@@ -102,6 +102,7 @@ internal fun LibraryScreen(
                 items = shown,
                 columns = responsive.posterColumns,
                 onItemClick = { onOpenDetail(it.metaRef()) },
+                itemMenu = posterMenu(remember(saved) { saved.orEmpty().map { it.metaPreview() } }),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = gutter,

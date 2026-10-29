@@ -1,7 +1,6 @@
 package moe.ditto.halo.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -40,6 +38,7 @@ import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloSpacing
+import moe.ditto.halo.ui.longPressClickable
 import moe.ditto.halo.ui.monoStyle
 
 /**
@@ -48,8 +47,8 @@ import moe.ditto.halo.ui.monoStyle
  * saves or removes anything.
  *
  * A row left partway opens that video's sources to carry on; a finished one
- * opens the title page. Rows fetch nothing: the episode tag comes from the
- * video id.
+ * opens the title page; a long press opens its menu. Rows fetch nothing: the
+ * episode tag comes from the video id.
  */
 @Composable
 internal fun HistoryList(
@@ -100,26 +99,13 @@ internal fun HistoryList(
                         if (entry.finished) {
                             onOpenDetail(MetaRef(entry.type, entry.metaId))
                         } else {
-                            onOpenSources(entry.sourcesRoute())
+                            onOpenSources(resumeRoute(entry.type, entry.metaId, entry.videoId, entry.name, entry.poster))
                         }
                     },
                 )
             }
         }
     }
-}
-
-/** The sources of the video a row names, to carry on where it was left. */
-private fun HistoryEntry.sourcesRoute(): StreamsRoute {
-    val tag = historyVideoTag(videoId, metaId)
-    return StreamsRoute(
-        type = type,
-        metaId = metaId,
-        videoId = videoId,
-        showTitle = name,
-        episodeTag = tag.takeIf { it != "MOVIE" && it != "SERIES" },
-        poster = poster,
-    )
 }
 
 private val ThumbShape = RoundedCornerShape(6.dp)
@@ -132,11 +118,12 @@ private fun HistoryRow(entry: HistoryEntry, time: String, onClick: () -> Unit) {
         entry.durationSec > 0 -> "${timeLeft(entry.positionSec, entry.durationSec)} LEFT"
         else -> "STARTED"
     }
+    val menus = LocalTitleMenus.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .clickable(role = Role.Button, onClick = onClick)
+            .longPressClickable(onClick = onClick, onLongPress = menus?.let { { it.openHistory(entry) } })
             .padding(vertical = HaloSpacing.Sm),
         horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Md),
         verticalAlignment = Alignment.CenterVertically,
@@ -177,7 +164,7 @@ private fun HistoryRow(entry: HistoryEntry, time: String, onClick: () -> Unit) {
 }
 
 /** "1 H 28 MIN", "2 H" or "42 MIN": the desktop's `formatTimeLeft` wording. */
-private fun timeLeft(positionSec: Double, durationSec: Double): String {
+internal fun timeLeft(positionSec: Double, durationSec: Double): String {
     val remaining = (durationSec - positionSec).coerceAtLeast(0.0)
     if (remaining < 60) return "UNDER A MIN"
     val minutes = kotlin.math.round(remaining / 60).toLong()

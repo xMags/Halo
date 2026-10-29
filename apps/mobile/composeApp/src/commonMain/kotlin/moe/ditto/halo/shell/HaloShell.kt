@@ -91,6 +91,10 @@ import moe.ditto.halo.ui.HaloLayout
 import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.LocalHazeState
 import moe.ditto.halo.ui.glassSource
+import moe.ditto.halo.screens.LocalTitleMenus
+import moe.ditto.halo.screens.TitleMenuOverlays
+import moe.ditto.halo.screens.TitleNavigation
+import moe.ditto.halo.screens.rememberTitleMenuHost
 import moe.ditto.halo.ui.glassSurface
 import moe.ditto.halo.ui.rememberResponsive
 import org.jetbrains.compose.resources.painterResource
@@ -143,7 +147,19 @@ internal fun HaloShell(
         openDownloadsEvents.collect { navController.switchTab(DownloadsRoute) }
     }
 
-    CompositionLocalProvider(LocalHazeState provides hazeState) {
+    val titleMenus = rememberTitleMenuHost(
+        graph = graph,
+        navigation = TitleNavigation(
+            openDetail = { navController.openDetail(it) },
+            openSources = { navController.navigate(it) },
+            playMovie = { meta -> navController.navigate(movieSources(meta)) },
+            playDownload = { entry ->
+                graph.downloads.playbackFiles(entry)?.let { files -> navController.navigate(entry.playerRoute(files)) }
+            },
+        ),
+    )
+
+    CompositionLocalProvider(LocalHazeState provides hazeState, LocalTitleMenus provides titleMenus.menus) {
         Box(modifier.fillMaxSize().background(HaloColors.Background)) {
             NavHost(
                 navController = navController,
@@ -289,6 +305,7 @@ internal fun HaloShell(
             } else {
                 HaloTabBar(navController, Modifier.align(Alignment.BottomCenter))
             }
+            TitleMenuOverlays(titleMenus, Modifier.align(Alignment.BottomCenter))
         }
     }
 }
