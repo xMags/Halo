@@ -121,17 +121,21 @@ internal class AndroidPlayerSystemPort(private val activity: Activity) : PlayerS
     }
 
     /**
-     * Sensor landscape rather than a fixed one, so the device may still be
-     * turned end for end; what is locked out is portrait.
+     * Landscape either way round, but only as the viewer's rotation setting
+     * allows: with auto-rotate on the device may be turned end for end, and
+     * with it locked the picture stays on the side it started. What is locked
+     * out is portrait. The sensor variant would turn the picture over even
+     * with rotation locked.
      */
     override fun lockLandscape() {
         if (landscapeHolders++ > 0) return
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
     }
 
+    /** Back to the manifest's own orientation, so the app turns the same before playback and after it. */
     override fun releaseLandscape() {
         if (landscapeHolders <= 0 || --landscapeHolders > 0) return
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
     }
 
     override fun keepScreenOn() {
