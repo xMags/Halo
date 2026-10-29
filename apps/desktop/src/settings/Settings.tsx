@@ -164,7 +164,7 @@ export function Settings() {
             </button>
             <div className="about-rule" />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span className="mono">© 2026 cryguy, Last Projects &amp; Shy</span>
+              <span className="mono">© 2026 Last Projects &amp; Shy</span>
               <span className="mono">GPL-3.0 license</span>
             </div>
           </div>

@@ -337,7 +337,7 @@ internal fun SettingsContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                Text("© 2026 cryguy, Last Projects & Shy", style = monoStyle(11.5.sp, color = HaloColors.TextDim))
+                Text("© 2026 Last Projects & Shy", style = monoStyle(11.5.sp, color = HaloColors.TextDim))
                 Text("GPL-3.0 license", style = monoStyle(11.5.sp, color = HaloColors.TextDim))
             }
         }
