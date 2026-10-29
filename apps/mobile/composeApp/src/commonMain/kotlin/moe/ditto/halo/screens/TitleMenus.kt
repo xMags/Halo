@@ -125,7 +125,7 @@ internal class TitleMenus(
             navigation.openSources(resumeRoute(meta.type, meta.id, entry.videoId, meta.name, meta.poster))
         }
         val remove = graph.watchStates.cached()?.let {
-            MenuAction("Remove from Continue watching", HaloIcons.Close, danger = true) {
+            MenuAction("Remove from Continue watching", HaloIcons.Trash, danger = true) {
                 removeTitle(entry.itemId, meta.name)
             }
         }
