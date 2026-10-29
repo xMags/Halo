@@ -52,6 +52,10 @@ const RATE_WINDOW: Duration = Duration::from_secs(3);
 const READ_TIMEOUT: Duration = Duration::from_secs(45);
 /// How quickly a stalled read notices it was paused or cancelled.
 const CANCEL_POLL: Duration = Duration::from_millis(250);
+/// How long the first request may wait for the source to start answering. A
+/// debrid link resolving a file for the first time can take most of a
+/// minute; a source silent for longer is retried.
+const FIRST_RESPONSE_TIMEOUT: Duration = Duration::from_secs(60);
 /// How long a pause, removal or replacement waits for the worker to let go.
 const STOP_WAIT: Duration = Duration::from_secs(10);
 const SPACE_RESERVE: u64 = 64 * 1024 * 1024;
@@ -1291,10 +1295,17 @@ impl DownloadManager {
     }
 
     async fn run(self: Arc<Self>, job_id: String) {
+        let files = {
+            let inner = self.inner.lock().await;
+            inner.entries.get(&job_id).map(DownloadRecord::files)
+        };
         let result = self.transfer_with_retries(&job_id).await;
         let mut superseded: Option<DownloadRecord> = None;
+        let orphaned;
         {
             let mut inner = self.inner.lock().await;
+            orphaned = orphaned_files(&inner.entries, &job_id, files)
+                .map(|files| (files, inner.approved_roots.clone()));
             let backup_id = inner.entries.get(&job_id).and_then(|entry| {
                 entry
                     .replacement
@@ -1351,6 +1362,11 @@ impl DownloadManager {
             }
             inner.cancel.remove(&job_id);
             inner.active_job = None;
+        }
+        if let Some((files, roots)) = orphaned {
+            // Removed while this transfer was still winding down: whatever it
+            // wrote after the removal gave up waiting would otherwise stay.
+            let _ = remove_files(&files, &resolve_roots(&roots), None);
         }
         let _ = self.persist().await;
         let request_spent = match &result {
@@ -1502,10 +1518,14 @@ impl DownloadManager {
         temporary: &Path,
         cancel: &Arc<AtomicBool>,
     ) -> Option<()> {
-        let response = open_get(&self.client, &subtitle.url, &subtitle.headers, None, None)
-            .await
-            .ok()?
-            .response;
+        let response = unless_cancelled(
+            cancel,
+            READ_TIMEOUT,
+            open_get(&self.client, &subtitle.url, &subtitle.headers, None, None),
+        )
+        .await
+        .ok()?
+        .response;
         if response.status().as_u16() != 200
             || response
                 .content_length()
@@ -1894,6 +1914,58 @@ fn remove_files(
     Ok(())
 }
 
+/// Awaits `work` until it finishes, the flag is raised, or `limit` passes. A
+/// request never looks at the flag itself, so without this a pause would wait
+/// for a slow source to start answering.
+async fn unless_cancelled<T>(
+    cancel: &AtomicBool,
+    limit: Duration,
+    work: impl std::future::Future<Output = Result<T, TransferError>>,
+) -> Result<T, TransferError> {
+    let raised = async {
+        while !cancel.load(Ordering::SeqCst) {
+            tokio::time::sleep(CANCEL_POLL).await;
+        }
+    };
+    tokio::select! {
+        result = tokio::time::timeout(limit, work) => {
+            result.unwrap_or(Err(TransferError::Retryable(DownloadFailureCode::Network)))
+        }
+        () = raised => Err(TransferError::Paused),
+    }
+}
+
+/// The files a finished run must clean up itself: its record is gone or being deleted, which happens only when
+/// a removal stopped waiting for the run. Files any other record also names
+/// are left alone, so a replacement's backup is never touched.
+fn orphaned_files(
+    entries: &HashMap<String, DownloadRecord>,
+    job_id: &str,
+    files: Option<FileSet>,
+) -> Option<FileSet> {
+    let files = files?;
+    if entries
+        .get(job_id)
+        .is_some_and(|entry| !entry.pending_deletion)
+    {
+        return None;
+    }
+    let shared = entries
+        .values()
+        .filter(|entry| entry.job_id != job_id)
+        .map(DownloadRecord::files)
+        .any(|other| {
+            [&files.part, &files.table, &files.table_temp, &files.target]
+                .into_iter()
+                .chain(files.subtitle.as_ref())
+                .any(|path| other.contains(path))
+        });
+    if shared {
+        return None;
+    }
+    Some(files)
+}
+
 async fn wait_unless_cancelled(cancel: &AtomicBool, delay: Duration) -> Result<(), TransferError> {
     let slice = Duration::from_millis(25);
     let mut waited = Duration::ZERO;
@@ -2241,6 +2313,57 @@ mod tests {
         entry.media.video_id = video_id.into();
         entry.status = status;
         entry
+    }
+
+    #[test]
+    fn a_run_cleans_up_only_after_its_record_was_removed() {
+        let mut live = owned("a", "acct", "tt1", DownloadStatus::Downloading);
+        live.file_name = "a.mkv".into();
+        let present = entries(vec![live.clone()]);
+        assert!(orphaned_files(&present, "a", Some(live.files())).is_none());
+
+        let mut deleting = live.clone();
+        deleting.pending_deletion = true;
+        assert!(orphaned_files(&entries(vec![deleting]), "a", Some(live.files())).is_some());
+        assert!(orphaned_files(&HashMap::new(), "a", Some(live.files())).is_some());
+    }
+
+    #[test]
+    fn a_run_never_cleans_up_files_another_record_names() {
+        let mut gone = owned("a", "acct", "tt1", DownloadStatus::Downloading);
+        gone.file_name = "shared.mkv".into();
+        let mut backup = owned("b", "acct", "tt1", DownloadStatus::Done);
+        backup.file_name = "shared.mkv".into();
+        assert!(orphaned_files(&entries(vec![backup]), "a", Some(gone.files())).is_none());
+    }
+
+    #[tokio::test]
+    async fn a_pause_stops_a_request_still_waiting_for_its_answer() {
+        let cancel = AtomicBool::new(false);
+        let started = std::time::Instant::now();
+        let waiting = unless_cancelled(&cancel, Duration::from_secs(60), async {
+            std::future::pending::<Result<(), TransferError>>().await
+        });
+        let pause = async {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            cancel.store(true, Ordering::SeqCst);
+        };
+        let (result, ()) = tokio::join!(waiting, pause);
+        assert!(matches!(result, Err(TransferError::Paused)));
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn a_source_that_never_answers_is_retried() {
+        let cancel = AtomicBool::new(false);
+        let result = unless_cancelled(&cancel, Duration::from_millis(50), async {
+            std::future::pending::<Result<(), TransferError>>().await
+        })
+        .await;
+        assert!(matches!(
+            result,
+            Err(TransferError::Retryable(DownloadFailureCode::Network))
+        ));
     }
 
     fn entries(records: Vec<DownloadRecord>) -> HashMap<String, DownloadRecord> {
