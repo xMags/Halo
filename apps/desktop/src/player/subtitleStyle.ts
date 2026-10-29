@@ -6,9 +6,10 @@ import type { SubtitleOutline } from '@halo/core'
  * selected.
  *
  * Everything here maps onto an mpv runtime property, so a change applies to
- * the playing file immediately; nothing reloads the stream. These style plain
- * text subtitles only — embedded ASS keeps its authored look, because we never
- * force `sub-ass-override`.
+ * the playing file immediately; nothing reloads the stream. Plain text
+ * subtitles take all of it. A styled (ASS) track takes only the size while
+ * Track styling is on (`sub-ass-override=scale`), and all of it when off
+ * (`force`).
  */
 
 /**

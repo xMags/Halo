@@ -143,6 +143,9 @@ internal class PlaybackHost(private val playerPort: PlayerPort) {
         playerPresenter.setSubtitleFont(style.font)
         playerPresenter.setSubtitleOutline(style.outlineWidthPixels)
         playerPresenter.setSubtitleShadow(style.shadowOffsetPixels)
+        // The engine starts at mpv's own `yes`, which is neither of the
+        // switch's two states, so the switch's state is applied as well.
+        playerPresenter.setSubtitleTrackStyling(playerPresenter.state.subtitleTrackStyling)
         publish()
     }
 

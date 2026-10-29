@@ -1024,10 +1024,17 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     void mpvSet('hwdec', prefs.hardwareDecoding ? 'auto-safe' : 'no')
   }, [prefs.hardwareDecoding])
 
-  // `no` leaves an ASS track's authored styling alone; `force` makes the
-  // settings above win over it. Plain-text tracks follow the settings either way.
+  // `scale` leaves an ASS track's authored styling alone but still applies the
+  // size above; `force` makes all the settings win over it. Not `no`: mpv
+  // ignores `sub-scale` for a styled track under it, so the size slider did
+  // nothing. An mpv older than `scale` (0.37) rejects it; `yes` is the fallback.
+  // Plain-text tracks follow the settings either way.
   useEffect(() => {
-    void mpvSet('sub-ass-override', prefs.subtitleTrackStyling ? 'no' : 'force')
+    if (!prefs.subtitleTrackStyling) {
+      void mpvSet('sub-ass-override', 'force')
+      return
+    }
+    void mpvSet('sub-ass-override', 'scale').catch(() => mpvSet('sub-ass-override', 'yes').catch(() => undefined))
   }, [prefs.subtitleTrackStyling])
 
   useEffect(() => {
