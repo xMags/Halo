@@ -46,6 +46,32 @@ class BrowseRepositoryTest {
     }
 
     @Test
+    fun aLaterCatalogPageSendsItsOffsetBesideTheRowsOwnExtras() = runTest {
+        val api = browseApi { catalogJson(listOf(meta("tt51"))) }
+        val repository = repository(api)
+        val source = CatalogPageSource("cinemeta", "movie", "top", mapOf("language" to "it"))
+
+        val page = repository.catalogNextPage(source, mapOf("language" to "it", "skip" to "50"))
+
+        assertEquals(listOf("tt51"), page.metas.map { it.id })
+        val request = api.reads("/catalog").single()
+        assertEquals("50", request.url.parameters["skip"])
+        assertEquals("it", request.url.parameters["language"])
+        assertEquals("top", request.url.parameters["id"])
+    }
+
+    @Test
+    fun aCatalogPageCountsTheEntriesTheServerSentBeforeAnyWereDropped() = runTest {
+        val api = browseApi { catalogJson(listOf(meta("dltorbox", name = "Delete all files"), meta("tt1"))) }
+        val repository = repository(api)
+
+        val page = repository.catalogPage("cinemeta", "movie", "top").first { it.value != null }.value
+
+        assertEquals(listOf("tt1"), page?.metas?.map { it.id })
+        assertEquals(2, page?.receivedCount)
+    }
+
+    @Test
     fun doesNotFetchAQueryWhoseInputsAreNotResolvedYet() = runTest {
         // Home's featured title has no catalog to read until the addon list
         // lands; fetching with a blank id would 400 on every cold start.

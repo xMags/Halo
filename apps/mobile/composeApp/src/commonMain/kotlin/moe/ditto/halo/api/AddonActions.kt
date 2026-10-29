@@ -43,7 +43,9 @@ internal fun List<MetaPreview>.withoutActionEntries(): List<MetaPreview> =
 
 internal fun List<Stream>.withoutActionStreams(): List<Stream> = filterNot(::isActionStream)
 
-internal fun CatalogResponse.withoutActions(): CatalogResponse = copy(metas = metas.withoutActionEntries())
+/** Keeps the count of what arrived, because an addon's `skip` counts the entries dropped here too. */
+internal fun CatalogResponse.withoutActions(): CatalogResponse =
+    copy(metas = metas.withoutActionEntries(), received = receivedCount)
 
 internal fun StreamsResult.withoutActions(): StreamsResult = copy(
     results = results

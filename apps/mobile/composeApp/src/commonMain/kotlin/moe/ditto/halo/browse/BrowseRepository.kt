@@ -5,7 +5,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import moe.ditto.halo.api.AddonSubtitles
+import moe.ditto.halo.api.CatalogResponse
 import moe.ditto.halo.api.HaloBackend
 import moe.ditto.halo.api.ManifestCatalog
 import moe.ditto.halo.api.MetaDetail
@@ -41,10 +43,32 @@ class BrowseRepository(
         catalogId: String,
         enabled: Boolean = true,
         extra: Map<String, String> = emptyMap(),
-    ): Flow<QueryState<List<MetaPreview>>> {
-        val key = HaloKey.Catalog(addonId, type, catalogId, extra)
-        return cache.query(key, key.staleMs, enabled) { client.getCatalog(addonId, type, catalogId, extra).metas }
+    ): Flow<QueryState<List<MetaPreview>>> = catalogPage(addonId, type, catalogId, enabled, extra).map { state ->
+        QueryState(state.value?.metas, state.isFetching, state.error)
     }
+
+    /**
+     * [catalog] with the count of entries the addon sent beside its titles,
+     * which a "See all" grid needs to ask for the page after it. The same
+     * cache entry, so a row and its grid share one request.
+     */
+    fun catalogPage(
+        addonId: String,
+        type: String,
+        catalogId: String,
+        enabled: Boolean = true,
+        extra: Map<String, String> = emptyMap(),
+    ): Flow<QueryState<CatalogResponse>> {
+        val key = HaloKey.Catalog(addonId, type, catalogId, extra)
+        return cache.query(key, key.staleMs, enabled) { client.getCatalog(addonId, type, catalogId, extra) }
+    }
+
+    /**
+     * A later page of a catalog, [extra] carrying its `skip`. Not cached: a
+     * grid holds the pages it has read, and nothing else reads them.
+     */
+    suspend fun catalogNextPage(source: CatalogPageSource, extra: Map<String, String>): CatalogResponse =
+        client.getCatalog(source.addonId, source.type, source.catalogId, extra)
 
     /** Full metadata, from the first effective addon that can describe the id. */
     fun meta(type: String, metaId: String, enabled: Boolean = true): Flow<QueryState<MetaDetail>> {

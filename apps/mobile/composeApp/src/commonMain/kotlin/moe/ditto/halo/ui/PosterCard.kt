@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -144,10 +146,14 @@ fun PosterGrid(
     header: @Composable (() -> Unit)? = null,
     /** Opens a card's long-press menu; null leaves long presses doing nothing. */
     itemMenu: ((PosterItem) -> Unit)? = null,
+    /** Below the last row, spanning the full width: a paged grid's loading or retry line. */
+    footer: @Composable (() -> Unit)? = null,
+    state: LazyGridState = rememberLazyGridState(),
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
         modifier = modifier,
+        state = state,
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(horizontalGap),
         verticalArrangement = Arrangement.spacedBy(verticalGap),
@@ -162,6 +168,9 @@ fun PosterGrid(
                 showLabel = showLabels,
                 onLongPress = itemMenu?.let { open -> { open(item) } },
             )
+        }
+        if (footer != null) {
+            item(key = "grid-footer", span = { GridItemSpan(maxLineSpan) }) { footer() }
         }
     }
 }

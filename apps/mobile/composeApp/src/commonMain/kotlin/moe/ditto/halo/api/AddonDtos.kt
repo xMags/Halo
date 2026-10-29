@@ -2,6 +2,7 @@ package moe.ditto.halo.api
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /**
  * Stremio addon protocol types, as they reach this client.
@@ -274,7 +275,18 @@ data class Subtitle(
 @Serializable
 data class CatalogResponse(
     val metas: List<MetaPreview> = emptyList(),
-)
+    /**
+     * How many entries the answer held before Halo dropped any (see
+     * [withoutActions]), which is the offset an addon's `skip` counts in. Set
+     * where the filtering happens, never read off the wire; null means
+     * nothing was dropped, so [metas] is the whole answer.
+     */
+    @Transient val received: Int? = null,
+) {
+    /** The entries the addon sent, for the next page's `skip`. */
+    val receivedCount: Int
+        get() = received ?: metas.size
+}
 
 @Serializable
 data class MetaResponse(
