@@ -22,6 +22,7 @@ import {
   selectionStops,
   type AddonStreamGroup,
 } from '../src/sources/sourcesModel.ts'
+import { parseStreamInfo } from '../src/sources/streamInfo.ts'
 
 const device: DeviceContext = {
   preferredSubtitleLanguage: null,
@@ -194,4 +195,17 @@ test('medals are gold, silver and bronze by tier, tagged by range, and tagless b
   assert.deepEqual(medal('720p'), { plate: '720p', tag: 'HD', finish: 'bronze' })
   assert.deepEqual(medal('480p'), { plate: '480p', tag: null, finish: 'plain' })
   assert.deepEqual(medal('UNKNOWN'), { plate: '—', tag: null, finish: 'plain' })
+})
+
+test('audio codecs read with their channel count glued on', () => {
+  const audio = (title: string) => parseStreamInfo({ url: 'https://cdn.test/x', title }).audio
+  assert.equal(audio('Show.S01E01.1080p.WEB-DL.DDP5.1.H.264'), 'DDP 5.1')
+  assert.equal(audio('Film.2160p.DD+5.1.HEVC'), 'DDP 5.1')
+  assert.equal(audio('Film.1080p.DD+.x264'), 'DDP')
+  assert.equal(audio('Film.720p.DD5.1.x264'), 'DD 5.1')
+  assert.equal(audio('Film.720p.WEB.AAC2.0.H.264'), 'AAC 2.0')
+  assert.equal(audio('Film.2160p.DTS-HD.MA7.1'), 'DTS-HD')
+  assert.equal(audio('Film.2160p.TrueHD7.1.HEVC'), 'TRUEHD')
+  // A letter after the name is another word, not this codec.
+  assert.equal(audio('Film.1080p.Ddplus.x264'), null)
 })

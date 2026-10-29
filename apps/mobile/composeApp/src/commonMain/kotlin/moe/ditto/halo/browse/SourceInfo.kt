@@ -138,15 +138,18 @@ private fun matchCodec(text: String): String? {
     }
 }
 
-private val Atmos = ignoreCase("""\batmos\b""")
-private val TrueHd = ignoreCase("""\btrue[ .]?hd\b""")
-private val DtsHd = ignoreCase("""\bdts[ .-]?hd\b""")
-private val Dts = ignoreCase("""\bdts\b""")
-private val Ddp = ignoreCase("""\b(ddp|eac3|e-ac-3)\b""")
-private val Dd = ignoreCase("""\b(dd|ac3)\b""")
-private val Aac = ignoreCase("""\baac\b""")
-private val Opus = ignoreCase("""\bopus\b""")
-private val Flac = ignoreCase("""\bflac\b""")
+// Each codec ends at anything but a letter rather than at a word break: the
+// channel count is usually glued on (`DDP5.1`, `AAC2.0`), and a digit after the
+// name is no break at all. `DD+` is how many releases spell DDP.
+private val Atmos = ignoreCase("""\batmos(?![a-z])""")
+private val TrueHd = ignoreCase("""\btrue[ .]?hd(?![a-z])""")
+private val DtsHd = ignoreCase("""\bdts[ .-]?hd(?![a-z])""")
+private val Dts = ignoreCase("""\bdts(?![a-z])""")
+private val Ddp = ignoreCase("""\b(ddp|dd\+|eac3|e-ac-3)(?![a-z])""")
+private val Dd = ignoreCase("""\b(dd|ac3)(?![a-z])""")
+private val Aac = ignoreCase("""\baac(?![a-z])""")
+private val Opus = ignoreCase("""\bopus(?![a-z])""")
+private val Flac = ignoreCase("""\bflac(?![a-z])""")
 
 // No leading \b: the channel count is usually glued to the codec ("DDP5.1").
 private val Channels = Regex("""([2578])[ .]([01])(?!\d)""")

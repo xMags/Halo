@@ -75,16 +75,21 @@ function matchCodec(text: string): string | null {
   return null
 }
 
+/**
+ * Each codec ends at anything but a letter rather than at a word break: the
+ * channel count is usually glued on (`DDP5.1`, `AAC2.0`), and a digit after
+ * the name is no break at all. `DD+` is how many releases spell DDP.
+ */
 function matchAudio(text: string): string | null {
-  if (/\batmos\b/i.test(text)) return 'ATMOS'
-  if (/\btrue[ .]?hd\b/i.test(text)) return 'TRUEHD'
-  if (/\bdts[ .-]?hd\b/i.test(text)) return 'DTS-HD'
-  if (/\bdts\b/i.test(text)) return 'DTS'
-  if (/\b(ddp|eac3|e-ac-3)\b/i.test(text)) return matchChannels(text, 'DDP')
-  if (/\b(dd|ac3)\b/i.test(text)) return matchChannels(text, 'DD')
-  if (/\baac\b/i.test(text)) return matchChannels(text, 'AAC')
-  if (/\bopus\b/i.test(text)) return 'OPUS'
-  if (/\bflac\b/i.test(text)) return 'FLAC'
+  if (/\batmos(?![a-z])/i.test(text)) return 'ATMOS'
+  if (/\btrue[ .]?hd(?![a-z])/i.test(text)) return 'TRUEHD'
+  if (/\bdts[ .-]?hd(?![a-z])/i.test(text)) return 'DTS-HD'
+  if (/\bdts(?![a-z])/i.test(text)) return 'DTS'
+  if (/\b(ddp|dd\+|eac3|e-ac-3)(?![a-z])/i.test(text)) return matchChannels(text, 'DDP')
+  if (/\b(dd|ac3)(?![a-z])/i.test(text)) return matchChannels(text, 'DD')
+  if (/\baac(?![a-z])/i.test(text)) return matchChannels(text, 'AAC')
+  if (/\bopus(?![a-z])/i.test(text)) return 'OPUS'
+  if (/\bflac(?![a-z])/i.test(text)) return 'FLAC'
   return null
 }
 

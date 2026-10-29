@@ -45,13 +45,27 @@ class SourcesModelTest {
     }
 
     @Test
-    fun readsChannelsAfterTheCodecAndTheExplicitUncachedTag() {
-        val info = parseSourceInfo(stream("Film.1080p.x264.DDP.5.1 [RD download] 3,5 GB ENG ITA"))
+    fun readsChannelsGluedToTheCodecAndTheExplicitUncachedTag() {
+        val info = parseSourceInfo(stream("Film.1080p.x264.DDP5.1 [RD download] 3,5 GB ENG ITA"))
         assertEquals("DDP 5.1", info.audio)
         assertEquals("H.264", info.codec)
         assertEquals(false, info.cached)
         assertEquals((3.5 * 1024 * 1024 * 1024).toLong(), info.sizeBytes)
         assertEquals(listOf("ENG", "ITA"), info.languages)
+    }
+
+    @Test
+    fun audioCodecsReadWithTheirChannelCountGluedOn() {
+        fun audio(text: String) = parseSourceInfo(stream(text)).audio
+        assertEquals("DDP 5.1", audio("Show.S01E01.1080p.WEB-DL.DDP5.1.H.264"))
+        assertEquals("DDP 5.1", audio("Film.2160p.DD+5.1.HEVC"))
+        assertEquals("DDP", audio("Film.1080p.DD+.x264"))
+        assertEquals("DD 5.1", audio("Film.720p.DD5.1.x264"))
+        assertEquals("AAC 2.0", audio("Film.720p.WEB.AAC2.0.H.264"))
+        assertEquals("DTS-HD", audio("Film.2160p.DTS-HD.MA7.1"))
+        assertEquals("TRUEHD", audio("Film.2160p.TrueHD7.1.HEVC"))
+        // A letter after the name is another word, not this codec.
+        assertNull(audio("Film.1080p.Ddplus.x264"))
     }
 
     @Test
