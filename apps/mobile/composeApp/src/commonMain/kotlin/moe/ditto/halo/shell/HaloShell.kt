@@ -237,6 +237,8 @@ internal fun HaloShell(
                         onBack = { navController.popBackStack() },
                         onPlayMovie = { meta -> navController.navigate(movieSources(meta)) },
                         onPlayEpisode = { meta, video -> navController.navigate(episodeSources(meta, video)) },
+                        onOpenDetail = { navController.openDetail(it) },
+                        onOpenShelf = { snapshot -> navController.navigate(ShelfRoute(shelves.put(snapshot))) },
                         // Where there is room beside the title, the picker
                         // arrives as a rail over it instead of as a screen that
                         // replaces it. The routes it builds are the same ones
