@@ -365,6 +365,19 @@ internal class PlayerScreenController(private val scope: CoroutineScope) {
         upNextSecondsRemaining = null
     }
 
+    /**
+     * Playback has left the end because the viewer sought back. A countdown
+     * still running stops, since they are watching again, and the claim is
+     * released so reaching the end again can offer the next episode again.
+     */
+    fun onLeftEnd() {
+        upNextJob?.cancel()
+        upNextJob = null
+        onAdvance = null
+        upNextSecondsRemaining = null
+        advanceClaimed = false
+    }
+
     private fun claimAdvance(): Boolean {
         if (advanceClaimed) return false
         advanceClaimed = true

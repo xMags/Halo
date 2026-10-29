@@ -50,6 +50,42 @@ class PlayerPresenterTest {
     }
 
     @Test
+    fun seekingBackFromTheEndResumesTracking() = runTest {
+        val port = RecordingPlayerPort()
+        val presenter = PlayerPresenter(port)
+        presenter.start(first)
+        presenter.onEvent(PlayerEvent.Ready(durationSeconds = 1_200.0))
+        presenter.onEvent(PlayerEvent.NaturalEnd)
+
+        // What a file reports on its way out is not playback.
+        presenter.onEvent(PlayerEvent.PositionChanged(1_199.0))
+        presenter.onEvent(PlayerEvent.PauseChanged(paused = false))
+        assertEquals(PlaybackStatus.Ended, presenter.state.status)
+
+        presenter.onEvent(PlayerEvent.EndCleared)
+        assertEquals(PlaybackStatus.Paused, presenter.state.status)
+        presenter.onEvent(PlayerEvent.PositionChanged(600.0))
+        presenter.onEvent(PlayerEvent.PauseChanged(paused = false))
+
+        assertEquals(600.0, presenter.state.positionSeconds)
+        assertEquals(PlaybackStatus.Playing, presenter.state.status)
+        presenter.onEvent(PlayerEvent.NaturalEnd)
+        assertEquals(PlaybackStatus.Ended, presenter.state.status)
+    }
+
+    @Test
+    fun leavingTheEndCannotRecoverAFailure() = runTest {
+        val port = RecordingPlayerPort()
+        val presenter = PlayerPresenter(port)
+        presenter.start(first)
+        presenter.onEvent(PlayerEvent.Error("decoder failed"))
+
+        presenter.onEvent(PlayerEvent.EndCleared)
+
+        assertEquals(PlaybackStatus.Failed, presenter.state.status)
+    }
+
+    @Test
     fun naturalEndWithoutNextIsTerminalButDoesNotTeardown() = runTest {
         val port = RecordingPlayerPort()
         val presenter = PlayerPresenter(port)

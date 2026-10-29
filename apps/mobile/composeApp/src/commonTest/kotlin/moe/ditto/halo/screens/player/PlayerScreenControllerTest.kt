@@ -279,6 +279,36 @@ class PlayerScreenControllerTest {
     }
 
     @Test
+    fun seekingBackFromTheEndWithdrawsTheCountdown() = runTest {
+        val controller = PlayerScreenController(backgroundScope)
+        var advances = 0
+        controller.showUpNext(onAdvance = { advances += 1 })
+
+        advanceTimeBy(3_000L)
+        controller.onLeftEnd()
+        advanceTimeBy(10_000L)
+
+        assertEquals(0, advances)
+        assertNull(controller.upNextSecondsRemaining)
+    }
+
+    @Test
+    fun aCancelledCardComesBackAtTheNextEnd() = runTest {
+        val controller = PlayerScreenController(backgroundScope)
+        var advances = 0
+        controller.showUpNext(onAdvance = { advances += 1 })
+        controller.dismissUpNext()
+
+        // The viewer seeks back and watches to the end again.
+        controller.onLeftEnd()
+        controller.showUpNext(onAdvance = { advances += 1 })
+        assertEquals(UpNextSeconds, controller.upNextSecondsRemaining)
+        advanceTimeBy(UpNextSeconds * 1_000L + 500L)
+
+        assertEquals(1, advances)
+    }
+
+    @Test
     fun aClaimedAdvanceCannotBeRestarted() = runTest {
         val controller = PlayerScreenController(backgroundScope)
         var advances = 0

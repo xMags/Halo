@@ -126,6 +126,7 @@ internal class AndroidMpvPlayerHost(
             emitFromCore(generation, PlayerEvent.VideoFormatChanged(format))
 
         override fun onEnded() = emitFromCore(generation, PlayerEvent.NaturalEnd)
+        override fun onEndCleared() = emitFromCore(generation, PlayerEvent.EndCleared)
         override fun onError(message: String) = emitFromCore(generation, PlayerEvent.Error(message))
     }
 

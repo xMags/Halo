@@ -162,6 +162,15 @@ class PlayerPresenter(
         // otherwise ensurePlayerStarted() sees non-Idle and never loads.
         if (state.status == PlaybackStatus.Idle && event !is PlayerEvent.TracksChanged) return
 
+        // Ended gives way only to the engine leaving the end, which is a seek
+        // back the viewer made. Everything else it drops: a file reports its
+        // last position and pause on the way out, and reading those as
+        // playback would hide the end the screen is about to act on. Failure
+        // and release stay final, so a late end can never trigger autoplay.
+        if (state.status == PlaybackStatus.Ended && event == PlayerEvent.EndCleared) {
+            state = state.copy(status = PlaybackStatus.Paused)
+            return
+        }
         val isTerminal = when (state.status) {
             PlaybackStatus.Ended,
             PlaybackStatus.Failed,
@@ -192,6 +201,8 @@ class PlayerPresenter(
             )
             is PlayerEvent.VideoFormatChanged -> state.copy(videoFormat = event.format)
             PlayerEvent.NaturalEnd -> state.copy(status = PlaybackStatus.Ended, buffering = null)
+            // Only meaningful at the end, which is handled above.
+            PlayerEvent.EndCleared -> state
             // Nothing is being filled once playback has failed, and a stall is
             // a common way to arrive here, so the overlay must not survive
             // underneath the error card.

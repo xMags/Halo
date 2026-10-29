@@ -144,6 +144,8 @@ interface HaloIosPlayerEventSink {
      */
     fun onVideoFormatChanged(width: Int, height: Int, gamma: String, dolbyVision: Boolean)
     fun onEnded()
+    /** The file left its end because the viewer sought back. */
+    fun onEndCleared()
     fun onError(message: String)
 }
 
@@ -284,6 +286,10 @@ internal class IosPlayerEventBridge : HaloIosPlayerEventSink {
 
     override fun onEnded() {
         channel.trySend(PlayerEvent.NaturalEnd)
+    }
+
+    override fun onEndCleared() {
+        channel.trySend(PlayerEvent.EndCleared)
     }
 
     override fun onError(message: String) {
