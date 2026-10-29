@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { cardArtworkUrl } from './artworkUrl'
 
 /**
  * Artwork from an addon, with the placeholder as its fallback.
@@ -27,7 +28,8 @@ export function ArtImage({
   if (!src || failed) return label ? <div className="art-label">{label}</div> : null
   return (
     <img
-      src={src}
+      // Card-sized art: a huge original shrunk this far pixelates.
+      src={cardArtworkUrl(src)}
       alt=""
       draggable={false}
       loading={lazy ? 'lazy' : undefined}
