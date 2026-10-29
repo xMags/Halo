@@ -45,6 +45,7 @@ const GLYPHS = {
   video: '',
   globe: '',
   sort: '',
+  playSolid: '',
 } as const
 
 export type FluentGlyph = keyof typeof GLYPHS
