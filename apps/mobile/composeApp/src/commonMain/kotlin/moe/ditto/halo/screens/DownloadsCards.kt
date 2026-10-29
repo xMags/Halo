@@ -56,6 +56,7 @@ import moe.ditto.halo.downloads.DownloadEntry
 import moe.ditto.halo.downloads.DownloadStatus
 import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
+import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.HaloSpacing
@@ -337,8 +338,12 @@ private fun QueueIconButton(
  * the selected card plays. Without one nothing is selected, so a tap plays and
  * every card carries the disc, for the reason a poster's play button exists.
  *
- * [onRemove] puts a delete control beside the title, for the layout with no
- * detail pane to hold one.
+ * Deleting is the long-press menu's (and, beside the grid, the detail
+ * pane's), never a control on the card itself.
+ *
+ * [poster] is a phone's shape: the title's 2:3 poster, three to a row like the
+ * catalogs' poster rows, a shorter line under it, and no disc, which a third
+ * of a phone's width has no room for. A tap plays, as on any poster.
  */
 @Composable
 internal fun DownloadReadyCard(
@@ -350,8 +355,8 @@ internal fun DownloadReadyCard(
     onClick: () -> Unit,
     onPlay: () -> Unit,
     modifier: Modifier = Modifier,
-    onRemove: (() -> Unit)? = null,
     menu: (() -> Unit)? = null,
+    poster: Boolean = false,
 ) {
     Column(
         modifier = modifier.longPressClickable(onClick = onClick, onLongPress = menu),
@@ -368,7 +373,7 @@ internal fun DownloadReadyCard(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .aspectRatio(WideAspect)
+                    .aspectRatio(if (poster) 1f / HaloDimensions.PosterRatio else WideAspect)
                     .clip(CardArtShape)
                     .background(HaloColors.SurfaceHigh),
             ) {
@@ -386,7 +391,8 @@ internal fun DownloadReadyCard(
                         text = tag,
                         background = HaloColors.OverlayPill,
                         color = HaloColors.Text,
-                        modifier = Modifier.align(Alignment.TopEnd),
+                        // A poster is too narrow for both badges along its top.
+                        modifier = Modifier.align(if (poster) Alignment.BottomStart else Alignment.TopEnd),
                     )
                 }
                 // Where the viewer got to, across the foot of the art: the same
@@ -407,7 +413,7 @@ internal fun DownloadReadyCard(
                         )
                     }
                 }
-                if (showPlay) {
+                if (showPlay && !poster) {
                     // The disc is the design's 36dp; the target around it is 44.
                     Box(
                         modifier = Modifier
@@ -447,32 +453,17 @@ internal fun DownloadReadyCard(
                 Text(
                     text = downloadCardTitle(entry),
                     color = HaloColors.Text,
-                    fontSize = 15.sp,
+                    fontSize = if (poster) 13.sp else 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = downloadCardMeta(entry),
-                    style = monoStyle(fontSize = 12.sp, color = HaloColors.TextDim),
+                    text = if (poster) downloadPosterMeta(entry) else downloadCardMeta(entry),
+                    style = monoStyle(fontSize = if (poster) 11.sp else 12.sp, color = HaloColors.TextDim),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-            onRemove?.let { remove ->
-                Box(
-                    modifier = Modifier
-                        .size(ControlTarget)
-                        .clickable(role = Role.Button, onClick = remove),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = HaloIcons.Trash,
-                        contentDescription = "Delete download",
-                        tint = HaloColors.Danger,
-                        modifier = Modifier.size(ControlIcon),
-                    )
-                }
             }
         }
     }

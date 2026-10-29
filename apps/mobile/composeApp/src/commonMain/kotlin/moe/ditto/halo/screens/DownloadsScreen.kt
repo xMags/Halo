@@ -252,13 +252,14 @@ private fun DownloadsList(
     val scope = rememberCoroutineScope()
     val gutter = downloadsGutter(responsive)
     val wideQueue = listWidth >= WideQueuePanelFrom
+    // A phone shows finished downloads as posters, three to a row like the
+    // catalogs' poster rows, rather than one wide card filling the screen.
+    val posters = !responsive.isTablet
     val columns = readyGridColumns(
         available = listWidth - gutter * 2,
-        minCell = ReadyCardMinWidth,
+        minCell = if (posters) ReadyPosterMinWidth else ReadyCardMinWidth,
         gap = ReadyGridGap,
-        // A phone held sideways has the width for three cells, each too
-        // small to read at a phone's distance; two is where it stops.
-        maxColumns = if (responsive.isTablet) null else PhoneMaxReadyColumns,
+        maxColumns = if (posters) PhoneMaxReadyPosters else null,
     )
     // Only a layout with a detail pane selects; without one a card plays.
     val selecting = selectedVideoId != null
@@ -340,14 +341,18 @@ private fun DownloadsList(
                     row.forEach { entry ->
                         DownloadReadyCard(
                             entry = entry,
-                            art = downloadArt(entry, sections),
+                            art = if (posters) {
+                                downloadPoster(entry, sections) ?: downloadArt(entry, sections)
+                            } else {
+                                downloadArt(entry, sections)
+                            },
                             watched = watchedFraction(progress[entry.videoId]),
                             selected = entry.videoId == selectedVideoId,
                             showPlay = !selecting || entry.videoId == selectedVideoId,
                             onClick = { if (selecting) onSelect(entry) else onPlay(entry) },
                             onPlay = { onPlay(entry) },
-                            onRemove = if (selecting) null else ({ onRemove(entry) }),
                             menu = menus?.let { { it.openDownload(entry) } },
+                            poster = posters,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -365,7 +370,11 @@ private val WideQueuePanelFrom = 600.dp
 /** Between the queue panel and the section under it, the design's 20dp. */
 private val SectionGap = HaloSpacing.Md + HaloSpacing.Xs
 
-private const val PhoneMaxReadyColumns = 2
+/** Narrowest phone poster: three fit across a 360dp phone, more only sideways. */
+private val ReadyPosterMinWidth = 96.dp
+
+/** Sideways a phone could fit more posters, each too small to read at a phone's distance. */
+private const val PhoneMaxReadyPosters = 4
 
 /** The design's 28dp margin on a tablet, the phone's usual 16 below that. */
 private fun downloadsGutter(responsive: ResponsiveInfo): Dp =
