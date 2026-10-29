@@ -210,7 +210,9 @@ internal fun HomeScreen(
                 filter = filter,
                 onFilterChange = { filter = it },
                 leading = { HomeHaloMark() },
-                trailing = { AccountAvatar(graph, onClick = onOpenSettings) },
+                // Where there is a navigation rail the account sits at its
+                // foot, as on the desktop, rather than here.
+                trailing = if (responsive.usesNavigationRail) null else { { AccountAvatar(graph, onClick = onOpenSettings) } },
             )
         }
 
@@ -337,6 +339,7 @@ internal fun HomeScreen(
                     onItemClick = { onOpenDetail(it.metaRef()) },
                     itemMenu = posterMenu(shelves.recentlyWatched),
                     onSeeAll = onOpenHistory,
+                    insetStrip = wide,
                     posterWidth = responsive.shelfPosterWidth,
                     gutter = gutter,
                     gap = responsive.catalogRowGap,
@@ -356,6 +359,7 @@ internal fun HomeScreen(
                     onItemClick = { onOpenDetail(it.metaRef()) },
                     itemMenu = posterMenu(shelves.library),
                     onSeeAll = onOpenLibrary,
+                    insetStrip = wide,
                     posterWidth = responsive.shelfPosterWidth,
                     gutter = gutter,
                     gap = responsive.catalogRowGap,
@@ -381,6 +385,7 @@ internal fun HomeScreen(
                 bottomPadding = rowGap,
                 known = knownCatalogs[knownKey],
                 onKnown = { knownCatalogs[knownKey] = it },
+                insetStrip = wide,
                 onOpenDetail = onOpenDetail,
                 onOpenShelf = onOpenShelf,
             )
@@ -478,6 +483,7 @@ private fun HomeCatalogRow(
     onKnown: (List<MetaPreview>) -> Unit,
     onOpenDetail: (MetaRef) -> Unit,
     onOpenShelf: (ShelfSnapshot) -> Unit,
+    insetStrip: Boolean,
 ) {
     val state by remember(graph, spec.key, extra, ready) {
         graph.browse.catalog(spec.addonId, spec.type, spec.catalogId, enabled = ready, extra = extra)
@@ -497,6 +503,7 @@ private fun HomeCatalogRow(
         gutter = gutter,
         gap = gap,
         bottomPadding = bottomPadding,
+        insetStrip = insetStrip,
     )
 }
 

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -73,6 +74,7 @@ import moe.ditto.halo.api.MetaDetail
 import moe.ditto.halo.api.MetaVideo
 import moe.ditto.halo.api.movieVideoId
 import moe.ditto.halo.browse.episodeTag
+import moe.ditto.halo.screens.AccountAvatar
 import moe.ditto.halo.screens.DetailScreen
 import moe.ditto.halo.screens.DownloadsScreen
 import moe.ditto.halo.screens.HomeScreen
@@ -338,7 +340,14 @@ internal fun HaloShell(
             // the other, and the tab a title page was opened from stays lit.
             val currentTab = rememberCurrentTab(navController)
             if (responsive.usesNavigationRail) {
-                HaloNavRail(navController, currentTab, Modifier.align(Alignment.CenterStart))
+                HaloNavRail(
+                    navController = navController,
+                    current = currentTab,
+                    modifier = Modifier.align(Alignment.CenterStart),
+                    // The account at the rail's foot, as on the desktop; it
+                    // opens Settings, where the account is managed.
+                    account = { AccountAvatar(graph, onClick = { navController.switchTab(SettingsRoute) }) },
+                )
             } else {
                 HaloTabBar(navController, currentTab, Modifier.align(Alignment.BottomCenter))
             }
@@ -533,7 +542,12 @@ private fun TabButton(tab: Tab, selected: Boolean, onClick: () -> Unit, modifier
  * Library a two-step trip on a device with room for both.
  */
 @Composable
-private fun HaloNavRail(navController: NavHostController, current: Tab?, modifier: Modifier = Modifier) {
+private fun HaloNavRail(
+    navController: NavHostController,
+    current: Tab?,
+    modifier: Modifier = Modifier,
+    account: @Composable () -> Unit,
+) {
     val entry by navController.currentBackStackEntryAsState()
     val destination = entry?.destination
     val onTabItself = current != null && destination?.hierarchy?.any { it.hasRoute(current.route::class) } == true
@@ -578,6 +592,8 @@ private fun HaloNavRail(navController: NavHostController, current: Tab?, modifie
                         )
                     }
                 }
+                Spacer(Modifier.weight(1f))
+                account()
             }
             // The trailing edge, drawn over the fill rather than as padding
             // inside it, so the rail stays exactly its stated width.
