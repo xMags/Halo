@@ -47,6 +47,7 @@ export function watchStateProblem(value: unknown): string | null {
     return 'watch state name must be 1 to 512 characters'
   }
   if (value.poster !== undefined && !isUrl(value.poster)) return 'watch state poster must be a URL'
+  if (value.removedAt !== undefined && !positiveInteger(value.removedAt)) return 'watch state removedAt must be a positive integer'
   if (!positiveInteger(value.updatedAt)) return 'watch state updatedAt must be a positive integer'
   return null
 }
@@ -98,6 +99,11 @@ export function mergeWatchStates(stored: readonly WatchState[], incoming: readon
   return [...byVideo.values()]
 }
 
+/** The rows a watch history read returns: everything but removal tombstones. */
+export function liveWatchStates(states: readonly WatchState[]): WatchState[] {
+  return states.filter((state) => state.removedAt === undefined)
+}
+
 /** Only the columns the server stores: anything else a caller attached is dropped, not kept. */
 function libraryRow(item: LibraryItem): LibraryItem {
   return {
@@ -120,6 +126,7 @@ function watchStateRow(state: WatchState): WatchState {
     watched: state.watched,
     ...(state.name !== undefined ? { name: state.name } : {}),
     ...(state.poster !== undefined ? { poster: state.poster } : {}),
+    ...(state.removedAt !== undefined ? { removedAt: state.removedAt } : {}),
     updatedAt: state.updatedAt,
   }
 }

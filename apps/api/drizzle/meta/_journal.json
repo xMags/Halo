@@ -36,6 +36,13 @@
       "when": 1784367948274,
       "tag": "0004_addon_hide_catalogs",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793257155253,
+      "tag": "0005_watch_state_removed",
+      "breakpoints": true
     }
   ]
 }
