@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { createCallQueue } from './callQueue'
 
 /**
  * The generic mpv message channel (the Stremio-settled contract): raw mpv
@@ -23,19 +24,28 @@ export interface MpvPropChange {
   value: MpvPropValue
 }
 
+/**
+ * Sends mpv calls one at a time, in the order they are made. The calls run
+ * off the window's main thread (a slow one, such as a subtitle being fetched,
+ * must not freeze the window), and off that thread two calls fired back to
+ * back could otherwise run in either order: two resizes would leave the older
+ * margin in place.
+ */
+const inOrder = createCallQueue()
+
 /** Runs an mpv command (argv array), e.g. `mpvCmd('loadfile', url)`. */
 export function mpvCmd(...args: (string | number)[]): Promise<void> {
-  return invoke('mpv_cmd', { args: args.map(String) })
+  return inOrder(() => invoke('mpv_cmd', { args: args.map(String) }))
 }
 
 /** Sets a property via mpv's string conversion, e.g. `mpvSet('pause', 'yes')`. */
 export function mpvSet(name: string, value: string): Promise<void> {
-  return invoke('mpv_set', { name, value })
+  return inOrder(() => invoke('mpv_set', { name, value }))
 }
 
 /** One-off property read (mpv string formatting); null when unavailable. */
 export function mpvGet(name: string): Promise<string | null> {
-  return invoke('mpv_get', { name })
+  return inOrder(() => invoke('mpv_get', { name }))
 }
 
 /**
@@ -43,12 +53,12 @@ export function mpvGet(name: string): Promise<string | null> {
  * reports with ('double' | 'flag' | 'string').
  */
 export function mpvObserve(name: string, format: 'double' | 'flag' | 'string'): Promise<void> {
-  return invoke('mpv_observe', { name, format })
+  return inOrder(() => invoke('mpv_observe', { name, format }))
 }
 
 /** Clears every property observer (the player re-registers on mount). */
 export function mpvUnobserveAll(): Promise<void> {
-  return invoke('mpv_unobserve_all')
+  return inOrder(() => invoke('mpv_unobserve_all'))
 }
 
 // Dev-only hook so scripts/cdp.mjs can read/set mpv properties and watch the
