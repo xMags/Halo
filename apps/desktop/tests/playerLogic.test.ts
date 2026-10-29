@@ -58,11 +58,12 @@ test('up and down change volume, and keep acting while held', () => {
 test('quality is classified by pixels, and dynamic range replaces the qualifier', () => {
   const video = (width: number, height: number, gamma: string | null = null, dolbyVision = false) =>
     classifyVideoQuality({ width, height, gamma, dolbyVision })
-  assert.deepEqual(video(3840, 1600), { tier: '4K', detail: 'ULTRA HD' })
-  assert.deepEqual(video(1920, 800), { tier: '1080P', detail: 'FULL HD' })
-  assert.deepEqual(video(1280, 720, 'pq'), { tier: '720P', detail: 'HDR' })
-  assert.deepEqual(video(3840, 2160, 'pq', true), { tier: '4K', detail: 'DOLBY VISION' })
-  assert.deepEqual(video(720, 480, 'hlg'), { tier: 'SD', detail: 'HLG' })
+  assert.deepEqual(video(3840, 1600), { plate: '4K', tag: 'UHD', finish: 'gold' })
+  assert.deepEqual(video(1920, 800), { plate: '1080p', tag: 'FHD', finish: 'silver' })
+  assert.deepEqual(video(1280, 720, 'pq'), { plate: '720p', tag: 'HDR', finish: 'bronze' })
+  assert.deepEqual(video(3840, 2160, 'pq', true), { plate: '4K', tag: 'DV', finish: 'gold' })
+  assert.deepEqual(video(720, 480, 'hlg'), { plate: 'SD', tag: 'HLG', finish: 'plain' })
+  assert.deepEqual(video(720, 480), { plate: 'SD', tag: null, finish: 'plain' })
   assert.equal(video(0, 0), null)
 })
 

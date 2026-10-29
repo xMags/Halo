@@ -1,3 +1,5 @@
+import type { Medal } from '../components/medal'
+
 export type PlayerShortcut =
   | 'toggle-pause'
   | 'seek-back'
@@ -70,40 +72,35 @@ export function upNextCancelAction(endReached: boolean): 'dismiss' | 'exit' {
   return endReached ? 'exit' : 'dismiss'
 }
 
-/** The player badge: a resolution token and the qualifier after it. */
-export interface VideoQualityBadge {
-  tier: string
-  detail: string
-}
-
-const QUALITY_TIERS: ReadonlyArray<{ minimumPixels: number; tier: string; detail: string }> = [
-  { minimumPixels: 5_500_000, tier: '4K', detail: 'ULTRA HD' },
-  { minimumPixels: 3_000_000, tier: '1440P', detail: 'QHD' },
-  { minimumPixels: 1_400_000, tier: '1080P', detail: 'FULL HD' },
-  { minimumPixels: 600_000, tier: '720P', detail: 'HD' },
+const QUALITY_TIERS: ReadonlyArray<{ minimumPixels: number; medal: Medal }> = [
+  { minimumPixels: 5_500_000, medal: { plate: '4K', tag: 'UHD', finish: 'gold' } },
+  { minimumPixels: 3_000_000, medal: { plate: '1440p', tag: 'QHD', finish: 'silver' } },
+  { minimumPixels: 1_400_000, medal: { plate: '1080p', tag: 'FHD', finish: 'silver' } },
+  { minimumPixels: 600_000, medal: { plate: '720p', tag: 'HD', finish: 'bronze' } },
 ]
 
 /**
+ * The player's medal for the decoded picture, in the source picker's terms.
  * Classifies on pixel count, so scope framing keeps its tier: a 2.39:1 film
  * mastered at 4K is 3840×1600, which a height rule would call 1080p. Dynamic
- * range replaces the resolution qualifier rather than joining it. Null when
- * there is no picture to describe yet. (Native: ClassifyVideoQuality.)
+ * range replaces the tier's tag rather than joining it. Null when there is no
+ * picture to describe yet. (Native: ClassifyVideoQuality.)
  */
 export function classifyVideoQuality(video: {
   width: number
   height: number
   gamma: string | null
   dolbyVision: boolean
-}): VideoQualityBadge | null {
+}): Medal | null {
   if (!(video.width > 0) || !(video.height > 0)) return null
   const pixels = video.width * video.height
   const match = QUALITY_TIERS.find((tier) => pixels >= tier.minimumPixels)
-  const badge = match ? { tier: match.tier, detail: match.detail } : { tier: 'SD', detail: '' }
+  const medal: Medal = match ? match.medal : { plate: 'SD', tag: null, finish: 'plain' }
   // Dolby Vision outranks the transfer: its base layer is usually PQ.
-  if (video.dolbyVision) return { ...badge, detail: 'DOLBY VISION' }
-  if (video.gamma === 'pq') return { ...badge, detail: 'HDR' }
-  if (video.gamma === 'hlg') return { ...badge, detail: 'HLG' }
-  return badge
+  if (video.dolbyVision) return { ...medal, tag: 'DV' }
+  if (video.gamma === 'pq') return { ...medal, tag: 'HDR' }
+  if (video.gamma === 'hlg') return { ...medal, tag: 'HLG' }
+  return medal
 }
 
 /**

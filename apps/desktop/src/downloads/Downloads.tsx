@@ -4,7 +4,7 @@ import { showDialog } from '../components/Dialog'
 import { FluentIcon } from '../components/FluentIcon'
 import { InfoBar } from '../components/InfoBar'
 import { Menu, MenuAnchor, MenuItem } from '../components/Menu'
-import { QualityBadge } from '../components/QualityBadge'
+import { QualityMedal } from '../components/QualityMedal'
 import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { DownloadRowSkeleton } from '../components/Skeleton'
@@ -418,7 +418,7 @@ function RowFacts({ row }: { row: DownloadRow }) {
     <>
       <span className="mono">{row.downloadedLine}</span>
       <span className="dot-sep">·</span>
-      <QualityBadge tier={row.qualityTier} detail={row.qualityDetail || undefined} gold={row.gold} />
+      <QualityMedal medal={row.medal} size="sm" />
       <span className="dot-sep">·</span>
       <span className={`subs-chip ${row.subsMuted ? 'subs-chip-off' : ''}`}>{row.subsChip}</span>
       <span className="mono dl-added">{row.addedLabel}</span>

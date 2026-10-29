@@ -1,6 +1,7 @@
 import type { DownloadView } from './downloadsStore'
 import { formatDownloadBytes, requiresNewSource, THROUGHPUT_SLOTS } from './downloadsLogic'
-import { badgeTierLabel, isHdr, isPremiumTier, NOT_PARSED, tierOf } from '../sources/sourcePresentation'
+import type { Medal } from '../components/medal'
+import { medalFor, NOT_PARSED } from '../sources/sourcePresentation'
 import { parseStreamInfo } from '../sources/streamInfo'
 
 /**
@@ -29,10 +30,8 @@ export interface DownloadRow {
   tone: RowTone
   /** `1.2 GB / 4.0 GB`, or the one size a finished file has. */
   downloadedLine: string
-  qualityTier: string
-  /** `HDR` beside the tier, or nothing. */
-  qualityDetail: string
-  gold: boolean
+  /** The quality medal, as the source picker stamped this file. */
+  medal: Medal
   /** `2160p · HEVC`, for the pane's facts table. */
   qualityLine: string
   subsChip: string
@@ -123,7 +122,6 @@ export function rowOf(item: DownloadView): DownloadRow {
   })
   const quality = info.quality ?? NOT_PARSED
   const codec = info.codec ?? NOT_PARSED
-  const tier = tierOf(quality)
   const name = media.show_name ?? media.title
   const sub = media.show_name ? media.title : item.file_name
   const newSource = item.status === 'failed' && requiresNewSource(item.failure)
@@ -139,9 +137,7 @@ export function rowOf(item: DownloadView): DownloadRow {
     lead: leadOf(item),
     tone: toneOf(state),
     downloadedLine: downloadedLineOf(item, total),
-    qualityTier: badgeTierLabel(tier),
-    qualityDetail: info.dynamicRange && isHdr(info.dynamicRange) ? 'HDR' : '',
-    gold: isPremiumTier(tier),
+    medal: medalFor({ quality, range: info.dynamicRange ?? 'SDR' }),
     qualityLine: `${quality} · ${codec}`,
     subsChip: language ? `SUB ${language.toUpperCase()}` : 'NO SUBS',
     subsMuted: !language,

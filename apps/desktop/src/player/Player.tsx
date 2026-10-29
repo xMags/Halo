@@ -11,7 +11,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { getClient } from '../api'
 import { ArtImage } from '../components/ArtImage'
 import { Icon } from '../components/Icon'
-import { QualityBadge } from '../components/QualityBadge'
+import { QualityMedal } from '../components/QualityMedal'
 import { TitleBar } from '../components/TitleBar'
 import { Toggle } from '../components/Toggle'
 import { getPlaybackFiles, nextDownloadedEpisode, useDownloads } from '../downloads/downloadsStore'
@@ -1151,12 +1151,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
             button takes the same corner. */}
         {quality && railTab === null && (
           <div className="pbadge">
-            <QualityBadge
-              tier={quality.tier}
-              detail={quality.detail || undefined}
-              gold
-              labelSize={fullscreen ? 12.5 : 10.5}
-            />
+            <QualityMedal medal={quality} size={fullscreen ? 'lg' : 'md'} />
           </div>
         )}
 

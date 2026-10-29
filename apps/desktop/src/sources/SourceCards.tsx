@@ -1,8 +1,8 @@
 import type { Ref } from 'react'
 import { FluentIcon } from '../components/FluentIcon'
+import { QualityMedal } from '../components/QualityMedal'
 import { medalFor, type MetaLine, type SourceEntry } from './sourcePresentation'
 import type { Pick, SourceRow } from './sourcesModel'
-import { QualityMedal } from './QualityMedal'
 import { SourceDetailsPanel } from './SourceDetailsPanel'
 
 /** Instant is green, on-disk accent, caching amber; anything that waits is grey. */
@@ -20,7 +20,7 @@ function toneOf(entry: SourceEntry): string {
 }
 
 function Badge({ entry, large }: { entry: SourceEntry; large?: boolean }) {
-  return <QualityMedal medal={medalFor(entry)} large={large} />
+  return <QualityMedal medal={medalFor(entry)} size={large ? 'lg' : 'md'} />
 }
 
 function MetaStrip({ meta }: { meta: MetaLine }) {

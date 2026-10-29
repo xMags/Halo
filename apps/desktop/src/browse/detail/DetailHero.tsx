@@ -2,7 +2,7 @@ import type { MetaDetail } from '@halo/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useMemo, useState, type RefObject } from 'react'
 import { FluentIcon } from '../../components/FluentIcon'
-import { QualityBadge } from '../../components/QualityBadge'
+import { QualityMedal } from '../../components/QualityMedal'
 import { formatTimeLeft } from '../../format'
 import { useStreams } from '../../queries'
 import { formatRuntime, summarizeAvailability, trailerUrl, type Availability } from './detailFacts'
@@ -142,7 +142,7 @@ export function DetailHero({
             {best && (
               <>
                 {play.progress && <span className="dh-sep">·</span>}
-                <QualityBadge tier={best.label} gold={best.gold} labelSize={11} />
+                <QualityMedal medal={best.medal} size="sm" />
                 <button type="button" className="dh-sources" onClick={play.open}>
                   {availability.summary.total} source{availability.summary.total === 1 ? '' : 's'}
                 </button>
@@ -204,7 +204,7 @@ function WaysToWatch({
       {summary.groups.map((group) => (
         <button type="button" key={group.label} className="watch-row" onClick={onBrowse}>
           <span className="watch-badge">
-            <QualityBadge tier={group.label} gold={group.gold} labelSize={11} />
+            <QualityMedal medal={group.medal} size="sm" />
           </span>
           <span className="watch-meter">
             <span

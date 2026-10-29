@@ -11,7 +11,6 @@ import {
   reasonFor,
   sanitizeAddonName,
   statusLabel,
-  tierOf,
   type DeviceContext,
 } from '../src/sources/sourcePresentation.ts'
 import {
@@ -187,7 +186,7 @@ test('details spell out what is and is not known', () => {
 })
 
 test('medals are gold, silver and bronze by tier, tagged by range, and tagless below HD', () => {
-  const medal = (quality: string, range = 'SDR') => medalFor({ quality, range, tier: tierOf(quality) })
+  const medal = (quality: string, range = 'SDR') => medalFor({ quality, range })
   assert.deepEqual(medal('2160p', 'DV'), { plate: '4K', tag: 'DV', finish: 'gold' })
   assert.deepEqual(medal('2160p'), { plate: '4K', tag: 'UHD', finish: 'gold' })
   assert.deepEqual(medal('1080p', 'HDR10'), { plate: '1080p', tag: 'HDR', finish: 'silver' })
