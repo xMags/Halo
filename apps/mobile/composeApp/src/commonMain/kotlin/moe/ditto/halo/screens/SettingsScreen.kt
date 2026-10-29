@@ -238,6 +238,7 @@ internal fun SettingsScreen(
                     onAutoplayChange = ::updateAutoplay,
                     onSignOut = onSignOut,
                     onSignIn = onSignIn,
+                    accountAvatar = { size -> AccountAvatar(graph, onClick = null, size = size) },
                     onOpenDebugGate = onOpenDebugGate,
                 )
             }

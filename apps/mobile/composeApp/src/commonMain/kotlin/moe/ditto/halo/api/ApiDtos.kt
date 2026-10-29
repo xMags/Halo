@@ -77,6 +77,8 @@ data class Me(
      */
     val isAdmin: Boolean,
     val createdAt: Long,
+    /** The account's tier (`premium`) from a server that has tiers; null otherwise. */
+    val plan: String? = null,
     /**
      * Fingerprint of the account's profile picture, served by `/auth/avatar`;
      * null when there is none or the server keeps no pictures. It changes
