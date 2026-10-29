@@ -67,6 +67,8 @@ internal fun ScreenHeader(
     /** Shown only when the screen has something to filter; null leaves it out. */
     filter: MediaTypeFilter? = null,
     onFilterChange: (MediaTypeFilter) -> Unit = {},
+    /** Switches between views of the screen (Library's Saved / History), right under the title. */
+    views: (@Composable () -> Unit)? = null,
 ) {
     val responsive = rememberResponsive()
     // A header with nothing under the title has nothing to rearrange.
@@ -137,6 +139,7 @@ internal fun ScreenHeader(
                     controls(Modifier.widthIn(max = HaloLayout.BrowseHeaderControlsWidth))
                 }
             }
+            views?.let { Box(Modifier.padding(top = ControlGap)) { it() } }
             return@Column
         }
 
@@ -150,6 +153,7 @@ internal fun ScreenHeader(
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
+        views?.let { Box(Modifier.padding(top = ControlGap)) { it() } }
 
         if (layout == BrowseHeaderLayout.Below) {
             controls(Modifier.fillMaxWidth().padding(top = ControlGap))

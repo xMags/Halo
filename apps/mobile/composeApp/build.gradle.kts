@@ -138,6 +138,9 @@ kotlin {
             implementation("com.squareup.okio:okio:3.17.0")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+            // The viewer's time zone and calendar days, for History's Today /
+            // Yesterday grouping; common Kotlin has no time zone of its own.
+            implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
