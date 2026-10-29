@@ -85,10 +85,10 @@ class HaloClientTest {
         }
 
         assertEquals("0123456789abcdef", client.getMe().avatarVersion)
-        val bytes = client.getAvatar()
+        val bytes = client.getAvatar("0123456789abcdef")
 
         assertEquals(4, bytes?.size)
-        assertEquals("$BaseUrl/auth/avatar", recorded.last().url.toString())
+        assertEquals("$BaseUrl/auth/avatar?v=0123456789abcdef", recorded.last().url.toString())
         assertEquals("Bearer access-1", recorded.last().headers[HttpHeaders.Authorization])
     }
 
@@ -96,7 +96,7 @@ class HaloClientTest {
     fun anAccountWithoutAPictureGetsNull() = runTest {
         val client = client { jsonResponse("""{"error":"not_found"}""", HttpStatusCode.NotFound) }
 
-        assertNull(client.getAvatar())
+        assertNull(client.getAvatar("0123456789abcdef"))
     }
 
     @Test

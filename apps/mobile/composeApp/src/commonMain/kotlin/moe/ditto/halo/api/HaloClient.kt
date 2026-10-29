@@ -324,9 +324,13 @@ class HaloClient(
      * The account's profile picture as image bytes, or null when it has none
      * (or the server keeps no pictures). Ask only when [Me.avatarVersion]
      * names one. Bounded, because the bytes are decoded on the device.
+     *
+     * [version] goes in the address: the server lets clients keep the picture
+     * for an hour, and an HTTP cache (iOS's URLSession keeps one) would
+     * otherwise answer a new fingerprint with the old picture.
      */
-    suspend fun getAvatar(): ByteArray? {
-        val response = send(HttpMethod.Get, "/auth/avatar")
+    suspend fun getAvatar(version: String): ByteArray? {
+        val response = send(HttpMethod.Get, "/auth/avatar", query = mapOf("v" to version))
         if (response.status == HttpStatusCode.NotFound) return null
         if (!response.status.isSuccess()) {
             throw HaloApiException(
