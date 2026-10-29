@@ -137,7 +137,7 @@ export function Home() {
                   push({
                     name: 'catalog',
                     title: 'Continue watching',
-                    source: continueSource,
+                    // No source line: the page's own count says how many are in progress.
                     // The grid has nowhere for time left or progress; the
                     // poster and episode tag are what identify a title there.
                     items: continueCards.map((card) => ({
@@ -190,7 +190,7 @@ export function Home() {
                   push({
                     name: 'catalog',
                     title: 'My library',
-                    source: librarySource,
+                    // No source line: the page's own count already says how many.
                     items: libraryShown.map((meta) => ({ meta })),
                   })
                 }
