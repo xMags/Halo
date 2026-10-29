@@ -1,10 +1,12 @@
 package moe.ditto.halo.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
@@ -15,6 +17,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -57,30 +61,52 @@ fun CatalogRow(
     source: String? = null,
     /** Opens a card's long-press menu; null leaves long presses doing nothing. */
     itemMenu: ((PosterItem) -> Unit)? = null,
+    /** The heading's "See all", which opens everything the row holds; null leaves it out. */
+    onSeeAll: (() -> Unit)? = null,
 ) {
     if (!isLoading && items.isEmpty()) return
 
     Column(modifier.padding(bottom = bottomPadding)) {
         Row(
-            modifier = Modifier.padding(start = gutter, end = gutter, bottom = HaloSpacing.Sm + 2.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = gutter, end = gutter, bottom = HaloSpacing.Sm + 2.dp),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
         ) {
-            Text(
-                text = title,
-                style = HaloType.Heading,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            source?.let {
+            // The heading and its source line take whatever "See all" leaves.
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
+            ) {
                 Text(
-                    text = it,
-                    style = monoStyle(11.sp, color = HaloColors.TextDim),
+                    text = title,
+                    style = HaloType.Heading,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    // Sits on the heading's baseline rather than its box bottom.
-                    modifier = Modifier.padding(bottom = 3.dp),
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                source?.let {
+                    Text(
+                        text = it,
+                        style = monoStyle(11.sp, color = HaloColors.TextDim),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        // Sits on the heading's baseline rather than its box bottom.
+                        modifier = Modifier.padding(bottom = 3.dp),
+                    )
+                }
+            }
+            if (onSeeAll != null && !isLoading) {
+                Text(
+                    text = "See all",
+                    color = HaloColors.AccentLight,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(HaloRadius.Sm))
+                        .clickable(role = Role.Button, onClick = onSeeAll)
+                        .padding(horizontal = HaloSpacing.Xs, vertical = 2.dp),
                 )
             }
         }
