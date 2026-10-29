@@ -3,6 +3,7 @@ package moe.ditto.halo.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -11,10 +12,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /** Placeholder tiles shown while a catalog loads — roughly a phone screen's worth. */
 private const val SkeletonTileCount = 5
@@ -46,19 +50,38 @@ fun CatalogRow(
     /** Space between cards, which grows with them. */
     gap: Dp = HaloLayout.PhoneCatalogRowGap,
     bottomPadding: Dp = HaloSpacing.Lg,
+    /**
+     * A short mono line beside the heading, as on the desktop app: where a
+     * catalog comes from ("CINEMETA") or what a shelf counts ("2 IN PROGRESS").
+     */
+    source: String? = null,
 ) {
     if (!isLoading && items.isEmpty()) return
 
     Column(modifier.padding(bottom = bottomPadding)) {
-        Text(
-            text = title,
-            style = HaloType.Heading,
-            modifier = Modifier.padding(
-                start = gutter,
-                end = gutter,
-                bottom = HaloSpacing.Sm + 2.dp,
-            ),
-        )
+        Row(
+            modifier = Modifier.padding(start = gutter, end = gutter, bottom = HaloSpacing.Sm + 2.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
+        ) {
+            Text(
+                text = title,
+                style = HaloType.Heading,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            source?.let {
+                Text(
+                    text = it,
+                    style = monoStyle(11.sp, color = HaloColors.TextDim),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // Sits on the heading's baseline rather than its box bottom.
+                    modifier = Modifier.padding(bottom = 3.dp),
+                )
+            }
+        }
         LazyRow(
             contentPadding = PaddingValues(horizontal = gutter),
             horizontalArrangement = Arrangement.spacedBy(gap),

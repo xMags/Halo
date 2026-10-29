@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import moe.ditto.halo.SessionGraph
+import moe.ditto.halo.browse.matchesTypeFilter
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloColors
@@ -49,7 +50,7 @@ internal fun LibraryScreen(
     // change silently the first time that query grows an index.
     val shown = remember(saved, filter) {
         saved.orEmpty()
-            .filter { filter.type == null || it.type == filter.type }
+            .filter { matchesTypeFilter(filter.type, it.type) }
             .sortedByDescending { it.addedAt }
             .map { it.posterItem() }
     }

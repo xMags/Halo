@@ -51,6 +51,7 @@ import moe.ditto.halo.browse.CatalogRowSpec
 import moe.ditto.halo.browse.ContinueEntry
 import moe.ditto.halo.browse.catalogRows
 import moe.ditto.halo.browse.homeShelves
+import moe.ditto.halo.browse.matchesTypeFilter
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.ui.CatalogRow
 import moe.ditto.halo.ui.CenterMessage
@@ -95,7 +96,7 @@ internal fun HomeScreen(
 
     val allRows = remember(addons.value) { catalogRows(addons.value.orEmpty()) }
     val rows = remember(allRows, filter) {
-        allRows.filter { filter.type == null || it.type == filter.type }
+        allRows.filter { matchesTypeFilter(filter.type, it.type) }
     }
     val shelves = remember(watchStates.value, library.value, filter) {
         homeShelves(watchStates.value, library.value, filter.type)
@@ -167,7 +168,7 @@ internal fun HomeScreen(
     ) {
         item(key = "header") {
             ScreenHeader(
-                title = "Watch",
+                title = "Home",
                 modifier = Modifier.padding(horizontal = gutter),
                 onOpenSearch = onOpenSearch,
                 filter = filter,
@@ -192,7 +193,7 @@ internal fun HomeScreen(
         if (allRows.isEmpty()) {
             item(key = "body-state") {
                 Box(Modifier.fillMaxWidth().height(BodyStateHeight), contentAlignment = Alignment.Center) {
-                    CenterMessage("No catalogs yet — add an addon in Settings.")
+                    CenterMessage("No browsable catalogs. Add an addon that publishes them (Cinemeta) in Settings.")
                 }
             }
             return@LazyColumn
@@ -244,7 +245,7 @@ internal fun HomeScreen(
         if (shelves.recentlyWatched.isNotEmpty()) {
             item(key = "shelf-recent") {
                 CatalogRow(
-                    title = "Recently Watched",
+                    title = "Recently watched",
                     items = shelves.recentlyWatched.map { it.posterItem() },
                     onItemClick = { onOpenDetail(it.metaRef()) },
                     posterWidth = responsive.shelfPosterWidth,
@@ -257,7 +258,11 @@ internal fun HomeScreen(
         if (shelves.library.isNotEmpty()) {
             item(key = "shelf-library") {
                 CatalogRow(
-                    title = "My Library",
+                    title = "My library",
+                    // Counts the whole library; the filter only narrows the
+                    // posters. Without an account it is kept on this phone.
+                    source = "${if (graph.signedIn) "SYNCED" else "ON THIS PHONE"} · " +
+                        library.value.orEmpty().count { !it.isRemoved },
                     items = shelves.library.map { it.posterItem() },
                     onItemClick = { onOpenDetail(it.metaRef()) },
                     posterWidth = responsive.shelfPosterWidth,
@@ -318,7 +323,8 @@ private fun ContinueWatchingRow(
         }
     }
     CatalogRow(
-        title = "Continue Watching",
+        title = "Continue watching",
+        source = "${entries.size} IN PROGRESS",
         items = items,
         onItemClick = onItemClick,
         posterWidth = posterWidth,
@@ -370,6 +376,7 @@ private fun HomeCatalogRow(
     val metas = state.value
     CatalogRow(
         title = spec.title,
+        source = spec.source,
         items = remember(metas) { metas.orEmpty().map { it.posterItem() } },
         onItemClick = { onOpenDetail(it.metaRef()) },
         posterWidth = posterWidth,
@@ -444,6 +451,9 @@ private fun FeaturedHero(
                         modifier = Modifier.padding(top = HaloSpacing.Xs),
                     )
                     PlayButton(
+                        // A series opens its title page to pick an episode, as
+                        // on the desktop app, and says so.
+                        label = if (shown.type == MovieType) "Play" else "Choose episode",
                         onClick = onPlay,
                         modifier = Modifier.padding(top = HaloSpacing.Sm + 2.dp),
                     )
@@ -519,7 +529,7 @@ private val DotIdleFill = Color.White.copy(alpha = 0.32f)
  * art opens the detail screen.
  */
 @Composable
-private fun PlayButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun PlayButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(HaloRadius.Pill))
@@ -531,11 +541,11 @@ private fun PlayButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     ) {
         Icon(
             imageVector = HaloIcons.Play,
-            // The label beside it already says Play.
+            // The label beside it already says what it does.
             contentDescription = null,
             tint = HaloColors.OnPrimary,
             modifier = Modifier.size(16.dp),
         )
-        Text(text = "Play", color = HaloColors.OnPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text(text = label, color = HaloColors.OnPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
     }
 }
