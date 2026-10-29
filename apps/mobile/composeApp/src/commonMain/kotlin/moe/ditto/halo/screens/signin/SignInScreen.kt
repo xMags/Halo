@@ -618,7 +618,7 @@ private fun TextLink(label: String, onClick: () -> Unit) {
     }
 }
 
-private const val Copyright = "© 2026 LAST PROJECTS & CRYGUY"
+private const val Copyright = "© 2026 LAST PROJECTS & SHY"
 
 @Composable
 private fun Footer() {
