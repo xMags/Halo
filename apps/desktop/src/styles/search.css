@@ -1,54 +1,112 @@
 /* ── Search ────────────────────────────────────────────────────────────── */
-/* Search box, filters and top match on the left; Recent beside them from the top. */
+/* The box and the kind filter, then one section after another: recent and
+   popular before a search; the top match, library matches and the merged
+   results during one. */
 .search-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  column-gap: 24px;
-  align-items: start;
   padding: 8px var(--gu) 0;
 }
-.search-head-recent {
-  grid-template-columns: minmax(0, 1fr) 232px;
+/* The suggestions hang from the box, over whatever is below it. */
+.search-box-wrap {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
 }
-.search-top {
+.search-suggest {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.search-suggest-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 15px;
+  color: var(--t2);
+  text-align: left;
+  border-top: 1px solid var(--dv);
+}
+.search-suggest-row:first-child {
+  border-top: 0;
+}
+.search-suggest-row:hover {
+  background: var(--tt);
+  color: var(--t1);
+}
+.search-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 22px;
+  gap: 12px;
+  margin: 26px var(--gu) 0;
 }
-.search-recent {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.search-count {
+  margin-left: 6px;
+  color: var(--t4);
 }
+/* Posters across the whole row, as every grid in the app. */
+.search-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--pw), 1fr));
+  gap: 14px 22px;
+}
+.search-grid > .poster {
+  width: auto;
+  min-width: 0;
+}
+.search-empty {
+  margin-top: 30px;
+  padding-left: 0;
+  text-align: center;
+}
+.search-foot {
+  height: 40px;
+}
+
+/* The best guess, compact: enough to recognise it, not enough to push the
+   results below the fold. */
 .top-match {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  gap: 16px;
-  padding: 12px;
+  grid-template-columns: 60px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 10px;
   width: 100%;
+  max-width: 720px;
   background: var(--cd);
   border: 1px solid var(--cs);
   border-radius: 8px;
+  text-align: left;
 }
 .top-match:hover {
   background: var(--tt);
 }
 .top-match-art {
-  width: 92px;
-  height: 138px;
+  width: 60px;
+  height: 90px;
   border-radius: 4px;
 }
 .top-match-title {
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--t1);
 }
 .top-match-blurb {
-  font-size: 15px;
-  line-height: 1.45;
+  font-size: 14px;
+  line-height: 1.4;
   color: var(--t2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
+
+/* Recent searches as pills; each opens its term, its × forgets it. One line
+   only: pills that do not fit the width wrap onto a second line, which is
+   clipped away, so the row never spills past the page or grows taller. */
 .recent-head {
   display: flex;
   align-items: center;
@@ -58,65 +116,57 @@
   padding: 0 2px;
   font-size: 13px;
 }
-/* The row opens its term; the remove button over its time column appears on hover or focus. */
-.recent-row {
-  position: relative;
+.recent-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  height: 34px;
+  overflow: hidden;
+}
+.recent-pill {
   display: flex;
   align-items: center;
+  height: 34px;
+  box-sizing: border-box;
+  max-width: 280px;
+  border: 1px solid var(--cs);
+  border-radius: 16px;
+  background: var(--cd);
 }
-.recent-row:hover {
+.recent-pill:hover {
   background: var(--tt);
 }
-.recent-open {
+.recent-pill-open {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  color: var(--t3);
-  text-align: left;
+  gap: 8px;
+  padding: 6px 4px 6px 12px;
+  font-size: 14px;
+  color: var(--t2);
 }
-.recent-when {
-  color: var(--t4);
-}
-.recent-remove {
-  position: absolute;
-  right: 8px;
+.recent-pill-remove {
+  flex: 0 0 auto;
   width: 22px;
   height: 22px;
+  margin-right: 5px;
   display: grid;
   place-items: center;
-  border-radius: 4px;
-  background: var(--cd);
-  color: var(--t2);
-  opacity: 0;
+  border-radius: 11px;
+  color: var(--t3);
 }
-.recent-row:hover .recent-remove,
-.recent-remove:focus-visible {
-  opacity: 1;
-}
-.recent-row:hover .recent-when {
-  visibility: hidden;
-}
-.recent-remove:hover {
-  background: var(--tt);
+.recent-pill-remove:hover {
+  background: var(--cs);
   color: var(--t1);
 }
+
 .search-note {
-  margin-top: 14px;
   font-size: 13px;
   color: var(--t3);
 }
 .search-note-pending {
-  display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
-  margin: 0 var(--gu);
-}
-.recent-term {
-  flex: 1;
-  min-width: 0;
-  font-size: 15px;
-  color: var(--t2);
 }

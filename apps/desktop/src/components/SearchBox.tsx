@@ -12,6 +12,8 @@ export function SearchBox({
   value,
   onChange,
   onKeyDown,
+  onFocus,
+  onBlur,
   large = false,
   autoFocus = false,
   inputRef,
@@ -20,6 +22,9 @@ export function SearchBox({
   value: string
   onChange: (value: string) => void
   onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void
+  /** Whether the box has the caret, for anything shown only while typing (Search's suggestions). */
+  onFocus?: () => void
+  onBlur?: () => void
   /** The Search page's 480 × 36 box at 16px, rather than Home's 300 × 32 at 15px. */
   large?: boolean
   autoFocus?: boolean
@@ -43,6 +48,8 @@ export function SearchBox({
         spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
+        onFocus={onFocus}
+        onBlur={onBlur}
       />
       {value && (
         <button
