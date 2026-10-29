@@ -101,17 +101,31 @@ class PlayerGesturesTest {
 
     @Test
     fun whichThirdTheGestureStartedOnDecidesWhatItChanges() {
-        assertEquals(VerticalDragTarget.Brightness, verticalDragTarget(startX = 10f, widthPx = 900f))
-        assertEquals(VerticalDragTarget.Brightness, verticalDragTarget(startX = 300f, widthPx = 900f))
+        fun at(x: Float, y: Float = 500f) = verticalDragTarget(startX = x, startY = y, widthPx = 900f, heightPx = 1_000f)
+
+        assertEquals(VerticalDragTarget.Brightness, at(10f))
+        assertEquals(VerticalDragTarget.Brightness, at(300f))
         // The middle third adjusts nothing.
-        assertNull(verticalDragTarget(startX = 301f, widthPx = 900f))
-        assertNull(verticalDragTarget(startX = 450f, widthPx = 900f))
-        assertNull(verticalDragTarget(startX = 599f, widthPx = 900f))
-        assertEquals(VerticalDragTarget.Volume, verticalDragTarget(startX = 600f, widthPx = 900f))
-        assertEquals(VerticalDragTarget.Volume, verticalDragTarget(startX = 890f, widthPx = 900f))
-        // An unmeasured surface has no halves; brightness is the safer default,
+        assertNull(at(301f))
+        assertNull(at(450f))
+        assertNull(at(599f))
+        assertEquals(VerticalDragTarget.Volume, at(600f))
+        assertEquals(VerticalDragTarget.Volume, at(890f))
+        // An unmeasured surface has no zones; brightness is the safer default,
         // since it changes nothing outside this window.
-        assertEquals(VerticalDragTarget.Brightness, verticalDragTarget(startX = 10f, widthPx = 0f))
+        assertEquals(VerticalDragTarget.Brightness, verticalDragTarget(startX = 10f, startY = 0f, widthPx = 0f, heightPx = 0f))
+    }
+
+    @Test
+    fun theTopAndBottomBandsAdjustNothing() {
+        fun at(y: Float) = verticalDragTarget(startX = 10f, startY = y, widthPx = 900f, heightPx = 1_000f)
+
+        assertNull(at(0f))
+        assertNull(at(149f))
+        assertEquals(VerticalDragTarget.Brightness, at(150f))
+        assertEquals(VerticalDragTarget.Brightness, at(850f))
+        assertNull(at(851f))
+        assertNull(at(999f))
     }
 
     @Test
