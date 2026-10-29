@@ -100,10 +100,15 @@ class PlayerGesturesTest {
     }
 
     @Test
-    fun whichHalfTheGestureStartedOnDecidesWhatItChanges() {
-        assertEquals(VerticalDragTarget.Brightness, verticalDragTarget(startX = 10f, widthPx = 1_000f))
-        assertEquals(VerticalDragTarget.Brightness, verticalDragTarget(startX = 500f, widthPx = 1_000f))
-        assertEquals(VerticalDragTarget.Volume, verticalDragTarget(startX = 501f, widthPx = 1_000f))
+    fun whichThirdTheGestureStartedOnDecidesWhatItChanges() {
+        assertEquals(VerticalDragTarget.Brightness, verticalDragTarget(startX = 10f, widthPx = 900f))
+        assertEquals(VerticalDragTarget.Brightness, verticalDragTarget(startX = 300f, widthPx = 900f))
+        // The middle third adjusts nothing.
+        assertNull(verticalDragTarget(startX = 301f, widthPx = 900f))
+        assertNull(verticalDragTarget(startX = 450f, widthPx = 900f))
+        assertNull(verticalDragTarget(startX = 599f, widthPx = 900f))
+        assertEquals(VerticalDragTarget.Volume, verticalDragTarget(startX = 600f, widthPx = 900f))
+        assertEquals(VerticalDragTarget.Volume, verticalDragTarget(startX = 890f, widthPx = 900f))
         // An unmeasured surface has no halves; brightness is the safer default,
         // since it changes nothing outside this window.
         assertEquals(VerticalDragTarget.Brightness, verticalDragTarget(startX = 10f, widthPx = 0f))
