@@ -2,7 +2,9 @@ package moe.ditto.halo.screens.player
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * The drag rules, which decide how much of a screen a viewer has to cross to
@@ -105,6 +107,39 @@ class PlayerGesturesTest {
         // An unmeasured surface has no halves; brightness is the safer default,
         // since it changes nothing outside this window.
         assertEquals(VerticalDragTarget.Brightness, verticalDragTarget(startX = 10f, widthPx = 0f))
+    }
+
+    @Test
+    fun oneFingerDragStartsPastTheSlopAndCountsFromItsEdge() {
+        val drag = OneFingerVerticalDrag(slopPx = 10f)
+        assertEquals(OneFingerDragStep.None, drag.advance(1, pressed = true, y = 108f, downY = 100f, claimed = false))
+        assertEquals(OneFingerDragStep.Start(5f), drag.advance(1, pressed = true, y = 115f, downY = 100f, claimed = false))
+        assertEquals(OneFingerDragStep.Move(-20f), drag.advance(1, pressed = true, y = 90f, downY = 100f, claimed = false))
+        assertEquals(OneFingerDragStep.End, drag.advance(0, pressed = false, y = 90f, downY = 100f, claimed = false))
+    }
+
+    @Test
+    fun aPinchIsNeverABrightnessOrVolumeDrag() {
+        // Both fingers down before the first one has moved far: not a drag at
+        // all, however far the fingers then travel.
+        val pinch = OneFingerVerticalDrag(slopPx = 10f)
+        assertEquals(OneFingerDragStep.None, pinch.advance(2, pressed = true, y = 104f, downY = 100f, claimed = false))
+        assertEquals(OneFingerDragStep.None, pinch.advance(1, pressed = true, y = 300f, downY = 100f, claimed = false))
+        assertTrue(pinch.isOver)
+
+        // The second finger lands after the drag started: the drag is undone.
+        val late = OneFingerVerticalDrag(slopPx = 10f)
+        assertEquals(OneFingerDragStep.Start(30f), late.advance(1, pressed = true, y = 140f, downY = 100f, claimed = false))
+        assertEquals(OneFingerDragStep.Cancel, late.advance(2, pressed = true, y = 160f, downY = 100f, claimed = false))
+        assertEquals(OneFingerDragStep.None, late.advance(1, pressed = true, y = 400f, downY = 100f, claimed = false))
+    }
+
+    @Test
+    fun aTouchClaimedElsewhereCancelsTheDrag() {
+        val drag = OneFingerVerticalDrag(slopPx = 10f)
+        drag.advance(1, pressed = true, y = 140f, downY = 100f, claimed = false)
+        assertEquals(OneFingerDragStep.Cancel, drag.advance(1, pressed = true, y = 150f, downY = 100f, claimed = true))
+        assertFalse(drag.isDragging)
     }
 
     @Test

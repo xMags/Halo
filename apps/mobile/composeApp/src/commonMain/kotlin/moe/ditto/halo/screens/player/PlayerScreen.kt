@@ -643,6 +643,21 @@ internal fun PlayerScreen(
                         dragAdjustment = null
                         dragTarget = null
                     },
+                    onDragCancel = {
+                        // A second finger turned the drag into a pinch, so
+                        // what the first finger already moved is put back.
+                        val adjustment = dragAdjustment
+                        val target = dragTarget
+                        if (adjustment != null && target != null) {
+                            when (target) {
+                                VerticalDragTarget.Brightness -> system.setScreenBrightness(adjustment.baseline)
+                                VerticalDragTarget.Volume -> system.setVolume(adjustment.baseline)
+                            }
+                            controller.showHud(target.hudKind(), adjustment.baseline)
+                        }
+                        dragAdjustment = null
+                        dragTarget = null
+                    },
                     onFillScreenChange = { fills ->
                         scope.launch { playback.setVideoFillsScreen(fills) }
                     },

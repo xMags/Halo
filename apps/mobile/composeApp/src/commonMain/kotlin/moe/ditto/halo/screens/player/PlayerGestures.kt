@@ -4,15 +4,14 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.time.TimeSource
 
@@ -43,7 +42,8 @@ internal enum class VerticalDragTarget {
  * so the value tracks the finger instead of chasing whatever the last call set.
  */
 internal class VerticalDragAdjustment(
-    private val baseline: Float,
+    /** The value before the drag, which a cancelled drag puts back. */
+    val baseline: Float,
     heightPx: Float,
 ) {
     private val travelPx = heightPx * DragTravelFraction
@@ -68,6 +68,70 @@ internal class VerticalDragAdjustment(
     private fun percentOf(value: Float): Int = (value.coerceIn(0f, 1f) * 100f).roundToInt()
 }
 
+/** What one touch event means for a brightness or volume drag. */
+internal sealed interface OneFingerDragStep {
+    /** Not a drag yet, or no longer one: nothing to do. */
+    data object None : OneFingerDragStep
+
+    /** The finger crossed the touch slop: the drag starts, [totalPx] in. */
+    data class Start(val totalPx: Float) : OneFingerDragStep
+
+    /** The drag moved; [totalPx] is from where it started, positive downwards. */
+    data class Move(val totalPx: Float) : OneFingerDragStep
+
+    /** The finger lifted and the drag stands. */
+    data object End : OneFingerDragStep
+
+    /** A second finger landed, or someone else claimed the touch: undo the drag. */
+    data object Cancel : OneFingerDragStep
+}
+
+/**
+ * Decides whether a touch is a one-finger vertical drag.
+ *
+ * Only one finger may ever be down. A pinch's fingers move vertically too, so
+ * following just the first finger, as Compose's own vertical drag detector
+ * does, read every pinch as a brightness or volume drag as well. A second
+ * finger before the slop means the touch is not a drag at all; one after it
+ * cancels the drag, so the caller puts the value back. Once over, the touch
+ * stays over until every finger lifts.
+ */
+internal class OneFingerVerticalDrag(private val slopPx: Float) {
+    private var anchorY: Float? = null
+    private var over = false
+
+    val isDragging: Boolean get() = anchorY != null && !over
+
+    /** True once the touch has ended, been cancelled or ruled out as a drag. */
+    val isOver: Boolean get() = over
+
+    /**
+     * [fingersDown] counts every pressed finger, [pressed] and [y] are the
+     * first finger's, [downY] is where it landed, and [claimed] says whether
+     * another detector (a committed pinch, the system edge guard) consumed it.
+     */
+    fun advance(fingersDown: Int, pressed: Boolean, y: Float, downY: Float, claimed: Boolean): OneFingerDragStep {
+        if (over) return OneFingerDragStep.None
+        val anchor = anchorY
+        if (!pressed) {
+            over = true
+            return if (anchor != null) OneFingerDragStep.End else OneFingerDragStep.None
+        }
+        if (fingersDown > 1 || claimed || !y.isFinite()) {
+            over = true
+            return if (anchor != null) OneFingerDragStep.Cancel else OneFingerDragStep.None
+        }
+        if (anchor != null) return OneFingerDragStep.Move(y - anchor)
+        val travelled = y - downY
+        if (abs(travelled) <= slopPx) return OneFingerDragStep.None
+        // Measured from the slop's edge, so the value does not jump by the slop
+        // the moment the drag starts.
+        val start = downY + if (travelled > 0f) slopPx else -slopPx
+        anchorY = start
+        return OneFingerDragStep.Start(y - start)
+    }
+}
+
 /** Left half is brightness, right half is volume, as every mobile player does. */
 internal fun verticalDragTarget(startX: Float, widthPx: Float): VerticalDragTarget =
     if (widthPx > 0f && startX > widthPx / 2f) VerticalDragTarget.Volume else VerticalDragTarget.Brightness
@@ -89,6 +153,7 @@ internal fun Modifier.playerGestures(
     onDragStart: (VerticalDragTarget, Float) -> Unit,
     onDrag: (Float) -> Unit,
     onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
     onFillScreenChange: (Boolean) -> Unit,
 ): Modifier = this
     .pointerInput(Unit) {
@@ -123,19 +188,40 @@ internal fun Modifier.playerGestures(
         }
     }
     .pointerInput(Unit) {
-        var totalDrag = 0f
-        detectVerticalDragGestures(
-            onDragStart = { offset: Offset ->
-                totalDrag = 0f
-                onDragStart(verticalDragTarget(offset.x, size.width.toFloat()), size.height.toFloat())
-            },
-            onVerticalDrag = { _, delta ->
-                totalDrag += delta
-                onDrag(totalDrag)
-            },
-            onDragEnd = onDragEnd,
-            onDragCancel = onDragEnd,
-        )
+        // Hand-rolled rather than `detectVerticalDragGestures`, which follows
+        // one finger and ignores the rest, so a pinch moved brightness or
+        // volume too. See [OneFingerVerticalDrag].
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val drag = OneFingerVerticalDrag(viewConfiguration.touchSlop)
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id }
+                val step = drag.advance(
+                    fingersDown = event.changes.count { it.pressed },
+                    pressed = change?.pressed == true,
+                    y = change?.position?.y ?: down.position.y,
+                    downY = down.position.y,
+                    claimed = change?.isConsumed == true,
+                )
+                when (step) {
+                    OneFingerDragStep.None -> Unit
+                    is OneFingerDragStep.Start -> {
+                        val startX = (change ?: down).position.x
+                        onDragStart(verticalDragTarget(startX, size.width.toFloat()), size.height.toFloat())
+                        onDrag(step.totalPx)
+                    }
+                    is OneFingerDragStep.Move -> onDrag(step.totalPx)
+                    OneFingerDragStep.End -> onDragEnd()
+                    OneFingerDragStep.Cancel -> onDragCancel()
+                }
+                // Claimed while it drags, so the release is not also a tap.
+                if (drag.isDragging) change?.consume()
+                // Decided either way: awaitEachGesture waits for every finger
+                // to lift before it starts reading the next touch.
+                if (drag.isOver) break
+            }
+        }
     }
     .pointerInput(Unit) {
         // Hand-rolled rather than `detectTransformGestures`, which never says
