@@ -20,6 +20,7 @@
         "minWidth": 1280,
         "minHeight": 800,
         "decorations": false,
+        "visible": false,
         "transparent": true,
         "shadow": false,
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-lcd-text"

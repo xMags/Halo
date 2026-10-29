@@ -17,7 +17,7 @@ import { Player } from './player/Player'
 import { Search } from './search/Search'
 import { Settings } from './settings/Settings'
 import { SourcesSheet } from './sources/SourcesSheet'
-import { useWindowFullscreen } from './window'
+import { revealWindow, useWindowFullscreen } from './window'
 import { getDeviceProfile, getServerUrl, getSessionDownloadOwner, setSessionDownloadOwner } from './api'
 import { moveDeviceDataIntoAccount } from './device/deviceDataMove'
 import { deviceDownloadOwner } from './device/deviceStore'
@@ -181,6 +181,10 @@ function Stack() {
 }
 
 export function App() {
+  // After the first commit, so the window opens on a drawn page.
+  useEffect(() => {
+    revealWindow()
+  }, [])
   return (
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
