@@ -6,6 +6,8 @@ import moe.ditto.halo.resources.Res
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -148,8 +151,11 @@ internal fun HomeScreen(
     // Keep the featured carousel consistent across phone and tablet. A single
     // fixed card wastes the hero space and hides the rest of the lead catalog.
     val featuredCount = FeaturedCount
+    // Titles with wide art first, as on the desktop: the hero draws it across
+    // the card and a poster cropped to fit looks wrong. The sort is stable, so
+    // the addon's own ranking holds within each half.
     val previews = remember(leadCatalog.value, featuredCount) {
-        leadCatalog.value.orEmpty().take(featuredCount)
+        leadCatalog.value.orEmpty().sortedBy { it.background.isNullOrBlank() }.take(featuredCount)
     }
     var featuredIndex by remember(previews) { mutableStateOf(0) }
     // Picking a card is a decision to look at it, so the rotation stops rather
@@ -252,6 +258,15 @@ internal fun HomeScreen(
                     // full meta, so its title page is the way in.
                     if (card.type == MovieType && card.playableFromPreview) onPlayMovie(card) else open()
                 }
+                val toggleLibrary: () -> Unit = {
+                    scope.launch {
+                        // A rejected write marks the cache stale, which corrects the button.
+                        runCatching {
+                            if (featuredInLibrary) graph.library.remove(LibraryRepository.itemId(card.type, card.id))
+                            else graph.library.add(card)
+                        }
+                    }
+                }
                 if (wide) {
                     WideFeaturedHero(
                         card = card,
@@ -263,15 +278,24 @@ internal fun HomeScreen(
                         onSelect = select,
                         onOpen = open,
                         onPlay = play,
-                        onToggleLibrary = {
-                            scope.launch {
-                                // A rejected write marks the cache stale, which corrects the button.
-                                runCatching {
-                                    if (featuredInLibrary) graph.library.remove(LibraryRepository.itemId(card.type, card.id))
-                                    else graph.library.add(card)
-                                }
-                            }
-                        },
+                        onToggleLibrary = toggleLibrary,
+                        modifier = Modifier.padding(bottom = HaloSpacing.Lg),
+                    )
+                    return@item
+                }
+                if (!responsive.isTablet) {
+                    PhoneFeaturedHero(
+                        card = card,
+                        height = responsive.homeHeroHeight,
+                        gutter = gutter,
+                        inLibrary = featuredInLibrary,
+                        count = previews.size,
+                        index = featuredIndex,
+                        dwellMillis = FeaturedDwellMs.toInt().takeIf { autoAdvance },
+                        onSelect = select,
+                        onOpen = open,
+                        onPlay = play,
+                        onToggleLibrary = toggleLibrary,
                         modifier = Modifier.padding(bottom = HaloSpacing.Lg),
                     )
                     return@item
@@ -651,9 +675,21 @@ private val DotHeight = 4.dp
 private val DotWidth = 8.dp
 private val DotWidthActive = 22.dp
 
-/** Which of the featured titles is showing, and a way to go straight to one. */
+/**
+ * Which of the featured titles is showing, and a way to go straight to one.
+ *
+ * With [dwellMillis] the active dot is a track that fills over that time, as the
+ * desktop's pips do, showing when the title will change. Without it the track
+ * sits full: nothing is counting down.
+ */
 @Composable
-internal fun FeaturedDots(count: Int, index: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+internal fun FeaturedDots(
+    count: Int,
+    index: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    dwellMillis: Int? = null,
+) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
@@ -683,11 +719,25 @@ internal fun FeaturedDots(count: Int, index: Int, onSelect: (Int) -> Unit, modif
                         .width(width)
                         .height(DotHeight)
                         .clip(RoundedCornerShape(HaloRadius.Pill))
-                        .background(if (active) HaloColors.Text else DotIdleFill),
-                )
+                        .background(if (active && dwellMillis == null) HaloColors.Text else DotIdleFill),
+                ) {
+                    // Keyed so each title's dwell starts from empty.
+                    if (active && dwellMillis != null) {
+                        key(index) { DotFill(dwellMillis) }
+                    }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun DotFill(dwellMillis: Int) {
+    val fill = remember { Animatable(0f) }
+    LaunchedEffect(dwellMillis) {
+        fill.animateTo(1f, tween(durationMillis = dwellMillis, easing = LinearEasing))
+    }
+    Box(Modifier.fillMaxHeight().fillMaxWidth(fill.value).background(HaloColors.Text))
 }
 
 private const val DotTransitionMs = 200

@@ -202,7 +202,7 @@ data class ResponsiveInfo(
 
     /** Home's featured card. */
     val homeHeroHeight: Dp = byTier(
-        phone = 210.dp,
+        phone = 410.dp,
         tabletLandscape = 340.dp,
         tabletPortrait = 300.dp,
         largeLandscape = 380.dp,

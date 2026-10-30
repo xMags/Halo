@@ -88,7 +88,7 @@ private val ScrimSolid = Color(0xF518181A)
 private val ScrimHalf = Color(0x9E18181A)
 
 /** Fades the layer out over its lower part, as the desktop masks the banner art into the page. */
-private fun Modifier.fadeOutBelow(from: Float): Modifier = this
+internal fun Modifier.fadeOutBelow(from: Float): Modifier = this
     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
     .drawWithContent {
         drawContent()
@@ -188,7 +188,13 @@ internal fun WideFeaturedHero(
 
 /** The title's logo art when its addon has one, else the name; a logo that fails falls back to the name. */
 @Composable
-private fun FeaturedTitle(name: String, logo: String?, size: TextUnit) {
+internal fun FeaturedTitle(
+    name: String,
+    logo: String?,
+    size: TextUnit,
+    logoMaxWidth: Dp = 380.dp,
+    logoMaxHeight: Dp = 110.dp,
+) {
     val painter = logo?.let { rememberAsyncImagePainter(model = it, contentScale = ContentScale.Fit) }
     val state = painter?.state?.collectAsState()?.value
     val nameText = @Composable {
@@ -210,7 +216,7 @@ private fun FeaturedTitle(name: String, logo: String?, size: TextUnit) {
     // Bounded both ways: addons ship anything from square marks to long wordmarks.
     // The name stands in while the logo loads, so the title is never a gap.
     // The logo stays composed meanwhile: it is what asks for the picture.
-    Box {
+    Box(contentAlignment = Alignment.BottomStart) {
         if (state !is AsyncImagePainter.State.Success) {
             nameText()
         }
@@ -219,13 +225,13 @@ private fun FeaturedTitle(name: String, logo: String?, size: TextUnit) {
             contentDescription = name,
             contentScale = ContentScale.Fit,
             alignment = Alignment.BottomStart,
-            modifier = Modifier.widthIn(max = 380.dp).heightIn(max = 110.dp),
+            modifier = Modifier.widthIn(max = logoMaxWidth).heightIn(max = logoMaxHeight),
         )
     }
 }
 
 @Composable
-private fun FeaturedFacts(rating: String?, year: String?) {
+internal fun FeaturedFacts(rating: String?, year: String?) {
     if (rating == null && year == null) return
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         rating?.let { Text("★ $it", color = HaloColors.Gold, fontSize = 15.sp) }
@@ -235,16 +241,19 @@ private fun FeaturedFacts(rating: String?, year: String?) {
 }
 
 @Composable
-private fun HeroButton(
-    label: String,
+internal fun HeroButton(
+    /** Null for an icon-only button, which then names itself with [iconDescription]. */
+    label: String?,
     icon: ImageVector?,
     accent: Boolean,
     onClick: () -> Unit,
     iconTint: Color = if (accent) Color.White else HaloColors.Text,
+    iconDescription: String? = null,
+    height: Dp = 36.dp,
 ) {
     Row(
         Modifier
-            .height(36.dp)
+            .height(height)
             .clip(ButtonShape)
             .background(if (accent) HaloColors.Accent else HaloColors.Glass)
             .border(1.dp, if (accent) Color.Transparent else HaloColors.GlassBorder, ButtonShape)
@@ -253,8 +262,8 @@ private fun HeroButton(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        icon?.let { Icon(it, contentDescription = null, tint = iconTint, modifier = Modifier.size(16.dp)) }
-        Text(label, color = if (accent) Color.White else HaloColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        icon?.let { Icon(it, contentDescription = iconDescription, tint = iconTint, modifier = Modifier.size(16.dp)) }
+        label?.let { Text(it, color = if (accent) Color.White else HaloColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
     }
 }
 
