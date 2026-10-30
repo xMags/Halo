@@ -190,7 +190,9 @@ internal class SourcesView {
 
     /** Shows the sources that must download first, which Recommended keeps behind one row. */
     var revealAll by mutableStateOf(false)
-    var footerOpen by mutableStateOf(false)
+
+    /** Non-null while the "how this list was built" sheet is open. */
+    var howBuilt by mutableStateOf<HowBuiltFacts?>(null)
 }
 
 /**
@@ -276,8 +278,6 @@ internal fun SourcesPicker(
                 offline = offline,
                 onPlayOffline = { entry -> menus?.playDownload(entry) },
                 runtimeSeconds = (runtimeMinutes(meta.value?.runtime) ?: 0) * 60.0,
-                rules = choiceRules(settings.value),
-                onOpenPlayback = onOpenPlayback,
                 view = view,
                 onOpenSort = { sortOpen = true },
                 onOpenDetails = { entry, read -> details = SourceDetailsRequest(entry, read) },
@@ -304,6 +304,13 @@ internal fun SourcesPicker(
                 onPlay = { entry -> onPlay(entry.addon, entry.stream) },
                 onSave = save,
                 onDismiss = { details = null },
+            )
+
+            HowBuiltSheet(
+                facts = view.howBuilt,
+                rules = choiceRules(settings.value),
+                onOpenPlayback = onOpenPlayback,
+                onDismiss = { view.howBuilt = null },
             )
 
             val replacement = pendingReplacement
@@ -334,7 +341,7 @@ internal fun SourcesPicker(
     }
 }
 
-/** The footer's "How Halo chose": the settings that decide what plays, as they stand. */
+/** The sheet's "How Halo chose": the settings that decide what plays, as they stand. */
 private fun choiceRules(settings: UserSettings?): List<ChoiceRule> = listOf(
     ChoiceRule("Prefer sources that play instantly", "On"),
     ChoiceRule("Preferred audio language", settings?.preferredAudioLang?.let(::languageLabel) ?: "Automatic"),
@@ -444,8 +451,6 @@ internal fun StreamsContent(
     onPlayOffline: (DownloadEntry) -> Unit = {},
     /** The video's length, for what each file asks of the line; zero when unknown. */
     runtimeSeconds: Double = 0.0,
-    rules: List<ChoiceRule> = emptyList(),
-    onOpenPlayback: (() -> Unit)? = null,
     view: SourcesView = remember { SourcesView() },
     onOpenSort: () -> Unit = {},
     onOpenDetails: (SourceEntry, SourceDetails) -> Unit = { _, _ -> },
@@ -518,8 +523,6 @@ internal fun StreamsContent(
                         onPlay = { entry -> onPlay(entry.addon, entry.stream) },
                         saveStateOf = saveStateOf,
                         onSave = onSave,
-                        rules = rules,
-                        onOpenPlayback = onOpenPlayback,
                         onOpenSort = onOpenSort,
                         onOpenDetails = onOpenDetails,
                         contentPadding = contentPadding,
@@ -547,8 +550,6 @@ private fun ColumnScope.SourcesList(
     onPlay: (SourceEntry) -> Unit,
     saveStateOf: (SourceEntry) -> SaveState,
     onSave: (SourceEntry) -> Unit,
-    rules: List<ChoiceRule>,
-    onOpenPlayback: (() -> Unit)?,
     onOpenSort: () -> Unit,
     onOpenDetails: (SourceEntry, SourceDetails) -> Unit,
     contentPadding: PaddingValues,
@@ -632,12 +633,7 @@ private fun ColumnScope.SourcesList(
         }
     }
     HowBuiltBar(
-        open = view.footerOpen,
-        onToggle = { view.footerOpen = !view.footerOpen },
-        providers = resolve.providers,
-        mix = qualityMix(resolve.pool),
-        rules = rules,
-        onOpenPlayback = onOpenPlayback,
+        onOpen = { view.howBuilt = HowBuiltFacts(resolve.providers, qualityMix(resolve.pool)) },
         insetNavigationBar = insetNavigationBar,
     )
 }
