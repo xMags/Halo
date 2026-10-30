@@ -95,7 +95,12 @@ internal fun rememberPlayerMetrics(): PlayerMetrics {
             railWidth = responsive.pick(phone = 372.dp, tablet = 440.dp),
             episodeCardWidth = responsive.pick(phone = 168.dp, tablet = 200.dp),
             episodeThumbHeight = responsive.pick(phone = 94.dp, tablet = 112.dp),
-            drawerBottomPadding = bottomInset + responsive.pick(phone = 16.dp, tablet = 22.dp),
+            // Clears the home swipe the way the chrome does, so a tap on an
+            // episode card can never be a swipe that started on it.
+            drawerBottomPadding = max(
+                bottomInset + responsive.pick(phone = 16.dp, tablet = 22.dp),
+                gestureBottomInset + responsive.pick(phone = 8.dp, tablet = 12.dp),
+            ),
             upNextCardWidth = responsive.pick(phone = 320.dp, tablet = 360.dp),
         )
     }
