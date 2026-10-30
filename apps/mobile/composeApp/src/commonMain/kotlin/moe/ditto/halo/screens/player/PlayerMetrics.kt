@@ -2,6 +2,7 @@ package moe.ditto.halo.screens.player
 
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
@@ -62,8 +63,9 @@ internal fun rememberPlayerMetrics(): PlayerMetrics {
     val rightInset = with(density) { insets.getRight(this, layoutDirection).toDp() }
     val topInset = with(density) { insets.getTop(this).toDp() }
     val bottomInset = with(density) { insets.getBottom(this).toDp() }
+    val gestureBottomInset = with(density) { WindowInsets.systemGestures.getBottom(this).toDp() }
 
-    return remember(responsive, leftInset, rightInset, topInset, bottomInset) {
+    return remember(responsive, leftInset, rightInset, topInset, bottomInset, gestureBottomInset) {
         val floor = responsive.pick(phone = 24.dp, tablet = 40.dp)
         PlayerMetrics(
             hPad = max(floor, max(leftInset, rightInset)),
@@ -72,7 +74,16 @@ internal fun rememberPlayerMetrics(): PlayerMetrics {
             // be once it goes immersive. Until then the inset is added rather
             // than assumed away, so the title does not sit under the clock.
             chromeTopPadding = topInset + responsive.pick(phone = 12.dp, tablet = 20.dp),
-            chromeBottomPadding = bottomInset + responsive.pick(phone = 18.dp, tablet = 26.dp),
+            //
+            // The bottom also has to clear the home swipe, whose band outlives
+            // the bars: safeDrawing drops to zero once the player is immersive,
+            // while the gesture still starts from the same place. The smaller
+            // gap above the band is what keeps the raised chips under the
+            // centre controls on a 360dp-tall phone.
+            chromeBottomPadding = max(
+                bottomInset + responsive.pick(phone = 18.dp, tablet = 26.dp),
+                gestureBottomInset + responsive.pick(phone = 8.dp, tablet = 12.dp),
+            ),
             titleSize = responsive.pick(phone = 16.5.sp, tablet = 19.sp),
             chipValueSize = responsive.pick(phone = 12.5.sp, tablet = 13.5.sp),
             transportTextSize = responsive.pick(phone = 12.sp, tablet = 13.sp),
