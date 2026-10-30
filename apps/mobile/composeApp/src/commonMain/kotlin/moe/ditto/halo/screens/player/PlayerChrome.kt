@@ -571,8 +571,9 @@ private fun TransportRow(
         )
 
         var trackWidthPx by remember { mutableIntStateOf(0) }
-        // The hit area reaches into the home-swipe band below the bar, and a
-        // swipe home that starts there must not seek.
+        // The bar stands clear of the home swipe, but the hit area can still
+        // meet a system band on a window with wider ones, and a system swipe
+        // that starts there must not seek.
         val edgeGuard = rememberSystemEdgeTouchGuard()
         Box(
             modifier = Modifier
