@@ -13,6 +13,18 @@ import type {
   WatchState,
 } from './types'
 
+/** The server's sentence when an account's plan refuses something; screens print these messages as they are. */
+function planRefusalText(body: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(body)
+    if (typeof parsed !== 'object' || parsed === null) return undefined
+    const { code, error } = parsed as { code?: unknown; error?: unknown }
+    if (code !== 'plan_required' && code !== 'plan_limit_reached') return undefined
+    return typeof error === 'string' && error ? error : undefined
+  } catch {
+    return undefined
+  }
+}
 export class HaloApiError extends Error {
   constructor(
     readonly status: number,
@@ -149,7 +161,7 @@ export class HaloClient {
     }
     if (!res.ok) {
       const text = await res.text().catch(() => '')
-      throw new HaloApiError(res.status, text || `Request failed: ${method} ${path}`)
+      throw new HaloApiError(res.status, planRefusalText(text) ?? (text || `Request failed: ${method} ${path}`))
     }
     return res
   }
