@@ -339,9 +339,8 @@ internal fun DetailScreen(
                     val known = remember(graph, type, metaId) { graph.browse.knownTitle(type, metaId) }
                     val saved = library.value.orEmpty().firstOrNull { it.id == itemId }
                     DetailLoading(
-                        // The wide page lays its hero out differently, and a
-                        // title nothing has described yet has no art to show.
-                        hero = if (wide) null else known?.loadingHero() ?: saved?.let { LoadingHero(it.poster, it.poster, it.name) },
+                        // The wide page lays its hero out differently.
+                        title = if (wide) null else known?.name ?: saved?.name,
                         heroHeight = responsive.detailHeroHeight,
                         gutter = responsive.gutter,
                     )
@@ -475,7 +474,6 @@ private fun DetailBody(
         item(key = "hero") {
             DetailHero(
                 art = meta.background ?: meta.poster,
-                poster = meta.poster,
                 title = meta.name,
                 logo = meta.logo,
                 facts = heroFacts(meta, isSeries, seasons),

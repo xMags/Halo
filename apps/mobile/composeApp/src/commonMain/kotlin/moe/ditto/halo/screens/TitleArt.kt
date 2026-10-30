@@ -80,6 +80,8 @@ internal fun TitleArt(
     /** Also the height held for the logo, so what sits beside it does not move when it lands. */
     logoMaxHeight: Dp,
     logoPending: Boolean = false,
+    /** Called once something is showing here, for what is held back until then. */
+    onSettled: () -> Unit = {},
     nameText: @Composable () -> Unit,
 ) {
     val context = LocalPlatformContext.current
@@ -97,6 +99,8 @@ internal fun TitleArt(
     }
 
     val waiting = logoPending || (painter != null && state !is AsyncImagePainter.State.Error)
+    val settled = !waiting || outOfPatience || state is AsyncImagePainter.State.Success
+    LaunchedEffect(settled) { if (settled) onSettled() }
     if (!waiting) {
         nameText()
         return
