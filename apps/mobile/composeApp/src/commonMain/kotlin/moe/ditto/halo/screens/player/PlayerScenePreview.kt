@@ -223,7 +223,6 @@ private fun PlayerSceneContent(scene: PlayerScene, controller: PlayerScreenContr
                 showTitle = PlayerFixtures.ShowTitle,
                 episodeTag = PlayerFixtures.CurrentEpisode.tag,
                 episodeName = PlayerFixtures.EpisodeName,
-                streamBadges = PlayerFixtures.StreamBadges,
                 reserveEnd = 0.dp,
                 locked = controller.locked,
                 onBack = {},

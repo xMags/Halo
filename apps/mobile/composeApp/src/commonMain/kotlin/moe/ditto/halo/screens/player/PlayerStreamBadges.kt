@@ -1,14 +1,12 @@
 package moe.ditto.halo.screens.player
 
 /**
- * The top bar's stream badges: what this source is, read out of what the addon
- * called it.
+ * Stream badges: what a source is, read out of what the addon called it.
  *
  * Addons name sources for a list, not for a player. A real Torrentio result is
  * `"[TB+] Torrentio\n4k HDR"` over four lines of release name, seeders, tracker
  * and flags. The first line of it is the debrid service and the account
- * tier it was fetched with. None of that belongs over someone's video, so
- * nothing here echoes the text it was handed: every badge is a constant from the
+ * tier it was fetched with. None of that belongs on screen, so nothing here echoes the text it was handed: every badge is a constant from the
  * tables below, selected by matching a pattern against the source's naming. A
  * provider, tracker or account name therefore cannot reach the screen through
  * this path, whatever an addon puts in the field. That is a property of the
@@ -18,9 +16,6 @@ package moe.ditto.halo.screens.player
  * carries, such as HDR, the source medium, the audio layout and the release
  * group, is either already visible in the picture or not worth the width.
  */
-
-/** True for the resolution half of [streamBadges], which the player's quality medal replaces. */
-internal fun isResolutionBadge(badge: String): Boolean = ResolutionRules.any { it.badge == badge }
 
 /** How the badge for one fact is spelled, and everything that means it. */
 private class BadgeRule(val badge: String, alternatives: List<String>) {

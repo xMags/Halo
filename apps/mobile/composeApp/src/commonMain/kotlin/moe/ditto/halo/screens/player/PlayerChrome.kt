@@ -71,16 +71,14 @@ import moe.ditto.halo.ui.monoStyle
 // the design specifies are therefore used on their own, which is why they are
 // as dark and as opaque as they are.
 
-// White hairlines, in the four weights the design uses. They are local because
-// they are not a palette: each one is chosen against the fill it borders, and
-// naming them globally would invite reuse in places that fill differently.
-private val BadgeBorder = Color.White.copy(alpha = 0.16f)
+// White hairlines, in the weights the design uses. They are local because they
+// are not a palette: each one is chosen against the fill it borders, and naming
+// them globally would invite reuse in places that fill differently.
 private val ButtonBorder = Color.White.copy(alpha = 0.10f)
 private val SeekButtonBorder = Color.White.copy(alpha = 0.18f)
 private val ChromeBorder = Color.White.copy(alpha = 0.18f)
 private val PlayButtonBorder = Color.White.copy(alpha = 0.22f)
 
-private val BadgeFill = Color(red = 9f / 255f, green = 11f / 255f, blue = 16f / 255f, alpha = 0.58f)
 private val TrackFill = Color.White.copy(alpha = 0.16f)
 private val BufferedFill = Color.White.copy(alpha = 0.30f)
 private val DurationText = Color.White.copy(alpha = 0.55f)
@@ -124,7 +122,6 @@ internal fun PlayerTopBar(
     showTitle: String,
     episodeTag: String?,
     episodeName: String?,
-    streamBadges: List<String>,
     /** Room left free at the row's end, where the quality medal sits over the video. */
     reserveEnd: Dp,
     locked: Boolean,
@@ -195,10 +192,6 @@ internal fun PlayerTopBar(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            streamBadges.forEach { badge -> StreamBadge(badge) }
-        }
-
         UtilityPill(
             locked = locked,
             onPictureInPicture = onPictureInPicture,
@@ -206,20 +199,6 @@ internal fun PlayerTopBar(
             onToggleLock = onToggleLock,
         )
     }
-}
-
-/** Resolution and codec. Never the source's provider or account. */
-@Composable
-private fun StreamBadge(text: String) {
-    Text(
-        text = text,
-        style = monoStyle(fontSize = 10.sp, color = HaloColors.TextMeta, letterSpacing = 0.4.sp),
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(BadgeFill)
-            .border(1.dp, BadgeBorder, RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 5.dp),
-    )
 }
 
 /**
