@@ -418,6 +418,8 @@ internal fun safeStreamsRequestMessage(error: Throwable): String = when (error) 
         // Survived a successful refresh, so the session is kept; see HaloApiException.
         error.status == 401 -> "Halo did not accept your sign-in just now. Try again in a moment."
         error.status >= 500 -> "Halo could not load sources right now."
+        // A plan refusal is written for the person watching; other server text is not.
+        error.message.orEmpty().startsWith("Your plan") -> error.message.orEmpty()
         else -> "Halo rejected the source request."
     }
     else -> "Could not reach your Halo server."
