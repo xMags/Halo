@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.MetaVideo
 import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.browse.Availability
@@ -71,23 +73,33 @@ private val PillActiveLabel = Color(0xFF7EC0FF)
 private val EpisodeMetaColor = Color(0xFF6F7789)
 
 private val HeroLogoMaxWidth = 300.dp
-private val HeroLogoMaxHeight = 100.dp
+private val HeroLogoMaxHeight = 110.dp
 
 /** The title over its art: logo or name, then years, length or seasons, genres and rating. */
 @Composable
 internal fun DetailHero(
     art: String?,
+    /** Shown while [art] loads; a poster has usually been seen already, so it is on hand. */
+    poster: String?,
     title: String,
     logo: String?,
     facts: List<String>,
     rating: String?,
     height: Dp,
     gutter: Dp,
+    logoPending: Boolean = false,
 ) {
     Box(Modifier.fillMaxWidth().height(height).background(HaloColors.Surface)) {
         // fillMaxSize, not matchParentSize: matching the parent leaves async
         // art unloaded (see the same note on Home's hero).
-        HaloAsyncImage(url = art, contentDescription = null, modifier = Modifier.fillMaxSize())
+        HaloAsyncImage(
+            url = art,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            placeholder = poster?.takeIf { it != art }?.let { shown ->
+                { HaloAsyncImage(url = shown, contentDescription = null, modifier = Modifier.fillMaxSize()) }
+            },
+        )
         Box(
             Modifier.matchParentSize().background(
                 Brush.verticalGradient(
@@ -103,7 +115,7 @@ internal fun DetailHero(
             Modifier.align(Alignment.BottomStart).padding(start = gutter, end = gutter, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            TitleArt(title, logo, logoMaxWidth = HeroLogoMaxWidth, logoMaxHeight = HeroLogoMaxHeight) {
+            TitleArt(title, logo, HeroLogoMaxWidth, HeroLogoMaxHeight, logoPending) {
                 Text(
                     text = title,
                     color = HaloColors.Text,
@@ -126,6 +138,39 @@ internal fun DetailHero(
                 )
                 rating?.let { ImdbRating(it) }
             }
+        }
+    }
+}
+
+/** What is known about a title before its full record arrives. */
+internal class LoadingHero(val art: String?, val poster: String?, val name: String)
+
+internal fun MetaCard.loadingHero() = LoadingHero(background ?: poster, poster, name)
+
+/**
+ * The page before the full record lands. The hero stands where the finished
+ * page will draw it, so the page fills in beneath it instead of replacing a
+ * spinner. Its facts stay blank and its title waits, rather than showing text
+ * the record would then change.
+ */
+@Composable
+internal fun DetailLoading(hero: LoadingHero?, heroHeight: Dp, gutter: Dp) {
+    Column(Modifier.fillMaxSize()) {
+        hero?.let {
+            DetailHero(
+                art = it.art,
+                poster = it.poster,
+                title = it.name,
+                logo = null,
+                facts = emptyList(),
+                rating = null,
+                height = heroHeight,
+                gutter = gutter,
+                logoPending = true,
+            )
+        }
+        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = HaloColors.Accent)
         }
     }
 }

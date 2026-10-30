@@ -30,7 +30,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -336,8 +335,16 @@ internal fun DetailScreen(
                     )
                 }
                 metaState.error != null -> CenterMessage("No installed addon could describe this title.")
-                else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = HaloColors.Accent)
+                else -> {
+                    val known = remember(graph, type, metaId) { graph.browse.knownTitle(type, metaId) }
+                    val saved = library.value.orEmpty().firstOrNull { it.id == itemId }
+                    DetailLoading(
+                        // The wide page lays its hero out differently, and a
+                        // title nothing has described yet has no art to show.
+                        hero = if (wide) null else known?.loadingHero() ?: saved?.let { LoadingHero(it.poster, it.poster, it.name) },
+                        heroHeight = responsive.detailHeroHeight,
+                        gutter = responsive.gutter,
+                    )
                 }
             }
 
@@ -468,6 +475,7 @@ private fun DetailBody(
         item(key = "hero") {
             DetailHero(
                 art = meta.background ?: meta.poster,
+                poster = meta.poster,
                 title = meta.name,
                 logo = meta.logo,
                 facts = heroFacts(meta, isSeries, seasons),
