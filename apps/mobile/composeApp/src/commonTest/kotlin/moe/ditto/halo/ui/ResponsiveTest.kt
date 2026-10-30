@@ -153,13 +153,13 @@ class ResponsiveTest {
         assertEquals(listOf(440.dp, 400.dp, 480.dp, 440.dp), listOf(tablet, tabletPortrait, large, largePortrait).map { it.sourcesRailWidth })
     }
 
-    /** The phone frame is untouched by the tablet work; these are its old values. */
+    /** The phone frame is untouched by the tablet work; its hero is the phone's own stacked banner. */
     @Test
     fun phoneMetricsAreUnchanged() {
         val phone = classifyWindow(390.dp, 844.dp)
 
         assertEquals(HaloSpacing.Md, phone.gutter)
-        assertEquals(210.dp, phone.homeHeroHeight)
+        assertEquals(410.dp, phone.homeHeroHeight)
         assertEquals(460.dp, phone.detailHeroHeight)
         assertEquals(BrowseHeaderLayout.Stacked, phone.browseHeaderLayout)
         assertEquals(132.dp, phone.shelfPosterWidth)

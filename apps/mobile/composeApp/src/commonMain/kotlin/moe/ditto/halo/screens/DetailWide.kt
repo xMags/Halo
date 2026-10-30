@@ -51,11 +51,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -165,17 +162,6 @@ private fun Modifier.wideGlass(state: HazeState): Modifier = this
         tints = listOf(HazeTint(GlassFill))
     }
     .border(1.dp, GlassEdge, PanelShape)
-
-/** Fades the layer out over its last part, the way the desktop masks the hero art. */
-private fun Modifier.fadeOutBelow(from: Float): Modifier = this
-    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-    .drawWithContent {
-        drawContent()
-        drawRect(
-            brush = Brush.verticalGradient(0f to Color.Black, from to Color.Black, 1f to Color.Transparent),
-            blendMode = BlendMode.DstIn,
-        )
-    }
 
 @Composable
 internal fun DetailWideBody(
