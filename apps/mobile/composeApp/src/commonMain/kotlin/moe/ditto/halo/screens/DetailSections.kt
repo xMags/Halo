@@ -70,11 +70,15 @@ private val PillActiveLabel = Color(0xFF7EC0FF)
 /** An episode's length and date: quieter than its synopsis. */
 private val EpisodeMetaColor = Color(0xFF6F7789)
 
-/** The title over its art: name, then years, length or seasons, genres and rating. */
+private val HeroLogoMaxWidth = 300.dp
+private val HeroLogoMaxHeight = 100.dp
+
+/** The title over its art: logo or name, then years, length or seasons, genres and rating. */
 @Composable
 internal fun DetailHero(
     art: String?,
     title: String,
+    logo: String?,
     facts: List<String>,
     rating: String?,
     height: Dp,
@@ -99,16 +103,18 @@ internal fun DetailHero(
             Modifier.align(Alignment.BottomStart).padding(start = gutter, end = gutter, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                text = title,
-                color = HaloColors.Text,
-                fontSize = 36.sp,
-                lineHeight = 40.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = (-0.4).sp,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
+            TitleArt(title, logo, logoMaxWidth = HeroLogoMaxWidth, logoMaxHeight = HeroLogoMaxHeight) {
+                Text(
+                    text = title,
+                    color = HaloColors.Text,
+                    fontSize = 36.sp,
+                    lineHeight = 40.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.4).sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = facts.joinToString("  ·  "),

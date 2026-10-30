@@ -1,6 +1,5 @@
 package moe.ditto.halo.screens
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -39,7 +37,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,8 +44,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImagePainter
-import coil3.compose.rememberAsyncImagePainter
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.browse.ContinueEntry
@@ -104,6 +99,8 @@ internal fun WideFeaturedHero(
     height: Dp,
     gutter: Dp,
     inLibrary: Boolean,
+    /** True until it is known whether this title has logo art. */
+    logoPending: Boolean,
     count: Int,
     index: Int,
     onSelect: (Int) -> Unit,
@@ -142,7 +139,7 @@ internal fun WideFeaturedHero(
                         style = monoStyle(12.sp, FontWeight.Bold, HaloColors.Accent),
                         letterSpacing = 1.92.sp,
                     )
-                    FeaturedTitle(shown.name, shown.logo, 46.sp)
+                    FeaturedTitle(shown.name, shown.logo, 46.sp, logoPending)
                     // Addons send blank fields as often as missing ones.
                     FeaturedFacts(shown.imdbRating?.takeIf { it.isNotBlank() }, shown.releaseInfo?.takeIf { it.isNotBlank() })
                     shown.description?.takeIf { it.isNotBlank() }?.let {
@@ -186,18 +183,17 @@ internal fun WideFeaturedHero(
     }
 }
 
-/** The title's logo art when its addon has one, else the name; a logo that fails falls back to the name. */
+/** The featured title as [TitleArt], with the name in the hero's display style. */
 @Composable
 internal fun FeaturedTitle(
     name: String,
     logo: String?,
     size: TextUnit,
+    logoPending: Boolean,
     logoMaxWidth: Dp = 380.dp,
     logoMaxHeight: Dp = 110.dp,
 ) {
-    val painter = logo?.let { rememberAsyncImagePainter(model = it, contentScale = ContentScale.Fit) }
-    val state = painter?.state?.collectAsState()?.value
-    val nameText = @Composable {
+    TitleArt(name, logo, logoMaxWidth, logoMaxHeight, logoPending) {
         Text(
             text = name,
             color = HaloColors.Text,
@@ -207,25 +203,6 @@ internal fun FeaturedTitle(
             letterSpacing = (-0.36).sp,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-        )
-    }
-    if (painter == null || state is AsyncImagePainter.State.Error) {
-        nameText()
-        return
-    }
-    // Bounded both ways: addons ship anything from square marks to long wordmarks.
-    // The name stands in while the logo loads, so the title is never a gap.
-    // The logo stays composed meanwhile: it is what asks for the picture.
-    Box(contentAlignment = Alignment.BottomStart) {
-        if (state !is AsyncImagePainter.State.Success) {
-            nameText()
-        }
-        Image(
-            painter = painter,
-            contentDescription = name,
-            contentScale = ContentScale.Fit,
-            alignment = Alignment.BottomStart,
-            modifier = Modifier.widthIn(max = logoMaxWidth).heightIn(max = logoMaxHeight),
         )
     }
 }

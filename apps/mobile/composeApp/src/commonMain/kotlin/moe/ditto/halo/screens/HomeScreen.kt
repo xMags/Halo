@@ -57,7 +57,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.SingletonImageLoader
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.CatalogResponse
@@ -178,6 +182,26 @@ internal fun HomeScreen(
     // The preview carries a name and a poster already, so it stands in until the
     // richer record lands rather than leaving the hero blank.
     val featured: MetaCard? = featuredMeta.value?.takeIf { it.id == preview?.id } ?: preview
+    // Most catalogs name a logo only in the full record, so until that answers
+    // the hero cannot tell a title with logo art from one without.
+    val featuredLogoPending = preview != null && preview.logo.isNullOrBlank() &&
+        featuredMeta.value?.id != preview.id && featuredMeta.error == null
+    // Each title's record and logo are fetched as the strip is chosen rather
+    // than as the rotation reaches it, so the next title's logo is on hand the
+    // moment its art fades in. The queries are the ones the hero itself makes.
+    val imageContext = LocalPlatformContext.current
+    LaunchedEffect(graph, previews) {
+        previews.forEach { title ->
+            launch {
+                val logo = graph.browse.meta(title.type, title.id)
+                    .firstOrNull { it.value != null || it.error != null }
+                    ?.value?.logo?.takeIf { it.isNotBlank() }
+                    ?: return@launch
+                SingletonImageLoader.get(imageContext)
+                    .enqueue(ImageRequest.Builder(imageContext).data(logo).build())
+            }
+        }
+    }
 
     val gutter = responsive.gutter
     val rowGap = responsive.pick(HaloSpacing.Lg, 26.dp)
@@ -273,6 +297,7 @@ internal fun HomeScreen(
                         height = wideFeaturedHeight(responsive),
                         gutter = gutter,
                         inLibrary = featuredInLibrary,
+                        logoPending = featuredLogoPending,
                         count = previews.size,
                         index = featuredIndex,
                         onSelect = select,
@@ -289,6 +314,7 @@ internal fun HomeScreen(
                         height = responsive.homeHeroHeight,
                         gutter = gutter,
                         inLibrary = featuredInLibrary,
+                        logoPending = featuredLogoPending,
                         count = previews.size,
                         index = featuredIndex,
                         dwellMillis = FeaturedDwellMs.toInt().takeIf { autoAdvance },

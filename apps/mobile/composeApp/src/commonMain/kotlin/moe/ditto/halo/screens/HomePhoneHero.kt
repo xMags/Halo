@@ -63,6 +63,8 @@ internal fun PhoneFeaturedHero(
     height: Dp,
     gutter: Dp,
     inLibrary: Boolean,
+    /** True until it is known whether this title has logo art. */
+    logoPending: Boolean,
     count: Int,
     index: Int,
     /** How long this title stays up, for the pip's fill; null once the viewer has picked one. */
@@ -111,7 +113,7 @@ internal fun PhoneFeaturedHero(
                         letterSpacing = 1.76.sp,
                     )
                     Box(Modifier.fillMaxWidth().height(TitleSlotHeight), contentAlignment = Alignment.BottomStart) {
-                        FeaturedTitle(shown.name, shown.logo, 28.sp, LogoMaxWidth, TitleSlotHeight)
+                        FeaturedTitle(shown.name, shown.logo, 28.sp, logoPending, LogoMaxWidth, TitleSlotHeight)
                     }
                     // Addons send blank fields as often as missing ones.
                     FeaturedFacts(shown.imdbRating?.takeIf { it.isNotBlank() }, shown.releaseInfo?.takeIf { it.isNotBlank() })
