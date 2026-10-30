@@ -59,7 +59,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.SingletonImageLoader
 import coil3.compose.LocalPlatformContext
-import coil3.request.ImageRequest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -197,8 +196,7 @@ internal fun HomeScreen(
                     .firstOrNull { it.value != null || it.error != null }
                     ?.value?.logo?.takeIf { it.isNotBlank() }
                     ?: return@launch
-                SingletonImageLoader.get(imageContext)
-                    .enqueue(ImageRequest.Builder(imageContext).data(logo).build())
+                SingletonImageLoader.get(imageContext).enqueue(titleLogoRequest(imageContext, logo))
             }
         }
     }

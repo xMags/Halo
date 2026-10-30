@@ -5,7 +5,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import moe.ditto.halo.api.AddonSubtitles
 import moe.ditto.halo.api.CatalogResponse
 import moe.ditto.halo.api.HaloBackend
@@ -32,6 +35,8 @@ class BrowseRepository(
     private val cache: QueryCache,
     private val addons: AddonsRepository,
 ) {
+    private val knownTitles = MutableStateFlow<Map<String, MetaPreview>>(emptyMap())
+
     /**
      * One catalog's titles. [enabled] false observes without fetching, for rows
      * whose inputs are not resolved yet — Home's featured title, for instance,
@@ -61,7 +66,20 @@ class BrowseRepository(
     ): Flow<QueryState<CatalogResponse>> {
         val key = HaloKey.Catalog(addonId, type, catalogId, extra)
         return cache.query(key, key.staleMs, enabled) { client.getCatalog(addonId, type, catalogId, extra) }
+            .onEach { state -> state.value?.metas?.let(::noteTitles) }
     }
+
+    /**
+     * What a catalog already said about a title, for a page to draw while the
+     * full record is on its way. Null for a title no catalog has listed.
+     */
+    fun knownTitle(type: String, metaId: String): MetaPreview? = knownTitles.value[titleKey(type, metaId)]
+
+    private fun noteTitles(metas: List<MetaPreview>) {
+        knownTitles.update { known -> known + metas.associateBy { titleKey(it.type, it.id) } }
+    }
+
+    private fun titleKey(type: String, metaId: String) = "$type:$metaId"
 
     /**
      * A later page of a catalog, [extra] carrying its `skip`. Not cached: a
