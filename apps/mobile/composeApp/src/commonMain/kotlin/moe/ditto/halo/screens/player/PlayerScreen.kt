@@ -188,11 +188,6 @@ internal fun PlayerScreen(
     var externalSubtitleJob by remember(item) { mutableStateOf<Job?>(null) }
     var subtitleLoadError by remember(item) { mutableStateOf<String?>(null) }
     var fitModeRestored by remember(item) { mutableStateOf(false) }
-    // Parsed once per source rather than per frame of chrome: the strings are
-    // release names, and the regexes over them are not free.
-    val streamBadges = remember(context) {
-        streamBadges(filename = context.filename, title = context.streamTitle, name = context.streamName)
-    }
     // Frames behind the scrub card, read out of band from playback and sized to
     // the card so nothing decodes a picture larger than what is shown. Keyed to
     // the item: changing episode must drop the previous source's frames rather
@@ -702,9 +697,6 @@ internal fun PlayerScreen(
                 showTitle = context.showTitle,
                 episodeTag = context.episodeTag,
                 episodeName = context.episodeName,
-                // The medal says the resolution now, from the decoded picture,
-                // so the name's guess at it would only repeat or contradict it.
-                streamBadges = if (qualityMedal == null) streamBadges else streamBadges.filterNot(::isResolutionBadge),
                 reserveEnd = if (qualityMedal == null) 0.dp else QualityMedalWidth + 14.dp,
                 locked = controller.locked,
                 onBack = leave,

@@ -10,8 +10,7 @@ import moe.ditto.halo.player.PlayerTracks
  *
  * These exist so the screen can be built and reviewed in full before the data
  * behind it is wired: the show and episode names arrive with the playback
- * context, the stream badges are parsed from the chosen source, and the episode
- * list comes from the title's meta. Each one is replaced in its own slice, and
+ * context, and the episode list comes from the title's meta. Each one is replaced in its own slice, and
  * this file should be empty by the end of it.
  *
  * The values match the approved prototype so the built screen can be compared
@@ -20,13 +19,6 @@ import moe.ditto.halo.player.PlayerTracks
 internal object PlayerFixtures {
     const val ShowTitle = "Pale Blue Dot"
     const val EpisodeName = "Carrier Lost · Season 2"
-
-    /**
-     * Resolution and codec only. The source's provider is deliberately absent:
-     * a debrid account name on screen is an account identifier, and it is not
-     * information the viewer needs while watching.
-     */
-    val StreamBadges = listOf("1080p", "HEVC 10-bit")
 
     /**
      * Stands in for the platform's real answer, so the harness shows the
