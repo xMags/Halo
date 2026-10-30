@@ -23,7 +23,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -36,7 +41,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.MetaVideo
 import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.browse.Availability
@@ -75,12 +79,22 @@ private val EpisodeMetaColor = Color(0xFF6F7789)
 private val HeroLogoMaxWidth = 300.dp
 private val HeroLogoMaxHeight = 110.dp
 
+/** The share of the hero the art takes, and where within itself it starts to fade. */
+private const val HeroArtShare = 0.75f
+private const val HeroArtFadeFrom = 0.55f
+
+/** Keeps the status bar and back button readable, and darkens the art under the title. */
+private val HeroArtScrim = Brush.verticalGradient(
+    0f to HaloColors.Background.copy(alpha = 0.45f),
+    0.22f to Color.Transparent,
+    0.5f to Color.Transparent,
+    1f to HaloColors.Background.copy(alpha = 0.72f),
+)
+
 /** The title over its art: logo or name, then years, length or seasons, genres and rating. */
 @Composable
 internal fun DetailHero(
     art: String?,
-    /** Shown while [art] loads; a poster has usually been seen already, so it is on hand. */
-    poster: String?,
     title: String,
     logo: String?,
     facts: List<String>,
@@ -89,33 +103,43 @@ internal fun DetailHero(
     gutter: Dp,
     logoPending: Boolean = false,
 ) {
-    Box(Modifier.fillMaxWidth().height(height).background(HaloColors.Surface)) {
-        // fillMaxSize, not matchParentSize: matching the parent leaves async
-        // art unloaded (see the same note on Home's hero).
-        HaloAsyncImage(
-            url = art,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            placeholder = poster?.takeIf { it != art }?.let { shown ->
-                { HaloAsyncImage(url = shown, contentDescription = null, modifier = Modifier.fillMaxSize()) }
-            },
-        )
-        Box(
-            Modifier.matchParentSize().background(
-                Brush.verticalGradient(
-                    0f to HaloColors.Background.copy(alpha = 0.45f),
-                    0.22f to Color.Transparent,
-                    0.45f to Color.Transparent,
-                    0.86f to HaloColors.Background.copy(alpha = 0.92f),
-                    1f to HaloColors.Background,
-                ),
-            ),
-        )
+    // The title comes first: the art is only asked for once the title is
+    // settled, so the page opens on its name rather than on a picture of
+    // something it has not named yet.
+    var titleSettled by remember(title) { mutableStateOf(false) }
+    Box(Modifier.fillMaxWidth().height(height)) {
+        // The art takes the hero's upper part and fades into the page, as on
+        // Home. Across the whole hero a wide backdrop is cropped to a sliver of
+        // itself, and the page behind it never shows through.
+        if (art != null && titleSettled) {
+            Box(Modifier.fillMaxWidth().fillMaxHeight(HeroArtShare).fadeOutBelow(HeroArtFadeFrom)) {
+                // fillMaxSize, not matchParentSize: matching the parent leaves
+                // async art unloaded (see the same note on Home's hero).
+                HaloAsyncImage(
+                    url = art,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    // The desktop keeps the art's upper part, where faces usually are.
+                    alignment = BiasAlignment(0f, -0.6f),
+                    // The page's own colour rather than a skeleton: the title
+                    // is already up, and the art should simply arrive behind it.
+                    placeholder = { Box(Modifier.matchParentSize().background(HaloColors.Background)) },
+                )
+                Box(Modifier.matchParentSize().background(HeroArtScrim))
+            }
+        }
         Column(
             Modifier.align(Alignment.BottomStart).padding(start = gutter, end = gutter, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            TitleArt(title, logo, HeroLogoMaxWidth, HeroLogoMaxHeight, logoPending) {
+            TitleArt(
+                name = title,
+                logo = logo,
+                logoMaxWidth = HeroLogoMaxWidth,
+                logoMaxHeight = HeroLogoMaxHeight,
+                logoPending = logoPending,
+                onSettled = { titleSettled = true },
+            ) {
                 Text(
                     text = title,
                     color = HaloColors.Text,
@@ -142,25 +166,19 @@ internal fun DetailHero(
     }
 }
 
-/** What is known about a title before its full record arrives. */
-internal class LoadingHero(val art: String?, val poster: String?, val name: String)
-
-internal fun MetaCard.loadingHero() = LoadingHero(background ?: poster, poster, name)
-
 /**
- * The page before the full record lands. The hero stands where the finished
- * page will draw it, so the page fills in beneath it instead of replacing a
- * spinner. Its facts stay blank and its title waits, rather than showing text
- * the record would then change.
+ * The page before the full record lands, for a title whose name is known. The
+ * title's place stands where the finished page will draw it, so a slow record
+ * shows the name there rather than nothing, and the page fills in around it.
+ * The art waits for the title, so the hero has none yet.
  */
 @Composable
-internal fun DetailLoading(hero: LoadingHero?, heroHeight: Dp, gutter: Dp) {
+internal fun DetailLoading(title: String?, heroHeight: Dp, gutter: Dp) {
     Column(Modifier.fillMaxSize()) {
-        hero?.let {
+        title?.let {
             DetailHero(
-                art = it.art,
-                poster = it.poster,
-                title = it.name,
+                art = null,
+                title = it,
                 logo = null,
                 facts = emptyList(),
                 rating = null,
