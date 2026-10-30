@@ -8,12 +8,15 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -84,7 +88,9 @@ import moe.ditto.halo.resources.halo_mark
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloIcons
+import moe.ditto.halo.ui.ResponsiveInfo
 import moe.ditto.halo.ui.monoStyle
+import moe.ditto.halo.ui.rememberResponsive
 import org.jetbrains.compose.resources.painterResource
 
 /** Where "Need help?" goes; the same page as the desktop app's. */
@@ -101,10 +107,22 @@ private val Ink2 = HaloColors.Text.copy(alpha = 0.8f)
 private val Ink3 = HaloColors.Text.copy(alpha = 0.62f)
 private val Stroke = Color.White.copy(alpha = 0.11f)
 
+/** The desktop's deck and card, which a tablet held sideways has the room for. */
+private val WideDeckWidth = 1060.dp
+private val WideCardWidth = 460.dp
+private val WideSignInMinWidth = 900.dp
+
+/** Wide enough for the fan's largest scale, which it reaches at about 1.2 card widths. */
+private const val TabletFanWidthShare = 1.25f
+private val TabletFanGap = 72.dp
+
 private const val ContinueWithoutAccount = "Continue without an account"
 private const val WaitingCopy = "Approve the sign-in in the page that just opened, then come back to Halo."
 private const val PasswordOnlyMessage =
     "That server signs in through a web page, not a username and password."
+
+private fun usesWideSignIn(responsive: ResponsiveInfo): Boolean =
+    responsive.isTablet && responsive.isLandscape && responsive.width >= WideSignInMinWidth
 
 /**
  * The product sign-in: the backdrop and the poster fan behind a glass card.
@@ -197,118 +215,172 @@ internal fun SignInScreen(
         phase is LoginPhase.OidcSucceeded
     val showForm = form && !signedIn
 
-    Box(Modifier.fillMaxSize()) {
-        SignInBackdrop()
-        SignInPosterFan(Modifier.align(Alignment.TopCenter).statusBarsPadding())
+    val responsive = rememberResponsive()
+    val wide = usesWideSignIn(responsive)
+    val entrance = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { entrance.animateTo(1f, tween(700, easing = SignInEase)) }
+    val scrollState = rememberScrollState()
+    val inset = if (wide) 34.dp else 22.dp
 
-        val entrance = remember { Animatable(0f) }
-        LaunchedEffect(Unit) { entrance.animateTo(1f, tween(700, easing = SignInEase)) }
+    // The card is the same in both layouts; only where it stands differs. It
+    // scrolls when the keyboard leaves no room.
+    val cardLook = Modifier
+        .graphicsLayer {
+            alpha = entrance.value
+            translationY = (1f - entrance.value) * 14.dp.toPx()
+        }
+        .clip(RoundedCornerShape(28.dp))
+        .background(
+            Brush.verticalGradient(
+                listOf(Color(0xD118_1B23), Color(0xE610_1218)),
+            ),
+        )
+        .border(1.dp, Stroke, RoundedCornerShape(28.dp))
+        .verticalScroll(scrollState)
+        .padding(start = inset, end = inset, top = 24.dp, bottom = 4.dp)
+    val card: @Composable ColumnScope.() -> Unit = {
+        CardMeta()
+        Title(wide)
+        if (!showForm) Intro()
 
-        // Anchored to the bottom and sized to its content, so a taller state
-        // grows over the posters; it scrolls when the keyboard leaves no room.
         Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .widthIn(max = HaloDimensions.LoginMaxWidth)
-                .fillMaxWidth()
-                .padding(start = 14.dp, end = 14.dp, top = 24.dp, bottom = 18.dp)
-                .graphicsLayer {
-                    alpha = entrance.value
-                    translationY = (1f - entrance.value) * 14.dp.toPx()
-                }
-                .clip(RoundedCornerShape(28.dp))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xD118_1B23), Color(0xE610_1218)),
-                    ),
-                )
-                .border(1.dp, Stroke, RoundedCornerShape(28.dp))
-                .verticalScroll(rememberScrollState())
-                .padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 4.dp),
+            modifier = Modifier.padding(top = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            CardMeta()
-            Title()
-            if (!showForm) Intro()
-
-            Column(
-                modifier = Modifier.padding(top = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                notice?.let { ErrorLine(it) }
-                when {
-                    signedIn -> SignedIn()
-                    showForm -> PasswordForm(
-                        server = formServer,
-                        username = formUsername,
-                        password = formPassword,
-                        busy = formBusy,
-                        error = formError,
-                        onServer = { formServer = it; formError = null },
-                        onUsername = { formUsername = it; formError = null },
-                        onPassword = { formPassword = it; formError = null },
-                        onSubmit = ::submitForm,
-                        backLabel = when (phase) {
-                            is LoginPhase.AddonReady -> "${phase.config.addon.buttonLabel} instead"
-                            is LoginPhase.OidcReady -> "Continue in browser instead"
-                            else -> "Back"
-                        },
-                        onBack = { form = false; formError = null },
-                    )
-                    else -> MainActions(
-                        state = mainState,
-                        onRetry = {
-                            main.editServerUrl(serverUrl)
+            notice?.let { ErrorLine(it) }
+            when {
+                signedIn -> SignedIn()
+                showForm -> PasswordForm(
+                    server = formServer,
+                    username = formUsername,
+                    password = formPassword,
+                    busy = formBusy,
+                    error = formError,
+                    onServer = { formServer = it; formError = null },
+                    onUsername = { formUsername = it; formError = null },
+                    onPassword = { formPassword = it; formError = null },
+                    onSubmit = ::submitForm,
+                    backLabel = when (phase) {
+                        is LoginPhase.AddonReady -> "${phase.config.addon.buttonLabel} instead"
+                        is LoginPhase.OidcReady -> "Continue in browser instead"
+                        else -> "Back"
+                    },
+                    onBack = { form = false; formError = null },
+                )
+                else -> MainActions(
+                    state = mainState,
+                    onRetry = {
+                        main.editServerUrl(serverUrl)
+                        mainState = main.state
+                        discovery += 1
+                    },
+                    onBeginAddon = {
+                        val attempt = main.beginAddon()
+                        if (attempt != null) {
                             mainState = main.state
-                            discovery += 1
-                        },
-                        onBeginAddon = {
-                            val attempt = main.beginAddon()
-                            if (attempt != null) {
-                                mainState = main.state
-                                addonJob?.cancel()
-                                addonJob = scope.launch {
-                                    main.completeAddon(attempt)
-                                    mainState = main.state
-                                }
-                            }
-                        },
-                        onCancelAddon = {
                             addonJob?.cancel()
-                            addonJob = null
-                            main.cancelAddon()
-                            mainState = main.state
-                        },
-                        onBeginOidc = {
-                            main.beginOidc()
-                            mainState = main.state
-                        },
-                        onRetryOidc = {
-                            main.retryOidc()
-                            mainState = main.state
-                        },
-                        onUsername = {
-                            main.editUsername(it)
-                            mainState = main.state
-                        },
-                        onPassword = {
-                            main.editPassword(it)
-                            mainState = main.state
-                        },
-                        onSubmitLocal = {
-                            scope.launch {
-                                main.submitLocalCredentials()
+                            addonJob = scope.launch {
+                                main.completeAddon(attempt)
                                 mainState = main.state
                             }
-                        },
-                        onUsePassword = { form = true },
-                        onContinueWithoutAccount = onContinueWithoutAccount,
-                    )
-                }
-                onOpenGate?.let { TextLink("Open gate menu", it) }
+                        }
+                    },
+                    onCancelAddon = {
+                        addonJob?.cancel()
+                        addonJob = null
+                        main.cancelAddon()
+                        mainState = main.state
+                    },
+                    onBeginOidc = {
+                        main.beginOidc()
+                        mainState = main.state
+                    },
+                    onRetryOidc = {
+                        main.retryOidc()
+                        mainState = main.state
+                    },
+                    onUsername = {
+                        main.editUsername(it)
+                        mainState = main.state
+                    },
+                    onPassword = {
+                        main.editPassword(it)
+                        mainState = main.state
+                    },
+                    onSubmitLocal = {
+                        scope.launch {
+                            main.submitLocalCredentials()
+                            mainState = main.state
+                        }
+                    },
+                    onUsePassword = { form = true },
+                    onContinueWithoutAccount = onContinueWithoutAccount,
+                )
             }
+            onOpenGate?.let { TextLink("Open gate menu", it) }
+        }
 
-            Footer()
+        Footer()
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        SignInBackdrop(wide = wide)
+        if (wide) {
+            // The desktop's deck: the card at the left, the fan rising from
+            // behind it. Height is left to the window, so the card stays centred
+            // and still has the whole height to scroll in under the keyboard.
+            BoxWithConstraints(
+                Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                val deckWidth = minOf(WideDeckWidth, maxWidth)
+                Box(Modifier.width(deckWidth).fillMaxHeight()) {
+                    SignInFanBesideCard(
+                        deckWidth = deckWidth,
+                        modifier = Modifier.align(Alignment.CenterStart).offset(x = BesideFanStart),
+                    )
+                    Column(Modifier.align(Alignment.CenterStart).width(WideCardWidth).then(cardLook), content = card)
+                }
+            }
+        } else if (responsive.isTablet) {
+            // A tall tablet would part the fan from the card by half a screen,
+            // so the two stand together in the middle of it. The gap makes up
+            // for the fan drawing larger than its frame at this width.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                SignInPosterFan(Modifier.width(HaloDimensions.LoginMaxWidth * TabletFanWidthShare))
+                Spacer(Modifier.height(TabletFanGap))
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .widthIn(max = HaloDimensions.LoginMaxWidth)
+                        .fillMaxWidth()
+                        .then(cardLook),
+                    content = card,
+                )
+            }
+        } else {
+            SignInPosterFan(Modifier.align(Alignment.TopCenter).statusBarsPadding())
+            // Anchored to the bottom and sized to its content, so a taller state
+            // grows over the posters.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .widthIn(max = HaloDimensions.LoginMaxWidth)
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 14.dp, top = 24.dp, bottom = 18.dp)
+                    .then(cardLook),
+                content = card,
+            )
         }
     }
 }
@@ -332,7 +404,7 @@ private fun CardMeta() {
 }
 
 @Composable
-private fun Title() {
+private fun Title(wide: Boolean) {
     Text(
         text = buildAnnotatedString {
             append("Your shows,\n")
@@ -345,8 +417,8 @@ private fun Title() {
         style = TextStyle(
             textAlign = TextAlign.Center,
             color = HaloColors.Text,
-            fontSize = 38.sp,
-            lineHeight = 39.5.sp,
+            fontSize = if (wide) 52.sp else 38.sp,
+            lineHeight = if (wide) 53.sp else 39.5.sp,
             fontWeight = FontWeight.Black,
             letterSpacing = (-1.1).sp,
         ),

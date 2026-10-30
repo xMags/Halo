@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -61,9 +62,12 @@ internal val SignInEase = CubicBezierEasing(0.2f, 0.8f, 0.2f, 1f)
  * The window's ground: a real backdrop, blurred and dimmed under a shade that
  * deepens towards the card, crossfading through [SignInArtwork.backdrops].
  * Without blur support (Android before 12) the shade alone keeps it quiet.
+ *
+ * [wide] shades as the desktop does: clear around the fan, deep behind the card
+ * at the left and at the edges, since the card sits beside the art, not under it.
  */
 @Composable
-internal fun SignInBackdrop(modifier: Modifier = Modifier) {
+internal fun SignInBackdrop(wide: Boolean, modifier: Modifier = Modifier) {
     var index by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -92,6 +96,29 @@ internal fun SignInBackdrop(modifier: Modifier = Modifier) {
                 placeholder = {},
             )
         }
+        if (wide) {
+            Box(
+                Modifier.fillMaxSize().drawBehind {
+                    drawRect(
+                        Brush.radialGradient(
+                            0f to HaloColors.Background.copy(alpha = 0.15f),
+                            0.55f to HaloColors.Background.copy(alpha = 0.7f),
+                            1f to HaloColors.Background.copy(alpha = 0.95f),
+                            center = Offset(size.width * 0.7f, size.height * 0.45f),
+                            radius = size.width * 0.75f,
+                        ),
+                    )
+                    drawRect(
+                        Brush.horizontalGradient(
+                            0f to HaloColors.Background.copy(alpha = 0.85f),
+                            0.55f to HaloColors.Background.copy(alpha = 0.2f),
+                            1f to HaloColors.Background.copy(alpha = 0.5f),
+                        ),
+                    )
+                },
+            )
+            return@Box
+        }
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
@@ -105,23 +132,72 @@ internal fun SignInBackdrop(modifier: Modifier = Modifier) {
     }
 }
 
-/** One poster's place in the 390 × 270 dp design frame. */
-private data class FanSlot(val x: Dp, val y: Dp, val width: Dp, val height: Dp, val rotation: Float, val delayMillis: Int)
-
 /**
- * Mirror-image about the centre poster (x 195): the neighbours sit 69 dp out
- * and the outer pair 133 dp, each pair at one height and one angle.
+ * One poster's place in its design frame, and how far off it starts, so it
+ * rises from behind the card wherever the card is.
  */
-private val FanSlots = listOf(
-    FanSlot(6.dp, 102.dp, 112.dp, 168.dp, -13f, 600),
-    FanSlot(70.dp, 70.dp, 112.dp, 168.dp, -6f, 480),
-    FanSlot(125.dp, 42.dp, 140.dp, 210.dp, 0f, 360),
-    FanSlot(208.dp, 70.dp, 112.dp, 168.dp, 6f, 480),
-    FanSlot(272.dp, 102.dp, 112.dp, 168.dp, 13f, 600),
+private data class FanSlot(
+    val x: Dp,
+    val y: Dp,
+    val width: Dp,
+    val height: Dp,
+    val rotation: Float,
+    val delayMillis: Int,
+    val fromX: Dp = 0.dp,
+    val fromY: Dp = 0.dp,
 )
 
-private val DesignWidth = 390.dp
-private val DesignHeight = 270.dp
+/** A fan's design frame: its posters and the ring they stand on. */
+private class FanLayout(
+    val width: Dp,
+    val height: Dp,
+    val slots: List<FanSlot>,
+    val ringX: Dp,
+    val ringY: Dp,
+    val ringWidth: Dp,
+    val ringHeight: Dp,
+)
+
+/**
+ * The phone's 390 × 270 dp frame, mirror-image about the centre poster (x 195):
+ * the neighbours sit 69 dp out and the outer pair 133 dp, each pair at one
+ * height and one angle.
+ */
+private val StackedFan = FanLayout(
+    width = 390.dp,
+    height = 270.dp,
+    slots = listOf(
+        FanSlot(6.dp, 102.dp, 112.dp, 168.dp, -13f, 600, fromY = 170.dp),
+        FanSlot(70.dp, 70.dp, 112.dp, 168.dp, -6f, 480, fromY = 170.dp),
+        FanSlot(125.dp, 42.dp, 140.dp, 210.dp, 0f, 360, fromY = 170.dp),
+        FanSlot(208.dp, 70.dp, 112.dp, 168.dp, 6f, 480, fromY = 170.dp),
+        FanSlot(272.dp, 102.dp, 112.dp, 168.dp, 13f, 600, fromY = 170.dp),
+    ),
+    ringX = 8.dp,
+    ringY = 120.dp,
+    ringWidth = 374.dp,
+    ringHeight = 118.dp,
+)
+
+/** The desktop's fan (`auth.css`), measured from where it starts on its 1060 × 600 deck. */
+private val BesideFan = FanLayout(
+    width = 660.dp,
+    height = 600.dp,
+    slots = listOf(
+        FanSlot(40.dp, 213.dp, 172.dp, 258.dp, -12f, 600, fromX = (-260).dp),
+        FanSlot(132.dp, 171.dp, 172.dp, 258.dp, -6f, 480, fromX = (-350).dp),
+        FanSlot(228.dp, 137.dp, 204.dp, 306.dp, 0f, 360, fromX = (-440).dp),
+        FanSlot(356.dp, 171.dp, 172.dp, 258.dp, 6f, 480, fromX = (-560).dp),
+        FanSlot(448.dp, 213.dp, 172.dp, 258.dp, 12f, 600, fromX = (-650).dp),
+    ),
+    ringX = 0.dp,
+    ringY = 220.dp,
+    ringWidth = 660.dp,
+    ringHeight = 200.dp,
+)
+
+/** Where [BesideFan] starts on the deck: under the card's right edge, so the outer poster tucks behind it. */
+internal val BesideFanStart = 412.dp
 
 /** Back to front: the outer pair, the neighbours, then the centre poster. */
 private val PaintOrder = listOf(0, 4, 1, 3, 2)
@@ -133,14 +209,50 @@ private val PaintOrder = listOf(0, 4, 1, 3, 2)
  */
 @Composable
 internal fun SignInPosterFan(modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier.fillMaxWidth().height(StackedFan.height), contentAlignment = Alignment.TopCenter) {
+        val scale = (maxWidth / StackedFan.width).coerceIn(0.8f, 1.25f)
+        Fan(
+            layout = StackedFan,
+            modifier = Modifier
+                .requiredSize(StackedFan.width, StackedFan.height)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    transformOrigin = TransformOrigin(0.5f, 0f)
+                },
+        )
+    }
+}
+
+/**
+ * The fan beside the card, as the desktop draws it. A deck narrower than the
+ * desktop's scales the fan down rather than letting it run off the screen.
+ */
+@Composable
+internal fun SignInFanBesideCard(deckWidth: Dp, modifier: Modifier = Modifier) {
+    val scale = ((deckWidth - BesideFanStart) / BesideFan.width).coerceAtMost(1f)
+    Fan(
+        layout = BesideFan,
+        modifier = modifier
+            .requiredSize(BesideFan.width, BesideFan.height)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                transformOrigin = TransformOrigin(0f, 0.5f)
+            },
+    )
+}
+
+@Composable
+private fun Fan(layout: FanLayout, modifier: Modifier = Modifier) {
     val ring = remember { Animatable(0f) }
-    val rises = remember { FanSlots.map { Animatable(0f) } }
+    val rises = remember { layout.slots.map { Animatable(0f) } }
     LaunchedEffect(Unit) {
         launch {
             delay(550)
             ring.animateTo(1f, tween(1500, easing = SignInEase))
         }
-        FanSlots.forEachIndexed { index, slot ->
+        layout.slots.forEachIndexed { index, slot ->
             launch {
                 delay(slot.delayMillis.toLong())
                 rises[index].animateTo(1f, tween(1100, easing = SignInEase))
@@ -148,28 +260,17 @@ internal fun SignInPosterFan(modifier: Modifier = Modifier) {
         }
     }
 
-    BoxWithConstraints(modifier.fillMaxWidth().height(DesignHeight), contentAlignment = Alignment.TopCenter) {
-        val scale = (maxWidth / DesignWidth).coerceIn(0.8f, 1.25f)
-        Box(
-            Modifier
-                .requiredSize(DesignWidth, DesignHeight)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    transformOrigin = TransformOrigin(0.5f, 0f)
-                },
-        ) {
-            HaloRing(
-                progress = ring.value,
-                modifier = Modifier.offset(8.dp, 120.dp).size(374.dp, 118.dp),
+    Box(modifier) {
+        HaloRing(
+            progress = ring.value,
+            modifier = Modifier.offset(layout.ringX, layout.ringY).size(layout.ringWidth, layout.ringHeight),
+        )
+        for (index in PaintOrder) {
+            FanPoster(
+                poster = SignInArtwork.posters[index],
+                slot = layout.slots[index],
+                progress = rises[index].value,
             )
-            for (index in PaintOrder) {
-                FanPoster(
-                    poster = SignInArtwork.posters[index],
-                    slot = FanSlots[index],
-                    progress = rises[index].value,
-                )
-            }
         }
     }
 }
@@ -209,7 +310,8 @@ private fun FanPoster(poster: SignInArtwork.Poster, slot: FanSlot, progress: Flo
             .size(slot.width, slot.height)
             .graphicsLayer {
                 // Rises out from behind the card, turning into its place in the fan.
-                translationY = (1f - progress) * 170.dp.toPx()
+                translationX = (1f - progress) * slot.fromX.toPx()
+                translationY = (1f - progress) * slot.fromY.toPx()
                 alpha = progress
                 rotationZ = slot.rotation * progress
             }
