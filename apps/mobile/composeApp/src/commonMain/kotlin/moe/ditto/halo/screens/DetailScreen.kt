@@ -469,6 +469,7 @@ private fun DetailBody(
             DetailHero(
                 art = meta.background ?: meta.poster,
                 title = meta.name,
+                logo = meta.logo,
                 facts = heroFacts(meta, isSeries, seasons),
                 rating = meta.imdbRating,
                 height = responsive.detailHeroHeight,

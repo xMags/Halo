@@ -6,7 +6,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,7 +39,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,7 +53,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
@@ -67,8 +64,6 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImagePainter
-import coil3.compose.rememberAsyncImagePainter
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
@@ -441,15 +436,10 @@ private fun WideHero(
     }
 }
 
-/**
- * The title's logo art when its addon has one, else the name. A logo that
- * fails to load falls back to the name, never a gap.
- */
+/** The title as [TitleArt], with the name in the page's display style. */
 @Composable
 private fun HeroTitle(name: String, logo: String?) {
-    val painter = logo?.let { rememberAsyncImagePainter(model = it, contentScale = ContentScale.Fit) }
-    val state = painter?.state?.collectAsState()?.value
-    val nameText = @Composable {
+    TitleArt(name, logo, logoMaxWidth = 440.dp, logoMaxHeight = 120.dp) {
         Text(
             text = name,
             color = Ink,
@@ -458,25 +448,6 @@ private fun HeroTitle(name: String, logo: String?) {
             fontWeight = FontWeight.SemiBold,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
-        )
-    }
-    if (painter == null || state is AsyncImagePainter.State.Error) {
-        nameText()
-        return
-    }
-    // Bounded both ways: addons ship anything from square marks to long wordmarks.
-    // The name stands in while the logo loads, so the title is never a gap.
-    // The logo stays composed meanwhile: it is what asks for the picture.
-    Box {
-        if (state !is AsyncImagePainter.State.Success) {
-            nameText()
-        }
-        Image(
-            painter = painter,
-            contentDescription = name,
-            contentScale = ContentScale.Fit,
-            alignment = Alignment.BottomStart,
-            modifier = Modifier.widthIn(max = 440.dp).heightIn(max = 120.dp),
         )
     }
 }
