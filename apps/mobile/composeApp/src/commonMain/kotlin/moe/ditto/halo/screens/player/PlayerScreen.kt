@@ -575,6 +575,13 @@ internal fun PlayerScreen(
         controller.onPausedChanged(state.status != PlaybackStatus.Playing)
     }
 
+    // Choosing an episode is a stop in watching, so the picture waits. Keyed to
+    // the drawer rather than to the chip, so every way of opening it pauses, and
+    // closing it leaves playback paused until the viewer resumes it.
+    LaunchedEffect(controller.episodeDrawerOpen) {
+        if (controller.episodeDrawerOpen) playback.setPaused(true)
+    }
+
     // Android reports both ends of the native PiP transition through its
     // Activity callback. Entering keeps the video bare; returning restores the
     // full-screen chrome that was deliberately hidden before the handoff.
