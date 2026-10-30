@@ -10,20 +10,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -49,9 +45,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.ditto.halo.api.Stream
 import moe.ditto.halo.api.StreamBehaviorHints
-import moe.ditto.halo.browse.MixRow
-import moe.ditto.halo.browse.ProviderRow
-import moe.ditto.halo.browse.QualityTier
 import moe.ditto.halo.browse.SourceEntry
 import moe.ditto.halo.browse.SourceFilter
 import moe.ditto.halo.browse.SourceStatus
@@ -583,128 +576,37 @@ internal fun RefusalNotice(text: String) {
     )
 }
 
-/** One rule the ranking followed, as the footer lists it. */
-internal class ChoiceRule(val name: String, val value: String)
-
 /**
- * "How this list was built", pinned under the list as the desktop sheet pins
- * it: who answered, what quality came back, and the settings that chose.
- * Closed by default; it explains, it is not the list. Open, it scrolls inside
- * a capped height so the list above never disappears behind it.
+ * The bar pinned under the list, as the desktop sheet pins it, that opens
+ * [HowBuiltSheet].
  *
  * @param insetNavigationBar true on the pushed screen, whose bottom edge is the
  *   window's; the tablet rail already clears the home indicator itself.
  */
 @Composable
 internal fun HowBuiltBar(
-    open: Boolean,
-    onToggle: () -> Unit,
-    providers: List<ProviderRow>,
-    mix: List<MixRow>,
-    rules: List<ChoiceRule>,
-    onOpenPlayback: (() -> Unit)?,
+    onOpen: () -> Unit,
     insetNavigationBar: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .background(FooterFill)
             .drawBehind { drawLine(SourcesPalette.CardEdge, Offset.Zero, Offset(size.width, 0f), 1.dp.toPx()) }
-            .then(if (insetNavigationBar) Modifier.windowInsetsPadding(WindowInsets.navigationBars) else Modifier),
+            .clickable(role = Role.Button, onClick = onOpen)
+            .then(if (insetNavigationBar) Modifier.windowInsetsPadding(WindowInsets.navigationBars) else Modifier)
+            .height(48.dp)
+            .padding(horizontal = HaloSpacing.Md),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .clickable(role = Role.Button, onClick = onToggle)
-                .padding(horizontal = HaloSpacing.Md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("How this list was built", color = HaloColors.AccentLight, fontSize = 14.5.sp, modifier = Modifier.weight(1f))
-            Icon(
-                HaloIcons.ChevronDown,
-                contentDescription = if (open) "Hide" else "Show",
-                tint = HaloColors.AccentLight,
-                modifier = Modifier.size(20.dp).rotate(if (open) 0f else 180f),
-            )
-        }
-        if (!open) return@Column
-        Column(
-            modifier = Modifier
-                .heightIn(max = 340.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(start = HaloSpacing.Md, end = HaloSpacing.Md, top = 4.dp, bottom = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(22.dp),
-        ) {
-            FooterSection("Providers") {
-                providers.forEach { row ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Box(Modifier.size(6.dp).clip(CircleShape).background(if (row.answered) SourcesPalette.StatusGreen else SourcesPalette.Faint))
-                        Text(
-                            text = row.name,
-                            color = HaloColors.Text,
-                            fontSize = 14.5.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(row.value, color = HaloColors.TextDim, fontSize = 13.5.sp)
-                    }
-                }
-            }
-            FooterSection("Quality mix") {
-                mix.forEach { row ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(row.tier.label, color = HaloColors.Text, fontSize = 14.5.sp, modifier = Modifier.width(64.dp))
-                        Box(Modifier.weight(1f).height(4.dp).clip(CircleShape).background(SourcesPalette.Track)) {
-                            Box(
-                                Modifier
-                                    .fillMaxHeight()
-                                    .fillMaxWidth(row.share)
-                                    .clip(CircleShape)
-                                    .background(if (row.tier == QualityTier.UltraHd) HaloColors.AccentLight else MixFill),
-                            )
-                        }
-                        Text(
-                            text = "${row.count}",
-                            color = HaloColors.TextDim,
-                            fontSize = 13.5.sp,
-                            modifier = Modifier.width(36.dp),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                        )
-                    }
-                }
-            }
-            FooterSection("How Halo chose") {
-                rules.forEach { rule ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Md)) {
-                        Text(rule.name, color = HaloColors.Text, fontSize = 14.5.sp, modifier = Modifier.weight(1f))
-                        Text(rule.value, color = HaloColors.Text, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                onOpenPlayback?.let { open ->
-                    Text(
-                        text = "Change these in Playback",
-                        color = HaloColors.AccentLight,
-                        fontSize = 14.5.sp,
-                        modifier = Modifier
-                            .padding(top = 4.dp)
-                            .clip(SourcesPalette.ControlShape)
-                            .clickable(role = Role.Button, onClick = open)
-                            .padding(vertical = 4.dp),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun FooterSection(title: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(title, color = HaloColors.TextDim, fontSize = 13.5.sp)
-        content()
+        Text("How this list was built", color = HaloColors.AccentLight, fontSize = 14.5.sp, modifier = Modifier.weight(1f))
+        Icon(
+            HaloIcons.ChevronDown,
+            contentDescription = "Show",
+            tint = HaloColors.AccentLight,
+            modifier = Modifier.size(20.dp).rotate(180f),
+        )
     }
 }
 
@@ -737,7 +639,6 @@ private val DashedEdge = Color.White.copy(alpha = 0.149f)
 private val BannerFill = Color(0xFF433519)
 private val BannerEdge = SourcesPalette.Caution.copy(alpha = 0.24f)
 private val FooterFill = Color(0xFF1C1E24)
-private val MixFill = HaloColors.AccentLight.copy(alpha = 0.55f)
 
 /** The colours the sources page shares between its list and its details sheet. */
 internal object SourcesPalette {
