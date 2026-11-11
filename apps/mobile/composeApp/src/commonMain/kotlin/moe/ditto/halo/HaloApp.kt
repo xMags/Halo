@@ -205,11 +205,15 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
         // it to null, which closes the outgoing one.
         val sessionGeneration by sessionController.sessionGeneration.collectAsState()
         val graph = remember(sessionGeneration, sessionState) {
+            // Copied out of the state: the delegate would be read again each
+            // time the callback runs, so an older session's client would name
+            // whichever session is current by then and end that one instead.
+            val issuedFor = sessionGeneration
             val mode = when (val state = sessionState) {
                 is SessionState.SignedIn -> SessionMode.Account(
                     serverUrl = state.serverUrl,
                     tokens = sessionController.tokenProvider,
-                    onUnauthorized = { sessionController.rejectSession(sessionGeneration) },
+                    onUnauthorized = { sessionController.rejectSession(issuedFor) },
                 )
                 SessionState.Device -> SessionMode.Device
                 SessionState.SignedOut, SessionState.Restoring -> null
