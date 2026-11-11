@@ -68,7 +68,8 @@ import moe.ditto.halo.browse.interleaveTitles
 import moe.ditto.halo.browse.ratedValue
 import moe.ditto.halo.browse.refineResults
 import moe.ditto.halo.browse.searchTopMatch
-import moe.ditto.halo.browse.withDetailsFrom
+import moe.ditto.halo.browse.asOneTitleWith
+import moe.ditto.halo.browse.withYearOutOfName
 import moe.ditto.halo.browse.savedSearchMatches
 import moe.ditto.halo.browse.suggestedSearches
 import moe.ditto.halo.browse.titleKey
@@ -170,7 +171,8 @@ internal fun WideSearchScreen(
         val interleaved = interleaveTitles(
             groups.orEmpty().map { group -> group.metas.filter(matchesFilter) },
             shownAbove,
-            merge = MetaPreview::withDetailsFrom,
+            merge = MetaPreview::asOneTitleWith,
+            tidy = MetaPreview::withYearOutOfName,
         )
         refineResults(interleaved, trimmed)
     }

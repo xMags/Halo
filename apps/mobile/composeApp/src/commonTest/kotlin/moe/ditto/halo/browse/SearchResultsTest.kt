@@ -32,7 +32,8 @@ class SearchResultsTest {
         )
 
         // The one sharing no word with the query is gone; the rest are best-named first.
-        assertEquals(listOf("5", "2", "1", "6", "4"), refineResults(merged, "doctor strange").map { it.id })
+        // "Dr. Strangelove" reads as "doctor strangelove", which begins with the query as "Doctor Stranger" does.
+        assertEquals(listOf("5", "2", "1", "4", "6"), refineResults(merged, "doctor strange").map { it.id })
     }
 
     @Test
@@ -95,6 +96,8 @@ class SearchResultsTest {
         val other = SearchResultGroup("t/movie", "Movies", listOf(named("m9", "Breaking Bad Habits")))
 
         assertEquals("s1", searchTopMatch(listOf(film, show, other), "breaking bad")?.id)
+        // The exact name leads even when a longer one's addon is listed first.
+        assertEquals("s1", searchTopMatch(listOf(other, film, show), "breaking bad")?.id)
         // A tie goes to the earlier catalog.
         assertEquals("m1", searchTopMatch(listOf(film, other), "nothing alike")?.id)
         assertNull(searchTopMatch(emptyList(), "breaking bad"))
@@ -119,12 +122,58 @@ class SearchResultsTest {
             imdbId = "tt0035767",
         )
 
-        val merged = interleaveTitles(listOf(listOf(cinemeta), listOf(tmdb)), merge = MetaPreview::withDetailsFrom)
+        val merged = interleaveTitles(listOf(listOf(cinemeta), listOf(tmdb)), merge = MetaPreview::asOneTitleWith)
 
         assertEquals(1, merged.size)
         assertEquals("tt0035767", merged[0].id)
         assertEquals("6.3", merged[0].imdbRating)
         assertEquals("https://image.tmdb.org/t/p/w500/4at.jpg", merged[0].poster)
+    }
+
+    @Test
+    fun aShortFormIsTheWordItStandsFor() {
+        assertEquals(0, nameRelevance("Dr. Strange", "doctor strange"))
+        assertEquals(0, nameRelevance("Doctor Strange", "dr strange"))
+        assertEquals(0, nameRelevance("Mr. Robot", "mister robot"))
+    }
+
+    @Test
+    fun withAScreenfulNamingEveryWordTitlesNamingOnlySomeAreLeftOut() {
+        val named = (0 until 8).map { full("tmdb:$it", "Doctor Strange $it") }
+        val loose = listOf(full("tmdb:90", "Doctor Sleep"), full("tmdb:91", "Strangers"))
+
+        assertEquals(named.map { it.id }, refineResults(named + loose, "doctor strange").map { it.id })
+        assertEquals(9, refineResults(named.drop(1) + loose, "doctor strange").size)
+    }
+
+    @Test
+    fun anEntryMadeFromAFileNameIsTheTitleItNamesAndTheImdbCopyLeads() {
+        val fromFile = MetaPreview(
+            id = "mf1706190",
+            type = "movie",
+            name = "Doctor Strange (2016)",
+            poster = "https://mediafusion.test/poster/movie/mf1706190.jpg",
+        )
+        val real = MetaPreview(
+            id = "tt1211837",
+            type = "movie",
+            name = "Doctor Strange",
+            releaseInfo = "2016",
+            poster = "https://live.metahub.space/poster/medium/tt1211837/img",
+        )
+
+        for (lists in listOf(listOf(listOf(fromFile), listOf(real)), listOf(listOf(real), listOf(fromFile)))) {
+            val merged = interleaveTitles(lists, merge = MetaPreview::asOneTitleWith, tidy = MetaPreview::withYearOutOfName)
+            assertEquals(1, merged.size)
+            assertEquals("tt1211837", merged[0].id)
+            assertEquals("Doctor Strange", merged[0].name)
+            assertEquals(real.poster, merged[0].poster)
+        }
+        val alone = fromFile.withYearOutOfName()
+        assertEquals("Doctor Strange", alone.name)
+        assertEquals("2016", alone.releaseInfo)
+        assertTrue(hasNoPoster(fromFile))
+        assertFalse(hasNoPoster(real))
     }
 
     @Test

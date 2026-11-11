@@ -44,6 +44,8 @@ fun <T : MetaCard> interleaveTitles(
     lists: List<List<T>>,
     exclude: List<MetaCard> = emptyList(),
     merge: (kept: T, other: T) -> T = { kept, _ -> kept },
+    /** Applied to each title before it is recognised, e.g. to take a year out of its name. */
+    tidy: (T) -> T = { it },
 ): List<T> {
     val excluded = exclude.flatMap(::titleIdentities).toSet()
     /** Where in `merged` each identity's title sits. */
@@ -52,12 +54,14 @@ fun <T : MetaCard> interleaveTitles(
     val longest = lists.maxOfOrNull { it.size } ?: 0
     for (rank in 0 until longest) {
         for (list in lists) {
-            val meta = list.getOrNull(rank) ?: continue
+            val meta = tidy(list.getOrNull(rank) ?: continue)
             val identities = titleIdentities(meta)
             if (identities.any { it in excluded }) continue
             val kept = identities.firstNotNullOfOrNull { placed[it] }
             if (kept != null) {
                 merged[kept] = merge(merged[kept], meta)
+                // Whatever else the second copy is known by now finds the same card.
+                identities.forEach { placed[it] = kept }
                 continue
             }
             identities.forEach { placed[it] = merged.size }
