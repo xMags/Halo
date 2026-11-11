@@ -201,8 +201,15 @@ internal fun SearchScreen(
                 // definitely chosen before, and it needs no request to appear.
                 // The addons' answers follow as one list, without those titles.
                 val owned = remember(saved) { saved.map { it.metaPreview() } }
-                val found = remember(groups, owned, trimmed) {
+                // Which of them have artwork is only known by asking; until the
+                // answers are in, the list is judged on what the addons said.
+                val candidates = remember(groups, owned, trimmed) {
                     mergedSearchResults(groups.orEmpty(), trimmed, exclude = owned)
+                }
+                var missingArt by remember(trimmed) { mutableStateOf(emptySet<String>()) }
+                LaunchedEffect(candidates) { missingArt = graph.posterProbe.missing(candidates) }
+                val found = remember(groups, owned, trimmed, missingArt) {
+                    mergedSearchResults(groups.orEmpty(), trimmed, exclude = owned, missingArt = missingArt)
                 }
                 val titles = remember(owned, found) { owned + found }
                 PosterGrid(

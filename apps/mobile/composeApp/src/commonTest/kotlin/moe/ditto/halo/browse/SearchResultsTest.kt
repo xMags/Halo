@@ -236,6 +236,19 @@ class SearchResultsTest {
     }
 
     @Test
+    fun aTitleListedUnderAProductCodeIsLeftOut() {
+        val results = listOf(
+            full("tmdb:1", "Doctor Strange"),
+            full("tmdb:2", "MIMK-180 I received a strange treatment from a doctor"),
+            full("tmdb:3", "THX 1138"),
+            full("tmdb:4", "WALL-E"),
+        )
+
+        assertEquals(listOf("tmdb:4", "tmdb:1"), refineResults(results, "e").map { it.id })
+        assertEquals(listOf("tmdb:1"), refineResults(results, "strange doctor").map { it.id })
+    }
+
+    @Test
     fun aRatingOfZeroOrNothingReadableIsNoRating() {
         assertEquals("6.8", ratedValue("6.8"))
         assertEquals("7.2", ratedValue(" 7.2 "))
