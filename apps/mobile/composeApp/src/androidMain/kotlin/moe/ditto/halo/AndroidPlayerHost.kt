@@ -25,6 +25,7 @@ import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerPort
 import moe.ditto.halo.player.PlayerTracks
 import moe.ditto.halo.player.VideoFormat
+import moe.ditto.halo.player.headerLines
 
 /**
  * Android-side owner of one libmpv core and one render [SurfaceView], kept above
@@ -228,7 +229,7 @@ internal class AndroidMpvPlayerHost(
     suspend fun load(item: MediaItem) = enqueue("load") {
         loadCount += 1
         it.setVideoEnabled(true)
-        it.load(item.url)
+        it.load(item.url, headerLines(item.headers))
     }
 
     /**

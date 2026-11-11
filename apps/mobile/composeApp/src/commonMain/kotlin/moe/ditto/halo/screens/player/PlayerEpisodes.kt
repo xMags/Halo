@@ -10,6 +10,7 @@ import moe.ditto.halo.api.MetaVideo
 import moe.ditto.halo.api.Stream
 import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.player.PlayerState
+import moe.ditto.halo.player.playbackHeaders
 import moe.ditto.halo.browse.episodeTag
 import moe.ditto.halo.browse.episodesIn
 import moe.ditto.halo.browse.seasonLabel
@@ -283,5 +284,6 @@ internal fun episodePlaybackContext(
         videoHash = hints?.videoHash,
         streamName = stream.name,
         streamTitle = stream.title ?: stream.description,
+        requestHeaders = playbackHeaders(hints?.proxyHeaders?.request),
     )
 }

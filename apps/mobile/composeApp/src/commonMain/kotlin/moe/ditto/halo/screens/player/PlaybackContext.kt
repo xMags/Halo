@@ -41,6 +41,8 @@ internal data class PlaybackContext(
     /** Raw source naming, for badge parsing only. Never displayed as given. */
     val streamName: String? = null,
     val streamTitle: String? = null,
+    /** Request headers the addon says the source needs (a Referer, an auth header). */
+    val requestHeaders: Map<String, String> = emptyMap(),
     /**
      * True when [url] is a file on this device. What it changes is not how the
      * file opens but what this screen may assume: there is no network worth

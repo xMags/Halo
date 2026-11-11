@@ -7,6 +7,8 @@ import moe.ditto.halo.downloads.DownloadEntry
 import moe.ditto.halo.downloads.DownloadFiles
 import moe.ditto.halo.downloads.DownloadMedia
 import moe.ditto.halo.downloads.sourceFingerprint
+import moe.ditto.halo.player.decodeRequestHeaders
+import moe.ditto.halo.player.encodeRequestHeaders
 import moe.ditto.halo.screens.player.EpisodeChoice
 import moe.ditto.halo.screens.player.PlaybackContext
 
@@ -162,6 +164,11 @@ data class PlayerRoute(
     val streamName: String? = null,
     val streamTitle: String? = null,
     /**
+     * Request headers the addon says the source needs, as one JSON string
+     * ([encodeRequestHeaders]): a route carries primitives only.
+     */
+    val requestHeaders: String? = null,
+    /**
      * True when [url] is a file on this device rather than a source to stream.
      *
      * Carried rather than sniffed from the URL: what changes is not how the
@@ -200,6 +207,7 @@ internal fun PlayerRoute.playbackContext(): PlaybackContext = PlaybackContext(
     videoHash = videoHash,
     streamName = streamName,
     streamTitle = streamTitle,
+    requestHeaders = decodeRequestHeaders(requestHeaders),
     isDownload = isDownload,
     localSubtitlePath = localSubtitlePath,
     localSubtitleLang = localSubtitleLang,
@@ -231,6 +239,7 @@ internal fun StreamsRoute.playerRoute(addon: AddonSource, stream: Stream, url: S
         videoHash = hints?.videoHash,
         streamName = stream.name,
         streamTitle = stream.title ?: stream.description,
+        requestHeaders = encodeRequestHeaders(hints?.proxyHeaders?.request),
     )
 }
 
@@ -333,6 +342,7 @@ internal fun PlayerRoute.withContext(context: PlaybackContext): PlayerRoute = Pl
     videoHash = context.videoHash,
     streamName = context.streamName,
     streamTitle = context.streamTitle,
+    requestHeaders = encodeRequestHeaders(context.requestHeaders),
 )
 
 /** The source picker for another episode of the title already playing. */

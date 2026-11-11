@@ -182,7 +182,12 @@ internal fun PlayerScreen(
     // the same thing being watched, which is what the slices reporting on the
     // session have to agree on.
     val item = remember(context) {
-        MediaItem(id = context.videoId, title = context.displayTitle, url = context.url)
+        MediaItem(
+            id = context.videoId,
+            title = context.displayTitle,
+            url = context.url,
+            headers = if (context.isDownload) emptyMap() else context.requestHeaders,
+        )
     }
     val externalSubtitleSelection = remember(item) { ExternalSubtitleSelectionCoordinator() }
     var externalSubtitleJob by remember(item) { mutableStateOf<Job?>(null) }
@@ -335,7 +340,7 @@ internal fun PlayerScreen(
         // is streaming from, and asking it for a number we were given is two
         // more requests that a rate-limited resolver counts against playback.
         fingerprint = withTimeoutOrNull(FingerprintTimeoutMillis) {
-            graph.videoHasher.fingerprint(context.url, context.videoSize)
+            graph.videoHasher.fingerprint(context.url, context.videoSize, context.requestHeaders)
         }
         fingerprintSettled = true
     }

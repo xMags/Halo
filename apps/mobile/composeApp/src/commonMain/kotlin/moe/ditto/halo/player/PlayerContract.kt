@@ -4,6 +4,8 @@ data class MediaItem(
     val id: String,
     val title: String,
     val url: String,
+    /** Request headers the source needs, already checked ([playbackHeaders]). Empty for a file on the device. */
+    val headers: Map<String, String> = emptyMap(),
 )
 
 data class PlayerTrack(
