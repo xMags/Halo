@@ -31,9 +31,19 @@ export interface SearchProgress {
   /** Rows so far, in addon order; a catalog's row appears as soon as it answers. */
   groups: SearchResultGroup[]
   /**
-   * The best guess for the query: the first title of the first catalog, in
-   * addon order, that answered with any. Undecided (null) while an earlier
-   * catalog is still out, so it never swaps once shown.
+   * The best guess for the query. Each catalog's own first title is a
+   * candidate. The first of them, in addon order, whose name is or begins
+   * with what was typed wins: a search for a series must not be topped by a
+   * film only because films are asked first. Failing any, the best-named
+   * candidate wins, the earlier catalog on a tie.
+   *
+   * It never swaps once shown. A candidate that begins with the query is
+   * shown as soon as no earlier catalog is still out, since no later answer
+   * changes that choice; otherwise it stays undecided (null) until every
+   * catalog has answered.
+   *
+   * Without a query it is the first title of the first catalog that answered
+   * with any, undecided while an earlier catalog is still out.
    */
   topMatch: MetaPreview | null
   /** Catalogs still out. */
@@ -56,17 +66,20 @@ export function uniqueMetas(metas: readonly MetaPreview[]): MetaPreview[] {
 }
 
 /** What the search screen shows from each catalog's state, as answers arrive. */
-export function searchProgress(targets: readonly SearchTarget[], states: readonly TargetState[]): SearchProgress {
+export function searchProgress(
+  targets: readonly SearchTarget[],
+  states: readonly TargetState[],
+  query?: string,
+): SearchProgress {
   const groups: SearchResultGroup[] = []
   const failed: SearchTarget[] = []
+  /** Each answering catalog's first title, with whether a catalog before it is still out. */
+  const candidates: Array<{ meta: MetaPreview; afterPending: boolean }> = []
   let pending = 0
-  let topMatch: MetaPreview | null = null
-  let topDecided = false
   targets.forEach((target, index) => {
     const state = states[index] ?? { status: 'pending' }
     if (state.status === 'pending') {
       pending += 1
-      topDecided = true
       return
     }
     if (state.status === 'failed') {
@@ -75,12 +88,25 @@ export function searchProgress(targets: readonly SearchTarget[], states: readonl
     }
     if (state.metas.length === 0) return
     groups.push({ key: target.key, title: target.title, addonName: target.addonName, type: target.type, metas: state.metas })
-    if (!topDecided) {
-      topMatch = state.metas[0]!
-      topDecided = true
-    }
+    candidates.push({ meta: state.metas[0]!, afterPending: pending > 0 })
   })
-  return { groups, topMatch, pending, failed, total: targets.length }
+  return { groups, topMatch: chooseTopMatch(candidates, pending, query), pending, failed, total: targets.length }
+}
+
+function chooseTopMatch(
+  candidates: ReadonlyArray<{ meta: MetaPreview; afterPending: boolean }>,
+  pending: number,
+  query: string | undefined,
+): MetaPreview | null {
+  const first = candidates[0]
+  if (!first) return null
+  if (query === undefined) return first.afterPending ? null : first.meta
+  const ranked = candidates.map((candidate) => ({ ...candidate, relevance: nameRelevance(candidate.meta.name, query) }))
+  const begins = ranked.find((candidate) => candidate.relevance <= BEGINS_WITH_QUERY)
+  if (begins) return begins.afterPending ? null : begins.meta
+  if (pending > 0) return null
+  // Array.sort is stable, so the earlier catalog keeps a tie.
+  return [...ranked].sort((a, b) => a.relevance - b.relevance)[0]!.meta
 }
 
 /** `type:id`, the identity two addons share for one title. */
@@ -96,6 +122,51 @@ function folded(text: string): string {
 /** The query's words; a title matches when its name holds every one of them. */
 function queryWords(query: string): string[] {
   return folded(query).split(/\s+/).filter(Boolean)
+}
+
+/** A name or query as plain words: folded, punctuation as spaces. */
+function plainWords(text: string): string[] {
+  return folded(text).split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+}
+
+const EXACT_NAME = 0
+/** The worst relevance that still means the name begins with what was typed. */
+const BEGINS_WITH_QUERY = 2
+
+/**
+ * How well a title's name answers the query, lower is better: the name is the
+ * query (0), starts with its words (1), starts with it mid-word, as "Doctor
+ * Stranger" does for "doctor strange" and any title does while its name is
+ * still being typed (2), holds every word of it (3), holds every word inside
+ * longer words (4), holds some of them (5), or none (6). Addons answer from
+ * descriptions and alternative titles too, which is how a search for one film
+ * returns titles that share no word with it; those belong last, not among
+ * the first results.
+ */
+export function nameRelevance(name: string, query: string): number {
+  const wanted = plainWords(query)
+  if (wanted.length === 0) return EXACT_NAME
+  const words = plainWords(name)
+  const joined = words.join(' ')
+  const phrase = wanted.join(' ')
+  if (joined === phrase) return EXACT_NAME
+  if (joined.startsWith(`${phrase} `)) return 1
+  if (joined.startsWith(phrase)) return BEGINS_WITH_QUERY
+  if (wanted.every((word) => words.includes(word))) return 3
+  if (wanted.every((word) => joined.includes(word))) return 4
+  if (wanted.some((word) => joined.includes(word))) return 5
+  return 6
+}
+
+/**
+ * The same titles, best-named for the query first. Within one level of
+ * relevance the order given stays, which is the addons' own ranking.
+ */
+export function byRelevance<T extends Pick<MetaPreview, 'name'>>(metas: readonly T[], query: string): T[] {
+  return metas
+    .map((meta) => ({ meta, relevance: nameRelevance(meta.name, query) }))
+    .sort((a, b) => a.relevance - b.relevance)
+    .map((entry) => entry.meta)
 }
 
 /**
