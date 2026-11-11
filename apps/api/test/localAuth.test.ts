@@ -179,6 +179,33 @@ describe('password change', () => {
     expect((await login(app, 'admin', 'a-new-password')).status).toBe(200)
   })
 
+  it('ends sessions started before the change and hands the caller a fresh one', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+      const made = makeLocalApp()
+      const otherDevice = await loginToken(made.app, 'admin', ADMIN_PASSWORD)
+      const thisDevice = await loginToken(made.app, 'admin', ADMIN_PASSWORD)
+
+      vi.setSystemTime(new Date('2026-01-02T00:00:00Z'))
+      const res = await made.app.request(
+        '/auth/password',
+        authed(thisDevice, { current: ADMIN_PASSWORD, next: 'a-new-password' }, 'POST'),
+      )
+      const body = (await res.json()) as { token: string; expiresAt: number }
+
+      expect((await made.app.request('/watch-state', authed(otherDevice))).status).toBe(401)
+      // A refresh cannot carry the old session past the change either.
+      expect((await made.app.request('/auth/refresh', authed(otherDevice, undefined, 'POST'))).status).toBe(401)
+      expect((await made.app.request('/watch-state', authed(body.token))).status).toBe(200)
+      // Signing in again with the new password works as usual.
+      const again = await loginToken(made.app, 'admin', 'a-new-password')
+      expect((await made.app.request('/watch-state', authed(again))).status).toBe(200)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('rejects a wrong current password', async () => {
     const res = await app.request('/auth/password', authed(token, { current: 'wrong', next: 'a-new-password' }, 'POST'))
     expect(res.status).toBe(401)

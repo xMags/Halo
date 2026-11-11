@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `sessions_valid_from` integer;
