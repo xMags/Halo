@@ -39,15 +39,15 @@ export interface SearchProgress {
   groups: SearchResultGroup[]
   /**
    * The best guess for the query. Each catalog's own first title is a
-   * candidate. The first of them, in addon order, whose name is or begins
-   * with what was typed wins: a search for a series must not be topped by a
-   * film only because films are asked first. Failing any, the best-named
-   * candidate wins, the earlier catalog on a tie.
+   * candidate, and the one whose name answers the query best wins, the
+   * earlier catalog on a tie: a search for a series must not be topped by a
+   * film only because films are asked first, nor an exact name by a longer
+   * one only because its addon is listed first.
    *
-   * It never swaps once shown. A candidate that begins with the query is
-   * shown as soon as no earlier catalog is still out, since no later answer
-   * changes that choice; otherwise it stays undecided (null) until every
-   * catalog has answered.
+   * It never swaps once shown. A candidate named exactly what was typed is
+   * shown as soon as no earlier catalog is still out, since nothing later can
+   * beat it; otherwise it stays undecided (null) until every catalog has
+   * answered.
    *
    * Without a query it is the first title of the first catalog that answered
    * with any, undecided while an earlier catalog is still out.
@@ -109,9 +109,10 @@ function chooseTopMatch(
   if (!first) return null
   if (query === undefined) return first.afterPending ? null : first.meta
   const ranked = candidates.map((candidate) => ({ ...candidate, relevance: nameRelevance(candidate.meta.name, query) }))
-  const begins = ranked.find((candidate) => candidate.relevance <= BEGINS_WITH_QUERY)
-  if (begins) return begins.afterPending ? null : begins.meta
-  if (pending > 0) return null
+  if (pending > 0) {
+    const exact = ranked.find((candidate) => candidate.relevance === EXACT_NAME)
+    return exact && !exact.afterPending ? exact.meta : null
+  }
   // Array.sort is stable, so the earlier catalog keeps a tie.
   return [...ranked].sort((a, b) => a.relevance - b.relevance)[0]!.meta
 }
@@ -126,13 +127,19 @@ export function foldedText(text: string): string {
   return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 }
 
-/** A name or query as plain words: folded, punctuation as spaces. */
+/** Short forms titles and people use for the same word; "Dr. Strange" is "Doctor Strange". */
+const SHORT_FORMS: Readonly<Record<string, string>> = { dr: 'doctor', mr: 'mister', vs: 'versus' }
+
+/** A name or query as plain words: folded, punctuation as spaces, short forms spelled out. */
 function plainWords(text: string): string[] {
-  return foldedText(text).split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+  return foldedText(text)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+    .map((word) => SHORT_FORMS[word] ?? word)
 }
 
 const EXACT_NAME = 0
-/** The worst relevance that still means the name begins with what was typed. */
+/** The relevance of a name that begins with what was typed, mid-word. */
 const BEGINS_WITH_QUERY = 2
 
 /**
@@ -175,6 +182,10 @@ export function byRelevance<T extends Pick<MetaPreview, 'name'>>(metas: readonly
 const UNRELATED_NAME = 6
 /** Results with a year and artwork that make the ones without artwork not worth showing. */
 const ENOUGH_COMPLETE = 8
+/** The relevance of a name that holds only some of the query's words. */
+const SOME_WORDS = 5
+/** Results holding every word of the query that make the ones holding only some not worth showing. */
+const ENOUGH_NAMED = 8
 
 /**
  * The merged results as the screen shows them: what was asked for first, and
@@ -193,7 +204,10 @@ const ENOUGH_COMPLETE = 8
  *   artwork after all that have both;
  * - once a search has a screenful of results with both (`ENOUGH_COMPLETE`),
  *   the ones without artwork are left out too. With fewer, they stay: a
- *   rare title's only listing may be one nobody uploaded a poster for.
+ *   rare title's only listing may be one nobody uploaded a poster for;
+ * - once a screenful holds every word of the query (`ENOUGH_NAMED`), the ones
+ *   holding only some are left out: for "doctor strange", every title with
+ *   "doctor" or "strange" somewhere in it is not what was asked.
  *
  * `missingArt` holds the keys (`type:id`) of titles whose poster is known not
  * to load, beyond what the addon's answer already admits (`hasNoPoster`).
@@ -210,7 +224,10 @@ export function refineResults(
     artless: hasNoPoster(meta) ? !IMDB_ID.test(meta.id) || missingArt.has(metaKey(meta)) : missingArt.has(metaKey(meta)),
   }))
   const someNamed = entries.some((entry) => entry.relevance < UNRELATED_NAME)
-  const named = entries.filter((entry) => !(someNamed && entry.relevance === UNRELATED_NAME))
+  const wellNamed = entries.filter((entry) => entry.relevance < SOME_WORDS).length >= ENOUGH_NAMED
+  const named = entries
+    .filter((entry) => !(someNamed && entry.relevance === UNRELATED_NAME))
+    .filter((entry) => !(wellNamed && entry.relevance === SOME_WORDS))
   const plenty = named.filter((entry) => !entry.undated && !entry.artless).length >= ENOUGH_COMPLETE
   return named
     .filter((entry) => !(entry.artless && (entry.undated || plenty)))
@@ -263,13 +280,16 @@ export function interleave(
   const longest = Math.max(0, ...lists.map((list) => list.length))
   for (let rank = 0; rank < longest; rank += 1) {
     for (const list of lists) {
-      const meta = list[rank]
-      if (!meta) continue
+      const listed = list[rank]
+      if (!listed) continue
+      const meta = withYearOutOfName(listed)
       const identities = titleIdentities(meta)
       if (identities.some((identity) => excluded.has(identity))) continue
       const kept = identities.map((identity) => placed.get(identity)).find((index) => index !== undefined)
       if (kept !== undefined) {
-        merged[kept] = withDetailsFrom(merged[kept]!, meta)
+        merged[kept] = oneTitleFrom(merged[kept]!, meta)
+        // Whatever else the second copy is known by now finds the same card.
+        identities.forEach((identity) => placed.set(identity, kept))
         continue
       }
       identities.forEach((identity) => placed.set(identity, merged.length))
@@ -277,6 +297,27 @@ export function interleave(
     }
   }
   return merged
+}
+
+/**
+ * A title whose name carries its year, as "Doctor Strange (2016)" does on
+ * entries an addon made from file names (MediaFusion's `mf…` ones): the name
+ * without it, and the year as the release line when there was none. That is
+ * what lets such an entry be recognised as the copy of a real title it is.
+ */
+function withYearOutOfName(meta: MetaPreview): MetaPreview {
+  const match = /^(.*\S)\s*\((\d{4})\)$/.exec(meta.name)
+  if (!match) return meta
+  return { ...meta, name: match[1]!, releaseInfo: releaseYear(meta.releaseInfo) ? meta.releaseInfo : match[2]! }
+}
+
+/**
+ * Two copies of one title as one. The better-ranked copy leads, unless only
+ * the other is named by its IMDb id: that is the id every addon can find
+ * streams and details by, where an addon's own id works with that addon alone.
+ */
+function oneTitleFrom(kept: MetaPreview, other: MetaPreview): MetaPreview {
+  return IMDB_ID.test(kept.id) || !IMDB_ID.test(other.id) ? withDetailsFrom(kept, other) : withDetailsFrom(other, kept)
 }
 
 /**
@@ -296,15 +337,24 @@ function withDetailsFrom(kept: MetaPreview, other: MetaPreview): MetaPreview {
   }
 }
 
-/** Stremio's own poster host, which a card tries by IMDb id anyway. */
+/** Stremio's own poster hosts, which a card tries by IMDb id anyway. */
 function isMetahubPoster(poster: string | undefined): boolean {
-  return poster !== undefined && poster.startsWith('https://images.metahub.space/')
+  return poster !== undefined && /^https:\/\/[a-z0-9-]+\.metahub\.space\//.test(poster)
 }
+
+/** The TMDB addon's link built from a missing image: `…/t/p/w500null`. */
+const TMDB_MISSING_IMAGE = /\/t\/p\/[a-z0-9]+null$/i
+/**
+ * MediaFusion's poster for one of its own `mf…` entries: not artwork but a
+ * card it draws with the entry's name on it, since it has no picture for a
+ * title it only knows from a file name.
+ */
+const GENERATED_POSTER = /\/poster\/[a-z]+\/mf\d+\.[a-z]+$/i
 
 /**
  * Whether an addon's answer already says the title has no poster: none sent,
- * or the TMDB addon's link built from a missing image, `…/t/p/w500null`.
+ * a link built from a missing image, or a card the addon draws in its place.
  */
 export function hasNoPoster(meta: Pick<MetaPreview, 'poster'>): boolean {
-  return !meta.poster || /\/t\/p\/[a-z0-9]+null$/i.test(meta.poster)
+  return !meta.poster || TMDB_MISSING_IMAGE.test(meta.poster) || GENERATED_POSTER.test(meta.poster)
 }

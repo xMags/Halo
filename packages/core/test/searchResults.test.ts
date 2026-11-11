@@ -133,7 +133,8 @@ test('names that answer the query come first, each level keeping the order given
   ]
   assert.deepEqual(
     byRelevance(merged, 'doctor strange').map((meta) => meta.id),
-    ['5', '2', '1', '6', '4', '3'],
+    // "Dr. Strangelove" reads as "doctor strangelove", which begins with the query as "Doctor Stranger" does.
+    ['5', '2', '1', '4', '6', '3'],
   )
 })
 
@@ -151,11 +152,12 @@ test('with a query, the top match is the best-named first title, not the first c
   const done = (meta: MetaPreview) => ({ status: 'done' as const, metas: [meta] })
   // All answered: the series named exactly what was typed wins over the film asked first.
   assert.equal(searchProgress(targets, [done(film), done(show), done(other)], 'breaking bad').topMatch?.id, 's1')
-  // Still waiting on a later catalog: a name that begins with the query is shown already, and stays...
+  // Still waiting on a later catalog: a title named exactly what was typed is shown already, and stays...
   assert.equal(searchProgress(targets, [done(film), done(show), { status: 'pending' }], 'breaking bad').topMatch?.id, 's1')
-  // ...also while its name is only half typed...
-  assert.equal(searchProgress(targets, [done(show), { status: 'pending' }, { status: 'pending' }], 'breaking b').topMatch?.id, 's1')
-  // ...but not while an earlier catalog is out, which could still name a better one.
+  // ...but one that only begins with it waits, since a later catalog may hold the exact name...
+  assert.equal(searchProgress(targets, [done(other), { status: 'pending' }, { status: 'pending' }], 'breaking bad').topMatch, null)
+  assert.equal(searchProgress(targets, [done(other), done(film), done(show)], 'breaking bad').topMatch?.id, 's1')
+  // ...and nothing is shown while an earlier catalog is out, which could still name a better one.
   assert.equal(searchProgress(targets, [{ status: 'pending' }, done(show), done(other)], 'breaking bad').topMatch, null)
   assert.equal(searchProgress(targets, [done(film), { status: 'pending' }, done(other)], 'breaking bad').topMatch, null)
   // A name that merely holds the words waits for everyone.
@@ -243,4 +245,55 @@ test('with a screenful of complete results, the ones without artwork are left ou
   assert.equal(refineResults([...complete, artless], 'doctor strange').some((meta) => meta.id === 'tmdb:99'), false)
   // One short of a screenful: the artless one is still worth listing, last.
   assert.equal(refineResults([...complete.slice(1), artless], 'doctor strange').at(-1)?.id, 'tmdb:99')
+})
+
+test('a short form is the word it stands for', () => {
+  assert.equal(nameRelevance('Dr. Strange', 'doctor strange'), 0)
+  assert.equal(nameRelevance('Doctor Strange', 'dr strange'), 0)
+  assert.equal(nameRelevance('Mr. Robot', 'mister robot'), 0)
+})
+
+test('with a screenful naming every word, titles naming only some are left out', () => {
+  const named = Array.from({ length: 8 }, (_, index) => full(`tmdb:${index}`, `Doctor Strange ${index}`))
+  const loose = [full('tmdb:90', 'Doctor Sleep'), full('tmdb:91', 'Strangers')]
+  assert.deepEqual(
+    refineResults([...named, ...loose], 'doctor strange').map((meta) => meta.id),
+    named.map((meta) => meta.id),
+  )
+  // One short of a screenful, the loose ones are still worth listing, after the rest.
+  assert.equal(refineResults([...named.slice(1), ...loose], 'doctor strange').length, 9)
+})
+
+test('an entry made from a file name is the title it names, and the IMDb copy leads', () => {
+  const fromFile: MetaPreview = {
+    id: 'mf1706190',
+    type: 'movie',
+    name: 'Doctor Strange (2016)',
+    poster: 'https://mediafusion.test/poster/movie/mf1706190.jpg',
+  }
+  const real: MetaPreview = {
+    id: 'tt1211837',
+    type: 'movie',
+    name: 'Doctor Strange',
+    releaseInfo: '2016',
+    poster: 'https://live.metahub.space/poster/medium/tt1211837/img',
+  }
+  // Whichever is ranked first, one card remains, under the IMDb id and without the drawn poster.
+  for (const lists of [[[fromFile], [real]], [[real], [fromFile]]]) {
+    const merged = interleave(lists)
+    assert.equal(merged.length, 1)
+    assert.equal(merged[0]!.id, 'tt1211837')
+    assert.equal(merged[0]!.name, 'Doctor Strange')
+    assert.equal(merged[0]!.poster, real.poster)
+  }
+  // With no real copy to fold into, it keeps its place with the year out of its name.
+  const alone = interleave([[fromFile]])[0]!
+  assert.equal(alone.name, 'Doctor Strange')
+  assert.equal(alone.releaseInfo, '2016')
+})
+
+test('a poster an addon draws for its own entry is no poster', () => {
+  assert.equal(hasNoPoster({ poster: 'https://mediafusion.test/poster/movie/mf1706190.jpg' }), true)
+  assert.equal(hasNoPoster({ poster: 'https://mediafusion.test/poster/series/mf12.png' }), true)
+  assert.equal(hasNoPoster({ poster: 'https://live.metahub.space/poster/medium/tt1211837/img' }), false)
 })
