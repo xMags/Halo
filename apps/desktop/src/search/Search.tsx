@@ -1,13 +1,15 @@
 import type { MetaPreview } from '@halo/core'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArtImage } from '../components/ArtImage'
-import { metahubPosterUrl } from '../components/artworkUrl'
+import { cardArtworkUrl, metahubPosterUrl } from '../components/artworkUrl'
 import { FluentIcon } from '../components/FluentIcon'
 import { PosterCard } from '../components/PosterCard'
 import { SearchBox } from '../components/SearchBox'
 import { SectionHeader } from '../components/SectionHeader'
 import { ShelfSkeleton, TopMatchSkeleton } from '../components/Skeleton'
 import { ratingLabel } from '../format'
+import { movieVideoId, playableFromPreview } from '../browse/playableVideo'
+import { useTitleMenu } from '../browse/titleMenu'
 import { useNav } from '../nav'
 import { browsableCatalogs, useCatalog, useEffectiveAddons, useLibrary, useSearch } from '../queries'
 import { setSearchQuery, useSearchQuery } from './searchQuery'
@@ -19,7 +21,7 @@ import {
   type SearchHistoryEntry,
 } from './searchHistory'
 import { useMissingArt } from './missingArt'
-import { interleave, libraryMatches, metaKey, refineResults, suggestedSearches } from './searchResults'
+import { hasNoPoster, interleave, libraryMatches, metaKey, refineResults, suggestedSearches } from './searchResults'
 
 /** Short enough to feel live while typing, long enough not to ask every addon per keystroke. */
 const DEBOUNCE_MS = 250
@@ -115,6 +117,12 @@ export function Search() {
     const lists = groups.map((group) => group.metas.filter((meta) => !typeFilter || meta.type === typeFilter))
     return interleave(lists, shownAbove)
   }, [groups, fromLibrary, topMatch, typeFilter])
+  // The top match as the card shows it: the same title, with what the other
+  // addons' copies of it know (a rating, a synopsis, a poster that loads).
+  const topMatchShown = useMemo(
+    () => (topMatch ? (interleave([[topMatch], ...groups.map((group) => group.metas)])[0] ?? topMatch) : null),
+    [topMatch, groups],
+  )
   const missingArt = useMissingArt(merged)
   // Then what was asked for comes first, and what nobody asked for goes.
   const results = useMemo(() => refineResults(merged, query, missingArt), [merged, query, missingArt])
@@ -247,15 +255,13 @@ export function Search() {
         </div>
       )}
 
-      {active && topMatch && (
+      {active && topMatchShown && (
         <div className="search-section">
-          <div className="kicker">TOP MATCH</div>
-          <TopMatchCard meta={topMatch} onOpen={() => recordTerm(query)} />
+          <TopMatchCard meta={topMatchShown} onOpen={() => recordTerm(query)} />
         </div>
       )}
       {waiting && !topMatch && (
         <div className="search-section">
-          <div className="kicker">TOP MATCH</div>
           <TopMatchSkeleton />
         </div>
       )}
@@ -323,40 +329,86 @@ export function Search() {
 }
 
 /**
- * The single best guess for the query, given the room to justify itself: art,
- * a mono fact line and a blurb.
+ * The single best guess for the query, drawn as Home draws its featured
+ * title: its art across the card, its poster at the size of the cards below,
+ * and the two things a viewer does next. Clicking anywhere else on it opens
+ * the title page, as a poster would.
  */
 function TopMatchCard({ meta, onOpen }: { meta: MetaPreview; onOpen: () => void }) {
-  const { push } = useNav()
+  const { push, openSheet } = useNav()
+  const titleMenu = useTitleMenu()
   const { data: library } = useLibrary()
-  const inLibrary = (library ?? []).some((i) => i.id === `${meta.type}:${meta.id}` && !i.removedAt)
+  const itemId = `${meta.type}:${meta.id}`
+  const inLibrary = (library ?? []).some((i) => i.id === itemId && !i.removedAt)
+  const isSeries = meta.type === 'series'
+  const rating = ratingLabel(meta.imdbRating)
+  // The backdrop when the addon sent one; otherwise the poster, softened.
+  const poster = hasNoPoster(meta) ? metahubPosterUrl(meta.id) : meta.poster
+  const backdrop = meta.background ?? poster
 
-  const facts = [
-    meta.type === 'series' ? 'SERIES' : 'MOVIE',
-    meta.releaseInfo,
-    ratingLabel(meta.imdbRating),
-    inLibrary ? 'IN LIBRARY' : null,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  const openDetail = () => {
+    onOpen()
+    push({ name: 'detail', type: meta.type, id: meta.id })
+  }
+  // Home's primary action: a series needs an episode chosen, and the title
+  // page is the picker; a film goes straight to its sources.
+  const play = () => {
+    if (isSeries || !playableFromPreview(meta)) return openDetail()
+    onOpen()
+    openSheet({
+      type: meta.type,
+      videoId: movieVideoId(meta),
+      itemId,
+      metaId: meta.id,
+      title: meta.name,
+      showName: meta.name,
+      ...(meta.poster ? { poster: meta.poster } : {}),
+    })
+  }
 
   return (
-    <button
-      type="button"
+    <div
       className="top-match"
-      onClick={() => {
-        onOpen()
-        push({ name: 'detail', type: meta.type, id: meta.id })
-      }}
+      onClick={openDetail}
+      onContextMenu={(event) => titleMenu.forPoster(event, meta, onOpen)}
     >
-      <div className="art top-match-art">
-        <ArtImage src={meta.poster} fallback={metahubPosterUrl(meta.id)} label={meta.name} />
+      <div className="top-match-media" aria-hidden>
+        <div className="art hero-placeholder" />
+        {backdrop && (
+          <div
+            className={`top-match-backdrop ${meta.background ? '' : 'top-match-backdrop-soft'}`}
+            style={{ backgroundImage: `url(${cardArtworkUrl(backdrop)})` }}
+          />
+        )}
+        <div className="top-match-scrim" />
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, paddingTop: 2, minWidth: 0 }}>
+      <div className="art top-match-poster">
+        <ArtImage src={hasNoPoster(meta) ? undefined : meta.poster} fallback={metahubPosterUrl(meta.id)} label={meta.name} />
+      </div>
+      <div className="top-match-body">
+        <div className="kicker kicker-accent">TOP MATCH</div>
         <div className="top-match-title ellipsis">{meta.name}</div>
-        <div className="mono">{facts}</div>
+        <div className="hero-facts">
+          {rating && <span className="hero-rating">{rating}</span>}
+          {rating && <span className="dot-sep">·</span>}
+          <span className="top-match-kind">{isSeries ? 'SERIES' : 'MOVIE'}</span>
+          {meta.releaseInfo && <span className="dot-sep">·</span>}
+          {meta.releaseInfo && <span>{meta.releaseInfo}</span>}
+          {inLibrary && <span className="dot-sep">·</span>}
+          {inLibrary && <span>In library</span>}
+        </div>
         {meta.description && <div className="top-match-blurb">{meta.description}</div>}
+        {/* The buttons act for themselves; a press on one is not a press on the card. */}
+        <div className="hero-actions" onClick={(event) => event.stopPropagation()}>
+          <button type="button" className="btn-accent h36" onClick={play}>
+            <FluentIcon glyph="play" size={14} />
+            <span>{isSeries ? 'Choose episode' : 'Play'}</span>
+          </button>
+          <button type="button" className="btn h36" onClick={openDetail}>
+            Details
+          </button>
+        </div>
       </div>
-    </button>
+    </div>
   )
 }

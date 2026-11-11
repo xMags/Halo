@@ -164,18 +164,19 @@ export function DetailSkeleton() {
 export function TopMatchSkeleton() {
   return (
     <div className="top-match top-match-skeleton" aria-hidden>
-      <div className="art top-match-art skeleton" />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4, minWidth: 0 }}>
-        <div className="skeleton skeleton-text" style={{ width: 70, height: 12 }} />
+      <div className="art top-match-poster skeleton" />
+      <div className="top-match-body">
+        <div className="skeleton skeleton-text" style={{ width: 84, height: 12 }} />
         <div
           className="skeleton skeleton-text"
-          style={{ width: '65%', maxWidth: 260, height: 22, borderRadius: 4 }}
+          style={{ width: '60%', maxWidth: 320, height: 30, borderRadius: 4 }}
         />
-        <div className="skeleton skeleton-text" style={{ width: 180, height: 13 }} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-          <div className="skeleton skeleton-text" style={{ width: '90%', height: 13 }} />
-          <div className="skeleton skeleton-text" style={{ width: '60%', height: 13 }} />
+        <div className="skeleton skeleton-text" style={{ width: 200, height: 14 }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 4 }}>
+          <div className="skeleton skeleton-text" style={{ width: '92%', height: 14 }} />
+          <div className="skeleton skeleton-text" style={{ width: '70%', height: 14 }} />
         </div>
+        <div className="skeleton" style={{ width: 210, height: 36, borderRadius: 4, marginTop: 10 }} />
       </div>
     </div>
   )
