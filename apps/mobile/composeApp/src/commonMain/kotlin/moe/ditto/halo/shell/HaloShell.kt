@@ -221,6 +221,7 @@ internal fun HaloShell(
                     SearchScreen(
                         graph = graph,
                         onOpenDetail = { navController.openDetail(it) },
+                        onPlayMovie = { meta -> navController.navigate(movieSources(meta)) },
                         onClose = { navController.popBackStack() },
                     )
                 }

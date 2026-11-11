@@ -223,6 +223,17 @@ fun mergedSearchResults(
     missingArt,
 )
 
+/**
+ * The top match as its card shows it: the same title, with what the other
+ * catalogs' copies of it know (a rating, a synopsis, a poster that loads).
+ */
+fun topMatchWithDetails(topMatch: MetaPreview, groups: List<SearchResultGroup>): MetaPreview =
+    interleaveTitles(
+        listOf(listOf(topMatch)) + groups.map { it.metas },
+        merge = MetaPreview::asOneTitleWith,
+        tidy = MetaPreview::withYearOutOfName,
+    ).firstOrNull() ?: topMatch
+
 private val YearInName = Regex("""^(.*\S)\s*\((\d{4})\)$""")
 
 /**

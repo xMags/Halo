@@ -68,6 +68,9 @@ import moe.ditto.halo.browse.interleaveTitles
 import moe.ditto.halo.browse.ratedValue
 import moe.ditto.halo.browse.refineResults
 import moe.ditto.halo.browse.searchTopMatch
+import moe.ditto.halo.browse.topMatchWithDetails
+import moe.ditto.halo.api.MetaCard
+import moe.ditto.halo.api.playableFromPreview
 import moe.ditto.halo.browse.asOneTitleWith
 import moe.ditto.halo.browse.withYearOutOfName
 import moe.ditto.halo.browse.savedSearchMatches
@@ -114,6 +117,8 @@ private val PillShape = RoundedCornerShape(16.dp)
 internal fun WideSearchScreen(
     graph: SessionGraph,
     onOpenDetail: (MetaRef) -> Unit,
+    /** The top match's Play: a film goes straight to its sources. */
+    onPlayMovie: (MetaCard) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -159,7 +164,7 @@ internal fun WideSearchScreen(
     // The best guess for the query itself (see searchTopMatch), picked before
     // the kind filter so the filter does not move it.
     val topMatch = remember(groups, trimmed, searching) {
-        if (searching) groups?.let { searchTopMatch(it, trimmed) } else null
+        if (searching) groups?.let { answered -> searchTopMatch(answered, trimmed)?.let { topMatchWithDetails(it, answered) } } else null
     }
     val fromLibrary = remember(library.value, trimmed, filter) {
         if (!searching) emptyList() else savedSearchMatches(library.value, trimmed).map { it.metaPreview() }.filter(matchesFilter)
@@ -293,6 +298,16 @@ internal fun WideSearchScreen(
                         anyAnswers = groups.orEmpty().isNotEmpty(),
                         onShowAll = { filter = MediaTypeFilter.All },
                         onOpen = open,
+                        onPlay = { meta ->
+                            // A TMDB-listed film names its playable id only in its
+                            // full meta, so its title page is the way in.
+                            if (meta.type == "movie" && meta.playableFromPreview) {
+                                if (searching) record(trimmed)
+                                onPlayMovie(meta)
+                            } else {
+                                open(meta)
+                            }
+                        },
                     )
                 }
             }
@@ -413,10 +428,18 @@ private fun LazyGridScope.duringSearch(
     anyAnswers: Boolean,
     onShowAll: () -> Unit,
     onOpen: (MetaPreview) -> Unit,
+    onPlay: (MetaPreview) -> Unit,
 ) {
     topMatch?.let { meta ->
-        fullWidth("top-head") { Kicker("TOP MATCH", Modifier.padding(top = HaloSpacing.Md)) }
-        fullWidth("top") { TopMatchCard(meta, topMatchInLibrary, onClick = { onOpen(meta) }) }
+        fullWidth("top") {
+            SearchTopMatchCard(
+                meta = meta,
+                inLibrary = topMatchInLibrary,
+                onOpen = { onOpen(meta) },
+                onPlay = { onPlay(meta) },
+                modifier = Modifier.padding(top = HaloSpacing.Md).widthIn(max = 760.dp),
+            )
+        }
     }
     if (fromLibrary.isNotEmpty()) {
         fullWidth("library-head") { Kicker("IN YOUR LIBRARY", Modifier.padding(top = HaloSpacing.Md)) }
@@ -530,43 +553,6 @@ private fun RecentPill(term: String, onRunAgain: () -> Unit, onRemove: () -> Uni
             contentAlignment = Alignment.Center,
         ) {
             Icon(HaloIcons.Trash, contentDescription = "Remove $term", tint = HaloColors.TextDim, modifier = Modifier.size(12.dp))
-        }
-    }
-}
-
-/** The best guess for the query, compact: enough to recognise it, not enough to push the results down. */
-@Composable
-private fun TopMatchCard(meta: MetaPreview, inLibrary: Boolean, onClick: () -> Unit) {
-    val menus = LocalTitleMenus.current
-    val facts = listOfNotNull(
-        if (meta.type == "series") "SERIES" else "MOVIE",
-        meta.releaseInfo?.takeIf { it.isNotBlank() },
-        ratedValue(meta.imdbRating)?.let { "★ $it" },
-        if (inLibrary) "IN LIBRARY" else null,
-    ).joinToString(" · ")
-    Row(
-        Modifier
-            .widthIn(max = 720.dp)
-            .fillMaxWidth()
-            .clip(CardShape)
-            .background(HaloColors.Glass)
-            .border(1.dp, HaloColors.GlassBorder, CardShape)
-            .longPressClickable(onClick = onClick, onLongPress = menus?.let { { it.openPoster(meta) } })
-            .padding(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        HaloAsyncImage(
-            url = meta.poster,
-            contentDescription = null,
-            modifier = Modifier.width(60.dp).height(90.dp).clip(RoundedCornerShape(4.dp)),
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(meta.name, color = HaloColors.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(facts, style = monoStyle(12.sp, FontWeight.Normal, HaloColors.TextDim), maxLines = 1)
-            meta.description?.takeIf { it.isNotBlank() }?.let {
-                Text(it, color = HaloColors.TextMeta, fontSize = 14.sp, lineHeight = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
         }
     }
 }
