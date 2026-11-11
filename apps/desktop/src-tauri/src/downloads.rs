@@ -12,7 +12,7 @@ mod relocate;
 mod segmented;
 mod segments;
 
-use crate::secure_fs::{atomic_replace, os_error_code, protect, unprotect};
+use crate::secure_fs::{atomic_replace, os_error_code, protect, unprotect, write_durably};
 use containment::{is_within_approved_root, resolve_roots, same_path, strip_verbatim};
 use futures_util::StreamExt;
 use naming::{download_file_name, is_safe_file_name, safe_language, subtitle_extension};
@@ -36,6 +36,10 @@ use tokio::sync::{Mutex, Notify};
 const CHANGED_EVENT: &str = "download-changed";
 const REMOVED_EVENT: &str = "download-removed";
 const INDEX_FILE: &str = "downloads-index.json";
+/// How often launch tries an index another program is holding, and the wait
+/// between tries.
+const INDEX_READ_ATTEMPTS: u32 = 5;
+const INDEX_READ_RETRY: Duration = Duration::from_millis(150);
 const CONFIG_FILE: &str = "downloads-config.json";
 const DOWNLOAD_DIR: &str = "downloads";
 const VAULT_DIR: &str = "download-requests";
@@ -571,14 +575,19 @@ pub struct DownloadManager {
 }
 
 impl DownloadManager {
-    pub fn new(app: AppHandle, data_dir: PathBuf) -> Result<Self, String> {
+    /// `report` hears what launch had to work around, for the crash log.
+    pub fn new(
+        app: AppHandle,
+        data_dir: PathBuf,
+        report: &dyn Fn(&str),
+    ) -> Result<Self, String> {
         fs::create_dir_all(&data_dir).map_err(|e| format!("download state unavailable: {e}"))?;
         let index_path = data_dir.join(INDEX_FILE);
         let config_path = data_dir.join(CONFIG_FILE);
         let vault_dir = data_dir.join(VAULT_DIR);
         fs::create_dir_all(&vault_dir).map_err(|e| format!("download vault unavailable: {e}"))?;
         let default_directory = data_dir.join(DOWNLOAD_DIR);
-        let mut entries = load_index(&index_path)?;
+        let mut entries = load_index_for_launch(&index_path, report)?;
         let config = load_config(&config_path).unwrap_or_default();
         let configured = config
             .directory
@@ -632,7 +641,11 @@ impl DownloadManager {
             job_released: Notify::new(),
             preparing: std::sync::Mutex::new(HashSet::new()),
         };
-        manager.persist_blocking()?;
+        // Not worth refusing to start over: the index on disk is still the
+        // one just loaded, and the next change writes it again.
+        if let Err(error) = manager.persist_blocking() {
+            report(&format!("download index could not be saved at launch: {error}"));
+        }
         // The roots are re-seeded next launch if this write fails, so it does
         // not stop the app from starting.
         let _ = write_json(
@@ -1007,6 +1020,19 @@ impl DownloadManager {
             }
             entry.clone()
         };
+        // Tombstoned before the worker is asked to stop, not after: a transfer
+        // in its last moments (flushing the file, fetching the subtitle) still
+        // finishes successfully, and `run` must see by then that this record
+        // is being removed, or it would delete the copy this one was replacing
+        // just before this record's own files are deleted too.
+        {
+            let mut inner = self.inner.lock().await;
+            if let Some(entry) = inner.entries.get_mut(job_id) {
+                entry.pending_deletion = true;
+                entry.updated_at = now_ms();
+            }
+        }
+        let _ = self.persist().await;
         self.stop_job(job_id).await;
         let result = self.discard(&record, None).await;
         self.emit_removed(job_id);
@@ -1227,42 +1253,75 @@ impl DownloadManager {
     }
 
     /// Marks finished downloads whose file has gone from disk, so the list
-    /// offers a new source instead of a Play button that cannot work.
+    /// offers a new source instead of a Play button that cannot work, and
+    /// takes the mark off again when the file is back. A download whose whole
+    /// folder is unreachable (an unplugged or sleeping drive, a share that is
+    /// offline) is left as it is: nothing says its file was deleted.
     async fn reconcile_missing_files(&self) {
-        let candidates: Vec<(String, PathBuf)> = {
+        struct Candidate {
+            job_id: String,
+            root: PathBuf,
+            target: PathBuf,
+            total_bytes: u64,
+            marked_missing: bool,
+        }
+        let candidates: Vec<Candidate> = {
             let inner = self.inner.lock().await;
             inner
                 .entries
                 .values()
-                .filter(|entry| entry.status == DownloadStatus::Done && !entry.pending_deletion)
-                .map(|entry| (entry.job_id.clone(), entry.target()))
+                .filter(|entry| !entry.pending_deletion)
+                .filter_map(|entry| {
+                    let marked_missing = is_marked_missing(entry);
+                    (entry.status == DownloadStatus::Done || marked_missing).then(|| Candidate {
+                        job_id: entry.job_id.clone(),
+                        root: PathBuf::from(&entry.root_path),
+                        target: entry.target(),
+                        total_bytes: entry.total_bytes,
+                        marked_missing,
+                    })
+                })
                 .collect()
         };
-        let missing: Vec<String> = candidates
+        // Job id, and whether the file is there (true) or gone (false).
+        let changed: Vec<(String, bool)> = candidates
             .into_iter()
-            .filter(|(_, target)| !target.is_file())
-            .map(|(job_id, _)| job_id)
+            .filter_map(|candidate| {
+                let presence = file_presence(&candidate.root, &candidate.target);
+                match (candidate.marked_missing, presence) {
+                    (false, FilePresence::Missing) => Some((candidate.job_id, false)),
+                    (true, FilePresence::Present { bytes }) if bytes == candidate.total_bytes => {
+                        Some((candidate.job_id, true))
+                    }
+                    _ => None,
+                }
+            })
             .collect();
-        if missing.is_empty() {
+        if changed.is_empty() {
             return;
         }
         let views: Vec<DownloadView> = {
             let mut inner = self.inner.lock().await;
-            for job_id in &missing {
-                if let Some(entry) = inner
-                    .entries
-                    .get_mut(job_id)
-                    .filter(|entry| entry.status == DownloadStatus::Done)
-                {
+            for (job_id, present) in &changed {
+                let Some(entry) = inner.entries.get_mut(job_id) else {
+                    continue;
+                };
+                // Re-checked under the lock: the record may have moved on
+                // while the disk was being read.
+                if *present && is_marked_missing(entry) {
+                    entry.status = DownloadStatus::Done;
+                    entry.failure = None;
+                    entry.updated_at = now_ms();
+                } else if !*present && entry.status == DownloadStatus::Done {
                     entry.status = DownloadStatus::Failed;
                     entry.failure = Some(DownloadFailureCode::MissingFile);
                     entry.bytes_per_second = 0;
                     entry.updated_at = now_ms();
                 }
             }
-            missing
+            changed
                 .iter()
-                .filter_map(|id| inner.visible_view(id))
+                .filter_map(|(id, _)| inner.visible_view(id))
                 .collect()
         };
         let _ = self.persist().await;
@@ -1329,6 +1388,11 @@ impl DownloadManager {
                     .as_ref()
                     .map(|backup| backup.job_id.clone())
             });
+            // Removed while it was finishing: the copy it was replacing stays.
+            let removing = inner
+                .entries
+                .get(&job_id)
+                .is_some_and(|entry| entry.pending_deletion);
             if let Some(entry) = inner.entries.get_mut(&job_id) {
                 // A pause, resume or account switch while the transfer wound
                 // down already wrote the state the user asked for.
@@ -1362,7 +1426,7 @@ impl DownloadManager {
                     }
                 }
             }
-            if result.is_ok() {
+            if result.is_ok() && !removing {
                 if let Some(backup) = backup_id.and_then(|id| inner.entries.get_mut(&id)) {
                     backup.pending_deletion = true;
                     backup.status = DownloadStatus::Paused;
@@ -1697,10 +1761,7 @@ impl DownloadManager {
                 os_error_code(&e)
             )
         })?;
-        let path = request_path(&self.vault_dir, job_id);
-        let tmp = path.with_extension("tmp");
-        fs::write(&tmp, encrypted).map_err(|e| e.to_string())?;
-        atomic_replace(&tmp, &path)
+        write_durably(&request_path(&self.vault_dir, job_id), &encrypted)
     }
     fn read_request(&self, job_id: &str) -> Result<ProtectedRequest, String> {
         let raw = fs::read(request_path(&self.vault_dir, job_id)).map_err(|e| e.to_string())?;
@@ -1813,7 +1874,7 @@ async fn open_get(
 
 /// Download state lives in local app data, beside the webview's own data.
 /// Earlier builds kept it in roaming app data, so that is moved over first.
-pub fn load_manager(app: &AppHandle) -> Result<DownloadManager, String> {
+pub fn load_manager(app: &AppHandle, report: &dyn Fn(&str)) -> Result<DownloadManager, String> {
     let data_dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
     let roaming = app.path().app_data_dir().map_err(|e| e.to_string())?;
     if let Err(error) = relocate::move_roaming_state(&roaming, &data_dir) {
@@ -1823,9 +1884,9 @@ pub fn load_manager(app: &AppHandle) -> Result<DownloadManager, String> {
             "download state stays in {} for now: {error}",
             roaming.display()
         );
-        return DownloadManager::new(app.clone(), roaming);
+        return DownloadManager::new(app.clone(), roaming, report);
     }
-    DownloadManager::new(app.clone(), data_dir)
+    DownloadManager::new(app.clone(), data_dir, report)
 }
 
 fn now_ms() -> u64 {
@@ -1834,6 +1895,36 @@ fn now_ms() -> u64 {
         .unwrap_or_default()
         .as_millis() as u64
 }
+/// What the disk says about a finished download's file.
+#[derive(Debug, PartialEq, Eq)]
+enum FilePresence {
+    Present { bytes: u64 },
+    /// The folder is there and the file is not: it was deleted or moved.
+    Missing,
+    /// The folder itself cannot be reached, so nothing is known about the file.
+    FolderUnavailable,
+}
+
+fn file_presence(root: &Path, target: &Path) -> FilePresence {
+    if let Ok(metadata) = fs::metadata(target) {
+        if metadata.is_file() {
+            return FilePresence::Present {
+                bytes: metadata.len(),
+            };
+        }
+    }
+    if root.is_dir() {
+        FilePresence::Missing
+    } else {
+        FilePresence::FolderUnavailable
+    }
+}
+
+fn is_marked_missing(entry: &DownloadRecord) -> bool {
+    entry.status == DownloadStatus::Failed
+        && entry.failure == Some(DownloadFailureCode::MissingFile)
+}
+
 fn recovered_status(status: &DownloadStatus, explicit_pause: bool) -> DownloadStatus {
     match status {
         DownloadStatus::Downloading if explicit_pause => DownloadStatus::Paused,
@@ -2242,21 +2333,69 @@ fn available_bytes(path: &Path) -> Option<u64> {
     }
 }
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
-    let tmp = path.with_extension("tmp");
     let raw = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
-    fs::write(&tmp, raw).map_err(|e| e.to_string())?;
-    atomic_replace(&tmp, path)
+    write_durably(path, &raw)
 }
 
-fn load_index(path: &Path) -> Result<HashMap<String, DownloadRecord>, String> {
-    if !path.exists() {
-        return Ok(HashMap::new());
+/// Why the saved index could not be loaded.
+#[derive(Debug)]
+enum IndexLoadError {
+    /// The file could not be read at all. It may be fine and only held by
+    /// another program (antivirus, a backup tool), so it is left alone.
+    Unavailable(String),
+    /// The file was read and is not an index this build understands: torn by
+    /// a crash, or written by a newer build.
+    Unreadable(String),
+}
+
+/// The saved index for launch. A file that was read but cannot be understood
+/// is renamed aside and the list starts empty: the alternative is an app that
+/// never opens again until the file is deleted by hand. Nothing else is
+/// touched, so the downloaded files stay in their folder. A file that cannot
+/// be read at all is tried a few times and then reported, because starting
+/// empty would overwrite an index that may be intact.
+fn load_index_for_launch(
+    path: &Path,
+    report: &dyn Fn(&str),
+) -> Result<HashMap<String, DownloadRecord>, String> {
+    let mut attempts_left = INDEX_READ_ATTEMPTS;
+    loop {
+        match load_index(path) {
+            Ok(entries) => return Ok(entries),
+            Err(IndexLoadError::Unavailable(error)) => {
+                attempts_left -= 1;
+                if attempts_left == 0 {
+                    return Err(format!("download index is unavailable: {error}"));
+                }
+                std::thread::sleep(INDEX_READ_RETRY);
+            }
+            Err(IndexLoadError::Unreadable(error)) => {
+                let aside = path.with_extension(format!("unreadable-{}.json", now_ms()));
+                fs::rename(path, &aside).map_err(|rename_error| {
+                    format!("{error}, and it could not be set aside: {rename_error}")
+                })?;
+                report(&format!(
+                    "{error}; it was kept as {} and the downloads list starts empty",
+                    aside.display()
+                ));
+                return Ok(HashMap::new());
+            }
+        }
     }
-    let raw = fs::read(path).map_err(|e| e.to_string())?;
-    let parsed: PersistedIndex =
-        serde_json::from_slice(&raw).map_err(|e| format!("download index is unreadable: {e}"))?;
+}
+
+fn load_index(path: &Path) -> Result<HashMap<String, DownloadRecord>, IndexLoadError> {
+    let raw = match fs::read(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
+        Err(error) => return Err(IndexLoadError::Unavailable(error.to_string())),
+    };
+    let parsed: PersistedIndex = serde_json::from_slice(&raw)
+        .map_err(|e| IndexLoadError::Unreadable(format!("download index is unreadable: {e}")))?;
     if parsed.version != 1 {
-        return Err("download index version is unsupported".into());
+        return Err(IndexLoadError::Unreadable(
+            "download index version is unsupported".into(),
+        ));
     }
     Ok(parsed
         .entries
@@ -2830,6 +2969,62 @@ mod tests {
         assert_eq!(result, Ok(()));
         assert!(root.join("shared.mkv").is_file());
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn an_index_that_cannot_be_understood_is_set_aside_and_the_list_starts_empty() {
+        let directory = scratch_dir("torn-index");
+        let path = directory.join(INDEX_FILE);
+        // What a power cut after an unflushed write leaves: the right size, all zeros.
+        fs::write(&path, vec![0u8; 512]).unwrap();
+        let reports = std::cell::RefCell::new(Vec::new());
+        let entries =
+            load_index_for_launch(&path, &|line| reports.borrow_mut().push(line.to_string()))
+                .unwrap();
+        assert!(entries.is_empty());
+        assert!(!path.exists());
+        assert_eq!(reports.borrow().len(), 1);
+        let kept: Vec<_> = fs::read_dir(&directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(kept.len(), 1);
+        assert!(kept[0].starts_with("downloads-index.unreadable-"));
+        assert_eq!(fs::read(directory.join(&kept[0])).unwrap(), vec![0u8; 512]);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn a_file_is_missing_only_when_its_folder_is_there_without_it() {
+        let directory = scratch_dir("presence");
+        let file = directory.join("movie.mkv");
+        fs::write(&file, b"video").unwrap();
+        assert_eq!(
+            file_presence(&directory, &file),
+            FilePresence::Present { bytes: 5 }
+        );
+        assert_eq!(
+            file_presence(&directory, &directory.join("gone.mkv")),
+            FilePresence::Missing
+        );
+        // An unplugged drive: neither the folder nor the file can be reached.
+        let unplugged = directory.join("unplugged");
+        assert_eq!(
+            file_presence(&unplugged, &unplugged.join("movie.mkv")),
+            FilePresence::FolderUnavailable
+        );
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn a_missing_index_starts_empty_without_a_report() {
+        let directory = scratch_dir("no-index");
+        let entries = load_index_for_launch(&directory.join(INDEX_FILE), &|_| {
+            panic!("nothing to report")
+        })
+        .unwrap();
+        assert!(entries.is_empty());
+        let _ = fs::remove_dir_all(directory);
     }
 
     #[test]

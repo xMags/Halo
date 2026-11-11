@@ -678,7 +678,9 @@ fn main() {
             // A second, hidden instance for seek-bar thumbnails, created lazily.
             app.manage(scrub_preview::ScrubPreview::new(dll.clone()));
 
-            let download_manager = Arc::new(downloads::load_manager(&app.handle())?);
+            let download_manager = Arc::new(downloads::load_manager(&app.handle(), &|line| {
+                crash_log.record(line)
+            })?);
             app.manage(download_manager);
 
             // Halo without an account keeps its data beside the downloads index.

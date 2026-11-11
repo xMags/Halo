@@ -3,10 +3,31 @@
 //! torn one, and Windows DPAPI protection for data that carries secrets
 //! (download source URLs, addon URLs with debrid keys in them).
 
-use std::io;
+use std::fs::File;
+use std::io::{self, Write};
 use std::path::Path;
 
-/// Replaces `target` with `source` in one step, flushed through to disk.
+/// Saves `bytes` as `target` so that a crash or power cut at any moment
+/// leaves either the old file or the whole new one: the bytes go to a
+/// temporary file beside it, are flushed to disk, and only then take the
+/// target's name.
+///
+/// The flush is what makes the replace safe. Renaming a file whose contents
+/// are still in the system's cache can survive a power cut as a file of the
+/// right name and size holding nothing.
+pub fn write_durably(target: &Path, bytes: &[u8]) -> Result<(), String> {
+    let temporary = target.with_extension("tmp");
+    {
+        let mut file = File::create(&temporary).map_err(|error| error.to_string())?;
+        file.write_all(bytes).map_err(|error| error.to_string())?;
+        file.sync_all().map_err(|error| error.to_string())?;
+    }
+    atomic_replace(&temporary, target)
+}
+
+/// Replaces `target` with `source` in one step, the rename itself flushed
+/// through to disk. The caller must already have flushed `source`'s contents
+/// (`write_durably` does both).
 #[cfg(windows)]
 pub fn atomic_replace(source: &Path, target: &Path) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
@@ -130,6 +151,18 @@ pub fn os_error_code(error: &io::Error) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn write_durably_replaces_the_file_and_leaves_no_temporary() {
+        let dir = std::env::temp_dir().join(format!("halo-secure-fs-w-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("doc.json");
+        write_durably(&target, b"old").unwrap();
+        write_durably(&target, b"new").unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+        assert!(!dir.join("doc.tmp").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn atomic_replace_swaps_the_file_contents() {
