@@ -9,7 +9,7 @@
 //! choose a path. The addon list is DPAPI-protected because addon URLs can
 //! carry debrid API keys, the same reason download requests are.
 
-use crate::secure_fs::{atomic_replace, os_error_code, protect, unprotect};
+use crate::secure_fs::{os_error_code, protect, unprotect, write_durably};
 use serde::Deserialize;
 use std::fs;
 use std::io::ErrorKind;
@@ -130,9 +130,7 @@ fn write_document(dir: &Path, collection: DeviceCollection, contents: &str) -> R
         contents.as_bytes().to_vec()
     };
     let path = dir.join(collection.file_name());
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, bytes).map_err(|error| format!("could not save this PC's data: {error}"))?;
-    atomic_replace(&tmp, &path)
+    write_durably(&path, &bytes).map_err(|error| format!("could not save this PC's data: {error}"))
 }
 
 #[cfg(test)]
