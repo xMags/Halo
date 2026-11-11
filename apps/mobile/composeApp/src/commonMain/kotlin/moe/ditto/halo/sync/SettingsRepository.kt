@@ -50,12 +50,19 @@ class SettingsRepository(
      * field would overwrite the document and erase any edit made moments
      * earlier — the cache is patched first precisely so the request carries
      * both.
+     *
+     * For the same reason the patch never lands on defaults standing in for
+     * settings that have not been read: that would send one changed field as
+     * the whole document and reset every other preference on every device.
+     * With nothing cached yet the document is read first (server, then the
+     * mirror), and the update fails when neither can be had.
      */
     suspend fun update(patch: (UserSettings) -> UserSettings): UserSettings {
+        val read = cache.peek<SettingsPayload>(HaloKey.Settings) ?: load()
         val echo = cache.mutate<SettingsPayload>(
             key = HaloKey.Settings,
             optimistic = { current ->
-                SettingsPayload(patch(current?.value ?: UserSettings.Empty), clock.nowMs())
+                SettingsPayload(patch((current ?: read).value), clock.nowMs())
             },
             put = { merged -> client.putSettings(merged.value, merged.updatedAt) },
             // The server keeps whichever write is newest, so it may answer with
