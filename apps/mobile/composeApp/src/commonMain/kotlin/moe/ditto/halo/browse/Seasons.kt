@@ -45,9 +45,13 @@ fun lastWatchedSeason(videos: List<MetaVideo>, watchStates: List<WatchState>?, i
  *
  * Episode numbers are optional in the protocol; the unnumbered sort first and
  * otherwise hold their original order, which is the addon's own.
+ *
+ * A video id listed twice is kept once: episode lists key their rows by it,
+ * and a lazy list given the same key twice throws.
  */
 fun episodesIn(videos: List<MetaVideo>, season: Int?): List<MetaVideo> = videos
     .filter { season == null || it.season == season }
+    .distinctBy { it.id }
     .sortedBy { it.episode ?: 0 }
 
 fun seasonLabel(season: Int): String = if (season == SpecialsSeason) "Specials" else "Season $season"

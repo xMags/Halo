@@ -58,6 +58,8 @@ fun catalogRows(addons: List<AddonEntry>): List<CatalogRowSpec> = addons.flatMap
             )
         }
 }
+    // A manifest can declare one catalog twice; Home keys its rows by this.
+    .distinctBy { it.key }
 
 data class ShelfLabels(val title: String, val source: String)
 
