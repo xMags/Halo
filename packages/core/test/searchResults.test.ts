@@ -295,5 +295,9 @@ test('an entry made from a file name is the title it names, and the IMDb copy le
 test('a poster an addon draws for its own entry is no poster', () => {
   assert.equal(hasNoPoster({ poster: 'https://mediafusion.test/poster/movie/mf1706190.jpg' }), true)
   assert.equal(hasNoPoster({ poster: 'https://mediafusion.test/poster/series/mf12.png' }), true)
+  assert.equal(hasNoPoster({ poster: 'https://mediafusion.test/poster/movie/mf12.jpg?v=3' }), true)
+  // Known by its id too, wherever the addon serves the card from.
+  assert.equal(hasNoPoster({ id: 'mf12', poster: 'https://cdn.test/cards/12.jpg' }), true)
+  assert.equal(hasNoPoster({ id: 'tt12', poster: 'https://cdn.test/cards/12.jpg' }), false)
   assert.equal(hasNoPoster({ poster: 'https://live.metahub.space/poster/medium/tt1211837/img' }), false)
 })

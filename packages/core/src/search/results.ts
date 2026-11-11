@@ -349,12 +349,17 @@ const TMDB_MISSING_IMAGE = /\/t\/p\/[a-z0-9]+null$/i
  * card it draws with the entry's name on it, since it has no picture for a
  * title it only knows from a file name.
  */
-const GENERATED_POSTER = /\/poster\/[a-z]+\/mf\d+\.[a-z]+$/i
+const GENERATED_POSTER = /\/poster\/[a-z]+\/mf\d+\.[a-z]+(\?.*)?$/i
+/** MediaFusion's id for an entry it made from a file name, which is all it has to draw that card from. */
+const FILE_NAME_ENTRY = /^mf\d+$/
 
 /**
  * Whether an addon's answer already says the title has no poster: none sent,
  * a link built from a missing image, or a card the addon draws in its place.
+ * An entry made from a file name is known by its id as well as by the link,
+ * since the link's shape is the addon's to change.
  */
-export function hasNoPoster(meta: Pick<MetaPreview, 'poster'>): boolean {
+export function hasNoPoster(meta: Pick<MetaPreview, 'poster'> & { id?: string }): boolean {
+  if (meta.id !== undefined && FILE_NAME_ENTRY.test(meta.id)) return true
   return !meta.poster || TMDB_MISSING_IMAGE.test(meta.poster) || GENERATED_POSTER.test(meta.poster)
 }
