@@ -17,6 +17,7 @@
   </p>
 
   <p>
+    <a href="https://github.com/xMags/Halo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/xMags/Halo?style=for-the-badge&labelColor=20232a&color=0A84FF&label=release"></a>
     <img alt="Platforms" src="https://img.shields.io/badge/platforms-Android%20%7C%20iOS%20%7C%20Windows-0A84FF?style=for-the-badge&labelColor=20232a">
     <img alt="Addon protocol" src="https://img.shields.io/badge/addons-Stremio%20protocol-8B5CF6?style=for-the-badge&labelColor=20232a">
     <img alt="Playback" src="https://img.shields.io/badge/playback-libmpv-16A34A?style=for-the-badge&labelColor=20232a">
@@ -25,6 +26,7 @@
   </p>
 
   <p>
+    <a href="#download">Download</a> ·
     <a href="#why-halo">Why Halo</a> ·
     <a href="#features">Features</a> ·
     <a href="#project-status">Project Status</a> ·
@@ -34,8 +36,25 @@
   </p>
 </div>
 
+## Download
+
+Halo 1.0.0 is available for Windows and Android.
+
+| Platform | Download | Requirements |
+| --- | --- | --- |
+| Windows | [Halo_1.0.0_x64-setup.exe](https://github.com/xMags/Halo/releases/download/v1.0.0/Halo_1.0.0_x64-setup.exe) | Windows 10 or 11, 64-bit |
+| Android | [Halo_1.0.0_android-arm64.apk](https://github.com/xMags/Halo/releases/download/v1.0.0/Halo_1.0.0_android-arm64.apk) | Android 8.0 or newer, arm64 |
+
+Release notes, checksums and every earlier version are on the [releases page](https://github.com/xMags/Halo/releases); the newest one is always at [releases/latest](https://github.com/xMags/Halo/releases/latest).
+
+- **Windows:** the installer is not code-signed, so SmartScreen may warn before it runs. Choose "More info", then "Run anyway". It installs for all users, so Windows asks for permission.
+- **Android:** open the APK and allow installs from your browser or file manager when asked. It is signed with Halo's own key, not distributed through a store.
+- **iOS:** there is no packaged build yet; see [Client Development](#client-development) to build it yourself.
+
+The released apps sign in to the Halo server hosted for MagnetoFX accounts, and also work without an account, keeping your addons, library and history on the device. To use them with a server of your own, build from source as described under [Client Development](#client-development).
+
 > [!IMPORTANT]
-> Halo is under active development. The repository contains usable development clients, but it does not currently promise polished installers or a stable public API.
+> Halo is under active development. The API between the apps and the server is not yet promised to stay stable across versions.
 
 ## Credits
 
