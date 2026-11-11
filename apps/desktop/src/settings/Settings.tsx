@@ -375,7 +375,10 @@ function AddonsSection() {
 
   const add = async () => {
     const transportUrl = url.trim()
-    if (!transportUrl || adding || listBusy) return
+    // The save sends the whole list, so it must start from the list the
+    // account really has: saving before it has loaded would leave only the
+    // new addon.
+    if (!transportUrl || adding || listBusy || !addons) return
     if (all.some((a) => a.transportUrl === transportUrl)) {
       setAddError('Already installed.')
       return
@@ -637,7 +640,7 @@ function AddonsSection() {
           type="button"
           className="btn-accent btn-body"
           style={{ paddingInline: 18 }}
-          disabled={adding || listBusy || !url.trim()}
+          disabled={adding || listBusy || !addons || !url.trim()}
           onClick={() => void add()}
         >
           {adding ? 'Adding…' : 'Add'}
