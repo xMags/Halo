@@ -53,6 +53,16 @@ impl FullscreenPlacement {
         let saved = self.saved_normal.lock().map_err(|_| "placement lock poisoned".to_string())?.take();
         let Some(saved) = saved else { return Ok(()) };
         let hwnd = HWND(hwnd as *mut std::ffi::c_void);
+        // Two steps, in this order. Handing Windows the saved rectangle and the
+        // maximized state in one call makes it apply the rectangle first: the
+        // window shows at its small normal size, desktop all around it, for a
+        // couple of frames before it maximizes. So it is maximized first, from
+        // the work-area rectangle it already fills, where nothing moves...
+        let mut placement = read_placement(hwnd)?;
+        placement.showCmd = SW_SHOWMAXIMIZED.0 as u32;
+        unsafe { SetWindowPlacement(hwnd, &placement) }.map_err(|error| error.to_string())?;
+        // ...and only then given its own normal rectangle back, which a
+        // maximized window merely remembers for its next restore.
         let mut placement = read_placement(hwnd)?;
         placement.rcNormalPosition = saved;
         placement.showCmd = SW_SHOWMAXIMIZED.0 as u32;
