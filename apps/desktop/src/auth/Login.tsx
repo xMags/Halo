@@ -18,9 +18,9 @@ import { moveDeviceDataIntoAccount } from '../device/deviceDataMove'
 import { parseServerAddress } from '../serverUrl'
 import { accountDisplayName, accountLabel } from './accountLabel'
 import { signInAddonFor } from './installedAddons'
-import { signInWithPassword } from './localAuth'
+import { clearLocalSession, signInWithPassword } from './localAuth'
 import { cancelBrowserSignIn } from './loopbackSignIn'
-import { signInWithOidc } from './oidc'
+import { clearOidcSession, signInWithOidc } from './oidc'
 import type { SignInAddon } from './signInAddons'
 import { useSession } from './session'
 import { classifySignInFailure, localSignInMessage } from './signInFailure'
@@ -199,8 +199,16 @@ export function Login() {
    * Binds the new session, shows "You're all set" while the account gets
    * ready (and takes in what this PC holds from Halo without an account),
    * then opens the app.
+   *
+   * A sign-in that was cancelled or replaced while its last request was still
+   * out has already saved its session; `discard` forgets it, so the cancelled
+   * account is neither switched to now nor restored at the next launch.
    */
-  async function finish(kind: SessionKind, id: number) {
+  async function finish(kind: SessionKind, id: number, discard: () => void) {
+    if (id !== attempt.current) {
+      discard()
+      return
+    }
     activateSession(kind)
     const me = await (getAccountClient()?.getMe() ?? Promise.resolve(null)).catch(() => null)
     if (id !== attempt.current) return
@@ -239,7 +247,7 @@ export function Login() {
       if (id === attempt.current) setStep({ kind: 'local', error: localSignInMessage(err) })
       return
     }
-    await finish('local', id)
+    await finish('local', id, clearLocalSession)
   }
 
   /**
@@ -286,7 +294,7 @@ export function Login() {
     } catch {
       // Only a convenience for next time.
     }
-    await finish('local', id)
+    await finish('local', id, clearLocalSession)
   }
 
   async function startBrowser(method: BrowserMethod) {
@@ -319,7 +327,8 @@ export function Login() {
           return
       }
     }
-    await finish(method.kind === 'oidc' ? 'oidc' : addonSessionKind(method.addon), id)
+    if (method.kind === 'oidc') await finish('oidc', id, clearOidcSession)
+    else await finish(addonSessionKind(method.addon), id, () => method.addon.clear())
   }
 
   function cancelBrowser(method: BrowserMethod) {

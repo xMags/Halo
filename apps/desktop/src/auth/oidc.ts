@@ -51,6 +51,8 @@ export function loadOidcSession(): boolean {
 
 export function clearOidcSession(): void {
   session = null
+  // A refresh still in flight belongs to the session that just ended.
+  refreshInFlight = null
   localStorage.removeItem(OIDC_KEY)
 }
 
@@ -203,27 +205,36 @@ export async function getOidcAccessToken(): Promise<string | null> {
  */
 export function refreshOidcToken(): Promise<string | null> {
   if (!session?.refreshToken) return Promise.resolve(null)
-  refreshInFlight ??= doRefresh().finally(() => {
-    refreshInFlight = null
+  if (refreshInFlight) return refreshInFlight
+  const refresh: Promise<string | null> = doRefresh().finally(() => {
+    if (refreshInFlight === refresh) refreshInFlight = null
   })
-  return refreshInFlight
+  refreshInFlight = refresh
+  return refresh
 }
 
 async function doRefresh(): Promise<string | null> {
   const current = session!
+  // The answer applies only while the session it was asked for is still the
+  // saved one (same refresh token): after a sign-out, or a sign-in as someone
+  // else, a late answer must neither bring the old session back nor end the
+  // new one.
+  const stillCurrent = (): boolean => session?.refreshToken === current.refreshToken
   try {
     const tokens = await postForm(current.tokenEndpoint, {
       grant_type: 'refresh_token',
       client_id: current.clientId,
       refresh_token: current.refreshToken!,
     })
-    session = applyTokens(current, tokens)
+    if (!stillCurrent()) return session?.accessToken ?? null
+    session = applyTokens(session!, tokens)
     persist()
     return session.accessToken
   } catch (err) {
     // invalid_grant = the refresh token is revoked/expired; the session is
     // dead everywhere, not just flaky here.
     if (err instanceof TokenEndpointError && err.code === 'invalid_grant') {
+      if (!stillCurrent()) return session?.accessToken ?? null
       clearOidcSession()
       return null
     }

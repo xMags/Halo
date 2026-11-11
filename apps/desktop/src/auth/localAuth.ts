@@ -48,6 +48,8 @@ export function getLocalSessionServerUrl(): string | null {
 
 export function clearLocalSession(): void {
   session = null
+  // A refresh still in flight belongs to the session that just ended.
+  refreshInFlight = null
   localStorage.removeItem(LOCAL_KEY)
 }
 
@@ -102,16 +104,19 @@ export async function signInWithPassword(serverUrl: string, username: string, pa
  */
 export async function getLocalAccessToken(): Promise<string | null> {
   if (!session) return null
-  const remaining = session.expiresAt - Date.now()
+  const { token, expiresAt } = session
+  const remaining = expiresAt - Date.now()
   if (remaining <= EXPIRY_MARGIN_MS) return refreshLocalToken()
   if (remaining <= PROACTIVE_REFRESH_MS) {
     try {
-      return (await refreshLocalToken()) ?? session.token
+      // Null means the server refused the session, which is now cleared:
+      // there is no token to fall back on.
+      return await refreshLocalToken()
     } catch {
-      return session.token
+      return token
     }
   }
-  return session.token
+  return token
 }
 
 /**
@@ -122,28 +127,31 @@ export async function getLocalAccessToken(): Promise<string | null> {
  */
 export function refreshLocalToken(): Promise<string | null> {
   if (!session) return Promise.resolve(null)
-  refreshInFlight ??= doRefresh().finally(() => {
-    refreshInFlight = null
+  if (refreshInFlight) return refreshInFlight
+  const refresh: Promise<string | null> = doRefresh().finally(() => {
+    if (refreshInFlight === refresh) refreshInFlight = null
   })
-  return refreshInFlight
+  refreshInFlight = refresh
+  return refresh
 }
 
 async function doRefresh(): Promise<string | null> {
   const current = session!
+  // The answer applies only while the session it was asked for is still the
+  // saved one: after a sign-out, or a sign-in as someone else, a late answer
+  // must neither bring the old session back nor end the new one.
+  const stillCurrent = (): boolean => session?.token === current.token && session.serverUrl === current.serverUrl
   try {
     const tokens = await postJson(`${current.serverUrl}/auth/refresh`, {}, current.token)
-    session = {
-      serverUrl: current.serverUrl,
-      token: tokens.token,
-      expiresAt: tokens.expiresAt,
-      downloadOwner: current.downloadOwner,
-    }
+    if (!stillCurrent()) return session?.token ?? null
+    session = { ...session!, token: tokens.token, expiresAt: tokens.expiresAt }
     persist()
     return session.token
   } catch (err) {
     // A 401 from the refresh endpoint is the local-mode invalid_grant: the
     // session is dead everywhere, not just flaky here.
     if (err instanceof LocalAuthError && err.status === 401) {
+      if (!stillCurrent()) return session?.token ?? null
       clearLocalSession()
       return null
     }
