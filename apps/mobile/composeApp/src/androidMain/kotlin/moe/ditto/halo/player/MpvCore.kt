@@ -202,7 +202,8 @@ internal class MpvCore private constructor(
             val message = text.trim()
             // Primary diagnostic channel: mpv's own log lines land in logcat under
             // a greppable tag (Configuration/vo/hwdec/subtitle-track selection).
-            Log.i(LOG_TAG, "[$id][$prefix] $message")
+            // Links are cut to their host first: they carry debrid tokens.
+            Log.i(LOG_TAG, "[$id][$prefix] ${redactLinks(message)}")
             // Preserve exactly what mpv said. No URL, HTTP status or host is
             // added by this layer; the error card prints this string verbatim.
             if (level in MPVLib.MpvLogLevel.MPV_LOG_LEVEL_FATAL..MPVLib.MpvLogLevel.MPV_LOG_LEVEL_ERROR &&
