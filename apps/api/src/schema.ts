@@ -21,6 +21,10 @@ export const users = sqliteTable(
     // NULL for OIDC users — their admin status is computed per request from the
     // token's groups claim and never stored.
     isAdmin: integer('is_admin', { mode: 'boolean' }),
+    // Local accounts: epoch seconds of the last password change. A session
+    // token whose original login (`auth_time`) is older is refused, so
+    // changing a password signs every other device out. NULL: never changed.
+    sessionsValidFrom: integer('sessions_valid_from'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => [

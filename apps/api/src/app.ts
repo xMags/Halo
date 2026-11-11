@@ -240,8 +240,15 @@ export function createApp(config: AppConfig) {
       if (!verifyPassword(body.data.current, row.passwordHash!)) {
         return c.json({ error: 'current password incorrect' }, 401)
       }
-      db.update(users).set({ passwordHash: hashPassword(body.data.next) }).where(eq(users.id, user.id)).run()
-      return c.json({ ok: true })
+      // Every session started before this moment ends with the old password:
+      // whoever knew it may hold a token. The caller gets a fresh session in
+      // the answer, so the device that made the change stays signed in.
+      const nowSec = Math.floor(Date.now() / 1000)
+      db.update(users)
+        .set({ passwordHash: hashPassword(body.data.next), sessionsValidFrom: nowSec })
+        .where(eq(users.id, user.id))
+        .run()
+      return c.json({ ok: true, ...(await issueLocalToken(jwtSecret, user.id, nowSec)) })
     })
 
     // User management covers local accounts only; leftover OIDC rows from a

@@ -173,7 +173,9 @@ function oidcAuthMiddleware(oidc: OidcConfig, db: Db): MiddlewareHandler<{ Varia
 /**
  * Verifies the bearer JWT this API minted, then loads the user row named by
  * `sub`. A token whose user no longer exists is rejected, so deleting a user
- * immediately kills their sessions — that lookup IS the revocation mechanism.
+ * immediately kills their sessions — that lookup IS the revocation mechanism,
+ * together with the row's `sessionsValidFrom`, which a password change moves
+ * forward to end every session started before it.
  */
 function localAuthMiddleware(local: LocalConfig, db: Db): MiddlewareHandler<{ Variables: AuthVariables }> {
   return async (c, next) => {
@@ -190,6 +192,11 @@ function localAuthMiddleware(local: LocalConfig, db: Db): MiddlewareHandler<{ Va
     }
     const row = db.select().from(users).where(eq(users.id, payload.sub)).get()
     if (!row) return c.json({ error: 'unauthorized' }, 401)
+    // Signed in before the password last changed: that session is over. A
+    // refresh carries auth_time forward unchanged, so it cannot outlive this.
+    if (row.sessionsValidFrom !== null && payload.auth_time < row.sessionsValidFrom) {
+      return c.json({ error: 'unauthorized' }, 401)
+    }
     c.set('user', { id: row.id, username: row.username, isAdmin: row.isAdmin ?? false, createdAt: row.createdAt })
     c.set('localToken', { sub: payload.sub, authTime: payload.auth_time })
     await next()
