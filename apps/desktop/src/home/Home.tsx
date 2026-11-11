@@ -15,7 +15,7 @@ import { useSettings } from '../settings/syncedSettings'
 import { supportsSkip } from '../browse/catalogPaging'
 import { catalogExtra } from './catalogLanguage'
 import { continueSheetParams, useContinueShelf } from './continueShelf'
-import { formatClock, videoIdTag } from '../format'
+import { formatClock, ratingLabel, videoIdTag } from '../format'
 import {
   buildLibraryRow,
   buildRecentlyWatchedRow,
@@ -349,7 +349,7 @@ function FeaturedHero({ catalogs, filter }: { catalogs: BrowsableCatalog[]; filt
     }
   }
 
-  const rating = featured.imdbRating ? `★ ${featured.imdbRating}` : null
+  const rating = ratingLabel(featured.imdbRating)
 
   return (
     <div

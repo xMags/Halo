@@ -105,3 +105,21 @@ export function airYear(released: string | undefined): string {
   const date = new Date(released)
   return Number.isNaN(date.getTime()) ? '' : String(date.getUTCFullYear())
 }
+
+/**
+ * A rating that is one: its number, or null. Addons send "0.0" (or nothing a
+ * number can be read from) for a title nobody has rated, and a row of
+ * "★ 0.0" reads as a verdict on films that simply have none.
+ */
+export function ratedValue(imdbRating: string | undefined): string | null {
+  const value = imdbRating?.trim()
+  if (!value) return null
+  const rating = Number.parseFloat(value)
+  return Number.isFinite(rating) && rating > 0 ? value : null
+}
+
+/** `★ 6.8` for a card's or a fact line's rating, or null when the title has none. */
+export function ratingLabel(imdbRating: string | undefined): string | null {
+  const value = ratedValue(imdbRating)
+  return value === null ? null : `★ ${value}`
+}
