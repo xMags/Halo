@@ -146,17 +146,19 @@ const watchStatesSchema = z.array(
 const addonPatchSchema = z.object({ hideCatalogs: z.boolean() })
 
 /**
- * How far ahead of this server's clock a synced row's `updatedAt` may claim to
- * be. Sync keeps whichever write is newest by the client's own timestamp, so a
- * device whose clock runs a day fast would otherwise win every conflict until
- * real time caught up, with every other device's changes silently dropped.
- * Timestamps past the allowance are pulled back to it: the fast device still
- * syncs, and its next write is still newer than its last.
+ * A synced row's `updatedAt` may not be later than this server's clock. Sync
+ * keeps whichever write is newest by the client's own timestamp, so a device
+ * whose clock runs a day fast would otherwise win every conflict until real
+ * time caught up, with every other device's changes silently dropped. A
+ * timestamp from the future is pulled back to now: the fast device still
+ * syncs, its next write is still newer than its last, and a write that
+ * arrives after it, from a device with the right time, wins as it should.
+ * (With any allowance at all, that later write would lose for as long as the
+ * allowance.) Timestamps in the past are left alone: a report queued offline
+ * must lose to what happened since.
  */
-const MAX_CLOCK_AHEAD_MS = 5 * 60_000
-
 function latestAcceptedTimestamp(): number {
-  return Date.now() + MAX_CLOCK_AHEAD_MS
+  return Date.now()
 }
 
 export function createApp(config: AppConfig) {
