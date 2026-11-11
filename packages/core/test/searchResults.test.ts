@@ -301,3 +301,17 @@ test('a poster an addon draws for its own entry is no poster', () => {
   assert.equal(hasNoPoster({ id: 'tt12', poster: 'https://cdn.test/cards/12.jpg' }), false)
   assert.equal(hasNoPoster({ poster: 'https://live.metahub.space/poster/medium/tt1211837/img' }), false)
 })
+
+test('a title listed under a product code is left out', () => {
+  const results = [
+    full('tmdb:1', 'Doctor Strange'),
+    full('tmdb:2', 'MIMK-180 I received a strange treatment from a doctor'),
+    full('tmdb:3', 'THX 1138'),
+    full('tmdb:4', 'WALL-E'),
+  ]
+  assert.deepEqual(
+    refineResults(results, 'e').map((meta) => meta.id),
+    ['tmdb:4', 'tmdb:1'],
+  )
+  assert.deepEqual(refineResults(results, 'strange doctor').map((meta) => meta.id), ['tmdb:1'])
+})
