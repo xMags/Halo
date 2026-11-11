@@ -116,9 +116,9 @@ describe('timestamps from a clock that runs ahead', () => {
     const nextYear = Date.now() + 365 * 86_400_000
     await app.request('/watch-state', authed(token, [state({ positionSec: 100, updatedAt: nextYear })]))
 
-    // A device with a correct clock, reporting later, must win.
-    const later = Date.now() + 10 * 60_000
-    const res = await app.request('/watch-state', authed(token, [state({ positionSec: 200, updatedAt: later })]))
+    // A device with the right time, reporting a moment later, must win.
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    const res = await app.request('/watch-state', authed(token, [state({ positionSec: 200, updatedAt: Date.now() })]))
     const rows = (await res.json()) as Array<{ positionSec: number; updatedAt: number }>
 
     expect(rows[0]!.positionSec).toBe(200)
