@@ -98,3 +98,19 @@ export type {
   UserSettings,
   WatchState,
 } from './api/types'
+export {
+  byRelevance,
+  foldedText,
+  hasNoPoster,
+  interleave,
+  metaKey,
+  nameRelevance,
+  refineResults,
+  searchProgress,
+  titleIdentities,
+  uniqueMetas,
+  type SearchProgress,
+  type SearchResultGroup,
+  type SearchTarget,
+  type TargetState,
+} from './search/results'
