@@ -172,8 +172,11 @@ fun refineSearchGroups(groups: List<SearchResultGroup>, query: String): List<Sea
     val kept = refineResults(interleaveTitles(tidied, merge = MetaPreview::asOneTitleWith), query)
     val rank = kept.withIndex().associate { (index, meta) -> titleKey(meta) to index }
     /** Every identity of every surviving card, so each catalog's own copy finds it. */
-    val cardFor = buildMap {
-        kept.forEach { meta -> titleIdentities(meta).forEach { identity -> putIfAbsent(identity, meta) } }
+    val cardFor = buildMap<String, MetaPreview> {
+        kept.forEach { meta ->
+            // The first card to claim an identity keeps it (no JVM-only putIfAbsent: this is shared code).
+            titleIdentities(meta).forEach { identity -> if (identity !in this) put(identity, meta) }
+        }
     }
     val shown = mutableSetOf<String>()
     return groups.mapIndexedNotNull { index, group ->
