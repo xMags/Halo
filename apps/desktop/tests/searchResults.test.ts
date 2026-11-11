@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { LibraryItem, MetaPreview } from '@halo/core'
 import {
+  byRelevance,
   interleave,
   libraryMatches,
+  nameRelevance,
   searchProgress,
   suggestedSearches,
   uniqueMetas,
@@ -154,4 +156,48 @@ test('suggestedSearches offers past searches containing what is typed', () => {
   // What is already typed is not offered back.
   assert.deepEqual(suggestedSearches(history, 'dune'), ['dune part two'])
   assert.deepEqual(suggestedSearches(history, ''), [])
+})
+
+const named = (id: string, name: string, type = 'movie'): MetaPreview => ({ id, type, name })
+
+test('names that answer the query come first, each level keeping the order given', () => {
+  const merged = [
+    named('1', 'Doctor Stranger', 'series'),
+    named('2', 'Doctor Strange in the Multiverse of Madness'),
+    named('3', 'Amuthu Dosthara', 'series'),
+    named('4', 'Dr. Strangelove'),
+    named('5', 'Doctor Strange'),
+    named('6', 'The Strange Case of Doctor Rx'),
+  ]
+  assert.deepEqual(
+    byRelevance(merged, 'doctor strange').map((meta) => meta.id),
+    ['5', '2', '1', '6', '4', '3'],
+  )
+})
+
+test('relevance ignores case, accents and punctuation', () => {
+  assert.equal(nameRelevance('Amélie', 'amelie'), 0)
+  assert.equal(nameRelevance('Spider-Man: No Way Home', 'spider man'), 1)
+  assert.equal(nameRelevance('WALL·E', 'wall e'), 0)
+})
+
+test('with a query, the top match is the best-named first title, not the first catalog to answer', () => {
+  const targets = [cinemetaMovies, cinemetaSeries, tmdbMovies]
+  const film = named('m1', 'El Camino: A Breaking Bad Movie')
+  const show = named('s1', 'Breaking Bad', 'series')
+  const other = named('m9', 'Breaking Bad Habits')
+  const done = (meta: MetaPreview) => ({ status: 'done' as const, metas: [meta] })
+  // All answered: the series named exactly what was typed wins over the film asked first.
+  assert.equal(searchProgress(targets, [done(film), done(show), done(other)], 'breaking bad').topMatch?.id, 's1')
+  // Still waiting on a later catalog: a name that begins with the query is shown already, and stays...
+  assert.equal(searchProgress(targets, [done(film), done(show), { status: 'pending' }], 'breaking bad').topMatch?.id, 's1')
+  // ...also while its name is only half typed...
+  assert.equal(searchProgress(targets, [done(show), { status: 'pending' }, { status: 'pending' }], 'breaking b').topMatch?.id, 's1')
+  // ...but not while an earlier catalog is out, which could still name a better one.
+  assert.equal(searchProgress(targets, [{ status: 'pending' }, done(show), done(other)], 'breaking bad').topMatch, null)
+  assert.equal(searchProgress(targets, [done(film), { status: 'pending' }, done(other)], 'breaking bad').topMatch, null)
+  // A name that merely holds the words waits for everyone.
+  assert.equal(searchProgress(targets, [done(film), { status: 'pending' }, { status: 'pending' }], 'breaking bad').topMatch, null)
+  // A tie goes to the earlier catalog.
+  assert.equal(searchProgress(targets, [done(other), done(film), done(film)], 'nothing alike').topMatch?.id, 'm9')
 })

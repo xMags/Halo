@@ -296,6 +296,14 @@ export function useSearch(term: string): SearchProgress {
               (c.extra ?? []).some((e) => e.name === 'search') ||
               (c.extraSupported ?? []).includes('search'),
           )
+          // Only the query is sent, so a catalog that also insists on another
+          // extra (a genre, say) cannot answer and would only be reported as
+          // an addon that failed.
+          .filter(
+            (c) =>
+              !(c.extra ?? []).some((e) => e.isRequired && e.name !== 'search') &&
+              !(c.extraRequired ?? []).some((name) => name !== 'search'),
+          )
           .map((c) => ({
             key: `${addon.id}/${c.type}/${c.id}`,
             addonId: addon.id,
@@ -325,6 +333,7 @@ export function useSearch(term: string): SearchProgress {
     results.map((r): TargetState =>
       r.isSuccess ? { status: 'done', metas: r.data } : r.isError ? { status: 'failed' } : { status: 'pending' },
     ),
+    trimmed,
   )
 }
 

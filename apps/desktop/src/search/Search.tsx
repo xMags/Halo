@@ -7,6 +7,7 @@ import { PosterCard } from '../components/PosterCard'
 import { SearchBox } from '../components/SearchBox'
 import { SectionHeader } from '../components/SectionHeader'
 import { ShelfSkeleton, TopMatchSkeleton } from '../components/Skeleton'
+import { ratingLabel } from '../format'
 import { useNav } from '../nav'
 import { browsableCatalogs, useCatalog, useEffectiveAddons, useLibrary, useSearch } from '../queries'
 import { setSearchQuery, useSearchQuery } from './searchQuery'
@@ -17,11 +18,13 @@ import {
   removeSearchTerm,
   type SearchHistoryEntry,
 } from './searchHistory'
-import { interleave, libraryMatches, metaKey, suggestedSearches } from './searchResults'
+import { byRelevance, interleave, libraryMatches, metaKey, suggestedSearches } from './searchResults'
 
 /** Short enough to feel live while typing, long enough not to ask every addon per keystroke. */
 const DEBOUNCE_MS = 250
 const MIN_QUERY = 2
+/** No title is longer, and the server caps a catalog's search text well above it. */
+const MAX_QUERY = 120
 /** At most this many recent searches, and only as many as fit on one line. */
 const RECENT_SHOWN = 6
 /** Enough popular titles to browse without a search, short of a whole catalog. */
@@ -107,8 +110,11 @@ export function Search() {
   const results = useMemo(() => {
     const shownAbove = topMatch ? [...fromLibrary, topMatch] : fromLibrary
     const lists = groups.map((group) => group.metas.filter((meta) => !typeFilter || meta.type === typeFilter))
-    return interleave(lists, shownAbove)
-  }, [groups, fromLibrary, topMatch, typeFilter])
+    // Taking turns keeps every addon's ranking; the names then decide which
+    // of them come first, so a title sharing no word with the query cannot
+    // sit among the first results.
+    return byRelevance(interleave(lists, shownAbove), query)
+  }, [groups, fromLibrary, topMatch, typeFilter, query])
 
   const filterLabel = typeFilter === 'movie' ? 'movies' : typeFilter === 'series' ? 'series' : 'titles'
   const failedNames = [...new Set(failed.map((target) => target.addonName))]
@@ -125,7 +131,9 @@ export function Search() {
             autoFocus
             inputRef={inputRef}
             value={term}
-            onChange={setSearchQuery}
+            // Past this length the server refuses the search outright, which
+            // would read as the addons being unreachable.
+            onChange={(value) => setSearchQuery(value.slice(0, MAX_QUERY))}
             onFocus={() => setBoxFocused(true)}
             onBlur={() => setBoxFocused(false)}
             onKeyDown={(e) => {
@@ -323,7 +331,7 @@ function TopMatchCard({ meta, onOpen }: { meta: MetaPreview; onOpen: () => void 
   const facts = [
     meta.type === 'series' ? 'SERIES' : 'MOVIE',
     meta.releaseInfo,
-    meta.imdbRating ? `★ ${meta.imdbRating}` : null,
+    ratingLabel(meta.imdbRating),
     inLibrary ? 'IN LIBRARY' : null,
   ]
     .filter(Boolean)
