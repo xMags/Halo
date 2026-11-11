@@ -79,6 +79,45 @@ class HttpRangeTransferTest {
     }
 
     @Test
+    fun aPartThatIsAlreadyTheWholeFileIsFinishedNotRefused() = runTest {
+        // Stopped after the last byte and before the move to the final name:
+        // the resume asks for what follows the part, and the source has nothing.
+        val fileSystem = fileSystem()
+        fileSystem.write(Part) { writeUtf8("abcdef") }
+        val transfer = transfer(fileSystem) {
+            respond(
+                content = ByteReadChannel(""),
+                status = HttpStatusCode.RequestedRangeNotSatisfiable,
+                headers = headersOf(HttpHeaders.ContentRange, "bytes */6"),
+            )
+        }
+
+        val result = transfer.fetch(resumeValidator = "\"v1\"")
+
+        assertEquals("abcdef", fileSystem.read(Target) { readUtf8() })
+        assertFalse(fileSystem.exists(Part))
+        assertEquals(6, result.totalBytes)
+    }
+
+    @Test
+    fun aPartTheSourceCannotContinueIsDroppedSoTheNextAttemptStartsClean() = runTest {
+        val fileSystem = fileSystem()
+        fileSystem.write(Part) { writeUtf8("abcdefgh") }
+        val transfer = transfer(fileSystem) {
+            respond(
+                content = ByteReadChannel(""),
+                status = HttpStatusCode.RequestedRangeNotSatisfiable,
+                headers = headersOf(HttpHeaders.ContentRange, "bytes */6"),
+            )
+        }
+
+        assertFailsWith<DownloadTransferException> { transfer.fetch(resumeValidator = "\"v1\"") }
+
+        assertFalse(fileSystem.exists(Part))
+        assertFalse(fileSystem.exists(Target))
+    }
+
+    @Test
     fun aSourceThatIgnoresTheRangeStartsTheFileAgain() = runTest {
         val fileSystem = fileSystem()
         fileSystem.write(Part) { writeUtf8("abc") }
