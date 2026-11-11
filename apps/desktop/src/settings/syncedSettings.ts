@@ -4,6 +4,7 @@ import { getClient } from '../api'
 
 const MIRROR_KEY = 'halo.settings.v1'
 const QUERY_KEY = ['settings'] as const
+const SETTINGS_NOT_LOADED = 'Settings have not loaded yet.'
 
 /**
  * Bumped whenever the backend changes (sign-in, sign-out, Halo without an
@@ -75,17 +76,31 @@ export function useUpdateSettings() {
     // each other; each PUT then snapshots the fully-merged cache value. Without
     // this, two in-flight mutations race and the later one drops the earlier
     // one's field with a newer LWW timestamp.
+    //
+    // A save replaces the whole settings document, so the patch must land on
+    // settings that were really read (from the backend or the mirror). With
+    // none cached yet, this waits for the read instead of cancelling it, and
+    // fails the save when it cannot be had: patching an empty base would
+    // send one field as the whole document and wipe every other setting.
     onMutate: async (patch: Partial<UserSettings>) => {
-      await queryClient.cancelQueries({ queryKey: QUERY_KEY })
+      if (queryClient.getQueryData<SettingsPayload>(QUERY_KEY)) {
+        await queryClient.cancelQueries({ queryKey: QUERY_KEY })
+      } else {
+        await queryClient.fetchQuery(settingsQuery)
+      }
+      // Read again: a save queued just before this one may have patched the
+      // cache while both waited on the same read.
       const previous = queryClient.getQueryData<SettingsPayload>(QUERY_KEY)
+      if (!previous) throw new Error(SETTINGS_NOT_LOADED)
       queryClient.setQueryData<SettingsPayload>(QUERY_KEY, {
-        value: applyPatch(previous?.value ?? {}, patch),
+        value: applyPatch(previous.value, patch),
         updatedAt: Date.now(),
       })
     },
     mutationFn: async (_patch: Partial<UserSettings>): Promise<SettingsPayload | null> => {
       const generation = backendGeneration
-      const merged = queryClient.getQueryData<SettingsPayload>(QUERY_KEY)?.value ?? {}
+      const merged = queryClient.getQueryData<SettingsPayload>(QUERY_KEY)?.value
+      if (!merged) throw new Error(SETTINGS_NOT_LOADED)
       const payload = await getClient().putSettings(merged, Date.now())
       // Saved to a backend that is no longer the active one: its echo is not
       // this session's settings.
