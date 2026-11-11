@@ -24,7 +24,7 @@ import { deviceDownloadOwner } from './device/deviceStore'
 import { setDownloadsAccount, clearDownloadsAccount, opaqueDownloadOwner } from './downloads/downloadsStore'
 import { setLocalPrefs, useLocalPrefs } from './localPrefs'
 import { presenceSetEnabled } from './player/presence'
-import { useMe } from './queries'
+import { useMe, useSendPendingWatchStates } from './queries'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -96,6 +96,7 @@ function PresencePreferenceBinding() {
 
 function Shell() {
   const { screen, setRoot, sheet } = useNav()
+  useSendPendingWatchStates()
   const windowFullscreen = useWindowFullscreen()
   // Lives here, not in the pane: the player replaces the whole shell tree, and
   // the pane must come back the way it was left. Stored, so the next launch
