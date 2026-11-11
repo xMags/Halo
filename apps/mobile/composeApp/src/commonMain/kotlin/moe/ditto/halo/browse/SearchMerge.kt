@@ -17,13 +17,18 @@ private val ReleaseYear = Regex("""\d{4}""")
  */
 fun titleIdentities(meta: MetaCard): List<String> {
     val year = meta.releaseInfo?.let { ReleaseYear.find(it)?.value }
-    val name = meta.name.lowercase().filter { it.isLetterOrDigit() }
-    return if (year != null && name.isNotEmpty()) {
-        listOf(titleKey(meta), "${meta.type}|$name|$year")
-    } else {
-        listOf(titleKey(meta))
-    }
+    val name = foldedText(meta.name).filter { it.isLetterOrDigit() }
+    // The surest identity when it is there: Cinemeta's id is the IMDb id, and
+    // the TMDB addon sends it beside its own.
+    val imdbId = meta.id.takeIf(ImdbId::matches) ?: meta.imdbId?.takeIf(ImdbId::matches)
+    return listOfNotNull(
+        titleKey(meta),
+        imdbId?.let { "${meta.type}|imdb|$it" },
+        if (year != null && name.isNotEmpty()) "${meta.type}|$name|$year" else null,
+    )
 }
+
+private val ImdbId = Regex("""^tt\d+$""")
 
 /**
  * Several ranked lists as one, for the layouts that merge search results (a
@@ -31,19 +36,31 @@ fun titleIdentities(meta: MetaCard): List<String> {
  * list's second, and so on, each title once even when two addons name it by
  * different ids (see [titleIdentities]). Taking turns keeps each addon's own
  * ranking without letting the first addon's long tail bury the others' best;
- * of two copies of a title, the better-ranked one stays. Titles shown
+ * of two copies of a title, the better-ranked one stays, and [merge] may
+ * hand it what only the other copy knew (see `withDetailsFrom`). Titles shown
  * elsewhere on the screen are passed in [exclude] and left out.
  */
-fun <T : MetaCard> interleaveTitles(lists: List<List<T>>, exclude: List<MetaCard> = emptyList()): List<T> {
-    val seen = exclude.flatMap(::titleIdentities).toMutableSet()
+fun <T : MetaCard> interleaveTitles(
+    lists: List<List<T>>,
+    exclude: List<MetaCard> = emptyList(),
+    merge: (kept: T, other: T) -> T = { kept, _ -> kept },
+): List<T> {
+    val excluded = exclude.flatMap(::titleIdentities).toSet()
+    /** Where in `merged` each identity's title sits. */
+    val placed = mutableMapOf<String, Int>()
     val merged = mutableListOf<T>()
     val longest = lists.maxOfOrNull { it.size } ?: 0
     for (rank in 0 until longest) {
         for (list in lists) {
             val meta = list.getOrNull(rank) ?: continue
             val identities = titleIdentities(meta)
-            if (identities.any { it in seen }) continue
-            seen += identities
+            if (identities.any { it in excluded }) continue
+            val kept = identities.firstNotNullOfOrNull { placed[it] }
+            if (kept != null) {
+                merged[kept] = merge(merged[kept], meta)
+                continue
+            }
+            identities.forEach { placed[it] = merged.size }
             merged += meta
         }
     }

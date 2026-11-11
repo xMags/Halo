@@ -65,6 +65,10 @@ import moe.ditto.halo.api.MetaPreview
 import moe.ditto.halo.browse.MinSearchTermLength
 import moe.ditto.halo.browse.catalogRows
 import moe.ditto.halo.browse.interleaveTitles
+import moe.ditto.halo.browse.ratedValue
+import moe.ditto.halo.browse.refineResults
+import moe.ditto.halo.browse.searchTopMatch
+import moe.ditto.halo.browse.withDetailsFrom
 import moe.ditto.halo.browse.savedSearchMatches
 import moe.ditto.halo.browse.suggestedSearches
 import moe.ditto.halo.browse.titleKey
@@ -151,15 +155,24 @@ internal fun WideSearchScreen(
     }
 
     val groups = results.value
-    // The best guess for the query itself: the first title of the first
-    // catalog, picked before the kind filter so the filter does not move it.
-    val topMatch = groups?.firstOrNull()?.metas?.firstOrNull()?.takeIf { searching }
+    // The best guess for the query itself (see searchTopMatch), picked before
+    // the kind filter so the filter does not move it.
+    val topMatch = remember(groups, trimmed, searching) {
+        if (searching) groups?.let { searchTopMatch(it, trimmed) } else null
+    }
     val fromLibrary = remember(library.value, trimmed, filter) {
         if (!searching) emptyList() else savedSearchMatches(library.value, trimmed).map { it.metaPreview() }.filter(matchesFilter)
     }
-    val merged = remember(groups, fromLibrary, topMatch, filter) {
+    val merged = remember(groups, fromLibrary, topMatch, filter, trimmed) {
         val shownAbove = fromLibrary + listOfNotNull(topMatch)
-        interleaveTitles(groups.orEmpty().map { group -> group.metas.filter(matchesFilter) }, shownAbove)
+        // Taking turns folds two addons' copies of a title into one; then what
+        // was asked for comes first and what nobody asked for goes.
+        val interleaved = interleaveTitles(
+            groups.orEmpty().map { group -> group.metas.filter(matchesFilter) },
+            shownAbove,
+            merge = MetaPreview::withDetailsFrom,
+        )
+        refineResults(interleaved, trimmed)
     }
     val suggestions = if (fieldFocused) suggestedSearches(history, term) else emptyList()
 
@@ -522,7 +535,7 @@ private fun TopMatchCard(meta: MetaPreview, inLibrary: Boolean, onClick: () -> U
     val facts = listOfNotNull(
         if (meta.type == "series") "SERIES" else "MOVIE",
         meta.releaseInfo?.takeIf { it.isNotBlank() },
-        meta.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" },
+        ratedValue(meta.imdbRating)?.let { "★ $it" },
         if (inLibrary) "IN LIBRARY" else null,
     ).joinToString(" · ")
     Row(
