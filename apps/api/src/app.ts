@@ -145,6 +145,20 @@ const watchStatesSchema = z.array(
 
 const addonPatchSchema = z.object({ hideCatalogs: z.boolean() })
 
+/**
+ * How far ahead of this server's clock a synced row's `updatedAt` may claim to
+ * be. Sync keeps whichever write is newest by the client's own timestamp, so a
+ * device whose clock runs a day fast would otherwise win every conflict until
+ * real time caught up, with every other device's changes silently dropped.
+ * Timestamps past the allowance are pulled back to it: the fast device still
+ * syncs, and its next write is still newer than its last.
+ */
+const MAX_CLOCK_AHEAD_MS = 5 * 60_000
+
+function latestAcceptedTimestamp(): number {
+  return Date.now() + MAX_CLOCK_AHEAD_MS
+}
+
 export function createApp(config: AppConfig) {
   const { db } = config
   const doSafeFetch = config.safeFetch ?? safeFetch
@@ -419,6 +433,7 @@ export function createApp(config: AppConfig) {
     const body = librarySchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
     const user = c.get('user')
+    const latest = latestAcceptedTimestamp()
     db.transaction((tx) => {
       for (const item of body.data) {
         tx.insert(libraryItems)
@@ -430,7 +445,7 @@ export function createApp(config: AppConfig) {
             poster: item.poster ?? null,
             addedAt: item.addedAt,
             removedAt: item.removedAt ?? null,
-            updatedAt: item.updatedAt,
+            updatedAt: Math.min(item.updatedAt, latest),
           })
           .onConflictDoUpdate({
             target: [libraryItems.userId, libraryItems.id],
@@ -468,10 +483,11 @@ export function createApp(config: AppConfig) {
     const body = watchStatesSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
     const user = c.get('user')
+    const latest = latestAcceptedTimestamp()
     db.transaction((tx) => {
       for (const state of body.data) {
         tx.insert(watchStates)
-          .values({ ...state, userId: user.id })
+          .values({ ...state, updatedAt: Math.min(state.updatedAt, latest), userId: user.id })
           .onConflictDoUpdate({
             target: [watchStates.userId, watchStates.videoId],
             set: {
@@ -504,7 +520,11 @@ export function createApp(config: AppConfig) {
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
     const user = c.get('user')
     db.insert(userSettings)
-      .values({ userId: user.id, value: body.data.value, updatedAt: body.data.updatedAt })
+      .values({
+        userId: user.id,
+        value: body.data.value,
+        updatedAt: Math.min(body.data.updatedAt, latestAcceptedTimestamp()),
+      })
       .onConflictDoUpdate({
         target: userSettings.userId,
         set: { value: sql`excluded.value`, updatedAt: sql`excluded.updated_at` },

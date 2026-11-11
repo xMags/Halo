@@ -109,6 +109,23 @@ describe('auth', () => {
   })
 })
 
+describe('timestamps from a clock that runs ahead', () => {
+  it('are pulled back, so another device is not locked out of the row', async () => {
+    const { app } = makeApp()
+    const token = await adminToken()
+    const nextYear = Date.now() + 365 * 86_400_000
+    await app.request('/watch-state', authed(token, [state({ positionSec: 100, updatedAt: nextYear })]))
+
+    // A device with a correct clock, reporting later, must win.
+    const later = Date.now() + 10 * 60_000
+    const res = await app.request('/watch-state', authed(token, [state({ positionSec: 200, updatedAt: later })]))
+    const rows = (await res.json()) as Array<{ positionSec: number; updatedAt: number }>
+
+    expect(rows[0]!.positionSec).toBe(200)
+    expect(rows[0]!.updatedAt).toBeLessThan(nextYear)
+  })
+})
+
 describe('watch-state LWW (per user)', () => {
   let app: App
   let token: string
