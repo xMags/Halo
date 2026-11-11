@@ -59,6 +59,20 @@ class DeviceBackendTest {
     }
 
     @Test
+    fun ensuringAddonsAddsOnlyTheMissingOnesAfterWhatIsInstalled() = realTimeTest {
+        val fixture = Fixture()
+        fixture.backend.putAddons(listOf(StreamA))
+
+        assertEquals(true, fixture.backend.ensureAddons(listOf(CatalogAddon, StreamA)))
+        assertEquals(listOf(StreamA, CatalogAddon), fixture.backend.getAddons().user.map { it.transportUrl })
+
+        // Nothing missing: nothing fetched, nothing rewritten.
+        fixture.calls.clear()
+        assertEquals(false, fixture.backend.ensureAddons(listOf(CatalogAddon, StreamA)))
+        assertEquals(emptyList(), fixture.calls)
+    }
+
+    @Test
     fun oneBadManifestFailsTheWholeInstallAndLeavesTheListAsItWas() = realTimeTest {
         val broken = "https://broken.test/manifest.json"
         val fixture = Fixture(mapOf(broken to json("""{"id":"","name":"x"}""")))
