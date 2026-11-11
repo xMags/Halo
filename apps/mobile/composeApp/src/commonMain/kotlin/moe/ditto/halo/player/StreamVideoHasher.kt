@@ -1,6 +1,7 @@
 package moe.ditto.halo.player
 
 import io.ktor.client.HttpClient
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.head
 import io.ktor.client.request.header
@@ -38,22 +39,27 @@ internal class StreamVideoHasher(private val http: HttpClient) {
      * streaming through. A declared size that turns out to be wrong yields a
      * hash no subtitle matches, which is the same outcome as not hashing.
      */
-    suspend fun fingerprint(url: String, knownSizeBytes: Long? = null): VideoFingerprint? = try {
-        hash(url, knownSizeBytes)
+    suspend fun fingerprint(
+        url: String,
+        knownSizeBytes: Long? = null,
+        /** Request headers the source needs; without them a host that wants a Referer refuses the reads. */
+        headers: Map<String, String> = emptyMap(),
+    ): VideoFingerprint? = try {
+        hash(url, knownSizeBytes, playbackHeaders(headers))
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (_: Throwable) {
         null
     }
 
-    private suspend fun hash(url: String, knownSizeBytes: Long?): VideoFingerprint? {
-        val size = knownSizeBytes?.takeIf { it > 0 } ?: contentLength(url) ?: return null
+    private suspend fun hash(url: String, knownSizeBytes: Long?, headers: Map<String, String>): VideoFingerprint? {
+        val size = knownSizeBytes?.takeIf { it > 0 } ?: contentLength(url, headers) ?: return null
         if (size < VideoHash.MinimumHashableBytes) return null
 
         val last = size - 1
         val chunks = coroutineScope {
-            val head = async { rangeBytes(url, 0, VideoHash.ChunkBytes - 1L) }
-            val tail = async { rangeBytes(url, size - VideoHash.ChunkBytes, last) }
+            val head = async { rangeBytes(url, headers, 0, VideoHash.ChunkBytes - 1L) }
+            val tail = async { rangeBytes(url, headers, size - VideoHash.ChunkBytes, last) }
             listOf(head.await(), tail.await())
         }
         val (head, tail) = chunks
@@ -66,13 +72,16 @@ internal class StreamVideoHasher(private val http: HttpClient) {
      * HEAD first, then a one-byte range: some hosts answer HEAD with nothing
      * useful but still report the total in `Content-Range`.
      */
-    private suspend fun contentLength(url: String): Long? {
-        val head: HttpResponse = http.head(url)
+    private suspend fun contentLength(url: String, headers: Map<String, String>): Long? {
+        val head: HttpResponse = http.head(url) { sourceHeaders(headers) }
         if (head.status.isSuccess()) {
             head.headers[HttpHeaders.ContentLength]?.toLongOrNull()?.takeIf { it > 0 }?.let { return it }
         }
 
-        val probe = http.get(url) { header(HttpHeaders.Range, "bytes=0-0") }
+        val probe = http.get(url) {
+            sourceHeaders(headers)
+            header(HttpHeaders.Range, "bytes=0-0")
+        }
         if (probe.status != HttpStatusCode.PartialContent) return null
         return probe.headers[HttpHeaders.ContentRange]
             ?.substringAfterLast('/')
@@ -85,10 +94,18 @@ internal class StreamVideoHasher(private val http: HttpClient) {
      * Anything but 206 means the host ignored the range and is about to send
      * the whole file, which for a hash would be a download of gigabytes.
      */
-    private suspend fun rangeBytes(url: String, from: Long, to: Long): ByteArray? {
-        val response = http.get(url) { header(HttpHeaders.Range, "bytes=$from-$to") }
+    private suspend fun rangeBytes(url: String, headers: Map<String, String>, from: Long, to: Long): ByteArray? {
+        val response = http.get(url) {
+            sourceHeaders(headers)
+            header(HttpHeaders.Range, "bytes=$from-$to")
+        }
         if (response.status != HttpStatusCode.PartialContent) return null
         val bytes = response.readRawBytes()
         return bytes.takeIf { it.size.toLong() == to - from + 1 }
     }
+}
+
+/** The source's own headers first, so a request's Range, set after, is the one sent. */
+private fun HttpRequestBuilder.sourceHeaders(headers: Map<String, String>) {
+    headers.forEach { (name, value) -> header(name, value) }
 }

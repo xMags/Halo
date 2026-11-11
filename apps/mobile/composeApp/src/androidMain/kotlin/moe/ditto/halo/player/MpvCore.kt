@@ -255,8 +255,19 @@ internal class MpvCore private constructor(
         mpv.detachSurface()
     }
 
-    fun load(url: String) {
+    /**
+     * [headerLines] are the source's own request headers, one `Name: value`
+     * each. They are replaced for every file: the core outlives a file, so the
+     * last source's would otherwise go to this one's host. Each is appended as
+     * one item, which takes the value as it is; setting the whole list would
+     * split a value at its commas.
+     */
+    fun load(url: String, headerLines: List<String> = emptyList()) {
         if (destroyed) return
+        mpv.setPropertyString("http-header-fields", "")
+        headerLines.forEach { line ->
+            mpv.command(arrayOf("change-list", "http-header-fields", "append", line))
+        }
         fileLifecycle.onLoadRequested()
         mpv.command(arrayOf("loadfile", url))
     }
