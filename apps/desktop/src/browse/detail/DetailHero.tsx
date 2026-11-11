@@ -3,7 +3,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useMemo, useState, type RefObject } from 'react'
 import { FluentIcon } from '../../components/FluentIcon'
 import { QualityMedal } from '../../components/QualityMedal'
-import { formatTimeLeft } from '../../format'
+import { formatTimeLeft, ratedValue } from '../../format'
 import { useStreams } from '../../queries'
 import { formatRuntime, summarizeAvailability, trailerUrl, type Availability } from './detailFacts'
 
@@ -75,12 +75,12 @@ export function DetailHero({
                 <span className="dh-cert">{meta.ageRating}</span>
               </span>
             )}
-            {meta.imdbRating && (
+            {ratedValue(meta.imdbRating) && (
               <span>
                 <span className="dh-sep">·</span>
                 <span className="dh-imdb">
                   <b>IMDb</b>
-                  {meta.imdbRating}
+                  {ratedValue(meta.imdbRating)}
                 </span>
               </span>
             )}

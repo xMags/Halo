@@ -23,3 +23,14 @@ test('episode ids that do not parse fall back to SERIES', () => {
   assert.equal(videoIdTag('tt0944947:1:2:3', 'tt0944947'), 'SERIES')
   assert.equal(videoIdTag('tt0944947:', 'tt0944947'), 'SERIES')
 })
+
+test('a rating of zero or nothing readable is no rating', async () => {
+  const { ratingLabel, ratedValue } = await import('../src/format.ts')
+  assert.equal(ratingLabel('6.8'), '★ 6.8')
+  assert.equal(ratingLabel('0.0'), null)
+  assert.equal(ratingLabel('0'), null)
+  assert.equal(ratingLabel(''), null)
+  assert.equal(ratingLabel(undefined), null)
+  assert.equal(ratingLabel('N/A'), null)
+  assert.equal(ratedValue(' 7.2 '), '7.2')
+})

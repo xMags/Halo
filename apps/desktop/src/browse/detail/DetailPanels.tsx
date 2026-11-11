@@ -3,7 +3,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { useState } from 'react'
 import { FluentIcon } from '../../components/FluentIcon'
 import { ScrollRow } from '../../components/ScrollRow'
-import { initials } from '../../format'
+import { initials, ratingLabel } from '../../format'
 import { useNav } from '../../nav'
 import { useEffectiveAddons, useGenreCatalog } from '../../queries'
 import { pickGenreCatalog, type GenreCatalog } from '../similarTitles'
@@ -141,7 +141,7 @@ function SimilarCard({ meta }: { meta: MetaPreview }) {
     >
       <div className="similar-art">
         <FadeArt src={meta.poster ?? null} fallback={meta.name} />
-        {meta.imdbRating && <span className="similar-rating">★ {meta.imdbRating}</span>}
+        {ratingLabel(meta.imdbRating) && <span className="similar-rating">{ratingLabel(meta.imdbRating)}</span>}
       </div>
       <div className="similar-name ellipsis">{meta.name}</div>
       {meta.releaseInfo && <div className="similar-year">{meta.releaseInfo}</div>}

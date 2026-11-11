@@ -2,6 +2,7 @@ import type { MetaPreview } from '@halo/core'
 import { ArtImage } from './ArtImage'
 import { metahubPosterUrl } from './artworkUrl'
 import { useTitleMenu } from '../browse/titleMenu'
+import { ratingLabel } from '../format'
 import { useNav } from '../nav'
 
 interface Props {
@@ -49,7 +50,5 @@ export function PosterCard({ meta, showKind, metaLine, onBeforePress }: Props) {
 
 /** `2026 · ★ 6.8`, the native card's meta line; either half may be missing. */
 function posterMeta(meta: MetaPreview): string {
-  return [meta.releaseInfo, meta.imdbRating ? `★ ${meta.imdbRating}` : null]
-    .filter(Boolean)
-    .join(' · ')
+  return [meta.releaseInfo, ratingLabel(meta.imdbRating)].filter(Boolean).join(' · ')
 }
