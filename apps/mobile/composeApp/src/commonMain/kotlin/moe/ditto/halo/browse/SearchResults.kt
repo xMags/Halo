@@ -189,6 +189,27 @@ fun refineSearchGroups(groups: List<SearchResultGroup>, query: String): List<Sea
     }
 }
 
+/**
+ * Every catalog's answer as one list, as the desktop shows a search: the
+ * catalogs take turns so each keeps its own ranking, two addons' copies of a
+ * title become one card, and the result is cleaned and ordered as one search
+ * ([refineResults]). Titles already shown above the list, such as the
+ * viewer's own library matches, are passed in [exclude] and left out.
+ */
+fun mergedSearchResults(
+    groups: List<SearchResultGroup>,
+    query: String,
+    exclude: List<MetaCard> = emptyList(),
+): List<MetaPreview> = refineResults(
+    interleaveTitles(
+        groups.map { it.metas },
+        exclude = exclude,
+        merge = MetaPreview::asOneTitleWith,
+        tidy = MetaPreview::withYearOutOfName,
+    ),
+    query,
+)
+
 private val YearInName = Regex("""^(.*\S)\s*\((\d{4})\)$""")
 
 /**

@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -45,9 +45,10 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.browse.MinSearchTermLength
+import moe.ditto.halo.browse.mergedSearchResults
 import moe.ditto.halo.browse.savedSearchMatches
 import moe.ditto.halo.cache.QueryState
-import moe.ditto.halo.ui.CatalogRow
+import moe.ditto.halo.ui.PosterGrid
 import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
@@ -65,11 +66,12 @@ import moe.ditto.halo.ui.rememberResponsive
 private const val DebounceMs = 350L
 
 /**
- * Search across every installed addon, one row per catalog that answers.
+ * Search across every installed addon, shown as one list as on the desktop.
  *
- * Results stay grouped rather than merged: a catalog is a curated view, so two
- * addons answering the same query are two statements about it, and flattening
- * would throw away which addon vouched for what.
+ * The catalogs' answers are merged ([mergedSearchResults]): which addon found
+ * a title is not what a viewer is looking for, and a row per catalog showed
+ * the same film once per addon that knows it. What the viewer has in their
+ * library leads the list.
  */
 @Composable
 internal fun SearchScreen(
@@ -188,45 +190,41 @@ internal fun SearchScreen(
                 }
             groups.orEmpty().isEmpty() && saved.isEmpty() -> CenterMessage("No results for “$trimmed”.")
             else -> {
-                val listState = rememberLazyListState()
+                val gridState = rememberLazyGridState()
                 val focusManager = LocalFocusManager.current
                 // Dragging the results dismisses the keyboard, as it does in the
                 // shipping client — otherwise it covers half of what was found.
-                LaunchedEffect(listState.isScrollInProgress) {
-                    if (listState.isScrollInProgress) focusManager.clearFocus()
+                LaunchedEffect(gridState.isScrollInProgress) {
+                    if (gridState.isScrollInProgress) focusManager.clearFocus()
                 }
-                val posterWidth = responsive.searchPosterWidth
-                LazyColumn(
-                    state = listState,
+                // What the viewer already owns leads: it is what they have
+                // definitely chosen before, and it needs no request to appear.
+                // The addons' answers follow as one list, without those titles.
+                val owned = remember(saved) { saved.map { it.metaPreview() } }
+                val found = remember(groups, owned, trimmed) {
+                    mergedSearchResults(groups.orEmpty(), trimmed, exclude = owned)
+                }
+                val titles = remember(owned, found) { owned + found }
+                PosterGrid(
+                    items = remember(titles) { titles.map { it.posterItem() } },
+                    columns = responsive.posterColumns,
+                    onItemClick = { item ->
+                        // The term earned its place in history: it found
+                        // something worth opening.
+                        record(trimmed)
+                        onOpenDetail(item.metaRef())
+                    },
                     modifier = Modifier.fillMaxSize(),
                     // No tab-bar allowance: this screen covers the bar.
-                    contentPadding = PaddingValues(bottom = HaloSpacing.Xl),
-                ) {
-                    // What the user already owns leads: it is the one row here
-                    // they have definitely chosen before, and it needs no request
-                    // to appear.
-                    if (saved.isNotEmpty()) {
-                        item(key = "saved") {
-                            CatalogRow(
-                                title = "My Library",
-                                items = remember(saved) { saved.map { it.posterItem() } },
-                                onItemClick = { item ->
-                                    record(trimmed)
-                                    onOpenDetail(item.metaRef())
-                                },
-                                itemMenu = posterMenu(remember(saved) { saved.map { it.metaPreview() } }),
-                                posterWidth = posterWidth,
-                                showLabels = true,
-                                gutter = gutter,
-                                gap = responsive.catalogRowGap,
-                                bottomPadding = responsive.pick(HaloSpacing.Lg, 26.dp),
-                            )
-                        }
-                    }
-                    // The addon rows keep arriving behind it; a spinner under the
-                    // saved row says so without hiding what already landed.
-                    if (groups == null) {
-                        item(key = "addons-pending") {
+                    contentPadding = PaddingValues(start = gutter, end = gutter, bottom = HaloSpacing.Xl),
+                    showLabels = true,
+                    itemMenu = posterMenu(titles),
+                    // The addons' answers keep arriving behind the library's; a
+                    // spinner under what has landed says so without hiding it.
+                    footer = if (groups != null) {
+                        null
+                    } else {
+                        {
                             Box(
                                 Modifier.fillMaxWidth().padding(vertical = HaloSpacing.Lg),
                                 contentAlignment = Alignment.Center,
@@ -234,26 +232,9 @@ internal fun SearchScreen(
                                 CircularProgressIndicator(color = HaloColors.Accent)
                             }
                         }
-                    }
-                    items(items = groups.orEmpty(), key = { it.key }) { group ->
-                        CatalogRow(
-                            title = group.title,
-                            items = remember(group) { group.metas.map { it.posterItem() } },
-                            onItemClick = { item ->
-                                // The term earned its place in history: it found
-                                // something worth opening.
-                                record(trimmed)
-                                onOpenDetail(item.metaRef())
-                            },
-                            itemMenu = posterMenu(group.metas),
-                            posterWidth = posterWidth,
-                            showLabels = true,
-                            gutter = gutter,
-                            gap = responsive.catalogRowGap,
-                            bottomPadding = responsive.pick(HaloSpacing.Lg, 26.dp),
-                        )
-                    }
-                }
+                    },
+                    state = gridState,
+                )
             }
         }
     }

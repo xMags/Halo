@@ -215,6 +215,27 @@ class SearchResultsTest {
     }
 
     @Test
+    fun everyCatalogsAnswerBecomesOneListWithoutWhatIsShownAbove() {
+        val films = SearchResultGroup("c/movie", "Movies", listOf(full("tt1", "Doctor Strange"), full("tt2", "Doctor Strange 2")))
+        val more = SearchResultGroup(
+            "t/movie",
+            "TMDB",
+            listOf(
+                full("tmdb:9", "Doctor Strange", poster = "https://image.tmdb.org/t/p/w500/9.jpg").copy(imdbId = "tt1"),
+                full("tmdb:7", "Doctor Strange: The Making"),
+            ),
+        )
+        val series = SearchResultGroup("c/series", "Series", listOf(full("tt5", "Doctor Stranger")))
+
+        val all = mergedSearchResults(listOf(films, more, series), "doctor strange")
+        // One card per title, best-named first, whichever catalog it came from.
+        assertEquals(listOf("tt1", "tt2", "tmdb:7", "tt5"), all.map { it.id })
+
+        val withoutOwned = mergedSearchResults(listOf(films, more, series), "doctor strange", exclude = listOf(full("tt1", "Doctor Strange")))
+        assertEquals(listOf("tt2", "tmdb:7", "tt5"), withoutOwned.map { it.id })
+    }
+
+    @Test
     fun aRatingOfZeroOrNothingReadableIsNoRating() {
         assertEquals("6.8", ratedValue("6.8"))
         assertEquals("7.2", ratedValue(" 7.2 "))
