@@ -73,6 +73,7 @@ import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.MetaDetail
 import moe.ditto.halo.api.MetaVideo
 import moe.ditto.halo.api.WatchState
+import moe.ditto.halo.browse.ratedValue
 import moe.ditto.halo.browse.Availability
 import moe.ditto.halo.browse.Credit
 import moe.ditto.halo.browse.GenreCatalog
@@ -362,7 +363,7 @@ private fun WideHero(
                         facts = facts,
                         // Addons send blank fields as often as missing ones.
                         certificate = meta.ageRating?.takeIf { it.isNotBlank() },
-                        rating = meta.imdbRating?.takeIf { it.isNotBlank() },
+                        rating = ratedValue(meta.imdbRating),
                         modifier = Modifier.padding(top = 18.dp),
                     )
                     meta.description?.takeIf { it.isNotBlank() }?.let { text ->

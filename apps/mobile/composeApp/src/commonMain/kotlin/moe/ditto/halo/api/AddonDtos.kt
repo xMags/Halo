@@ -105,6 +105,9 @@ interface MetaCard {
     val imdbRating: String?
     val genres: List<String>
 
+    /** The title's IMDb id when the addon names titles by its own (TMDB does, and sends this beside it). */
+    val imdbId: String? get() = null
+
     /**
      * Addon-declared card aspect ("square", "poster", "landscape"). Deliberately
      * a plain string: an unrecognised shape must fall back to the default, not
@@ -154,6 +157,7 @@ data class MetaPreview(
     override val imdbRating: String? = null,
     override val genres: List<String> = emptyList(),
     override val behaviorHints: MetaBehaviorHints? = null,
+    @SerialName("imdb_id") override val imdbId: String? = null,
 ) : MetaCard
 
 @Serializable

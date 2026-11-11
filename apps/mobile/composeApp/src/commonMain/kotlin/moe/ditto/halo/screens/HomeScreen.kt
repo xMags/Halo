@@ -66,6 +66,7 @@ import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.CatalogResponse
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.playableFromPreview
+import moe.ditto.halo.browse.ratedValue
 import moe.ditto.halo.browse.CatalogPageSource
 import moe.ditto.halo.browse.CatalogRowSpec
 import moe.ditto.halo.browse.ContinueEntry
@@ -627,7 +628,7 @@ private fun FeaturedHero(
                     )
                     MetaLine(
                         parts = listOfNotNull(shown.releaseInfo, shown.genres.firstOrNull()),
-                        rating = shown.imdbRating,
+                        rating = ratedValue(shown.imdbRating),
                         modifier = Modifier.padding(top = HaloSpacing.Xs),
                     )
                     PlayButton(

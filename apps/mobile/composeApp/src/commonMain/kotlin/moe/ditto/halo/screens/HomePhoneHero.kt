@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import moe.ditto.halo.browse.ratedValue
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
@@ -116,7 +117,7 @@ internal fun PhoneFeaturedHero(
                         FeaturedTitle(shown.name, shown.logo, 28.sp, logoPending, LogoMaxWidth, TitleSlotHeight)
                     }
                     // Addons send blank fields as often as missing ones.
-                    FeaturedFacts(shown.imdbRating?.takeIf { it.isNotBlank() }, shown.releaseInfo?.takeIf { it.isNotBlank() })
+                    FeaturedFacts(ratedValue(shown.imdbRating), shown.releaseInfo?.takeIf { it.isNotBlank() })
                     Text(
                         text = shown.description.orEmpty(),
                         color = HaloColors.TextDim,

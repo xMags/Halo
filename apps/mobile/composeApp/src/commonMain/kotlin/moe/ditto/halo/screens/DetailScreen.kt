@@ -63,6 +63,7 @@ import moe.ditto.halo.api.MetaPreview
 import moe.ditto.halo.api.MetaVideo
 import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.api.movieVideoId
+import moe.ditto.halo.browse.ratedValue
 import moe.ditto.halo.browse.aboutRows
 import moe.ditto.halo.browse.creditsOf
 import moe.ditto.halo.browse.episodePages
@@ -477,7 +478,7 @@ private fun DetailBody(
                 title = meta.name,
                 logo = meta.logo,
                 facts = heroFacts(meta, isSeries, seasons),
-                rating = meta.imdbRating,
+                rating = ratedValue(meta.imdbRating),
                 height = responsive.detailHeroHeight,
                 gutter = gutter,
             )

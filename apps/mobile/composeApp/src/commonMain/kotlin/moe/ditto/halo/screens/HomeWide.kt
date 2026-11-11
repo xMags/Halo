@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.MetaCard
+import moe.ditto.halo.browse.ratedValue
 import moe.ditto.halo.browse.ContinueEntry
 import moe.ditto.halo.browse.historyVideoTag
 import moe.ditto.halo.cache.QueryState
@@ -141,7 +142,7 @@ internal fun WideFeaturedHero(
                     )
                     FeaturedTitle(shown.name, shown.logo, 46.sp, logoPending)
                     // Addons send blank fields as often as missing ones.
-                    FeaturedFacts(shown.imdbRating?.takeIf { it.isNotBlank() }, shown.releaseInfo?.takeIf { it.isNotBlank() })
+                    FeaturedFacts(ratedValue(shown.imdbRating), shown.releaseInfo?.takeIf { it.isNotBlank() })
                     shown.description?.takeIf { it.isNotBlank() }?.let {
                         Text(
                             text = it,
