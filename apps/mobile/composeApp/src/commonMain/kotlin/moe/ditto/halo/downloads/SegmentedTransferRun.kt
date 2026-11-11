@@ -104,6 +104,9 @@ internal class SegmentedTransferRun(
                 coordinate(this)
             }
             finish()
+        } catch (whole: PartAlreadyWholeException) {
+            total = whole.size
+            finish()
         } catch (mismatch: RangeMismatchException) {
             discardPartial()
             throw DownloadTransferException(DownloadFailure(DownloadFailureCode.InvalidRange))
@@ -157,6 +160,8 @@ internal class SegmentedTransferRun(
             throw cancellation
         } catch (mismatch: RangeMismatchException) {
             throw mismatch
+        } catch (whole: PartAlreadyWholeException) {
+            throw whole
         } catch (fatal: FatalRunException) {
             throw fatal
         } catch (failure: Throwable) {
@@ -217,6 +222,16 @@ internal class SegmentedTransferRun(
         connection: Connection,
     ): Segment {
         val status = response.status
+        if (status == HttpStatusCode.RequestedRangeNotSatisfiable && request is FirstRequest.Append) {
+            // The request was for whatever follows the part, and the source
+            // says nothing does. When its size is the part's, the last run
+            // wrote every byte and stopped before the move to the final name:
+            // there is nothing to fetch. Otherwise the part is not a prefix of
+            // the file now served, and it goes so the next attempt starts
+            // clean; kept, it would draw the same refusal on every retry.
+            if (response.contentRangeTotal() == request.existing) throw PartAlreadyWholeException(request.existing)
+            fileSystem.delete(partFile, mustExist = false)
+        }
         if (status != HttpStatusCode.OK && status != HttpStatusCode.PartialContent) {
             throw DownloadTransferException(statusFailure(status), status.value)
         }
@@ -690,6 +705,9 @@ internal class SegmentedTransferRun(
 
 /** Two responses disagreed about the file: the part cannot be trusted and goes. */
 private class RangeMismatchException : Exception("The source served inconsistent ranges")
+
+/** The part already holds the whole file: the source had no byte left to send after it. */
+private class PartAlreadyWholeException(val size: Long) : Exception("The part is already the whole file")
 
 /** A failure that ends the whole run whichever connection met it. */
 private class FatalRunException(val failure: Throwable) : Exception(failure)
