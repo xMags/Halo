@@ -18,7 +18,8 @@ import {
   removeSearchTerm,
   type SearchHistoryEntry,
 } from './searchHistory'
-import { byRelevance, interleave, libraryMatches, metaKey, suggestedSearches } from './searchResults'
+import { useMissingArt } from './missingArt'
+import { interleave, libraryMatches, metaKey, refineResults, suggestedSearches } from './searchResults'
 
 /** Short enough to feel live while typing, long enough not to ask every addon per keystroke. */
 const DEBOUNCE_MS = 250
@@ -107,14 +108,16 @@ export function Search() {
     () => (active ? libraryMatches(library, query).filter((meta) => !typeFilter || meta.type === typeFilter) : []),
     [active, library, query, typeFilter],
   )
-  const results = useMemo(() => {
+  // Taking turns keeps every addon's ranking and folds two addons' copies of
+  // a title into one.
+  const merged = useMemo(() => {
     const shownAbove = topMatch ? [...fromLibrary, topMatch] : fromLibrary
     const lists = groups.map((group) => group.metas.filter((meta) => !typeFilter || meta.type === typeFilter))
-    // Taking turns keeps every addon's ranking; the names then decide which
-    // of them come first, so a title sharing no word with the query cannot
-    // sit among the first results.
-    return byRelevance(interleave(lists, shownAbove), query)
-  }, [groups, fromLibrary, topMatch, typeFilter, query])
+    return interleave(lists, shownAbove)
+  }, [groups, fromLibrary, topMatch, typeFilter])
+  const missingArt = useMissingArt(merged)
+  // Then what was asked for comes first, and what nobody asked for goes.
+  const results = useMemo(() => refineResults(merged, query, missingArt), [merged, query, missingArt])
 
   const filterLabel = typeFilter === 'movie' ? 'movies' : typeFilter === 'series' ? 'series' : 'titles'
   const failedNames = [...new Set(failed.map((target) => target.addonName))]
