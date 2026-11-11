@@ -183,10 +183,8 @@ class BrowseRepository(
                 }
                 .awaitAll()
         }
-        // Each catalog's row keeps only what answers the term, best first
-        // (see refineResults); a row left with nothing is not a row.
-        return buildSearchGroups(targets, results)
-            .map { group -> group.copy(metas = refineResults(group.metas.map { it.withYearOutOfName() }, term)) }
-            .filter { it.metas.isNotEmpty() }
+        // The rows keep only what answers the term, judged over the whole
+        // search, each title once (see refineSearchGroups).
+        return refineSearchGroups(buildSearchGroups(targets, results), term)
     }
 }

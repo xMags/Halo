@@ -79,13 +79,19 @@ private val TmdbMissingImage = Regex("/t/p/[a-z0-9]+null$", RegexOption.IGNORE_C
  * card it draws with the entry's name on it, since it has no picture for a
  * title it only knows from a file name.
  */
-private val GeneratedPoster = Regex("/poster/[a-z]+/mf\\d+\\.[a-z]+$", RegexOption.IGNORE_CASE)
+private val GeneratedPoster = Regex("/poster/[a-z]+/mf\\d+\\.[a-z]+(\\?.*)?$", RegexOption.IGNORE_CASE)
+
+/** MediaFusion's id for an entry it made from a file name, which is all it has to draw that card from. */
+private val FileNameEntry = Regex("""^mf\d+$""")
 
 /**
  * Whether an addon's answer already says the title has no poster: none sent,
  * a link built from a missing image, or a card the addon draws in its place.
+ * An entry made from a file name is known by its id as well as by the link,
+ * since the link's shape is the addon's to change.
  */
 fun hasNoPoster(meta: MetaCard): Boolean {
+    if (FileNameEntry.matches(meta.id)) return true
     val poster = meta.poster
     return poster.isNullOrBlank() || TmdbMissingImage.containsMatchIn(poster) || GeneratedPoster.containsMatchIn(poster)
 }
@@ -150,6 +156,35 @@ fun searchTopMatch(groups: List<SearchResultGroup>, query: String): MetaPreview?
     groups.mapNotNull { it.metas.firstOrNull() }
         // minByOrNull keeps the first of equals, so the earlier catalog keeps a tie.
         .minByOrNull { nameRelevance(it.name, query) }
+
+/**
+ * The catalogs' rows for a search, cleaned as one search rather than row by
+ * row. Which titles are worth showing is decided over everything the catalogs
+ * returned together ([refineResults]): a short row cannot tell that the
+ * search as a whole has plenty of better answers, and would keep its
+ * one-word matches and file-name entries. Two addons' copies of a title
+ * become one card ([asOneTitleWith]), shown in the first row that has it, and
+ * each row lists what is left of it best-named first. A row left with nothing
+ * is dropped.
+ */
+fun refineSearchGroups(groups: List<SearchResultGroup>, query: String): List<SearchResultGroup> {
+    val tidied = groups.map { group -> group.metas.map { it.withYearOutOfName() } }
+    val kept = refineResults(interleaveTitles(tidied, merge = MetaPreview::asOneTitleWith), query)
+    val rank = kept.withIndex().associate { (index, meta) -> titleKey(meta) to index }
+    /** Every identity of every surviving card, so each catalog's own copy finds it. */
+    val cardFor = buildMap {
+        kept.forEach { meta -> titleIdentities(meta).forEach { identity -> putIfAbsent(identity, meta) } }
+    }
+    val shown = mutableSetOf<String>()
+    return groups.mapIndexedNotNull { index, group ->
+        val cards = tidied[index]
+            .mapNotNull { meta -> titleIdentities(meta).firstNotNullOfOrNull { cardFor[it] } }
+            .distinctBy(::titleKey)
+            .filter { shown.add(titleKey(it)) }
+            .sortedBy { rank.getValue(titleKey(it)) }
+        if (cards.isEmpty()) null else group.copy(metas = cards)
+    }
+}
 
 private val YearInName = Regex("""^(.*\S)\s*\((\d{4})\)$""")
 
