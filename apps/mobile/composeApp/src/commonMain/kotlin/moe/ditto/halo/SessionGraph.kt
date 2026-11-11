@@ -16,6 +16,7 @@ import moe.ditto.halo.auth.SystemEpochClock
 import moe.ditto.halo.auth.TokenProvider
 import moe.ditto.halo.browse.AddonsRepository
 import moe.ditto.halo.browse.BrowseRepository
+import moe.ditto.halo.browse.PosterProbe
 import moe.ditto.halo.cache.HaloKey
 import moe.ditto.halo.cache.QueryCache
 import moe.ditto.halo.device.DefaultAddonUrls
@@ -119,6 +120,9 @@ internal class SessionGraph(
      * to Halo, and needs none of the client's auth or base URL.
      */
     val videoHasher = StreamVideoHasher(httpClient)
+
+    /** Asks image hosts which search results have artwork; talks to them, not to Halo. */
+    val posterProbe = PosterProbe(httpClient)
     val subtitleFiles = SubtitleFileCache(backend, subtitleCacheDirectory)
 
     /**

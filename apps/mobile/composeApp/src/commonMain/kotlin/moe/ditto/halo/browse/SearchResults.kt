@@ -33,6 +33,14 @@ private const val ExactName = 0
 /** The relevance of a name that begins with what was typed, mid-word. */
 private const val BeginsWithQuery = 2
 
+/**
+ * A name that opens with a studio's product code, `ABCD-123 …`: how adult
+ * video is catalogued, and what indexes that carry it list it under. A general
+ * search is never for one of these, and its poster is nothing to put on a
+ * screen unasked, so they are left out whatever else they match.
+ */
+private val ProductCodeName = Regex("""^[A-Z]{2,6}-\d{3,5}\b""")
+
 /** The relevance of a name that holds only some of the query's words. */
 private const val SomeWords = 5
 
@@ -103,6 +111,7 @@ private val ImdbTitleId = Regex("""^tt\d+$""")
  * The results as the screen shows them: what was asked for first, and without
  * what nobody asked for.
  *
+ * - A title listed under a product code is left out ([ProductCodeName]).
  * - A title sharing no word with the query is left out, as long as some
  *   result does name it (when none does, as with an addon answering in
  *   another language, everything stays).
@@ -132,9 +141,10 @@ fun <T : MetaCard> refineResults(metas: List<T>, query: String, missingArt: Set<
             artless = if (hasNoPoster(meta)) !ImdbTitleId.matches(meta.id) || knownMissing else knownMissing,
         )
     }
-    val someNamed = entries.any { it.relevance < UnrelatedName }
-    val wellNamed = entries.count { it.relevance < SomeWords } >= EnoughNamed
-    val named = entries
+    val listed = entries.filterNot { ProductCodeName.containsMatchIn(it.meta.name) }
+    val someNamed = listed.any { it.relevance < UnrelatedName }
+    val wellNamed = listed.count { it.relevance < SomeWords } >= EnoughNamed
+    val named = listed
         .filterNot { someNamed && it.relevance == UnrelatedName }
         .filterNot { wellNamed && it.relevance == SomeWords }
     val plenty = named.count { !it.incomplete } >= EnoughComplete
@@ -200,6 +210,8 @@ fun mergedSearchResults(
     groups: List<SearchResultGroup>,
     query: String,
     exclude: List<MetaCard> = emptyList(),
+    /** Keys of titles whose artwork is known not to load ([PosterProbe]). */
+    missingArt: Set<String> = emptySet(),
 ): List<MetaPreview> = refineResults(
     interleaveTitles(
         groups.map { it.metas },
@@ -208,6 +220,7 @@ fun mergedSearchResults(
         tidy = MetaPreview::withYearOutOfName,
     ),
     query,
+    missingArt,
 )
 
 private val YearInName = Regex("""^(.*\S)\s*\((\d{4})\)$""")

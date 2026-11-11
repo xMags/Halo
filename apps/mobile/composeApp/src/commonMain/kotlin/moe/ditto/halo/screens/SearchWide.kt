@@ -164,18 +164,22 @@ internal fun WideSearchScreen(
     val fromLibrary = remember(library.value, trimmed, filter) {
         if (!searching) emptyList() else savedSearchMatches(library.value, trimmed).map { it.metaPreview() }.filter(matchesFilter)
     }
-    val merged = remember(groups, fromLibrary, topMatch, filter, trimmed) {
+    val interleaved = remember(groups, fromLibrary, topMatch, filter, trimmed) {
         val shownAbove = fromLibrary + listOfNotNull(topMatch)
         // Taking turns folds two addons' copies of a title into one; then what
         // was asked for comes first and what nobody asked for goes.
-        val interleaved = interleaveTitles(
+        interleaveTitles(
             groups.orEmpty().map { group -> group.metas.filter(matchesFilter) },
             shownAbove,
             merge = MetaPreview::asOneTitleWith,
             tidy = MetaPreview::withYearOutOfName,
         )
-        refineResults(interleaved, trimmed)
     }
+    // Which of them have artwork is only known by asking; until the answers
+    // are in, the list is judged on what the addons said.
+    var missingArt by remember(trimmed) { mutableStateOf(emptySet<String>()) }
+    LaunchedEffect(interleaved) { missingArt = graph.posterProbe.missing(interleaved) }
+    val merged = remember(interleaved, trimmed, missingArt) { refineResults(interleaved, trimmed, missingArt) }
     val suggestions = if (fieldFocused) suggestedSearches(history, term) else emptyList()
 
     val gutter = responsive.gutter
