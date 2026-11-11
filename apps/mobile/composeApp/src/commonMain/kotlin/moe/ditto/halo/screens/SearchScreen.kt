@@ -46,6 +46,13 @@ import kotlinx.coroutines.delay
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.browse.MinSearchTermLength
 import moe.ditto.halo.browse.mergedSearchResults
+import moe.ditto.halo.browse.searchTopMatch
+import moe.ditto.halo.browse.titleIdentities
+import moe.ditto.halo.browse.titleKey
+import moe.ditto.halo.browse.topMatchWithDetails
+import moe.ditto.halo.api.MetaCard
+import moe.ditto.halo.api.MetaPreview
+import moe.ditto.halo.api.playableFromPreview
 import moe.ditto.halo.browse.savedSearchMatches
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.ui.PosterGrid
@@ -77,13 +84,15 @@ private const val DebounceMs = 350L
 internal fun SearchScreen(
     graph: SessionGraph,
     onOpenDetail: (MetaRef) -> Unit,
+    /** The top match's Play: a film goes straight to its sources. */
+    onPlayMovie: (MetaCard) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val responsive = rememberResponsive()
     // A tablet held sideways gets the desktop's search: one merged grid.
     if (usesWideSearch(responsive)) {
-        WideSearchScreen(graph, onOpenDetail, onClose, modifier)
+        WideSearchScreen(graph, onOpenDetail, onPlayMovie, onClose, modifier)
         return
     }
     var term by remember { mutableStateOf("") }
@@ -200,16 +209,38 @@ internal fun SearchScreen(
                 // What the viewer already owns leads: it is what they have
                 // definitely chosen before, and it needs no request to appear.
                 // The addons' answers follow as one list, without those titles.
-                val owned = remember(saved) { saved.map { it.metaPreview() } }
+                // The best guess leads, on a card of its own, so the lists
+                // below leave it out.
+                val topMatch = remember(groups, trimmed) {
+                    groups?.let { answered -> searchTopMatch(answered, trimmed)?.let { topMatchWithDetails(it, answered) } }
+                }
+                val owned = remember(saved, topMatch) {
+                    val above = topMatch?.let(::titleIdentities).orEmpty().toSet()
+                    saved.map { it.metaPreview() }.filterNot { meta -> titleIdentities(meta).any { it in above } }
+                }
                 // Which of them have artwork is only known by asking; until the
                 // answers are in, the list is judged on what the addons said.
-                val candidates = remember(groups, owned, trimmed) {
-                    mergedSearchResults(groups.orEmpty(), trimmed, exclude = owned)
+                val shownAbove = remember(owned, topMatch) { owned + listOfNotNull(topMatch) }
+                val candidates = remember(groups, shownAbove, trimmed) {
+                    mergedSearchResults(groups.orEmpty(), trimmed, exclude = shownAbove)
                 }
                 var missingArt by remember(trimmed) { mutableStateOf(emptySet<String>()) }
                 LaunchedEffect(candidates) { missingArt = graph.posterProbe.missing(candidates) }
-                val found = remember(groups, owned, trimmed, missingArt) {
-                    mergedSearchResults(groups.orEmpty(), trimmed, exclude = owned, missingArt = missingArt)
+                val found = remember(groups, shownAbove, trimmed, missingArt) {
+                    mergedSearchResults(groups.orEmpty(), trimmed, exclude = shownAbove, missingArt = missingArt)
+                }
+                // The library's matches show first and the top match lands above
+                // them, while the grid keeps what was on screen in place, which
+                // would leave the card scrolled out of sight. So the grid goes
+                // back to the top when it arrives, unless the viewer has already
+                // moved down this search themselves.
+                val topMatchKey = topMatch?.let(::titleKey)
+                LaunchedEffect(topMatchKey) {
+                    if (topMatchKey != null && gridState.firstVisibleItemIndex <= 1) gridState.scrollToItem(0)
+                }
+                val openTop: (MetaPreview) -> Unit = { meta ->
+                    record(trimmed)
+                    onOpenDetail(MetaRef(meta.type, meta.id))
                 }
                 val titles = remember(owned, found) { owned + found }
                 PosterGrid(
@@ -225,6 +256,26 @@ internal fun SearchScreen(
                     // No tab-bar allowance: this screen covers the bar.
                     contentPadding = PaddingValues(start = gutter, end = gutter, bottom = HaloSpacing.Xl),
                     showLabels = true,
+                    header = topMatch?.let { meta ->
+                        {
+                            SearchTopMatchCard(
+                                meta = meta,
+                                inLibrary = saved.any { it.id == "${meta.type}:${meta.id}" },
+                                onOpen = { openTop(meta) },
+                                onPlay = {
+                                    // A TMDB-listed film names its playable id only in
+                                    // its full meta, so its title page is the way in.
+                                    if (meta.type == "movie" && meta.playableFromPreview) {
+                                        record(trimmed)
+                                        onPlayMovie(meta)
+                                    } else {
+                                        openTop(meta)
+                                    }
+                                },
+                                modifier = Modifier.padding(bottom = HaloSpacing.Sm),
+                            )
+                        }
+                    },
                     itemMenu = posterMenu(titles),
                     // The addons' answers keep arriving behind the library's; a
                     // spinner under what has landed says so without hiding it.

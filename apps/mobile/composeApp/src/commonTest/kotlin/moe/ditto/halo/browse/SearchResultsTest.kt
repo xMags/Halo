@@ -249,6 +249,34 @@ class SearchResultsTest {
     }
 
     @Test
+    fun theTopMatchGainsWhatTheOtherCatalogsKnowAboutIt() {
+        val top = MetaPreview(id = "tt1", type = "movie", name = "Doctor Strange", releaseInfo = "2016")
+        val films = SearchResultGroup("c/movie", "Movies", listOf(top))
+        val more = SearchResultGroup(
+            "t/movie",
+            "TMDB",
+            listOf(
+                MetaPreview(
+                    id = "tmdb:9",
+                    type = "movie",
+                    name = "Doctor Strange",
+                    releaseInfo = "2016",
+                    imdbRating = "7.5",
+                    description = "A surgeon learns sorcery.",
+                    poster = "https://image.tmdb.org/t/p/w500/9.jpg",
+                ),
+            ),
+        )
+
+        val shown = topMatchWithDetails(top, listOf(films, more))
+
+        assertEquals("tt1", shown.id)
+        assertEquals("7.5", shown.imdbRating)
+        assertEquals("A surgeon learns sorcery.", shown.description)
+        assertEquals("https://image.tmdb.org/t/p/w500/9.jpg", shown.poster)
+    }
+
+    @Test
     fun aRatingOfZeroOrNothingReadableIsNoRating() {
         assertEquals("6.8", ratedValue("6.8"))
         assertEquals("7.2", ratedValue(" 7.2 "))
