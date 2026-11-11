@@ -7,12 +7,24 @@ import { closeWindow, minimizeWindow, toggleMaximizeWindow, useIsMaximized } fro
  *
  * They must sit outside any `data-tauri-drag-region` element — a drag region
  * swallows the press before the button sees it.
+ *
+ * A mouse press must not leave one of them focused. Chromium keeps focus on a
+ * clicked button, and a focused control owns the keyboard: after Maximise the
+ * player's shortcuts (F, Space, the arrows) did nothing until something else
+ * was clicked, and Space would have maximised again. The press hands focus
+ * back, as the player does for its own controls; Tab focus is untouched.
  */
 export function WindowButtons() {
   const maximized = useIsMaximized()
 
   return (
-    <div className="win-btns">
+    <div
+      className="win-btns"
+      onPointerUp={(e) => {
+        const button = e.target instanceof Element ? e.target.closest('button') : null
+        if (button !== null && button === document.activeElement) button.blur()
+      }}
+    >
       <button type="button" className="win-btn" title="Minimise" onClick={minimizeWindow}>
         <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden>
           <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.2" />
