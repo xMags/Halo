@@ -168,7 +168,8 @@ class SettingsRepositoryTest {
     fun aFailedUpdateKeepsTheChangeVisibleAndSurfacesTheError() = runTest {
         val clock = FakeClock()
         val cache = QueryCache(backgroundScope, clock)
-        val repository = SettingsRepository(offlineClient(), cache, FakeStore(), clock)
+        val store = FakeStore().apply { values[StorageKeys.SettingsMirror] = stored }
+        val repository = SettingsRepository(offlineClient(), cache, store, clock)
 
         assertFailsWith<IOException> {
             repository.update { it.withPlaybackRate(1.25) }
@@ -177,6 +178,37 @@ class SettingsRepositoryTest {
         // Not rolled back: a different edit may already have landed, and the
         // entry is stale so the next read takes server truth.
         assertEquals(1.25, cache.peek<SettingsPayload>(HaloKey.Settings)?.value?.playbackRate)
+    }
+
+    @Test
+    fun anUpdateBeforeSettingsWereReadBuildsOnTheServersDocument() = runTest {
+        // The player can change a subtitle option before the settings request
+        // has answered. Sending that one field as the whole document would
+        // reset every other preference on every device.
+        val api = RecordingApi { request -> (request.body as? TextContent)?.text ?: stored }
+        val clock = FakeClock(now = 5_000)
+        val repository = SettingsRepository(api.client, QueryCache(backgroundScope, clock), FakeStore(), clock)
+
+        repository.update { it.withSubtitleOutline(SubtitleOutline.Thick) }
+
+        val body = api.bodyOf(0)
+        assertContains(body, "\"subtitleOutline\":\"thick\"")
+        assertContains(body, "\"preferredAudioLang\":\"eng\"")
+        assertContains(body, "\"subtitleScalePercent\":120")
+    }
+
+    @Test
+    fun anUpdateWithNothingReadAndNothingMirroredSendsNothing() = runTest {
+        val clock = FakeClock()
+        val cache = QueryCache(backgroundScope, clock)
+        val repository = SettingsRepository(offlineClient(), cache, FakeStore(), clock)
+
+        assertFailsWith<IOException> {
+            repository.update { it.withPlaybackRate(1.25) }
+        }
+
+        // No defaults were patched into the cache to be sent later either.
+        assertNull(cache.peek<SettingsPayload>(HaloKey.Settings))
     }
 
     private fun offlineClient() = HaloClient(
