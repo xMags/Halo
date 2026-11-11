@@ -3,9 +3,11 @@ import test from 'node:test'
 import type { LibraryItem, MetaPreview } from '@halo/core'
 import {
   byRelevance,
+  hasNoPoster,
   interleave,
   libraryMatches,
   nameRelevance,
+  refineResults,
   searchProgress,
   suggestedSearches,
   uniqueMetas,
@@ -200,4 +202,85 @@ test('with a query, the top match is the best-named first title, not the first c
   assert.equal(searchProgress(targets, [done(film), { status: 'pending' }, { status: 'pending' }], 'breaking bad').topMatch, null)
   // A tie goes to the earlier catalog.
   assert.equal(searchProgress(targets, [done(other), done(film), done(film)], 'nothing alike').topMatch?.id, 'm9')
+})
+
+const full = (id: string, name: string, extra: Partial<MetaPreview> = {}): MetaPreview => ({
+  id,
+  type: 'movie',
+  name,
+  releaseInfo: '2016',
+  poster: `https://image.tmdb.org/t/p/w500/${id}.jpg`,
+  ...extra,
+})
+
+test('results that share no word with the query go, unless nothing names it', () => {
+  const results = [full('tmdb:1', 'Doctor Strange'), full('tmdb:2', 'Faust and the Devil'), full('tmdb:3', 'Dr. Strange')]
+  assert.deepEqual(
+    refineResults(results, 'doctor strange').map((meta) => meta.id),
+    ['tmdb:1', 'tmdb:3'],
+  )
+  // An addon answering in another language names nothing: all of it stays.
+  const localized = [full('tmdb:1', 'डॉक्टर स्ट्रेंज'), full('tmdb:2', 'कुछ और')]
+  assert.equal(refineResults(localized, 'doctor strange').length, 2)
+})
+
+test('a title with neither a year nor artwork goes, and one missing either comes last', () => {
+  const noPoster = 'https://image.tmdb.org/t/p/w500null'
+  const results = [
+    full('tmdb:1', 'Doctor Strange Love', { poster: noPoster }),
+    full('tmdb:2', 'Untitled Doctor Strange Movie', { poster: noPoster, releaseInfo: '' }),
+    full('tt3', 'Doctor Strange 3', { releaseInfo: undefined, poster: 'https://images.metahub.space/poster/small/tt3/img' }),
+    full('tt4', 'Doctor Strange: Multiversal Madness', { poster: 'https://images.metahub.space/poster/small/tt4/img' }),
+    full('tmdb:5', 'Doctor Strange in the Multiverse of Madness'),
+    full('tmdb:6', 'The Strange Case of Doctor Rx'),
+  ]
+  // tt3 and tt4 have poster links, and the links are found to be dead.
+  const dead = new Set(['movie:tt3', 'movie:tt4'])
+  assert.deepEqual(
+    refineResults(results, 'doctor strange', dead).map((meta) => meta.id),
+    ['tmdb:5', 'tmdb:6', 'tmdb:1', 'tt4'],
+  )
+  // Before the links are known to be dead, those titles are judged on what the answer says.
+  assert.deepEqual(
+    refineResults(results, 'doctor strange').map((meta) => meta.id),
+    ['tt4', 'tmdb:5', 'tmdb:6', 'tmdb:1', 'tt3'],
+  )
+})
+
+test('the TMDB addon\'s link to a missing image is no poster', () => {
+  assert.equal(hasNoPoster({ poster: 'https://image.tmdb.org/t/p/w500null' }), true)
+  assert.equal(hasNoPoster({ poster: 'https://image.tmdb.org/t/p/w500/abc.jpg' }), false)
+  assert.equal(hasNoPoster({}), true)
+})
+
+test('two addons\' copies of a title are one, by IMDb id, and the kept copy gains what the other knew', () => {
+  const cinemeta: MetaPreview = {
+    id: 'tt0035767',
+    type: 'movie',
+    name: 'The Crime Doctor\'s Strangest Case',
+    releaseInfo: '1943',
+    poster: 'https://images.metahub.space/poster/small/tt0035767/img',
+  }
+  const tmdb = {
+    id: 'tmdb:84650',
+    type: 'movie',
+    name: 'Crime Doctor: Strangest Case',
+    releaseInfo: '1944',
+    imdbRating: '6.3',
+    poster: 'https://image.tmdb.org/t/p/w500/4at.jpg',
+    imdb_id: 'tt0035767',
+  } as MetaPreview
+  const merged = interleave([[cinemeta], [tmdb]])
+  assert.equal(merged.length, 1)
+  assert.equal(merged[0]!.id, 'tt0035767')
+  assert.equal(merged[0]!.imdbRating, '6.3')
+  assert.equal(merged[0]!.poster, 'https://image.tmdb.org/t/p/w500/4at.jpg')
+})
+
+test('with a screenful of complete results, the ones without artwork are left out', () => {
+  const complete = Array.from({ length: 8 }, (_, index) => full(`tmdb:${index}`, `Doctor Strange ${index}`))
+  const artless = full('tmdb:99', 'Doctor Strange Love', { poster: 'https://image.tmdb.org/t/p/w500null' })
+  assert.equal(refineResults([...complete, artless], 'doctor strange').some((meta) => meta.id === 'tmdb:99'), false)
+  // One short of a screenful: the artless one is still worth listing, last.
+  assert.equal(refineResults([...complete.slice(1), artless], 'doctor strange').at(-1)?.id, 'tmdb:99')
 })

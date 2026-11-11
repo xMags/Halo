@@ -169,6 +169,53 @@ export function byRelevance<T extends Pick<MetaPreview, 'name'>>(metas: readonly
     .map((entry) => entry.meta)
 }
 
+/** The relevance of a name that shares no word with the query. */
+const UNRELATED_NAME = 6
+/** Results with a year and artwork that make the ones without artwork not worth showing. */
+const ENOUGH_COMPLETE = 8
+
+/**
+ * The merged results as the screen shows them: what was asked for first, and
+ * without what nobody asked for.
+ *
+ * Addons pad a search with everything their index brushes against: titles
+ * that share no word with the query (matched on a description or a foreign
+ * alternative title), announced films with no release year, and entries with
+ * no artwork at all. So:
+ * - a title sharing no word with the query is left out, as long as some
+ *   result does name it (when none does, as with an addon answering in
+ *   another language, everything stays);
+ * - a title with neither a release year nor artwork is left out: there is
+ *   nothing to show for it and nothing to play;
+ * - the rest are ordered by name relevance, with the ones missing a year or
+ *   artwork after all that have both;
+ * - once a search has a screenful of results with both (`ENOUGH_COMPLETE`),
+ *   the ones without artwork are left out too. With fewer, they stay: a
+ *   rare title's only listing may be one nobody uploaded a poster for.
+ *
+ * `missingArt` holds the keys (`type:id`) of titles whose poster is known not
+ * to load, beyond what the addon's answer already admits (`hasNoPoster`).
+ */
+export function refineResults(
+  metas: readonly MetaPreview[],
+  query: string,
+  missingArt: ReadonlySet<string> = new Set(),
+): MetaPreview[] {
+  const entries = metas.map((meta) => ({
+    meta,
+    relevance: nameRelevance(meta.name, query),
+    undated: releaseYear(meta.releaseInfo) === null,
+    artless: hasNoPoster(meta) ? !IMDB_ID.test(meta.id) || missingArt.has(metaKey(meta)) : missingArt.has(metaKey(meta)),
+  }))
+  const someNamed = entries.some((entry) => entry.relevance < UNRELATED_NAME)
+  const named = entries.filter((entry) => !(someNamed && entry.relevance === UNRELATED_NAME))
+  const plenty = named.filter((entry) => !entry.undated && !entry.artless).length >= ENOUGH_COMPLETE
+  return named
+    .filter((entry) => !(entry.artless && (entry.undated || plenty)))
+    .sort((a, b) => Number(a.undated || a.artless) - Number(b.undated || b.artless) || a.relevance - b.relevance)
+    .map((entry) => entry.meta)
+}
+
 /**
  * The library entries the query names, newest first, as posters. They are
  * what the viewer most likely means, and no addon has to answer for them.
@@ -191,6 +238,8 @@ export function libraryMatches(library: readonly LibraryItem[] | undefined, quer
     }))
 }
 
+const IMDB_ID = /^tt\d+$/
+
 /** The first four-digit year of a release line: `2021`, `2016–2025` and `2024-` all give their start. */
 function releaseYear(releaseInfo: string | undefined): string | null {
   return releaseInfo?.match(/\d{4}/)?.[0] ?? null
@@ -205,6 +254,10 @@ function releaseYear(releaseInfo: string | undefined): string | null {
  */
 export function titleIdentities(meta: Pick<MetaPreview, 'type' | 'id' | 'name' | 'releaseInfo'>): string[] {
   const identities = [metaKey(meta)]
+  // The surest one when it is there: Cinemeta's id is the IMDb id, and the
+  // TMDB addon sends it beside its own.
+  const imdbId = IMDB_ID.test(meta.id) ? meta.id : (meta as { imdb_id?: unknown }).imdb_id
+  if (typeof imdbId === 'string' && IMDB_ID.test(imdbId)) identities.push(`${meta.type}|imdb|${imdbId}`)
   const year = releaseYear(meta.releaseInfo)
   const name = folded(meta.name).replace(/[^\p{L}\p{N}]+/gu, '')
   if (year && name) identities.push(`${meta.type}|${name}|${year}`)
@@ -223,7 +276,9 @@ export function interleave(
   lists: readonly (readonly MetaPreview[])[],
   exclude: readonly MetaPreview[] = [],
 ): MetaPreview[] {
-  const seen = new Set(exclude.flatMap(titleIdentities))
+  const excluded = new Set(exclude.flatMap(titleIdentities))
+  /** Where in `merged` each identity's title sits. */
+  const placed = new Map<string, number>()
   const merged: MetaPreview[] = []
   const longest = Math.max(0, ...lists.map((list) => list.length))
   for (let rank = 0; rank < longest; rank += 1) {
@@ -231,12 +286,47 @@ export function interleave(
       const meta = list[rank]
       if (!meta) continue
       const identities = titleIdentities(meta)
-      if (identities.some((identity) => seen.has(identity))) continue
-      identities.forEach((identity) => seen.add(identity))
+      if (identities.some((identity) => excluded.has(identity))) continue
+      const kept = identities.map((identity) => placed.get(identity)).find((index) => index !== undefined)
+      if (kept !== undefined) {
+        merged[kept] = withDetailsFrom(merged[kept]!, meta)
+        continue
+      }
+      identities.forEach((identity) => placed.set(identity, merged.length))
       merged.push(meta)
     }
   }
   return merged
+}
+
+/**
+ * The better-ranked copy of a title, with what only the other copy knew.
+ * Cinemeta ranks well but sends a name, a year and a poster link that is often
+ * dead; the TMDB addon sends a rating and a poster that loads. The id stays
+ * the kept copy's, since that is the one streams are found by.
+ */
+function withDetailsFrom(kept: MetaPreview, other: MetaPreview): MetaPreview {
+  const poster = hasNoPoster(kept) || isMetahubPoster(kept.poster) ? (hasNoPoster(other) ? kept.poster : other.poster) : kept.poster
+  return {
+    ...kept,
+    ...(poster ? { poster } : {}),
+    ...(kept.imdbRating || !other.imdbRating ? {} : { imdbRating: other.imdbRating }),
+    ...(kept.releaseInfo || !other.releaseInfo ? {} : { releaseInfo: other.releaseInfo }),
+    ...(kept.description || !other.description ? {} : { description: other.description }),
+  }
+}
+
+/** Stremio's own poster host, which a card tries by IMDb id anyway. */
+function isMetahubPoster(poster: string | undefined): boolean {
+  return poster !== undefined && poster.startsWith('https://images.metahub.space/')
+}
+
+/**
+ * Whether an addon's answer already says the title has no poster: none sent,
+ * or the TMDB addon's link built from a missing image, `…/t/p/w500null`.
+ */
+export function hasNoPoster(meta: Pick<MetaPreview, 'poster'>): boolean {
+  return !meta.poster || /\/t\/p\/[a-z0-9]+null$/i.test(meta.poster)
 }
 
 /**
