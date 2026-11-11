@@ -182,6 +182,14 @@ export function byRelevance<T extends Pick<MetaPreview, 'name'>>(metas: readonly
 const UNRELATED_NAME = 6
 /** Results with a year and artwork that make the ones without artwork not worth showing. */
 const ENOUGH_COMPLETE = 8
+/**
+ * A name that opens with a studio's product code, `ABCD-123 …`: how adult
+ * video is catalogued, and what indexes that carry it list it under. A general
+ * search is never for one of these, and its poster is nothing to put on a
+ * screen unasked, so they are left out whatever else they match.
+ */
+const PRODUCT_CODE_NAME = /^[A-Z]{2,6}-\d{3,5}\b/
+
 /** The relevance of a name that holds only some of the query's words. */
 const SOME_WORDS = 5
 /** Results holding every word of the query that make the ones holding only some not worth showing. */
@@ -195,6 +203,7 @@ const ENOUGH_NAMED = 8
  * that share no word with the query (matched on a description or a foreign
  * alternative title), announced films with no release year, and entries with
  * no artwork at all. So:
+ * - a title listed under a product code is left out (`PRODUCT_CODE_NAME`);
  * - a title sharing no word with the query is left out, as long as some
  *   result does name it (when none does, as with an addon answering in
  *   another language, everything stays);
@@ -223,9 +232,10 @@ export function refineResults(
     undated: releaseYear(meta.releaseInfo) === null,
     artless: hasNoPoster(meta) ? !IMDB_ID.test(meta.id) || missingArt.has(metaKey(meta)) : missingArt.has(metaKey(meta)),
   }))
-  const someNamed = entries.some((entry) => entry.relevance < UNRELATED_NAME)
-  const wellNamed = entries.filter((entry) => entry.relevance < SOME_WORDS).length >= ENOUGH_NAMED
-  const named = entries
+  const listed = entries.filter((entry) => !PRODUCT_CODE_NAME.test(entry.meta.name))
+  const someNamed = listed.some((entry) => entry.relevance < UNRELATED_NAME)
+  const wellNamed = listed.filter((entry) => entry.relevance < SOME_WORDS).length >= ENOUGH_NAMED
+  const named = listed
     .filter((entry) => !(someNamed && entry.relevance === UNRELATED_NAME))
     .filter((entry) => !(wellNamed && entry.relevance === SOME_WORDS))
   const plenty = named.filter((entry) => !entry.undated && !entry.artless).length >= ENOUGH_COMPLETE
