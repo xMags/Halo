@@ -71,11 +71,48 @@ export const LANGUAGE_OPTIONS: ReadonlyArray<{ code: string; label: string }> = 
   'vie', 'ind', 'may', 'chi', 'jpn', 'kor', 'est', 'lav', 'lit',
 ].map((code) => ({ code, label: LANGUAGE_LABELS[code]! }))
 
-/** Whether a subtitle's language code matches a preferred code ("pt-br" ≈ "pob" style variants aside, prefix-tolerant). */
+/**
+ * Two-letter (ISO 639-1) codes for the languages above, by their three-letter
+ * code. Files and addons tag tracks either way: Matroska's newer language tag
+ * is `en` or `en-US` where the older one is `eng`.
+ */
+const TWO_LETTER_CODES: Record<string, string> = {
+  ar: 'ara', bg: 'bul', zh: 'chi', cs: 'cze', da: 'dan', nl: 'dut', en: 'eng', et: 'est', fi: 'fin',
+  fr: 'fre', de: 'ger', el: 'gre', he: 'heb', hi: 'hin', hr: 'hrv', hu: 'hun', id: 'ind', it: 'ita',
+  ja: 'jpn', ko: 'kor', lv: 'lav', lt: 'lit', ms: 'may', no: 'nor', nb: 'nor', fa: 'per', pl: 'pol',
+  pt: 'por', ro: 'rum', ru: 'rus', sk: 'slo', sl: 'slv', es: 'spa', sr: 'srp', sv: 'swe', th: 'tha',
+  tr: 'tur', uk: 'ukr', vi: 'vie',
+}
+
+/**
+ * The language a tag names, as this table's label, or the tag itself when it
+ * is not a language known here. Takes three-letter codes, two-letter codes,
+ * tags with a region or script (`en-US`, `zh_Hans`) and full labels.
+ */
+function languageIdentity(tag: string): string {
+  const normalized = tag.trim().toLowerCase().replace(/_/g, '-')
+  if (normalized === 'pt-br') return LANGUAGE_LABELS.pob!.toLowerCase()
+  const primary = normalized.split('-')[0]!
+  const code = TWO_LETTER_CODES[primary] ?? primary
+  return (LANGUAGE_LABELS[normalized] ?? LANGUAGE_LABELS[code] ?? normalized).toLowerCase()
+}
+
+/** Whether a track's or subtitle's language tag names the preferred language, however either side spells it. */
 export function languageMatches(subtitleLang: string, preferredCode: string): boolean {
-  const sub = subtitleLang.trim().toLowerCase()
-  const pref = preferredCode.trim().toLowerCase()
-  if (sub === pref) return true
-  // Some addons emit full labels ("Portuguese (BR)") or 639-1 codes.
-  return languageLabel(sub).toLowerCase() === languageLabel(pref).toLowerCase()
+  return languageIdentity(subtitleLang) === languageIdentity(preferredCode)
+}
+
+/**
+ * Every code that names the same language as `preferredCode`, the given one
+ * first: what a player's own language preference (mpv's `alang`) is given so
+ * it picks the track however the file tagged it.
+ */
+export function languageCodeVariants(preferredCode: string): string[] {
+  const given = preferredCode.trim().toLowerCase()
+  if (!given) return []
+  const identity = languageIdentity(given)
+  const threeLetter = Object.keys(LANGUAGE_LABELS).filter((code) => LANGUAGE_LABELS[code]!.toLowerCase() === identity)
+  const twoLetter = Object.keys(TWO_LETTER_CODES).filter((code) => threeLetter.includes(TWO_LETTER_CODES[code]!))
+  const regional = identity === LANGUAGE_LABELS.pob!.toLowerCase() ? ['pt-br'] : []
+  return [...new Set([given, ...threeLetter, ...regional, ...twoLetter])]
 }

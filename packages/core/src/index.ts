@@ -68,7 +68,7 @@ export type {
 export { computeVideoHash, computeVideoHashFromChunks, VIDEO_HASH_CHUNK_BYTES } from './subtitles/hash'
 export type { VideoHashResult } from './subtitles/hash'
 export { isVtt, srtToVtt } from './subtitles/srtToVtt'
-export { LANGUAGE_OPTIONS, languageLabel, languageMatches } from './subtitles/languages'
+export { LANGUAGE_OPTIONS, languageCodeVariants, languageLabel, languageMatches } from './subtitles/languages'
 
 export { HaloApiError, HaloClient } from './api/client'
 export type { HaloBackend } from './api/backend'
