@@ -97,12 +97,27 @@ export async function resolveMeta(
   for (const addon of addons) {
     if (!addonSupportsResource(addon.manifest, 'meta', type, id)) continue
     try {
-      return await getMeta(addon.transportUrl, type, id, { fetch: ctx.fetch, signal: requestSignal(ctx) })
+      const res = await getMeta(addon.transportUrl, type, id, { fetch: ctx.fetch, signal: requestSignal(ctx) })
+      if (describesTitle(res)) return res
     } catch {
       // Try the next addon that can describe this id.
     }
   }
   return null
+}
+
+/**
+ * Whether an addon's answer names a title. Addons answer 200 for ids they do
+ * not know, with `{ meta: null }`, `{ meta: {} }` or `{}`; that is a miss, so
+ * the next addon is asked, and nothing downstream reads fields off a missing
+ * meta.
+ */
+function describesTitle(res: unknown): res is MetaResponse {
+  if (typeof res !== 'object' || res === null) return false
+  const meta = (res as { meta?: unknown }).meta
+  if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) return false
+  const id = (meta as { id?: unknown }).id
+  return typeof id === 'string' && id.length > 0
 }
 
 /**
