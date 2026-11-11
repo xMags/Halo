@@ -235,6 +235,10 @@ export const adminOnly: MiddlewareHandler<{ Variables: AuthVariables }> = async 
  * Fixed-window failed-login counter keyed by lowercased username. In-memory and
  * process-local — acceptable for the single-process deployment. Scoped per app
  * instance rather than module-global so tests don't bleed state into each other.
+ *
+ * Anyone can fail a login under any username, so the number of usernames
+ * remembered is capped: past `maxTracked`, expired windows are swept, and if
+ * that is not enough the oldest entries go first.
  */
 export class LoginRateLimiter {
   private readonly attempts = new Map<string, { count: number; windowStart: number }>()
@@ -242,7 +246,21 @@ export class LoginRateLimiter {
   constructor(
     private readonly maxAttempts = 10,
     private readonly windowMs = 15 * 60_000,
+    private readonly maxTracked = 10_000,
   ) {}
+
+  /** Keeps the map within `maxTracked` before a new username is added. */
+  private makeRoom(now: number): void {
+    if (this.attempts.size < this.maxTracked) return
+    for (const [key, entry] of this.attempts) {
+      if (now - entry.windowStart >= this.windowMs) this.attempts.delete(key)
+    }
+    // A Map iterates in insertion order, so these are the oldest windows.
+    for (const key of this.attempts.keys()) {
+      if (this.attempts.size < this.maxTracked) break
+      this.attempts.delete(key)
+    }
+  }
 
   private prune(key: string, now: number): { count: number; windowStart: number } | undefined {
     const entry = this.attempts.get(key)
@@ -264,6 +282,7 @@ export class LoginRateLimiter {
     const now = Date.now()
     const entry = this.prune(key, now)
     if (!entry) {
+      this.makeRoom(now)
       this.attempts.set(key, { count: 1, windowStart: now })
       return
     }

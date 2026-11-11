@@ -56,8 +56,20 @@ export interface AppConfig {
 // distinguished from a wrong password by response timing.
 const TIMING_DECOY = hashPassword('halo-timing-decoy')
 
-const loginSchema = z.object({ username: z.string().min(1), password: z.string().min(1) })
-const passwordChangeSchema = z.object({ current: z.string().min(1), next: z.string().min(8) })
+// Login is open to anyone, and every attempt costs a password hash and a
+// rate-limiter entry keyed by the username: both inputs are bounded so one
+// request cannot be made arbitrarily expensive to hash or to remember.
+const MAX_USERNAME_LENGTH = 64
+const MAX_PASSWORD_LENGTH = 1024
+
+const loginSchema = z.object({
+  username: z.string().min(1).max(MAX_USERNAME_LENGTH),
+  password: z.string().min(1).max(MAX_PASSWORD_LENGTH),
+})
+const passwordChangeSchema = z.object({
+  current: z.string().min(1).max(MAX_PASSWORD_LENGTH),
+  next: z.string().min(8).max(MAX_PASSWORD_LENGTH),
+})
 const createUserSchema = z.object({
   username: z
     .string()
@@ -65,7 +77,7 @@ const createUserSchema = z.object({
     .max(32)
     .regex(/^[a-zA-Z0-9_-]+$/)
     .transform((s) => s.toLowerCase()),
-  password: z.string().min(8),
+  password: z.string().min(8).max(MAX_PASSWORD_LENGTH),
   isAdmin: z.boolean().optional(),
 })
 
@@ -142,6 +154,9 @@ export function createApp(config: AppConfig) {
     timeoutMs: RESOLVE_TIMEOUT_MS,
     onFailure: (route, error, durationMs) => logAddonFailure(writeAddonFailure, route, error, durationMs),
   }
+  // Bounded like every other addon request: without a budget, one URL that
+  // accepts the connection and never answers holds the save open for good.
+  const manifestFetch = { fetch: doSafeFetch, timeoutMs: RESOLVE_TIMEOUT_MS }
   const app = new Hono()
 
   app.use(
@@ -301,7 +316,7 @@ export function createApp(config: AppConfig) {
     const existing = new Set(
       db.select({ transportUrl: userAddons.transportUrl }).from(userAddons).where(eq(userAddons.userId, user.id)).all().map((r) => r.transportUrl),
     )
-    const resolved = await fetchManifests(urls.filter((u) => !existing.has(u)), { fetch: doSafeFetch })
+    const resolved = await fetchManifests(urls.filter((u) => !existing.has(u)), manifestFetch)
     if ('error' in resolved) return c.json({ error: resolved.error }, 400)
     const fetched = new Map(resolved.entries.map((e) => [e.transportUrl, e.manifest]))
     const now = Date.now()
@@ -363,7 +378,7 @@ export function createApp(config: AppConfig) {
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
     const urls = body.data
     const existing = new Set(db.select({ transportUrl: globalAddons.transportUrl }).from(globalAddons).all().map((r) => r.transportUrl))
-    const resolved = await fetchManifests(urls.filter((u) => !existing.has(u)), { fetch: doSafeFetch })
+    const resolved = await fetchManifests(urls.filter((u) => !existing.has(u)), manifestFetch)
     if ('error' in resolved) return c.json({ error: resolved.error }, 400)
     const fetched = new Map(resolved.entries.map((e) => [e.transportUrl, e.manifest]))
     const now = Date.now()
