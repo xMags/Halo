@@ -66,42 +66,95 @@
   height: 40px;
 }
 
-/* The best guess, compact: enough to recognise it, not enough to push the
-   results below the fold. */
+/* The best guess for the query, drawn as Home draws its featured title: the
+   title's own art across the card under the hero's scrim, with its poster at
+   the size of the cards below it, so it reads as the first and largest of
+   the results rather than a row above them. */
 .top-match {
+  position: relative;
   display: grid;
-  grid-template-columns: 60px minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: var(--pw) minmax(0, 1fr);
+  gap: 26px;
   align-items: center;
-  padding: 10px;
-  width: 100%;
-  max-width: 720px;
-  background: var(--cd);
+  padding: 22px 26px;
   border: 1px solid var(--cs);
   border-radius: 8px;
-  text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
 }
 .top-match:hover {
-  background: var(--tt);
+  border-color: var(--t4);
 }
-.top-match-art {
-  width: 60px;
-  height: 90px;
-  border-radius: 4px;
+.top-match-media {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.top-match-backdrop {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center 22%;
+}
+/* A title with no backdrop of its own gets its poster, softened until it is
+   colour and light rather than a stretched picture. */
+.top-match-backdrop-soft {
+  inset: -48px;
+  filter: blur(34px) saturate(1.25);
+}
+/* The hero's haze, held longer: here the text shares the card with a poster
+   and runs past the middle, so the picture clears only toward the far edge. */
+.top-match-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--hs1) 0%, var(--hs1) 38%, var(--hs2) 68%, transparent 100%);
+}
+:root[data-theme='light'] .top-match-scrim {
+  background: linear-gradient(90deg, var(--hs1) 0%, var(--hs1) 52%, var(--hs2) 76%, transparent 100%);
+}
+.top-match-poster {
+  position: relative;
+  width: var(--pw);
+  aspect-ratio: 2 / 3;
+  padding: 0;
+  border: 1px solid var(--cs);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+}
+.top-match-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+  max-width: 640px;
 }
 .top-match-title {
-  font-size: 17px;
+  font-family: var(--display);
+  font-size: 28px;
   font-weight: 600;
+  letter-spacing: -0.3px;
+  line-height: 1.15;
   color: var(--t1);
 }
+.top-match-kind {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.6px;
+}
 .top-match-blurb {
-  font-size: 14px;
-  line-height: 1.4;
-  color: var(--t2);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--t1);
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.top-match .hero-actions {
+  margin-top: 8px;
 }
 
 /* Recent searches as pills; each opens its term, its × forgets it. One line
