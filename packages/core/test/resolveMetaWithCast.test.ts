@@ -94,3 +94,21 @@ test('cast from an addon is bounded and only keeps https photos', () => {
   assert.equal(sanitizeCast([{ name: 'Nobody pictured' }]), null)
   assert.equal(sanitizeCast('nope'), null)
 })
+
+test('an addon that answers without a meta is a miss, and the next addon is asked', async () => {
+  const second: ResolvableAddon = { ...cinemeta, id: 'a3', transportUrl: 'https://second.test/manifest.json' }
+  for (const empty of [{ meta: null }, { meta: {} }, {}]) {
+    const { ctx, calls } = context({
+      'https://cinemeta.test/meta/series/tt1.json': empty,
+      'https://second.test/meta/series/tt1.json': { meta: { id: 'tt1', type: 'series', name: 'Real' } },
+    })
+    const res = await resolveMetaWithCast([cinemeta, second], 'series', 'tt1', ctx)
+    assert.equal(res?.meta.name, 'Real')
+    assert.equal(calls.length, 2)
+  }
+})
+
+test('no addon naming the title resolves to nothing rather than an empty meta', async () => {
+  const { ctx } = context({ 'https://cinemeta.test/meta/series/tt1.json': { meta: null } })
+  assert.equal(await resolveMetaWithCast([cinemeta], 'series', 'tt1', ctx), null)
+})
