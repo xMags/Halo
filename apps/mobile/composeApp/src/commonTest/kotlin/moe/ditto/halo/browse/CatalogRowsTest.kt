@@ -23,6 +23,16 @@ class CatalogRowsTest {
     }
 
     @Test
+    fun aCatalogDeclaredTwiceIsOneRow() {
+        // Home keys its rows by addon, type and catalog, and a repeated key is fatal.
+        val rows = catalogRows(
+            listOf(addon("cinemeta", "Cinemeta", listOf(catalog("movie", "top", "Popular"), catalog("movie", "top", "Popular")))),
+        )
+
+        assertEquals(listOf("cinemeta/movie/top"), rows.map { it.key })
+    }
+
+    @Test
     fun dropsCatalogsThatRequireAnExtra() {
         // Home asks no questions, so a catalog gated on a search term or a genre
         // could only ever render an empty heading.

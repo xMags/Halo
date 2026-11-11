@@ -18,6 +18,14 @@ class SeasonsTest {
     }
 
     @Test
+    fun aVideoListedTwiceIsOneEpisode() {
+        // Episode rows are keyed by video id, and a repeated key is fatal.
+        val repeated = videos + video("s1e1", season = 1, episode = 1)
+
+        assertEquals(listOf("s1e1", "s1e2"), episodesIn(repeated, season = 1).map { it.id })
+    }
+
+    @Test
     fun ignoresVideosWithNoSeason() {
         assertEquals(emptyList(), seasonNumbers(listOf(video("only"))))
     }

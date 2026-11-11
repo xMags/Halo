@@ -41,11 +41,19 @@ internal fun isActionStream(stream: Stream): Boolean =
 internal fun List<MetaPreview>.withoutActionEntries(): List<MetaPreview> =
     filterNot { isActionEntry(it.id, it.name) }
 
+/**
+ * One entry per title. Addons do repeat a title within a page, and every row
+ * and grid keys its cards by type and id: a lazy list given the same key twice
+ * throws, which takes the whole screen down.
+ */
+internal fun List<MetaPreview>.withoutRepeatedTitles(): List<MetaPreview> =
+    distinctBy { "${it.type}:${it.id}" }
+
 internal fun List<Stream>.withoutActionStreams(): List<Stream> = filterNot(::isActionStream)
 
 /** Keeps the count of what arrived, because an addon's `skip` counts the entries dropped here too. */
 internal fun CatalogResponse.withoutActions(): CatalogResponse =
-    copy(metas = metas.withoutActionEntries(), received = receivedCount)
+    copy(metas = metas.withoutActionEntries().withoutRepeatedTitles(), received = receivedCount)
 
 internal fun StreamsResult.withoutActions(): StreamsResult = copy(
     results = results
