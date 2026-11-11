@@ -21,14 +21,23 @@ private val FoldedLetters: Map<Char, Char> =
 fun foldedText(text: String): String =
     buildString(text.length) { text.lowercase().forEach { append(FoldedLetters[it] ?: it) } }
 
-/** A name or query as plain words: folded, punctuation as spaces. */
+/** Short forms titles and people use for the same word; "Dr. Strange" is "Doctor Strange". */
+private val ShortForms = mapOf("dr" to "doctor", "mr" to "mister", "vs" to "versus")
+
+/** A name or query as plain words: folded, punctuation as spaces, short forms spelled out. */
 private fun plainWords(text: String): List<String> =
-    foldedText(text).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+    foldedText(text).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }.map { ShortForms[it] ?: it }
 
 private const val ExactName = 0
 
-/** The worst relevance that still means the name begins with what was typed. */
+/** The relevance of a name that begins with what was typed, mid-word. */
 private const val BeginsWithQuery = 2
+
+/** The relevance of a name that holds only some of the query's words. */
+private const val SomeWords = 5
+
+/** Results holding every word of the query that make the ones holding only some not worth showing. */
+private const val EnoughNamed = 8
 
 /** The relevance of a name that shares no word with the query. */
 private const val UnrelatedName = 6
@@ -62,15 +71,23 @@ fun nameRelevance(name: String, query: String): Int {
     }
 }
 
+/** The TMDB addon's link built from a missing image: `…/t/p/w500null`. */
 private val TmdbMissingImage = Regex("/t/p/[a-z0-9]+null$", RegexOption.IGNORE_CASE)
 
 /**
+ * MediaFusion's poster for one of its own `mf…` entries: not artwork but a
+ * card it draws with the entry's name on it, since it has no picture for a
+ * title it only knows from a file name.
+ */
+private val GeneratedPoster = Regex("/poster/[a-z]+/mf\\d+\\.[a-z]+$", RegexOption.IGNORE_CASE)
+
+/**
  * Whether an addon's answer already says the title has no poster: none sent,
- * or the TMDB addon's link built from a missing image, `…/t/p/w500null`.
+ * a link built from a missing image, or a card the addon draws in its place.
  */
 fun hasNoPoster(meta: MetaCard): Boolean {
     val poster = meta.poster
-    return poster.isNullOrBlank() || TmdbMissingImage.containsMatchIn(poster)
+    return poster.isNullOrBlank() || TmdbMissingImage.containsMatchIn(poster) || GeneratedPoster.containsMatchIn(poster)
 }
 
 private val ReleaseYearDigits = Regex("""\d{4}""")
@@ -89,6 +106,8 @@ private val ImdbTitleId = Regex("""^tt\d+$""")
  *   artwork after all that have both.
  * - Once there is a screenful with both ([EnoughComplete]), the ones without
  *   artwork are left out too.
+ * - Once a screenful holds every word of the query ([EnoughNamed]), the ones
+ *   holding only some are left out.
  *
  * Artwork is judged by what the answer says ([hasNoPoster]): a title Stremio
  * can picture by its IMDb id is taken to have some. [missingArt] holds the
@@ -108,7 +127,10 @@ fun <T : MetaCard> refineResults(metas: List<T>, query: String, missingArt: Set<
         )
     }
     val someNamed = entries.any { it.relevance < UnrelatedName }
-    val named = entries.filterNot { someNamed && it.relevance == UnrelatedName }
+    val wellNamed = entries.count { it.relevance < SomeWords } >= EnoughNamed
+    val named = entries
+        .filterNot { someNamed && it.relevance == UnrelatedName }
+        .filterNot { wellNamed && it.relevance == SomeWords }
     val plenty = named.count { !it.incomplete } >= EnoughComplete
     return named
         .filterNot { it.artless && (it.undated || plenty) }
@@ -119,21 +141,42 @@ fun <T : MetaCard> refineResults(metas: List<T>, query: String, missingArt: Set<
 
 /**
  * The best guess for the query. Each catalog's own first title is a
- * candidate. The first of them, in addon order, whose name is or begins with
- * what was typed wins: a search for a series must not be topped by a film only
- * because films are asked first. Failing any, the best-named candidate wins,
- * the earlier catalog on a tie.
+ * candidate, and the one whose name answers the query best wins, the earlier
+ * catalog on a tie: a search for a series must not be topped by a film only
+ * because films are asked first, nor an exact name by a longer one only
+ * because its addon is listed first.
  */
-fun searchTopMatch(groups: List<SearchResultGroup>, query: String): MetaPreview? {
-    val candidates = groups.mapNotNull { it.metas.firstOrNull() }
-    val ranked = candidates.map { it to nameRelevance(it.name, query) }
-    return ranked.firstOrNull { it.second <= BeginsWithQuery }?.first
-        ?: ranked.minByOrNull { it.second }?.first
+fun searchTopMatch(groups: List<SearchResultGroup>, query: String): MetaPreview? =
+    groups.mapNotNull { it.metas.firstOrNull() }
+        // minByOrNull keeps the first of equals, so the earlier catalog keeps a tie.
+        .minByOrNull { nameRelevance(it.name, query) }
+
+private val YearInName = Regex("""^(.*\S)\s*\((\d{4})\)$""")
+
+/**
+ * A title whose name carries its year, as "Doctor Strange (2016)" does on
+ * entries an addon made from file names (MediaFusion's `mf…` ones): the name
+ * without it, and the year as the release line when there was none. That is
+ * what lets such an entry be recognised as the copy of a real title it is.
+ */
+fun MetaPreview.withYearOutOfName(): MetaPreview {
+    val match = YearInName.find(name) ?: return this
+    val dated = releaseInfo?.let(ReleaseYearDigits::containsMatchIn) == true
+    return copy(name = match.groupValues[1], releaseInfo = if (dated) releaseInfo else match.groupValues[2])
 }
 
-/** Stremio's own poster host, which a card tries by IMDb id anyway. */
-private fun isMetahubPoster(poster: String?): Boolean =
-    poster != null && poster.startsWith("https://images.metahub.space/")
+/**
+ * Two copies of one title as one. The better-ranked copy leads, unless only
+ * the other is named by its IMDb id: that is the id every addon can find
+ * streams and details by, where an addon's own id works with that addon alone.
+ */
+fun MetaPreview.asOneTitleWith(other: MetaPreview): MetaPreview =
+    if (ImdbTitleId.matches(id) || !ImdbTitleId.matches(other.id)) withDetailsFrom(other) else other.withDetailsFrom(this)
+
+private val MetahubHost = Regex("""^https://[a-z0-9-]+\.metahub\.space/""")
+
+/** Stremio's own poster hosts, which a card tries by IMDb id anyway. */
+private fun isMetahubPoster(poster: String?): Boolean = poster != null && MetahubHost.containsMatchIn(poster)
 
 /**
  * The better-ranked copy of a title, with what only the other copy knew.
