@@ -90,6 +90,11 @@ describe('local login', () => {
     expect(blocked.status).toBe(429)
   })
 
+  it('refuses an oversized username or password before hashing anything', async () => {
+    expect((await login(app, 'a'.repeat(65), ADMIN_PASSWORD)).status).toBe(400)
+    expect((await login(app, 'admin', 'p'.repeat(1025))).status).toBe(400)
+  })
+
   it('does not lock out a different username', async () => {
     seedUser(db, 'bob', 'bob-password')
     for (let i = 0; i < 10; i++) await login(app, 'admin', 'wrong')
@@ -269,6 +274,14 @@ describe('LoginRateLimiter', () => {
     expect(limiter.isBlocked('u')).toBe(true)
     limiter.reset('u')
     expect(limiter.isBlocked('u')).toBe(false)
+  })
+
+  it('remembers a bounded number of usernames, dropping the oldest first', () => {
+    const limiter = new LoginRateLimiter(1, 60_000, 3)
+    for (const name of ['a', 'b', 'c', 'd']) limiter.recordFailure(name)
+    expect(limiter.isBlocked('a')).toBe(false)
+    expect(limiter.isBlocked('b')).toBe(true)
+    expect(limiter.isBlocked('d')).toBe(true)
   })
 
   it('keys case-insensitively', () => {
