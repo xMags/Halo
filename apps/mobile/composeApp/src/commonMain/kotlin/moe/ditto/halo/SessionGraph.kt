@@ -94,8 +94,12 @@ internal class SessionGraph(
         SessionMode.Device -> null
     }
 
+    /** The phone's own backend, which only Halo without an account uses. */
+    private val deviceBackend: DeviceBackend? =
+        if (accountClient == null) DeviceBackend(httpClient, deviceStore, clock) else null
+
     /** What every screen asks: the account's server, or the phone itself without one. */
-    val backend: HaloBackend = accountClient ?: DeviceBackend(httpClient, deviceStore, clock)
+    val backend: HaloBackend = accountClient ?: checkNotNull(deviceBackend)
 
     val signedIn: Boolean
         get() = accountClient != null
@@ -146,9 +150,10 @@ internal class SessionGraph(
 
     init {
         val client = accountClient
+        val device = deviceBackend
         when {
-            client == null -> scope.launch { seedDefaultAddons() }
-            deviceStore.hasProfile() -> scope.launch { moveDeviceData(client) }
+            device != null -> scope.launch { seedDefaultAddons(device) }
+            client != null && deviceStore.hasProfile() -> scope.launch { moveDeviceData(client) }
         }
     }
 
@@ -159,11 +164,11 @@ internal class SessionGraph(
      * no network, and a later build may add to the list. They cannot be
      * removed in this mode, so this never undoes a choice.
      */
-    private suspend fun seedDefaultAddons() {
+    private suspend fun seedDefaultAddons(device: DeviceBackend) {
         try {
-            val installed = backend.getAddons().user.mapNotNull { it.transportUrl }
-            val missing = DefaultAddonUrls.filterNot { it in installed }
-            if (missing.isNotEmpty()) addons.setUserAddons(installed + missing)
+            // One step on the backend, not a read here and a whole-list save
+            // after it: an addon the user installs meanwhile must survive.
+            if (device.ensureAddons(DefaultAddonUrls)) cache.invalidate(HaloKey.Addons)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Exception) {

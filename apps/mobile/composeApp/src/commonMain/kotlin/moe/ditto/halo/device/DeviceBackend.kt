@@ -70,19 +70,40 @@ internal class DeviceBackend(
      */
     override suspend fun putAddons(transportUrls: List<String>): List<AddonEntry> {
         addonUrlsProblem(transportUrls)?.let { throw apiError(400, it) }
-        return exclusive(DeviceCollection.Addons) {
-            val current = readAddons().associateBy { it.transportUrl }
-            val fetched = when (val result = resolver.manifests(transportUrls.filterNot(current::containsKey))) {
-                is ManifestsResult.Failed -> throw apiError(400, result.message)
-                is ManifestsResult.Fetched -> result.manifests
-            }
-            val addedAt = clock.nowMs()
-            val next = transportUrls.map { url ->
-                current[url] ?: StoredAddon(newId(), url, fetched.getValue(url), hideCatalogs = false, addedAt = addedAt)
-            }
-            writeList(DeviceCollection.Addons, StoredAddon.serializer(), next)
-            next.mapIndexed { index, addon -> addon.toEntry(index) }
+        return exclusive(DeviceCollection.Addons) { replaceAddons(transportUrls) }
+    }
+
+    /**
+     * Adds whichever of [transportUrls] are not installed, after the ones that
+     * are, and says whether anything was added.
+     *
+     * The list is read and written under one lock. Reading it first and then
+     * declaring the whole list with [putAddons] would drop an addon the user
+     * installed in between, since a manifest fetch can take seconds.
+     */
+    suspend fun ensureAddons(transportUrls: List<String>): Boolean = exclusive(DeviceCollection.Addons) {
+        val installed = readAddons().map { it.transportUrl }
+        val missing = transportUrls.distinct().filterNot { it in installed }
+        if (missing.isEmpty()) return@exclusive false
+        val next = installed + missing
+        addonUrlsProblem(next)?.let { throw apiError(400, it) }
+        replaceAddons(next)
+        true
+    }
+
+    /** The diff itself. The caller holds the addons lock. */
+    private suspend fun replaceAddons(transportUrls: List<String>): List<AddonEntry> {
+        val current = readAddons().associateBy { it.transportUrl }
+        val fetched = when (val result = resolver.manifests(transportUrls.filterNot(current::containsKey))) {
+            is ManifestsResult.Failed -> throw apiError(400, result.message)
+            is ManifestsResult.Fetched -> result.manifests
         }
+        val addedAt = clock.nowMs()
+        val next = transportUrls.map { url ->
+            current[url] ?: StoredAddon(newId(), url, fetched.getValue(url), hideCatalogs = false, addedAt = addedAt)
+        }
+        writeList(DeviceCollection.Addons, StoredAddon.serializer(), next)
+        return next.mapIndexed { index, addon -> addon.toEntry(index) }
     }
 
     override suspend fun patchAddon(addonId: String, hideCatalogs: Boolean) {
