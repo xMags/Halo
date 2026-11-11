@@ -1156,8 +1156,26 @@ impl DownloadManager {
                 return Err("The protected download request could not be read.".into());
             }
         };
-        protected.subtitle = Some(subtitle);
+        protected.subtitle = Some(subtitle.clone());
         self.write_request(job_id, &protected)?;
+        // The transfer may have finished between the read and the write. Then
+        // nothing will read this request again: fetch the subtitle here, which
+        // also removes the request just written back.
+        let finished = {
+            let inner = self.inner.lock().await;
+            inner
+                .entries
+                .get(job_id)
+                .filter(|entry| {
+                    entry.status == DownloadStatus::Done && entry.subtitle_file_name.is_none()
+                })
+                .map(DownloadRecord::target)
+        };
+        if let Some(target) = finished {
+            return self
+                .save_completed_subtitle(job_id, &subtitle, &target)
+                .await;
+        }
         Ok(())
     }
 
@@ -1458,9 +1476,6 @@ impl DownloadManager {
             }
             Err(TransferError::Paused) => false,
         };
-        if request_spent {
-            self.delete_request(&job_id);
-        }
         if let Some(old) = superseded {
             let (roots, owner_files) = {
                 let inner = self.inner.lock().await;
@@ -1484,12 +1499,50 @@ impl DownloadManager {
             }
             let _ = self.persist().await;
         }
+        if result.is_ok() {
+            self.save_subtitle_attached_while_finishing(&job_id).await;
+        }
+        if request_spent {
+            self.delete_request(&job_id);
+        }
         let view = self.inner.lock().await.visible_view(&job_id);
         if let Some(view) = view {
             self.emit_changed(view);
         }
         self.job_released.notify_waiters();
         self.kick();
+    }
+
+    /// A subtitle can be attached after the transfer has read its request for
+    /// the last time and before the record says Done. That one would be
+    /// deleted with the request, unfetched, although the caller was told it
+    /// was attached; this is the request's last reader, so it fetches it.
+    async fn save_subtitle_attached_while_finishing(&self, job_id: &str) {
+        let target = {
+            let inner = self.inner.lock().await;
+            inner
+                .entries
+                .get(job_id)
+                .filter(|entry| {
+                    entry.status == DownloadStatus::Done
+                        && !entry.pending_deletion
+                        && entry.subtitle_file_name.is_none()
+                })
+                .map(DownloadRecord::target)
+        };
+        let Some(target) = target else {
+            return;
+        };
+        let Some(subtitle) = self
+            .read_request(job_id)
+            .ok()
+            .and_then(|request| request.subtitle)
+        else {
+            return;
+        };
+        let _ = self
+            .save_completed_subtitle(job_id, &subtitle, &target)
+            .await;
     }
 
     async fn transfer_with_retries(&self, job_id: &str) -> Result<Transferred, TransferError> {
