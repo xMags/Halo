@@ -177,6 +177,44 @@ class SearchResultsTest {
     }
 
     @Test
+    fun anEntryMadeFromAFileNameIsKnownByItsIdWhereverItsCardIsServedFrom() {
+        assertTrue(hasNoPoster(full("mf12", "Doctor Strange", poster = "https://cdn.test/cards/12.jpg")))
+        assertFalse(hasNoPoster(full("tt12", "Doctor Strange", poster = "https://cdn.test/cards/12.jpg")))
+    }
+
+    @Test
+    fun theRowsOfASearchAreCleanedAsOneSearch() {
+        val films = SearchResultGroup(
+            "c/movie",
+            "Movies",
+            (0 until 8).map { full("tt$it", "Doctor Strange $it") },
+        )
+        val fromFiles = SearchResultGroup(
+            "mf/movie",
+            "MediaFusion",
+            listOf(
+                // A copy of a real title, one that is nobody's copy, and a real title of its own.
+                full("mf100", "Doctor Strange 3 (2016)", releaseInfo = null, poster = "https://mf.test/poster/movie/mf100.jpg"),
+                full("mf200", "Doctor Strange Rip", poster = "https://mf.test/poster/movie/mf200.jpg"),
+                full("tt900", "Doctor Strange: The Making"),
+            ),
+        )
+        val series = SearchResultGroup(
+            "c/series",
+            "Series",
+            listOf(full("tt50", "Doctor Odyssey"), full("tt51", "Doctors")),
+        )
+
+        val rows = refineSearchGroups(listOf(films, fromFiles, series), "doctor strange")
+
+        // The short Series row had only one-word matches, and the search has plenty of full ones.
+        assertEquals(listOf("c/movie", "mf/movie"), rows.map { it.key })
+        assertEquals(8, rows[0].metas.size)
+        // The copy is on the first row already; the entry with nothing but a drawn card is gone.
+        assertEquals(listOf("tt900"), rows[1].metas.map { it.id })
+    }
+
+    @Test
     fun aRatingOfZeroOrNothingReadableIsNoRating() {
         assertEquals("6.8", ratedValue("6.8"))
         assertEquals("7.2", ratedValue(" 7.2 "))
