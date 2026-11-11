@@ -1,8 +1,10 @@
 import {
+  languageCodeVariants,
   languageLabel,
   languageMatches,
   type MetaVideo,
   type NextEpisodeResult,
+  type SettingsPayload,
   type Subtitle,
   type WatchState,
 } from '@halo/core'
@@ -547,6 +549,18 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
         localSubtitlePath = files.subtitle_path
         hasLocalSubtitleRef.current = Boolean(files.subtitle_path)
       }
+      // Track choices are per file. mpv keeps a chosen track number as its
+      // setting, so the number picked for the last video (track 2, say, for
+      // English) would select track 2 of this one, whatever language that
+      // is. Both go back to automatic, and mpv is told the preferred audio
+      // language so the right track plays from the first frame; the effect
+      // further down still corrects it if settings arrive after the file.
+      const preferredAudio = queryClient.getQueryData<SettingsPayload>(['settings'])?.value.preferredAudioLang
+      await mpvSet('aid', 'auto').catch(() => undefined)
+      await mpvSet('sid', 'auto').catch(() => undefined)
+      await mpvSet('alang', preferredAudio ? languageCodeVariants(preferredAudio).join(',') : '').catch(
+        () => undefined,
+      )
       // The stream's own request headers, replaced for every file: the mpv
       // handle is shared, so the last stream's would otherwise go to this
       // one's host. Each is appended as one item, which takes the value as it
