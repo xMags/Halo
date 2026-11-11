@@ -71,7 +71,39 @@ internal fun languageMatches(left: String?, right: String?): Boolean {
     val a = left?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return false
     val b = right?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return false
     if (a == b) return true
-    return canonicalLanguage(a) == canonicalLanguage(b)
+    return languageIdentity(a) == languageIdentity(b)
+}
+
+/**
+ * The language a tag names. Files also tag tracks with a region or script
+ * (`en-US`, `zh_Hans`), which is the same language as far as a preference
+ * goes; Brazilian Portuguese is the one region kept apart, as the settings
+ * list offers it on its own.
+ */
+private fun languageIdentity(tag: String): String {
+    val normalized = tag.replace('_', '-')
+    if (normalized == "pt-br") return "pob"
+    return canonicalLanguage(normalized.substringBefore('-'))
+}
+
+/** Every spelling [canonicalLanguage] folds together, by the code it folds them onto. */
+private val LanguageSpellings: Map<String, List<String>> = listOf(
+    "en", "eng", "es", "spa", "pt", "por", "pb", "pob", "fr", "fre", "fra", "de", "ger", "deu", "it", "ita",
+    "nl", "dut", "nld", "pl", "pol", "ru", "rus", "ja", "jpn", "ko", "kor", "zh", "chi", "zho", "ar", "ara",
+    "tr", "tur", "sv", "swe", "cs", "cze", "ces", "el", "gre", "ell", "he", "heb", "fa", "per", "fas",
+    "ro", "rum", "ron",
+).groupBy(::canonicalLanguage)
+
+/**
+ * Every code that names the same language as [preferredCode], the given one
+ * first: what the engine's own language preference (mpv's `alang`) is given,
+ * so it picks the track however the file tagged it.
+ */
+internal fun languageCodeVariants(preferredCode: String?): List<String> {
+    val given = preferredCode?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return emptyList()
+    val identity = languageIdentity(given)
+    val regional = if (identity == "pob") listOf("pt-br") else emptyList()
+    return (listOf(given) + LanguageSpellings[identity].orEmpty() + regional).distinct()
 }
 
 /**

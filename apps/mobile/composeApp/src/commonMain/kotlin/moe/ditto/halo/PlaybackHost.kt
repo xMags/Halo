@@ -164,6 +164,11 @@ internal class PlaybackHost(private val playerPort: PlayerPort) {
         publish()
     }
 
+    /** The audio languages the engine prefers when the next file loads; see [PlayerPort.setPreferredAudioLanguages]. */
+    suspend fun setPreferredAudioLanguages(codes: List<String>) {
+        playerPresenter.setPreferredAudioLanguages(codes)
+    }
+
     suspend fun setSubtitleLift(percent: Int) {
         playerPresenter.setSubtitleLift(percent)
         publish()

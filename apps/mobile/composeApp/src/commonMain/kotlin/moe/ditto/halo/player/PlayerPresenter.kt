@@ -148,6 +148,11 @@ class PlayerPresenter(
         player.setSubtitleOutline(widthPixels)
     }
 
+    suspend fun setPreferredAudioLanguages(codes: List<String>) {
+        if (state.status == PlaybackStatus.Released) return
+        player.setPreferredAudioLanguages(codes)
+    }
+
     suspend fun setSubtitleShadow(offsetPixels: Double) {
         if (state.status == PlaybackStatus.Released || !offsetPixels.isFinite() || offsetPixels < 0.0) return
         player.setSubtitleShadow(offsetPixels)

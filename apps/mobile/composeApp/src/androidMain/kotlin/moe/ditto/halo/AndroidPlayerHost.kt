@@ -266,6 +266,9 @@ internal class AndroidMpvPlayerHost(
     suspend fun setSubtitleShadow(offsetPixels: Double) =
         enqueue("subtitle-shadow") { it.setSubtitleShadow(offsetPixels) }
 
+    suspend fun setPreferredAudioLanguages(codes: List<String>) =
+        enqueue("audio-languages") { it.setPreferredAudioLanguages(codes) }
+
     suspend fun setSubtitleLift(percent: Int) = enqueue("subtitle-lift") { it.setSubtitleLift(percent) }
     suspend fun addSubtitle(url: String, title: String?, lang: String?) =
         enqueue("subtitle-add") { it.addSubtitle(url, title, lang) }
@@ -416,6 +419,7 @@ internal class AndroidPlayerPort(
     override suspend fun setSubtitleTrackStyling(keepScript: Boolean) = host.setSubtitleTrackStyling(keepScript)
     override suspend fun setSubtitleOutline(widthPixels: Double) = host.setSubtitleOutline(widthPixels)
     override suspend fun setSubtitleShadow(offsetPixels: Double) = host.setSubtitleShadow(offsetPixels)
+    override suspend fun setPreferredAudioLanguages(codes: List<String>) = host.setPreferredAudioLanguages(codes)
     override suspend fun setSubtitleLift(percent: Int) = host.setSubtitleLift(percent)
     override suspend fun addSubtitle(url: String, title: String?, lang: String?) =
         host.addSubtitle(url, title, lang)
