@@ -40,6 +40,7 @@ import {
 } from './playerLogic'
 import { headerLines, playbackHeaders } from './requestHeaders'
 import { closeScrubPreview, openScrubPreview } from './scrubPreview'
+import { stageWatchStates } from './watchOutbox'
 import { LoadingIndicator, useLoadingIndicator } from './LoadingIndicator'
 import { ScrubPreviewCard, useScrubPreview } from './ScrubPreviewCard'
 import { SubtitlePreview } from './SubtitlePreview'
@@ -64,6 +65,8 @@ import type { WindowFullscreenController } from '../window'
 
 /** Watch-state cadence and thresholds — identical to mobile's player. */
 const REPORT_INTERVAL_MS = 15_000
+/** How often the position is saved locally between reports (see watchOutbox.ts). */
+const STAGE_INTERVAL_MS = 2_000
 const WATCHED_THRESHOLD = 0.9
 const CONTROLS_HIDE_DELAY_MS = 3_000
 const NEXT_EPISODE_TIMEOUT_MS = 15_000
@@ -295,11 +298,12 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     return () => window.clearInterval(timer)
   }, [fileSerial, seekSerial, presenceEnded, buffering, paused, duration, speed])
   const videoClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const reportNow = useCallback(() => {
+  /** Where playback is now, as a history row; null while there is nothing worth one. */
+  const currentWatchState = useCallback((): WatchState | null => {
     const { positionSec, durationSec: total } = progressRef.current
     // Too short / barely started — not worth a history row (mobile parity).
-    if (total < 60 || positionSec < 5) return
-    const state: WatchState = {
+    if (total < 60 || positionSec < 5) return null
+    return {
       videoId: params.videoId,
       itemId: params.itemId,
       positionSec: Math.floor(positionSec),
@@ -310,9 +314,20 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       ...(params.poster ? { poster: params.poster } : {}),
       updatedAt: Date.now(),
     }
-    report.mutate([state])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.videoId, params.itemId])
+  const reportNow = useCallback(() => {
+    const state = currentWatchState()
+    if (state) report.mutate([state])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentWatchState])
+  // Between reports the position is kept on this PC only, so closing the
+  // window mid-playback (when nothing gets to run) costs a couple of seconds
+  // at most; the next launch sends it.
+  const stageNow = useCallback(() => {
+    const state = currentWatchState()
+    if (state) stageWatchStates([state])
+  }, [currentWatchState])
 
   const resumeAppliedRef = useRef(false)
   /** Read inside the file-loaded handler, which must not depend on prefs. */
@@ -554,10 +569,12 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     })
 
     const interval = setInterval(reportNow, REPORT_INTERVAL_MS)
+    const staging = setInterval(stageNow, STAGE_INTERVAL_MS)
 
     return () => {
       disposed = true
       clearInterval(interval)
+      clearInterval(staging)
       reportNow()
       for (const unlisten of unlisteners) unlisten()
       previousPlayerTeardown = (async () => {

@@ -13,7 +13,8 @@ import {
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { fetchWithHeaders } from './player/requestHeaders'
-import { useMemo } from 'react'
+import { pendingWatchStates, settleWatchStates, stageWatchStates } from './player/watchOutbox'
+import { useEffect, useMemo } from 'react'
 import { getAccountClient, getClient } from './api'
 import { useSession } from './auth/session'
 import { removedRows } from './browse/watchMarks'
@@ -389,10 +390,42 @@ export function useRemoveFromHistory() {
   })
 }
 
+/**
+ * Reports watch progress through the outbox (player/watchOutbox.ts): the rows
+ * are staged on this PC first, everything staged is sent, and only what the
+ * backend accepted is removed. A report that fails therefore goes out with the
+ * next one instead of being lost. An empty report just sends what is waiting.
+ */
 export function useReportWatchState() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (states: WatchState[]) => getClient().putWatchStates(states),
-    onSuccess: (states) => queryClient.setQueryData(['watchStates'], states),
+    mutationFn: async (states: WatchState[]): Promise<WatchState[] | null> => {
+      stageWatchStates(states)
+      const pending = pendingWatchStates()
+      if (pending.length === 0) return null
+      const stored = await getClient().putWatchStates(pending)
+      settleWatchStates(pending)
+      return stored
+    },
+    onSuccess: (states) => {
+      if (states) queryClient.setQueryData(['watchStates'], states)
+    },
   })
+}
+
+/**
+ * Sends progress left unsent by an earlier run (the window was closed while
+ * playing, or the reports failed): once when the app's shell appears, and
+ * again whenever the network comes back.
+ */
+export function useSendPendingWatchStates(): void {
+  const { mutate } = useReportWatchState()
+  useEffect(() => {
+    const send = () => {
+      if (pendingWatchStates().length > 0) mutate([])
+    }
+    send()
+    window.addEventListener('online', send)
+    return () => window.removeEventListener('online', send)
+  }, [mutate])
 }

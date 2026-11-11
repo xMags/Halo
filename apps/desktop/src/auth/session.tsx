@@ -16,6 +16,7 @@ import {
 import { signOutLocal } from './localAuth'
 import { signOutOidc } from './oidc'
 import { clearDownloadsAccount } from '../downloads/downloadsStore'
+import { clearWatchOutbox } from '../player/watchOutbox'
 import { resetSettingsMirror } from '../settings/syncedSettings'
 import { createDeviceProfile, readDeviceProfile, type DeviceProfile } from '../device/deviceStore'
 
@@ -85,6 +86,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     (next: SessionState) => {
       queryClient.clear()
       resetSettingsMirror()
+      // Unsent progress belongs to the backend it was watched under.
+      clearWatchOutbox()
       setSigningIn(false)
       setState(next)
     },
