@@ -1,4 +1,5 @@
 import { computeVideoHash, languageMatches } from '@halo/core'
+import { fetchWithHeaders, playbackHeaders } from '../player/requestHeaders'
 import { useQueryClient } from '@tanstack/react-query'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -209,6 +210,9 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
         ...(stream.behaviorHints?.bingeGroup ? { bingeGroup: stream.behaviorHints.bingeGroup } : {}),
         ...(stream.behaviorHints?.filename ? { filename: stream.behaviorHints.filename } : {}),
         ...(stream.behaviorHints?.videoSize ? { videoSize: stream.behaviorHints.videoSize } : {}),
+        ...(playbackHeaders(stream.behaviorHints?.proxyHeaders?.request)
+          ? { headers: playbackHeaders(stream.behaviorHints?.proxyHeaders?.request) }
+          : {}),
       })
     },
     [resolve.records, push, params],
@@ -253,7 +257,9 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
     let videoSize = stream.behaviorHints?.videoSize
     try {
       if (!videoHash && stream.url) {
-        const result = await computeVideoHash(stream.url, { fetch: nativeFetch })
+        const result = await computeVideoHash(stream.url, {
+          fetch: fetchWithHeaders(nativeFetch, stream.behaviorHints?.proxyHeaders?.request),
+        })
         videoHash = result.hash
         videoSize = videoSize ?? result.size
       }

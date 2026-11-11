@@ -38,6 +38,7 @@ import {
   upNextCancelAction,
   videoTopMarginRatio,
 } from './playerLogic'
+import { headerLines, playbackHeaders } from './requestHeaders'
 import { closeScrubPreview, openScrubPreview } from './scrubPreview'
 import { LoadingIndicator, useLoadingIndicator } from './LoadingIndicator'
 import { ScrubPreviewCard, useScrubPreview } from './ScrubPreviewCard'
@@ -248,6 +249,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     type: params.type,
     videoId: params.videoId,
     streamUrl: params.url,
+    streamHeaders: params.headers,
     filename: params.filename,
     videoSize: params.videoSize,
     enabled: params.sourceKind !== 'download',
@@ -530,12 +532,22 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
         localSubtitlePath = files.subtitle_path
         hasLocalSubtitleRef.current = Boolean(files.subtitle_path)
       }
+      // The stream's own request headers, replaced for every file: the mpv
+      // handle is shared, so the last stream's would otherwise go to this
+      // one's host. Each is appended as one item, which takes the value as it
+      // is (setting the whole list would split a value at its commas). A
+      // download plays from disk and gets none.
+      const streamHeaders = params.sourceKind === 'download' ? [] : headerLines(params.headers)
+      await mpvSet('http-header-fields', '').catch(() => undefined)
+      for (const line of streamHeaders) {
+        await mpvCmd('change-list', 'http-header-fields', 'append', line).catch(() => undefined)
+      }
       await mpvSet('pause', 'no')
       if (disposed) return
       await mpvCmd('loadfile', sourceUrl)
       // Seek-bar thumbnails come from the same file; nothing connects until
       // the pointer first crosses the bar.
-      if (sourceUrl) await openScrubPreview(sourceUrl).catch(() => undefined)
+      if (sourceUrl) await openScrubPreview(sourceUrl, streamHeaders).catch(() => undefined)
     }
     void setup().catch(() => {
       if (!disposed) setPlayerError('The player could not start this source.')
@@ -735,6 +747,9 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
         ...(stream.behaviorHints?.bingeGroup ? { bingeGroup: stream.behaviorHints.bingeGroup } : {}),
         ...(stream.behaviorHints?.filename ? { filename: stream.behaviorHints.filename } : {}),
         ...(stream.behaviorHints?.videoSize ? { videoSize: stream.behaviorHints.videoSize } : {}),
+        ...(playbackHeaders(stream.behaviorHints?.proxyHeaders?.request)
+          ? { headers: playbackHeaders(stream.behaviorHints?.proxyHeaders?.request) }
+          : {}),
       }),
     )
   }

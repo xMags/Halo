@@ -12,6 +12,7 @@ import {
 } from '@halo/core'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
+import { fetchWithHeaders } from './player/requestHeaders'
 import { useMemo } from 'react'
 import { getAccountClient, getClient } from './api'
 import { useSession } from './auth/session'
@@ -217,6 +218,8 @@ export interface SubtitleOptions {
   videoId: string
   /** Remote stream URL — used for hash matching via native range requests. */
   streamUrl?: string
+  /** Request headers the stream needs; the hash requests send them too. */
+  streamHeaders?: Record<string, string>
   filename?: string
   videoSize?: number
   enabled?: boolean
@@ -245,7 +248,9 @@ export function useAddonSubtitles(opts: SubtitleOptions) {
       let videoSize = opts.videoSize
       try {
         if (opts.streamUrl) {
-          const result = await computeVideoHash(opts.streamUrl, { fetch: nativeFetch })
+          const result = await computeVideoHash(opts.streamUrl, {
+            fetch: fetchWithHeaders(nativeFetch, opts.streamHeaders),
+          })
           videoHash = result.hash
           videoSize = videoSize ?? result.size
         }

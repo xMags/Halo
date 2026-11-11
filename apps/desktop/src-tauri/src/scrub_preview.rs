@@ -79,6 +79,8 @@ struct Pending {
 #[derive(Default)]
 struct State {
     source: Option<String>,
+    /// `Name: value` request headers the source needs, sent with every request for it.
+    headers: Vec<String>,
     /// Bumped by every open and close; a worker from an older generation retires.
     generation: u64,
     /// The generation whose worker is running, if one is.
@@ -112,10 +114,11 @@ impl ScrubPreview {
     }
 
     /// Records the source for later requests. No network work happens here.
-    pub fn open(&self, source: String) {
+    pub fn open(&self, source: String, headers: Vec<String>) {
         let mut state = self.shared.lock();
         state.generation += 1;
         state.source = Some(source);
+        state.headers = headers;
         fail_pending(&mut state);
         self.shared.wake.notify_all();
     }
@@ -124,6 +127,7 @@ impl ScrubPreview {
         let mut state = self.shared.lock();
         state.generation += 1;
         state.source = None;
+        state.headers.clear();
         fail_pending(&mut state);
         self.shared.wake.notify_all();
     }
@@ -156,7 +160,8 @@ impl ScrubPreview {
         if state.worker != Some(generation) {
             state.worker = Some(generation);
             let shared = self.shared.clone();
-            std::thread::spawn(move || run_worker(shared, generation, source));
+            let headers = state.headers.clone();
+            std::thread::spawn(move || run_worker(shared, generation, source, headers));
         }
         self.shared.wake.notify_all();
         receiver
@@ -217,9 +222,13 @@ fn fail_pending(state: &mut State) {
     }
 }
 
-fn run_worker(shared: Arc<Shared>, generation: u64, source: String) {
+fn run_worker(shared: Arc<Shared>, generation: u64, source: String, headers: Vec<String>) {
     let mut opened = false;
     if let Ok(instance) = Instance::create(&shared.dll) {
+        // One item at a time: `append` takes a value as it is, commas included.
+        for line in &headers {
+            instance.run(&["change-list", "http-header-fields", "append", line]);
+        }
         opened = instance.load(&source, &shared, generation);
         if opened {
             while let Some(request) = shared.next_request(generation) {

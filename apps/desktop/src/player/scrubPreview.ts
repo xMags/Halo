@@ -12,8 +12,8 @@ export interface ScrubPreviewFrame {
   pixels: Uint8ClampedArray<ArrayBuffer>
 }
 
-export function openScrubPreview(source: string): Promise<void> {
-  return invoke('scrub_preview_open', { source })
+export function openScrubPreview(source: string, headers: string[] = []): Promise<void> {
+  return invoke('scrub_preview_open', { source, headers })
 }
 
 export function closeScrubPreview(): Promise<void> {

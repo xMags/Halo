@@ -504,11 +504,22 @@ async fn audio_session_set_volume(volume: f64, unmute: bool) -> Result<bool, Str
 
 /// Records the file seek-bar previews decode from; opens nothing yet.
 #[tauri::command]
-fn scrub_preview_open(state: State<'_, scrub_preview::ScrubPreview>, source: String) -> Result<(), String> {
+fn scrub_preview_open(
+    state: State<'_, scrub_preview::ScrubPreview>,
+    source: String,
+    headers: Option<Vec<String>>,
+) -> Result<(), String> {
     if source.is_empty() || source.len() > 8192 {
         return Err("invalid preview source".to_string());
     }
-    state.open(source);
+    // `Name: value` lines for the source's requests, as the player sends them.
+    let headers = headers.unwrap_or_default();
+    let line_is_safe =
+        |line: &String| !line.is_empty() && line.len() <= 8192 && !line.contains(['\r', '\n', '\0']);
+    if headers.len() > 64 || !headers.iter().all(line_is_safe) {
+        return Err("invalid preview headers".to_string());
+    }
+    state.open(source, headers);
     Ok(())
 }
 

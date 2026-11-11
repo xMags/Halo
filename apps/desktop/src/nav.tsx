@@ -37,6 +37,8 @@ export interface PlayerParams {
   bingeGroup?: string
   filename?: string
   videoSize?: number
+  /** Request headers the addon says this stream needs (a Referer, an auth header). */
+  headers?: Record<string, string>
 }
 
 /** What the sources sheet needs to resolve and label a video's streams. */
