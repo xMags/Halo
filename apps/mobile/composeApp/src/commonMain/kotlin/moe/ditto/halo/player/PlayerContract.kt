@@ -120,6 +120,17 @@ sealed interface PlayerEvent {
 
 interface PlayerPort {
     suspend fun load(item: MediaItem)
+
+    /**
+     * The audio languages to prefer when a file loads, most wanted first, as
+     * every spelling a file might tag them with. Empty leaves the choice to
+     * the file's own default track. Set before [load]; it holds for every
+     * file after it.
+     *
+     * A no-op where the host does not take it yet: the file's default track
+     * plays, as it did before this existed.
+     */
+    suspend fun setPreferredAudioLanguages(codes: List<String>) = Unit
     suspend fun setPaused(paused: Boolean)
     suspend fun seekTo(positionSeconds: Double)
     suspend fun selectAudioTrack(id: String?)

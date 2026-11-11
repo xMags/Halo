@@ -264,6 +264,11 @@ internal class MpvCore private constructor(
      */
     fun load(url: String, headerLines: List<String> = emptyList()) {
         if (destroyed) return
+        // A chosen audio track is a track number, and mpv keeps it as its
+        // setting: the number picked for the last file would select the same
+        // number in this one, whatever language that is. Back to automatic,
+        // where the preferred languages (below) decide.
+        mpv.setPropertyString("aid", "auto")
         mpv.setPropertyString("http-header-fields", "")
         headerLines.forEach { line ->
             mpv.command(arrayOf("change-list", "http-header-fields", "append", line))
@@ -286,6 +291,12 @@ internal class MpvCore private constructor(
     fun seekTo(positionSeconds: Double) {
         if (destroyed) return
         mpv.command(arrayOf("seek", positionSeconds.toString(), "absolute"))
+    }
+
+    /** mpv's `alang`: the languages to prefer when a file's audio track is picked automatically. */
+    fun setPreferredAudioLanguages(codes: List<String>) {
+        if (destroyed) return
+        mpv.setPropertyString("alang", codes.joinToString(","))
     }
 
     fun selectAudioTrack(id: String?) {

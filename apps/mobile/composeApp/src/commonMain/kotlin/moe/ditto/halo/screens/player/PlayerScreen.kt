@@ -57,6 +57,7 @@ import moe.ditto.halo.player.classifyVideoQuality
 import moe.ditto.halo.player.PlayerTracks
 import moe.ditto.halo.player.VideoFrameSource
 import moe.ditto.halo.ui.QualityMedal
+import moe.ditto.halo.ui.languageCodeVariants
 import moe.ditto.halo.ui.QualityMedalWidth
 import moe.ditto.halo.ui.HaloColors
 
@@ -289,6 +290,10 @@ internal fun PlayerScreen(
         subtitleOutline = settings.subtitleOutline ?: SubtitleOutline.Normal
         subtitleShadow = settings.subtitleShadow != false
         playback.applySubtitleStyle(stored)
+        // Before the source, like the appearance: the engine picks the audio
+        // track as the file opens, so the preferred language plays from the
+        // first frame instead of the file's default one.
+        playback.setPreferredAudioLanguages(languageCodeVariants(settings.preferredAudioLang))
         openItem()
 
         val storedPreference = SubtitlePreference(stored.scale, stored.font)
