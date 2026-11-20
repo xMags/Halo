@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,7 +42,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -198,7 +201,9 @@ internal fun SearchScreen(
         }
     }
 
-    val suggestions = if (focused && !suggestionsDismissed && textMode) {
+    // Only while typing: with the keyboard put away the field may keep focus, but the list is in the way.
+    val typing = focused && WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val suggestions = if (typing && !suggestionsDismissed && textMode) {
         searchSuggestions(history, cappedQuery(term), view.foundNames(cappedQuery(term)))
     } else {
         emptyList()
@@ -251,10 +256,9 @@ internal fun SearchScreen(
             )
         }
 
-        if (suggestions.isNotEmpty()) {
-            Suggestions(suggestions, onPick = { picked -> searchAgain(picked); focusManager.clearFocus() }, modifier = Modifier.padding(horizontal = gutter))
-        }
-
+        // The suggestions float over the page under the field rather than pushing it down.
+        Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
         if (textMode) {
             FilterChips(filter, onPick = { filter = it }, modifier = Modifier.padding(horizontal = gutter).padding(top = HaloSpacing.Sm))
         }
@@ -368,6 +372,15 @@ internal fun SearchScreen(
                     }
                 }
             }
+        }
+        }
+        if (suggestions.isNotEmpty()) {
+            Suggestions(
+                suggestions,
+                onPick = { picked -> searchAgain(picked); focusManager.clearFocus() },
+                modifier = Modifier.padding(horizontal = gutter).zIndex(1f),
+            )
+        }
         }
     }
 }
