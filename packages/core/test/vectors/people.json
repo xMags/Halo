@@ -1,0 +1,834 @@
+{
+  "about": "People rules, shared by the TypeScript tests (packages/core) and the Kotlin commonTest (apps/mobile). Persons and credits are in the readers' shapes (people/readers.ts). bestTitleTier null means no title was found.",
+  "peopleRow": [
+    {
+      "query": "  denis villeneuve ",
+      "bestTitleTier": null,
+      "people": [
+        {
+          "tmdbId": 1,
+          "name": "Denis Villeneuve Jr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 50,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 2,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 10,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 3,
+          "name": "Denis Villeneuves",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 99,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 4,
+          "name": "Jacques Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 99,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 5,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 30,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 6,
+          "name": "Denis Villeneuve Sr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 70,
+          "knownForTitles": []
+        }
+      ],
+      "ids": [
+        5,
+        2,
+        6
+      ]
+    },
+    {
+      "query": "denis villeneuve",
+      "bestTitleTier": 0,
+      "people": [
+        {
+          "tmdbId": 1,
+          "name": "Denis Villeneuve Jr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 50,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 2,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 10,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 3,
+          "name": "Denis Villeneuves",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 99,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 4,
+          "name": "Jacques Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 99,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 5,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 30,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 6,
+          "name": "Denis Villeneuve Sr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 70,
+          "knownForTitles": []
+        }
+      ],
+      "ids": [
+        5,
+        2
+      ]
+    },
+    {
+      "query": "villeneuve",
+      "bestTitleTier": 1,
+      "people": [
+        {
+          "tmdbId": 1,
+          "name": "Denis Villeneuve Jr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 50,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 2,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 10,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 3,
+          "name": "Denis Villeneuves",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 99,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 4,
+          "name": "Jacques Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 99,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 5,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 30,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 6,
+          "name": "Denis Villeneuve Sr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 70,
+          "knownForTitles": []
+        }
+      ],
+      "ids": [
+        4,
+        6,
+        1
+      ]
+    },
+    {
+      "query": "villeneuve",
+      "bestTitleTier": 0,
+      "people": [
+        {
+          "tmdbId": 1,
+          "name": "Denis Villeneuve Jr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 50,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 2,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 10,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 3,
+          "name": "Denis Villeneuves",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 99,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 4,
+          "name": "Jacques Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 99,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 5,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 30,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 6,
+          "name": "Denis Villeneuve Sr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 70,
+          "knownForTitles": []
+        }
+      ],
+      "ids": []
+    },
+    {
+      "query": "spielberg",
+      "bestTitleTier": null,
+      "people": [
+        {
+          "tmdbId": 1,
+          "name": "Denis Villeneuve Jr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 50,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 2,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 10,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 3,
+          "name": "Denis Villeneuves",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 99,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 4,
+          "name": "Jacques Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 99,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 5,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 30,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 6,
+          "name": "Denis Villeneuve Sr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 70,
+          "knownForTitles": []
+        }
+      ],
+      "ids": []
+    },
+    {
+      "query": "dune",
+      "bestTitleTier": null,
+      "people": [],
+      "ids": []
+    },
+    {
+      "query": "denis villeneuve",
+      "bestTitleTier": null,
+      "people": [
+        {
+          "tmdbId": 1,
+          "name": "Denis Villeneuve Jr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 50,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 2,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 10,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 3,
+          "name": "Denis Villeneuves",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 99,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 4,
+          "name": "Jacques Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 99,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 5,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 30,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 6,
+          "name": "Denis Villeneuve Sr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 70,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 7,
+          "name": "Denis Villeneuve",
+          "knownFor": null,
+          "photo": "https://image.tmdb.org/t/p/w185/denis.jpg",
+          "popularity": 5,
+          "knownForTitles": []
+        }
+      ],
+      "ids": [
+        7
+      ]
+    }
+  ],
+  "bestTitleTier": [
+    {
+      "names": [
+        "Dune: Part Two",
+        "Dune"
+      ],
+      "query": "dune",
+      "tier": 0
+    },
+    {
+      "names": [
+        "Dune: Part Two",
+        "Dune"
+      ],
+      "query": "dune 2021",
+      "tier": 0
+    },
+    {
+      "names": [],
+      "query": "dune",
+      "tier": null
+    }
+  ],
+  "exactNamePerson": [
+    {
+      "people": [
+        {
+          "tmdbId": 1,
+          "name": "Tom Hardy Jr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 90,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 2,
+          "name": "Tom Hardy",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 20,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 3,
+          "name": "tom hardy",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 40,
+          "knownForTitles": []
+        }
+      ],
+      "name": " Tom Hardy ",
+      "id": 3
+    },
+    {
+      "people": [
+        {
+          "tmdbId": 1,
+          "name": "Tom Hardy Jr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 90,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 2,
+          "name": "Tom Hardy",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 20,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 3,
+          "name": "tom hardy",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 40,
+          "knownForTitles": []
+        }
+      ],
+      "name": "Tom",
+      "id": null
+    },
+    {
+      "people": [
+        {
+          "tmdbId": 1,
+          "name": "Tom Hardy Jr",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 90,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 2,
+          "name": "Tom Hardy",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 20,
+          "knownForTitles": []
+        },
+        {
+          "tmdbId": 3,
+          "name": "tom hardy",
+          "knownFor": null,
+          "photo": null,
+          "popularity": 40,
+          "knownForTitles": []
+        }
+      ],
+      "name": "  ",
+      "id": null
+    }
+  ],
+  "creditTitles": {
+    "credits": [
+      {
+        "type": "movie",
+        "imdbId": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/dune.jpg"
+      },
+      {
+        "type": "series",
+        "imdbId": "tt0000002",
+        "name": "A Series",
+        "year": null,
+        "poster": null
+      },
+      {
+        "type": "movie",
+        "imdbId": "",
+        "name": "No Id",
+        "year": null,
+        "poster": null
+      },
+      {
+        "type": "channel",
+        "imdbId": "tt0000004",
+        "name": "Not A Film",
+        "year": null,
+        "poster": null
+      }
+    ],
+    "titles": [
+      {
+        "id": "tt1160419",
+        "imdb_id": "tt1160419",
+        "type": "movie",
+        "name": "Dune",
+        "poster": "https://image.tmdb.org/t/p/w342/dune.jpg",
+        "releaseInfo": "2021"
+      },
+      {
+        "id": "tt0000002",
+        "imdb_id": "tt0000002",
+        "type": "series",
+        "name": "A Series"
+      }
+    ]
+  },
+  "personRowLine": [
+    {
+      "knownFor": "Directing",
+      "knownForTitles": [
+        "Dune",
+        "Arrival",
+        "Sicario"
+      ],
+      "line": "Director · Dune, Arrival, Sicario"
+    },
+    {
+      "knownFor": "Directing",
+      "knownForTitles": [],
+      "line": "Director"
+    },
+    {
+      "knownFor": null,
+      "knownForTitles": [
+        "Dune"
+      ],
+      "line": "Dune"
+    },
+    {
+      "knownFor": null,
+      "knownForTitles": [],
+      "line": ""
+    },
+    {
+      "knownFor": "Acting",
+      "knownForTitles": [],
+      "line": "Actor"
+    },
+    {
+      "knownFor": "Writing",
+      "knownForTitles": [],
+      "line": "Writer"
+    }
+  ],
+  "filmography": {
+    "credits": [
+      {
+        "type": "movie",
+        "imdbId": "tt1",
+        "tmdbId": 0,
+        "name": "tt1",
+        "year": "2016",
+        "poster": null,
+        "roles": [
+          "director"
+        ],
+        "character": null,
+        "popularity": 50
+      },
+      {
+        "type": "movie",
+        "imdbId": "tt2",
+        "tmdbId": 0,
+        "name": "tt2",
+        "year": null,
+        "poster": null,
+        "roles": [
+          "cast"
+        ],
+        "character": null,
+        "popularity": 99
+      },
+      {
+        "type": "movie",
+        "imdbId": "tt3",
+        "tmdbId": 0,
+        "name": "tt3",
+        "year": "2021",
+        "poster": null,
+        "roles": [
+          "director",
+          "writer"
+        ],
+        "character": null,
+        "popularity": 10
+      },
+      {
+        "type": "movie",
+        "imdbId": "tt4",
+        "tmdbId": 0,
+        "name": "tt4",
+        "year": "2021",
+        "poster": null,
+        "roles": [
+          "writer"
+        ],
+        "character": null,
+        "popularity": 30
+      },
+      {
+        "type": "movie",
+        "imdbId": "tt5",
+        "tmdbId": 0,
+        "name": "tt5",
+        "year": "2024",
+        "poster": null,
+        "roles": [
+          "writer",
+          "director"
+        ],
+        "character": null,
+        "popularity": 5
+      }
+    ],
+    "byFilter": {
+      "all": [
+        "tt5",
+        "tt4",
+        "tt3",
+        "tt1",
+        "tt2"
+      ],
+      "writing": [
+        "tt5",
+        "tt4",
+        "tt3"
+      ],
+      "acting": [
+        "tt2"
+      ],
+      "directing": [
+        "tt5",
+        "tt3",
+        "tt1"
+      ]
+    },
+    "filters": [
+      "all",
+      "acting",
+      "directing",
+      "writing"
+    ],
+    "directorOnlyFilters": [
+      "all",
+      "directing"
+    ],
+    "creditLines": [
+      {
+        "index": 4,
+        "line": "2024 · Director · Writer"
+      },
+      {
+        "index": 1,
+        "line": "Actor"
+      }
+    ],
+    "roleLabels": [
+      {
+        "roles": [
+          "writer",
+          "cast",
+          "director"
+        ],
+        "label": "Actor · Director · Writer"
+      },
+      {
+        "roles": [],
+        "label": ""
+      }
+    ]
+  },
+  "credentials": [
+    {
+      "pasted": "  0123456789abcdefABCDEF0123456789\n",
+      "kind": "apiKey",
+      "value": "0123456789abcdefABCDEF0123456789"
+    },
+    {
+      "pasted": "0123456789abcdef0123456789abcde",
+      "kind": null
+    },
+    {
+      "pasted": "0123456789abcdef0123456789abcdeg",
+      "kind": null
+    },
+    {
+      "pasted": "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInN1YiI6IjEyMzQ1Njc4OTBhYmNkZWYiLCJzY29wZXMiOlsiYXBpX3JlYWQiXX0.abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG",
+      "kind": "readToken",
+      "value": "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInN1YiI6IjEyMzQ1Njc4OTBhYmNkZWYiLCJzY29wZXMiOlsiYXBpX3JlYWQiXX0.abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG"
+    },
+    {
+      "pasted": "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInN1YiI6IjEyMzQ1Njc4OTBhYmNkZWYiLCJzY29wZXMiOlsiYXBpX3JlYWQiXX0abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG",
+      "kind": null
+    },
+    {
+      "pasted": "eyJhbGciOiJIUzI1NiJ9..eyJhdWQiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInN1YiI6IjEyMzQ1Njc4OTBhYmNkZWYiLCJzY29wZXMiOlsiYXBpX3JlYWQiXX0.abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG",
+      "kind": null
+    },
+    {
+      "pasted": "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInN1YiI6IjEyMzQ1Njc4OTBhYmNkZWYiLCJzY29wZXMiOlsiYXBpX3JlYWQiXX0.abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG/",
+      "kind": null
+    },
+    {
+      "pasted": "",
+      "kind": null
+    }
+  ],
+  "closestWords": [
+    {
+      "query": "Crystophar Nolan",
+      "words": [
+        "crystophar",
+        "nolan"
+      ]
+    },
+    {
+      "query": "Nolan",
+      "words": []
+    },
+    {
+      "query": "al de pacino",
+      "words": [
+        "pacino"
+      ]
+    }
+  ],
+  "editDistance": [
+    {
+      "a": "kitten",
+      "b": "sitting",
+      "limit": 5,
+      "distance": 3
+    },
+    {
+      "a": "abc",
+      "b": "xyzxyz",
+      "limit": 1,
+      "distance": 2
+    }
+  ],
+  "allowedDistance": [
+    {
+      "length": 16,
+      "allowed": 4
+    },
+    {
+      "length": 2,
+      "allowed": 1
+    }
+  ],
+  "closestPeople": [
+    {
+      "query": "crystophar nolan",
+      "answers": {
+        "crystophar": [],
+        "nolan": [
+          {
+            "tmdbId": 525,
+            "name": "Christopher Nolan",
+            "knownFor": null,
+            "photo": null,
+            "popularity": 10,
+            "knownForTitles": []
+          },
+          {
+            "tmdbId": 527,
+            "name": "Jonathan Nolan",
+            "knownFor": null,
+            "photo": null,
+            "popularity": 20,
+            "knownForTitles": []
+          }
+        ]
+      },
+      "corrected": "Christopher Nolan",
+      "ids": [
+        525
+      ]
+    },
+    {
+      "query": "zzzzzz qqqqqq",
+      "answers": {
+        "zzzzzz": [
+          {
+            "tmdbId": 525,
+            "name": "Christopher Nolan",
+            "knownFor": null,
+            "photo": null,
+            "popularity": 10,
+            "knownForTitles": []
+          }
+        ],
+        "qqqqqq": []
+      },
+      "corrected": null,
+      "ids": []
+    }
+  ],
+  "endAtSentence": [
+    {
+      "text": "Aaaa bbb. Cc dd. Eeeeeeeeeeee",
+      "max": 20,
+      "cut": "Aaaa bbb. Cc dd."
+    },
+    {
+      "text": "Hi. aaaaaaaaaaaaaaaaaaaaaaaa",
+      "max": 20,
+      "cut": "Hi. aaaaaaaaaaaaaaaa"
+    },
+    {
+      "text": "Short.",
+      "max": 20,
+      "cut": "Short."
+    }
+  ]
+}

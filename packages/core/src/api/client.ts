@@ -1,5 +1,17 @@
 import { isActionStream, withoutActionEntries, withoutActionStreams } from '../addon/actionEntries'
 import type { CatalogResponse, MetaResponse } from '../addon/types'
+import { isMagnetId, readMagnet, type MagnetRequest } from '../magnets/readers'
+import {
+  NO_CAPABILITIES,
+  readCapabilities,
+  readIdLookup,
+  readPeopleSearch,
+  readPerson,
+  type Capabilities,
+  type IdLookup,
+  type PeopleSearch,
+  type PersonDetail,
+} from '../people/readers'
 import type {
   AddonEntry,
   AddonsResponse,
@@ -25,6 +37,8 @@ function planRefusalText(body: string): string | undefined {
     return undefined
   }
 }
+type HttpMethod = 'GET' | 'PUT' | 'POST' | 'PATCH' | 'DELETE'
+
 export class HaloApiError extends Error {
   constructor(
     readonly status: number,
@@ -115,7 +129,7 @@ export class HaloClient {
   }
 
   private async request<T>(
-    method: 'GET' | 'PUT' | 'POST' | 'PATCH',
+    method: HttpMethod,
     path: string,
     body?: unknown,
     opts?: RequestOptions,
@@ -126,7 +140,7 @@ export class HaloClient {
 
   /** One authenticated request with the 401 policy below; resolves only on a 2xx. */
   private async send(
-    method: 'GET' | 'PUT' | 'POST' | 'PATCH',
+    method: HttpMethod,
     path: string,
     body?: unknown,
     opts?: RequestOptions,
@@ -303,6 +317,66 @@ export class HaloClient {
   /** LWW like watch-state: the server keeps the newest updatedAt. */
   putSettings(value: UserSettings, updatedAt: number): Promise<SettingsPayload> {
     return this.request<SettingsPayload>('PUT', '/settings', { value, updatedAt })
+  }
+
+  /**
+   * What this server offers beyond the shared contract. A server that has no
+   * such route (404) offers none of it, which is a definitive answer; any
+   * other failure throws, so the caller treats everything as off for now and
+   * asks again later.
+   */
+  async getCapabilities(opts?: RequestOptions): Promise<Capabilities> {
+    try {
+      return readCapabilities(await this.request<unknown>('GET', '/capabilities', undefined, opts))
+    } catch (error) {
+      if (error instanceof HaloApiError && error.status === 404) return { ...NO_CAPABILITIES }
+      throw error
+    }
+  }
+
+  /** People named so (or, for a misspelling, the ones it most likely means). The query is 2 to 120 characters once trimmed. */
+  async searchPeople(query: string, opts?: RequestOptions): Promise<PeopleSearch> {
+    const q = query.trim()
+    if (q.length < 2 || q.length > 120) throw new HaloApiError(400, 'q must be 2 to 120 characters')
+    const qs = new URLSearchParams({ q })
+    return readPeopleSearch(await this.request<unknown>('GET', `/people/search?${qs.toString()}`, undefined, opts))
+  }
+
+  /** A person page: who they are and their films and series. */
+  async getPerson(tmdbId: number, opts?: RequestOptions): Promise<PersonDetail> {
+    if (!Number.isSafeInteger(tmdbId) || tmdbId <= 0) throw new HaloApiError(400, 'tmdbId must be a positive whole number')
+    return readPerson(await this.request<unknown>('GET', `/people/${tmdbId}`, undefined, opts))
+  }
+
+  /** A pasted IMDb or TVDB link, as the title (by IMDb id) or person it names. */
+  async lookup(source: 'imdb' | 'tvdb', id: string, opts?: RequestOptions): Promise<IdLookup> {
+    if (source === 'tvdb' ? !/^\d{1,10}$/.test(id) : !/^(?:tt|nm)\d{1,10}$/.test(id)) {
+      throw new HaloApiError(400, `not a ${source} id`)
+    }
+    const qs = new URLSearchParams({ source, id })
+    return readIdLookup(await this.request<unknown>('GET', `/lookup?${qs.toString()}`, undefined, opts))
+  }
+
+  /**
+   * Hands a pasted magnet to the server: only its info hash (and its name,
+   * for showing) leave the app, never a tracker. Play links in the answer are
+   * rebuilt on this client's own server.
+   */
+  async addMagnet(infoHash: string, name: string | null, opts?: RequestOptions): Promise<MagnetRequest> {
+    if (!/^[0-9a-f]{40}$/.test(infoHash)) throw new HaloApiError(400, 'infoHash must be 40 lower-case hex characters')
+    const body = name ? { infoHash, name } : { infoHash }
+    return readMagnet(await this.request<unknown>('POST', '/magnets', body, opts), this.baseUrl)
+  }
+
+  async getMagnet(id: string, opts?: RequestOptions): Promise<MagnetRequest> {
+    if (!isMagnetId(id)) throw new HaloApiError(400, 'not a magnet request id')
+    return readMagnet(await this.request<unknown>('GET', `/magnets/${id}`, undefined, opts), this.baseUrl)
+  }
+
+  /** Stops and forgets a magnet request (a download under way is cancelled). */
+  async forgetMagnet(id: string, opts?: RequestOptions): Promise<void> {
+    if (!isMagnetId(id)) throw new HaloApiError(400, 'not a magnet request id')
+    await this.send('DELETE', `/magnets/${id}`, undefined, opts)
   }
 
   /**

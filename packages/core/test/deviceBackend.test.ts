@@ -365,3 +365,44 @@ test('an unreadable stored document is reported, not replaced', async () => {
   store.documents.set('watchStates', JSON.stringify({ version: 2, states: [] }))
   await assert.rejects(backend.getWatchStates(), DeviceDataError)
 })
+
+/* ── People and lookups ────────────────────────────────────────────────────── */
+
+const TMDB_KEY = { kind: 'apiKey' as const, value: '0123456789abcdef0123456789abcdef' }
+
+test('people features follow the saved TMDB key, and magnets are never offered on a device', async () => {
+  let key: typeof TMDB_KEY | null = null
+  const tmdb = fakeFetch({
+    [`https://api.themoviedb.org/3/search/person?query=nolan&include_adult=false&api_key=${TMDB_KEY.value}`]: {
+      results: [{ id: 525, name: 'Christopher Nolan', popularity: 10 }],
+    },
+  })
+  const backend = new DeviceBackend({ fetch: tmdb.fetch, store: new MemoryStore(), tmdbCredential: async () => key })
+  assert.deepEqual(await backend.getCapabilities(), { people: false, lookup: false, magnets: false, magnetsCachedOnly: true })
+  await assert.rejects(backend.searchPeople('nolan'), (err: unknown) => err instanceof HaloApiError && err.status === 404)
+  key = TMDB_KEY
+  assert.deepEqual(await backend.getCapabilities(), { people: true, lookup: true, magnets: false, magnetsCachedOnly: true })
+  const found = await backend.searchPeople('nolan')
+  assert.deepEqual(found.people.map((person) => person.name), ['Christopher Nolan'])
+  await assert.rejects(backend.searchPeople('x'), (err: unknown) => err instanceof HaloApiError && err.status === 400)
+})
+
+test('a key TMDB refuses turns the features off until another is saved', async () => {
+  let key = TMDB_KEY
+  const refused: string[] = []
+  const tmdb = fakeFetch({
+    [`https://api.themoviedb.org/3/search/person?query=nolan&include_adult=false&api_key=${TMDB_KEY.value}`]: () =>
+      new Response('{}', { status: 401 }),
+  })
+  const backend = new DeviceBackend({
+    fetch: tmdb.fetch,
+    store: new MemoryStore(),
+    tmdbCredential: async () => key,
+    onTmdbRefused: (credential) => refused.push(credential.value),
+  })
+  await assert.rejects(backend.searchPeople('nolan'), (err: unknown) => err instanceof HaloApiError && err.status === 502)
+  assert.deepEqual(refused, [TMDB_KEY.value])
+  assert.equal((await backend.getCapabilities()).people, false)
+  key = { kind: 'apiKey', value: 'fedcba9876543210fedcba9876543210' }
+  assert.equal((await backend.getCapabilities()).people, true)
+})

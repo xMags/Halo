@@ -1,0 +1,3719 @@
+{
+  "about": "Magnet rules, shared by the TypeScript tests (packages/core) and the Kotlin commonTest (apps/mobile). Requests are in the readers' shape (magnets/readers.ts). Card sizes use the formatter: null reads UNKNOWN; otherwise bytes / 1024^3 with two decimals under 10 and one from 10 up, then \" GB\".",
+  "server": "https://halo.example.test",
+  "capabilities": [
+    {
+      "body": {
+        "people": true,
+        "lookup": true,
+        "magnets": {
+          "enabled": true,
+          "cachedOnly": false
+        }
+      },
+      "expect": {
+        "people": true,
+        "lookup": true,
+        "magnets": true,
+        "magnetsCachedOnly": false
+      }
+    },
+    {
+      "body": {
+        "people": true,
+        "lookup": true,
+        "magnets": {
+          "enabled": false,
+          "cachedOnly": true
+        }
+      },
+      "expect": {
+        "people": true,
+        "lookup": true,
+        "magnets": false,
+        "magnetsCachedOnly": true
+      }
+    },
+    {
+      "body": {
+        "people": true,
+        "lookup": true
+      },
+      "expect": {
+        "people": true,
+        "lookup": true,
+        "magnets": false,
+        "magnetsCachedOnly": true
+      }
+    },
+    {
+      "body": {
+        "magnets": {
+          "enabled": "true",
+          "cachedOnly": 0
+        }
+      },
+      "expect": {
+        "people": false,
+        "lookup": false,
+        "magnets": false,
+        "magnetsCachedOnly": true
+      }
+    },
+    {
+      "body": {
+        "magnets": true
+      },
+      "expect": {
+        "people": false,
+        "lookup": false,
+        "magnets": false,
+        "magnetsCachedOnly": true
+      }
+    },
+    {
+      "body": {
+        "people": "yes",
+        "lookup": 1
+      },
+      "expect": {
+        "people": false,
+        "lookup": false,
+        "magnets": false,
+        "magnetsCachedOnly": true
+      }
+    }
+  ],
+  "playLinks": {
+    "rebuilt": [
+      {
+        "url": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a%20b.mkv",
+        "on": "https://halo.example.test",
+        "link": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/a%20b.mkv"
+      },
+      {
+        "url": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/a%20b.mkv",
+        "on": "https://halo.example.test",
+        "link": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/a%20b.mkv"
+      },
+      {
+        "url": "http://cdn.elsewhere.example:8443/play/m1.abc_DEF-123.Sig_9-z/a%20b.mkv",
+        "on": "https://halo.example.test",
+        "link": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/a%20b.mkv"
+      },
+      {
+        "url": "HTTPS://API.Example.Test/x/y/z/play/m1.abc_DEF-123.Sig_9-z/a%20b.mkv",
+        "on": "https://halo.example.test",
+        "link": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/a%20b.mkv"
+      },
+      {
+        "url": "https://api.example.test/play/m1.a.b/c.mkv",
+        "on": "http://127.0.0.1:8787/v1/halo/",
+        "link": "http://127.0.0.1:8787/v1/halo/play/m1.a.b/c.mkv"
+      }
+    ],
+    "refused": [
+      "https://api.example.test/v1/halo/play/v2.abc.def/a.mkv",
+      "https://api.example.test/v1/halo/play/abc.def/a.mkv",
+      "https://api.example.test/v1/halo/play/m1.abc/a.mkv",
+      "https://api.example.test/v1/halo/play/m1.abc.def.ghi/a.mkv",
+      "https://api.example.test/v1/halo/play/m1..def/a.mkv",
+      "https://api.example.test/v1/halo/play/m1.ab+c.def/a.mkv",
+      "https://api.example.test/v1/halo/play/m1.abc.def",
+      "https://api.example.test/v1/halo/play/m1.abc.def/",
+      "https://api.example.test/v1/halo/play/m1.abc.def/a/b.mkv",
+      "https://api.example.test/v1/halo/play/m1.x/../y",
+      "https://api.example.test/v1/halo/play/m1.abc.def/..",
+      "https://api.example.test/v1/halo/play/m1.abc.def/%2e%2e",
+      "https://api.example.test/v1/halo/play/m1.abc.def/a%2Fb.mkv",
+      "https://api.example.test/v1/halo/play/m1.abc.def/a%5Cb.mkv",
+      "https://api.example.test/v1/halo/stream/m1.abc.def/a.mkv",
+      "https://api.example.test/v1/halo/play/m1.abc.def/a.mkv?x=1",
+      "https://api.example.test/v1/halo/play/m1.abc.def/a.mkv#frag",
+      "https://api.example.test/v1/halo/play/m1.abc.def/a\\b.mkv",
+      "https://api.example.test/v1/halo/play/m1.abc.def/a b.mkv",
+      "https://api.example.test/v1/halo/play/m1.abc.def/é.mkv",
+      "https://user:pass@api.example.test/v1/halo/play/m1.abc.def/a.mkv",
+      "https://api.example.test\\@evil.example/play/m1.abc.def/a.mkv",
+      "//api.example.test/play/m1.abc.def/a.mkv",
+      "/play/m1.abc.def/a.mkv",
+      "file:///C:/play/m1.abc.def/a.mkv",
+      "C:\\play\\m1.abc.def\\a.mkv",
+      "\\\\host\\play\\m1.abc.def\\a.mkv",
+      "javascript:alert(1)//play/m1.abc.def/a.mkv",
+      "",
+      "https://api.example.test/play/m1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.b/a.mkv",
+      "https://api.example.test/play/m1.a.b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "refusedServer": [
+      {
+        "url": "https://api.example.test/play/m1.a.b/c.mkv",
+        "on": "not a server"
+      }
+    ]
+  },
+  "readerAccepted": [
+    {
+      "case": "a ready film with its files, links rebuilt",
+      "body": {
+        "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+        "state": "ready",
+        "reason": null,
+        "name": "Dune.2021.2160p",
+        "sizeBytes": 67000000000,
+        "progress": 1,
+        "files": [
+          {
+            "id": "3",
+            "name": "Dune.2021.2160p.REMUX.mkv",
+            "sizeBytes": 62400000000,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/Dune.2021.2160p.REMUX.mkv"
+          },
+          {
+            "id": "4",
+            "name": "Extras.mkv",
+            "sizeBytes": 900000000,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/Extras.mkv"
+          }
+        ],
+        "identified": {
+          "type": "movie",
+          "id": "tt1160419",
+          "name": "Dune",
+          "year": "2021",
+          "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+        }
+      },
+      "expect": {
+        "state": "ready",
+        "name": "Dune.2021.2160p",
+        "sizeBytes": 67000000000,
+        "files": [
+          {
+            "id": "3",
+            "sizeBytes": 62400000000,
+            "season": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/Dune.2021.2160p.REMUX.mkv"
+          },
+          {
+            "id": "4"
+          }
+        ],
+        "identified": {
+          "type": "movie",
+          "id": "tt1160419",
+          "year": "2021",
+          "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+        }
+      }
+    },
+    {
+      "case": "downloading",
+      "body": {
+        "id": "mg_abc",
+        "state": "downloading",
+        "reason": null,
+        "name": "x",
+        "sizeBytes": 0,
+        "progress": 0.38,
+        "identified": null
+      },
+      "expect": {
+        "state": "downloading",
+        "progress": 0.38,
+        "files": []
+      }
+    },
+    {
+      "case": "a refusal keeps its reason",
+      "body": {
+        "id": "mg_abc",
+        "state": "failed",
+        "reason": "unidentified",
+        "name": "holiday",
+        "sizeBytes": 5,
+        "progress": 0,
+        "identified": null
+      },
+      "expect": {
+        "state": "failed",
+        "reason": "unidentified"
+      }
+    },
+    {
+      "case": "files on a request not ready are ignored",
+      "body": {
+        "id": "mg_abc",
+        "state": "not_cached",
+        "reason": null,
+        "name": "",
+        "sizeBytes": 0,
+        "progress": 0,
+        "identified": null,
+        "files": [
+          {
+            "id": "bad id"
+          }
+        ]
+      },
+      "expect": {
+        "state": "not_cached",
+        "files": []
+      }
+    },
+    {
+      "case": "a series keeps episode numbers and ignores unknown fields",
+      "body": {
+        "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+        "state": "ready",
+        "reason": null,
+        "name": "Dune.2021.2160p",
+        "sizeBytes": 67000000000,
+        "progress": 1,
+        "files": [
+          {
+            "id": "7",
+            "name": "Severance.S02E01.mkv",
+            "sizeBytes": 5000000000,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/Severance.S02E01.mkv"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Severance",
+          "year": "2022",
+          "poster": null
+        },
+        "unknown": {
+          "a": [
+            1,
+            2
+          ]
+        }
+      },
+      "expect": {
+        "files": [
+          {
+            "season": 2,
+            "episode": 1
+          }
+        ],
+        "identified": {
+          "poster": null
+        }
+      }
+    },
+    {
+      "case": "a poster off TMDB and an empty year are left out",
+      "body": {
+        "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+        "state": "ready",
+        "reason": null,
+        "name": "Dune.2021.2160p",
+        "sizeBytes": 67000000000,
+        "progress": 1,
+        "files": [
+          {
+            "id": "3",
+            "name": "a.mkv",
+            "sizeBytes": 100,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+          }
+        ],
+        "identified": {
+          "type": "movie",
+          "id": "tt1",
+          "name": "A",
+          "year": "",
+          "poster": "https://evil.example/p.jpg"
+        }
+      },
+      "expect": {
+        "identified": {
+          "poster": null,
+          "year": null
+        }
+      }
+    },
+    {
+      "case": "optional fields may be missing",
+      "body": {
+        "id": "mg_a",
+        "state": "no_video",
+        "sizeBytes": 0
+      },
+      "expect": {
+        "state": "no_video",
+        "name": "",
+        "progress": 0,
+        "identified": null,
+        "reason": null
+      }
+    },
+    {
+      "case": "a name is cleaned and cut",
+      "body": {
+        "id": "mg_a",
+        "state": "downloading",
+        "sizeBytes": 0,
+        "name": "a\u0007bxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "expect": {
+        "nameLength": 300,
+        "namePrefix": "a b"
+      }
+    }
+  ],
+  "readerRefused": [
+    [],
+    {
+      "state": "ready",
+      "sizeBytes": 0
+    },
+    {
+      "id": "mg_a",
+      "sizeBytes": 0
+    },
+    {
+      "id": "mg_a",
+      "state": "downloading"
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "identified": {
+        "type": "movie",
+        "id": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [],
+      "identified": {
+        "type": "movie",
+        "id": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "3",
+          "name": "a.mkv",
+          "sizeBytes": 1
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+      }
+    },
+    {
+      "id": "mg_a",
+      "state": "exploded",
+      "sizeBytes": 0
+    },
+    {
+      "id": "mg_a",
+      "state": "READY",
+      "sizeBytes": 0
+    },
+    {
+      "id": "mg_a",
+      "state": "downloading",
+      "sizeBytes": -1
+    },
+    {
+      "id": "mg_a",
+      "state": "downloading",
+      "sizeBytes": 1.5
+    },
+    {
+      "id": "mg_a",
+      "state": "downloading",
+      "sizeBytes": "10"
+    },
+    {
+      "id": "mg_a",
+      "state": "downloading",
+      "sizeBytes": 1e+300
+    },
+    {
+      "id": "mg_a",
+      "state": "downloading",
+      "sizeBytes": 0,
+      "progress": 1.5
+    },
+    {
+      "id": "mg_a",
+      "state": "downloading",
+      "sizeBytes": 0,
+      "progress": -0.1
+    },
+    {
+      "id": "mg_../../admin",
+      "state": "downloading",
+      "sizeBytes": 0
+    },
+    {
+      "id": "xx_abc",
+      "state": "downloading",
+      "sizeBytes": 0
+    },
+    {
+      "id": "mg_",
+      "state": "downloading",
+      "sizeBytes": 0
+    },
+    {
+      "id": "mg_a",
+      "state": "failed",
+      "reason": "Unidentified!",
+      "sizeBytes": 0
+    },
+    {
+      "id": "mg_a",
+      "state": "failed",
+      "reason": 7,
+      "sizeBytes": 0
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [],
+      "identified": {
+        "type": "person",
+        "id": "tt1",
+        "name": "A"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "3",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "nm123",
+        "name": "A"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "3",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "tt1",
+        "name": "A",
+        "year": "21"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "3",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "tt1",
+        "name": "   "
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "a/b",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "3",
+          "name": "",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "3",
+          "name": "a.mkv",
+          "sizeBytes": -5,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "3",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": -1,
+          "episode": 2,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "3",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": 1,
+          "episode": 2.5,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "3",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": "1",
+          "episode": 2,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "3",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "3",
+          "name": "b.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/b.mkv"
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "0",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "1",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "2",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "3",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "4",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "5",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "6",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "7",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "8",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "9",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "10",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "11",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "12",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "13",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "14",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "15",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "16",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "17",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "18",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "19",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "20",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "21",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "22",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "23",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "24",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "25",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "26",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "27",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "28",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "29",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "30",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "31",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "32",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "33",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "34",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "35",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "36",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "37",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "38",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "39",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "40",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "41",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "42",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "43",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "44",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "45",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "46",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "47",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "48",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "49",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "50",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "51",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "52",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "53",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "54",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "55",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "56",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "57",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "58",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "59",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "60",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "61",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "62",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "63",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "64",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "65",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "66",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "67",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "68",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "69",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "70",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "71",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "72",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "73",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "74",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "75",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "76",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "77",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "78",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "79",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "80",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "81",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "82",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "83",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "84",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "85",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "86",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "87",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "88",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "89",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "90",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "91",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "92",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "93",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "94",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "95",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "96",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "97",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "98",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "99",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "100",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "101",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "102",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "103",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "104",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "105",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "106",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "107",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "108",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "109",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "110",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "111",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "112",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "113",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "114",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "115",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "116",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "117",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "118",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "119",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "120",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "121",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "122",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "123",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "124",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "125",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "126",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "127",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "128",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "129",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "130",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "131",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "132",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "133",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "134",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "135",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "136",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "137",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "138",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "139",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "140",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "141",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "142",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "143",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "144",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "145",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "146",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "147",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "148",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "149",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "150",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "151",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "152",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "153",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "154",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "155",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "156",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "157",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "158",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "159",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "160",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "161",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "162",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "163",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "164",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "165",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "166",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "167",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "168",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "169",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "170",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "171",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "172",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "173",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "174",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "175",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "176",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "177",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "178",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "179",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "180",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "181",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "182",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "183",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "184",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "185",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "186",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "187",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "188",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "189",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "190",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "191",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "192",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "193",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "194",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "195",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "196",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "197",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "198",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "199",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "200",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+      }
+    },
+    {
+      "id": "mg_6f1c2d3e-0a1b-4c5d-8e9f-0123456789ab",
+      "state": "ready",
+      "reason": null,
+      "name": "Dune.2021.2160p",
+      "sizeBytes": 67000000000,
+      "progress": 1,
+      "files": [
+        {
+          "id": "3",
+          "name": "a.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://api.example.test/v1/halo/play/m1.abc_DEF-123.Sig_9-z/a.mkv"
+        },
+        {
+          "id": "4",
+          "name": "b.mkv",
+          "sizeBytes": 1,
+          "season": null,
+          "episode": null,
+          "playUrl": "https://cdn.evil.example/b.mkv"
+        }
+      ],
+      "identified": {
+        "type": "movie",
+        "id": "tt1160419",
+        "name": "Dune",
+        "year": "2021",
+        "poster": "https://image.tmdb.org/t/p/w342/abc.jpg"
+      }
+    }
+  ],
+  "fileFor": [
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "small",
+            "name": "small.mkv",
+            "sizeBytes": 10,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/small"
+          },
+          {
+            "id": "big",
+            "name": "big.mkv",
+            "sizeBytes": 90,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/big"
+          },
+          {
+            "id": "mid",
+            "name": "mid.mkv",
+            "sizeBytes": 50,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/mid"
+          }
+        ],
+        "identified": {
+          "type": "movie",
+          "id": "tt1160419",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "movie",
+      "videoId": "tt1160419",
+      "file": "big"
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "small",
+            "name": "small.mkv",
+            "sizeBytes": 10,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/small"
+          },
+          {
+            "id": "big",
+            "name": "big.mkv",
+            "sizeBytes": 90,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/big"
+          },
+          {
+            "id": "mid",
+            "name": "mid.mkv",
+            "sizeBytes": 50,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/mid"
+          }
+        ],
+        "identified": {
+          "type": "movie",
+          "id": "tt1160419",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "movie",
+      "videoId": "tt0000001",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "small",
+            "name": "small.mkv",
+            "sizeBytes": 10,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/small"
+          },
+          {
+            "id": "big",
+            "name": "big.mkv",
+            "sizeBytes": 90,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/big"
+          },
+          {
+            "id": "mid",
+            "name": "mid.mkv",
+            "sizeBytes": 50,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/mid"
+          }
+        ],
+        "identified": {
+          "type": "movie",
+          "id": "tt1160419",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "series",
+      "videoId": "tt1160419:1:1",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "e1",
+            "name": "e1.mkv",
+            "sizeBytes": 30,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e1"
+          },
+          {
+            "id": "e2",
+            "name": "e2.mkv",
+            "sizeBytes": 31,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2"
+          },
+          {
+            "id": "e2-sample",
+            "name": "e2-sample.mkv",
+            "sizeBytes": 5,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2-sample"
+          },
+          {
+            "id": "extras",
+            "name": "extras.mkv",
+            "sizeBytes": 99,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/extras"
+          },
+          {
+            "id": "noseason",
+            "name": "noseason.mkv",
+            "sizeBytes": 40,
+            "season": null,
+            "episode": 3,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/noseason"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "series",
+      "videoId": "tt11280740:2:2",
+      "file": "e2"
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "e1",
+            "name": "e1.mkv",
+            "sizeBytes": 30,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e1"
+          },
+          {
+            "id": "e2",
+            "name": "e2.mkv",
+            "sizeBytes": 31,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2"
+          },
+          {
+            "id": "e2-sample",
+            "name": "e2-sample.mkv",
+            "sizeBytes": 5,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2-sample"
+          },
+          {
+            "id": "extras",
+            "name": "extras.mkv",
+            "sizeBytes": 99,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/extras"
+          },
+          {
+            "id": "noseason",
+            "name": "noseason.mkv",
+            "sizeBytes": 40,
+            "season": null,
+            "episode": 3,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/noseason"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "series",
+      "videoId": "tt11280740:2:9",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "e1",
+            "name": "e1.mkv",
+            "sizeBytes": 30,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e1"
+          },
+          {
+            "id": "e2",
+            "name": "e2.mkv",
+            "sizeBytes": 31,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2"
+          },
+          {
+            "id": "e2-sample",
+            "name": "e2-sample.mkv",
+            "sizeBytes": 5,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2-sample"
+          },
+          {
+            "id": "extras",
+            "name": "extras.mkv",
+            "sizeBytes": 99,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/extras"
+          },
+          {
+            "id": "noseason",
+            "name": "noseason.mkv",
+            "sizeBytes": 40,
+            "season": null,
+            "episode": 3,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/noseason"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "series",
+      "videoId": "tt11280740:0:3",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "e1",
+            "name": "e1.mkv",
+            "sizeBytes": 30,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e1"
+          },
+          {
+            "id": "e2",
+            "name": "e2.mkv",
+            "sizeBytes": 31,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2"
+          },
+          {
+            "id": "e2-sample",
+            "name": "e2-sample.mkv",
+            "sizeBytes": 5,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2-sample"
+          },
+          {
+            "id": "extras",
+            "name": "extras.mkv",
+            "sizeBytes": 99,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/extras"
+          },
+          {
+            "id": "noseason",
+            "name": "noseason.mkv",
+            "sizeBytes": 40,
+            "season": null,
+            "episode": 3,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/noseason"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "series",
+      "videoId": "tt11280740",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "e1",
+            "name": "e1.mkv",
+            "sizeBytes": 30,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e1"
+          },
+          {
+            "id": "e2",
+            "name": "e2.mkv",
+            "sizeBytes": 31,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2"
+          },
+          {
+            "id": "e2-sample",
+            "name": "e2-sample.mkv",
+            "sizeBytes": 5,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2-sample"
+          },
+          {
+            "id": "extras",
+            "name": "extras.mkv",
+            "sizeBytes": 99,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/extras"
+          },
+          {
+            "id": "noseason",
+            "name": "noseason.mkv",
+            "sizeBytes": 40,
+            "season": null,
+            "episode": 3,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/noseason"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "series",
+      "videoId": "tt1128074:2:2",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "e1",
+            "name": "e1.mkv",
+            "sizeBytes": 30,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e1"
+          },
+          {
+            "id": "e2",
+            "name": "e2.mkv",
+            "sizeBytes": 31,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2"
+          },
+          {
+            "id": "e2-sample",
+            "name": "e2-sample.mkv",
+            "sizeBytes": 5,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2-sample"
+          },
+          {
+            "id": "extras",
+            "name": "extras.mkv",
+            "sizeBytes": 99,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/extras"
+          },
+          {
+            "id": "noseason",
+            "name": "noseason.mkv",
+            "sizeBytes": 40,
+            "season": null,
+            "episode": 3,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/noseason"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "series",
+      "videoId": "tt11280740:2",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "e1",
+            "name": "e1.mkv",
+            "sizeBytes": 30,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e1"
+          },
+          {
+            "id": "e2",
+            "name": "e2.mkv",
+            "sizeBytes": 31,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2"
+          },
+          {
+            "id": "e2-sample",
+            "name": "e2-sample.mkv",
+            "sizeBytes": 5,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2-sample"
+          },
+          {
+            "id": "extras",
+            "name": "extras.mkv",
+            "sizeBytes": 99,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/extras"
+          },
+          {
+            "id": "noseason",
+            "name": "noseason.mkv",
+            "sizeBytes": 40,
+            "season": null,
+            "episode": 3,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/noseason"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "series",
+      "videoId": "tt11280740:2:2:1",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "e1",
+            "name": "e1.mkv",
+            "sizeBytes": 30,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e1"
+          },
+          {
+            "id": "e2",
+            "name": "e2.mkv",
+            "sizeBytes": 31,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2"
+          },
+          {
+            "id": "e2-sample",
+            "name": "e2-sample.mkv",
+            "sizeBytes": 5,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2-sample"
+          },
+          {
+            "id": "extras",
+            "name": "extras.mkv",
+            "sizeBytes": 99,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/extras"
+          },
+          {
+            "id": "noseason",
+            "name": "noseason.mkv",
+            "sizeBytes": 40,
+            "season": null,
+            "episode": 3,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/noseason"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "series",
+      "videoId": "tt11280740:x:2",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "e1",
+            "name": "e1.mkv",
+            "sizeBytes": 30,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e1"
+          },
+          {
+            "id": "e2",
+            "name": "e2.mkv",
+            "sizeBytes": 31,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2"
+          },
+          {
+            "id": "e2-sample",
+            "name": "e2-sample.mkv",
+            "sizeBytes": 5,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2-sample"
+          },
+          {
+            "id": "extras",
+            "name": "extras.mkv",
+            "sizeBytes": 99,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/extras"
+          },
+          {
+            "id": "noseason",
+            "name": "noseason.mkv",
+            "sizeBytes": 40,
+            "season": null,
+            "episode": 3,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/noseason"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "series",
+      "videoId": "tt11280740::2",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "e1",
+            "name": "e1.mkv",
+            "sizeBytes": 30,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e1"
+          },
+          {
+            "id": "e2",
+            "name": "e2.mkv",
+            "sizeBytes": 31,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2"
+          },
+          {
+            "id": "e2-sample",
+            "name": "e2-sample.mkv",
+            "sizeBytes": 5,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2-sample"
+          },
+          {
+            "id": "extras",
+            "name": "extras.mkv",
+            "sizeBytes": 99,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/extras"
+          },
+          {
+            "id": "noseason",
+            "name": "noseason.mkv",
+            "sizeBytes": 40,
+            "season": null,
+            "episode": 3,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/noseason"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "series",
+      "videoId": "tt11280740:2:",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "e1",
+            "name": "e1.mkv",
+            "sizeBytes": 30,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e1"
+          },
+          {
+            "id": "e2",
+            "name": "e2.mkv",
+            "sizeBytes": 31,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2"
+          },
+          {
+            "id": "e2-sample",
+            "name": "e2-sample.mkv",
+            "sizeBytes": 5,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2-sample"
+          },
+          {
+            "id": "extras",
+            "name": "extras.mkv",
+            "sizeBytes": 99,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/extras"
+          },
+          {
+            "id": "noseason",
+            "name": "noseason.mkv",
+            "sizeBytes": 40,
+            "season": null,
+            "episode": 3,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/noseason"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "movie",
+      "videoId": "tt11280740",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "small",
+            "name": "small.mkv",
+            "sizeBytes": 10,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/small"
+          },
+          {
+            "id": "big",
+            "name": "big.mkv",
+            "sizeBytes": 90,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/big"
+          },
+          {
+            "id": "mid",
+            "name": "mid.mkv",
+            "sizeBytes": 50,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/mid"
+          }
+        ],
+        "identified": null
+      },
+      "type": "movie",
+      "videoId": "tt1160419",
+      "file": null
+    },
+    {
+      "magnet": {
+        "id": "mg_a",
+        "state": "downloading",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "small",
+            "name": "small.mkv",
+            "sizeBytes": 10,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/small"
+          },
+          {
+            "id": "big",
+            "name": "big.mkv",
+            "sizeBytes": 90,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/big"
+          },
+          {
+            "id": "mid",
+            "name": "mid.mkv",
+            "sizeBytes": 50,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/mid"
+          }
+        ],
+        "identified": {
+          "type": "movie",
+          "id": "tt1160419",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "type": "movie",
+      "videoId": "tt1160419",
+      "file": null
+    }
+  ],
+  "cards": [
+    {
+      "phase": "unavailable",
+      "expect": {
+        "tone": "mute",
+        "title": "Magnet links aren't available",
+        "action": "none"
+      }
+    },
+    {
+      "phase": "checking",
+      "expect": {
+        "tone": "accent",
+        "title": "Checking this torrent…",
+        "mono": "Dune.2021.2160p",
+        "secondary": "Looking for a video file."
+      }
+    },
+    {
+      "phase": "failed",
+      "expect": {
+        "tone": "bad",
+        "title": "Couldn't check this torrent",
+        "action": "retry",
+        "actionLabel": "Try again"
+      }
+    },
+    {
+      "phase": "answered",
+      "expect": {
+        "action": "retry"
+      }
+    },
+    {
+      "phase": "answered",
+      "request": {
+        "id": "mg_a",
+        "state": "not_cached",
+        "reason": null,
+        "name": "Release.Name",
+        "sizeBytes": 0,
+        "progress": 0,
+        "files": [],
+        "identified": null
+      },
+      "expect": {
+        "tone": "warn",
+        "title": "This torrent isn't ready",
+        "action": "none",
+        "secondary": "The server's debrid account doesn't have it yet. Try another magnet for the same title."
+      }
+    },
+    {
+      "phase": "answered",
+      "request": {
+        "id": "mg_a",
+        "state": "no_video",
+        "reason": null,
+        "name": "Release.Name",
+        "sizeBytes": 0,
+        "progress": 0,
+        "files": [],
+        "identified": null
+      },
+      "expect": {
+        "tone": "bad",
+        "title": "No video in this torrent"
+      }
+    },
+    {
+      "phase": "answered",
+      "request": {
+        "id": "mg_a",
+        "state": "too_large",
+        "reason": null,
+        "name": "Release.Name",
+        "sizeBytes": 0,
+        "progress": 0,
+        "files": [],
+        "identified": null
+      },
+      "expect": {
+        "tone": "bad",
+        "title": "This torrent is too large"
+      }
+    },
+    {
+      "phase": "answered",
+      "request": {
+        "id": "mg_a",
+        "state": "failed",
+        "reason": "unidentified",
+        "name": "Release.Name",
+        "sizeBytes": 0,
+        "progress": 0,
+        "files": [],
+        "identified": null
+      },
+      "expect": {
+        "tone": "bad",
+        "title": "Can't open this magnet",
+        "action": "none"
+      }
+    },
+    {
+      "phase": "answered",
+      "request": {
+        "id": "mg_a",
+        "state": "failed",
+        "reason": "upstream",
+        "name": "Release.Name",
+        "sizeBytes": 0,
+        "progress": 0,
+        "files": [],
+        "identified": null
+      },
+      "expect": {
+        "action": "retry",
+        "title": "Couldn't check this torrent"
+      }
+    },
+    {
+      "phase": "answered",
+      "request": {
+        "id": "mg_a",
+        "state": "downloading",
+        "reason": null,
+        "name": "Release.Name",
+        "sizeBytes": 0,
+        "progress": 0.386,
+        "files": [],
+        "identified": null
+      },
+      "expect": {
+        "tone": "accent",
+        "title": "Getting this torrent ready…",
+        "mono": "Release.Name",
+        "tail": "38%",
+        "progress": 0.386,
+        "action": "cancel"
+      }
+    },
+    {
+      "phase": "answered",
+      "request": {
+        "id": "mg_a",
+        "state": "downloading",
+        "reason": null,
+        "name": "",
+        "sizeBytes": 0,
+        "progress": 0.386,
+        "files": [],
+        "identified": null
+      },
+      "expect": {
+        "mono": "Dune.2021.2160p"
+      }
+    },
+    {
+      "phase": "stopped",
+      "expect": {
+        "tone": "mute",
+        "action": "retry"
+      }
+    },
+    {
+      "phase": "answered",
+      "request": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "small",
+            "name": "small.mkv",
+            "sizeBytes": 10,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/small"
+          },
+          {
+            "id": "Dune.REMUX",
+            "name": "Dune.REMUX.mkv",
+            "sizeBytes": 67000000000,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/Dune.REMUX"
+          }
+        ],
+        "identified": {
+          "type": "movie",
+          "id": "tt1160419",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "expect": {
+        "showsPoster": true,
+        "title": "Title",
+        "mono": "MOVIE",
+        "plain": "2021",
+        "tail": "62.4 GB",
+        "secondary": "Dune.REMUX.mkv",
+        "action": "openTitle",
+        "actionLabel": "Open title",
+        "identityId": "tt1160419",
+        "unidentifiedFileId": null
+      }
+    },
+    {
+      "phase": "answered",
+      "request": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "e1",
+            "name": "e1.mkv",
+            "sizeBytes": 1073741824,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e1"
+          },
+          {
+            "id": "e2",
+            "name": "e2.mkv",
+            "sizeBytes": 1073741824,
+            "season": 2,
+            "episode": 2,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/e2"
+          },
+          {
+            "id": "extras",
+            "name": "extras.mkv",
+            "sizeBytes": 99,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/extras"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt11280740",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "expect": {
+        "mono": "SERIES",
+        "plain": "Season 2",
+        "tail": "2 episodes · 2.00 GB",
+        "secondary": "Open the title to pick an episode.",
+        "action": "openTitle"
+      }
+    },
+    {
+      "phase": "answered",
+      "request": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "a",
+            "name": "a.mkv",
+            "sizeBytes": 1,
+            "season": 1,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/a"
+          },
+          {
+            "id": "b",
+            "name": "b.mkv",
+            "sizeBytes": 1,
+            "season": 2,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/b"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt1",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "expect": {
+        "plain": "2 seasons"
+      }
+    },
+    {
+      "phase": "answered",
+      "request": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "a",
+            "name": "a.mkv",
+            "sizeBytes": 1,
+            "season": 1,
+            "episode": 1,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/a"
+          }
+        ],
+        "identified": {
+          "type": "series",
+          "id": "tt1",
+          "name": "Title",
+          "year": "2021",
+          "poster": null
+        }
+      },
+      "expectTailStartsWith": "1 episode ·"
+    },
+    {
+      "phase": "answered",
+      "request": {
+        "id": "mg_a",
+        "state": "ready",
+        "reason": null,
+        "name": "Release",
+        "sizeBytes": 10,
+        "progress": 1,
+        "files": [
+          {
+            "id": "holiday_cut_final",
+            "name": "holiday_cut_final.mkv",
+            "sizeBytes": 1932735283,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/holiday_cut_final"
+          },
+          {
+            "id": "tiny",
+            "name": "tiny.mkv",
+            "sizeBytes": 1,
+            "season": null,
+            "episode": null,
+            "playUrl": "https://halo.example.test/play/m1.abc_DEF-123.Sig_9-z/tiny"
+          }
+        ],
+        "identified": null
+      },
+      "expect": {
+        "tone": "warn",
+        "title": "Unidentified video",
+        "showsPoster": false,
+        "mono": "holiday_cut_final.mkv",
+        "tail": "1.80 GB",
+        "action": "playUnidentified",
+        "actionLabel": "Play as unidentified video",
+        "unidentifiedFileId": "holiday_cut_final"
+      }
+    }
+  ]
+}

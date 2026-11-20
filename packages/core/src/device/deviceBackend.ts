@@ -26,6 +26,17 @@ import type {
   UserSettings,
   WatchState,
 } from '../api/types'
+import { lookupAnswer, peopleSearchAnswer, personAnswer, type RouteAnswer } from '../people/answers'
+import {
+  readIdLookup,
+  readPeopleSearch,
+  readPerson,
+  type Capabilities,
+  type IdLookup,
+  type PeopleSearch,
+  type PersonDetail,
+} from '../people/readers'
+import { createTmdbClient, type TmdbClient, type TmdbCredential } from '../people/tmdb'
 import {
   addonUrlsProblem,
   libraryItemProblem,
@@ -57,6 +68,17 @@ export interface DeviceBackendOptions {
   newId?: () => string
   /** Per-addon budget; defaults to the server's. */
   timeoutMs?: number
+  /**
+   * The viewer's own TMDB key, for people search, person pages and id
+   * lookups (the server answers those with its own token). Asked on each
+   * call, so a key saved or removed in Settings applies at once; null turns
+   * the features off.
+   */
+  tmdbCredential?: () => Promise<TmdbCredential | null>
+  /** Told when TMDB refuses the key (401), which turns the features off until it is replaced. */
+  onTmdbRefused?: (credential: TmdbCredential) => void
+  /** The fetch to reach TMDB with; defaults to `fetch` above. */
+  tmdbFetch?: typeof fetch
 }
 
 /** A stored document exists but cannot be read back; it is left untouched rather than overwritten. */
@@ -99,6 +121,13 @@ export class DeviceBackend implements HaloBackend {
   private readonly newId: () => string
   private readonly timeoutMs: number
   private readonly queues = new Map<DeviceCollection, Promise<unknown>>()
+  private readonly tmdbCredential?: () => Promise<TmdbCredential | null>
+  private readonly onTmdbRefused?: (credential: TmdbCredential) => void
+  private readonly tmdbFetch: typeof fetch
+  /** One client per key, so its caches live as long as the key does. */
+  private tmdb: { value: string; client: TmdbClient } | null = null
+  /** The key TMDB refused, until another one is saved. */
+  private refusedKey: string | null = null
 
   constructor(opts: DeviceBackendOptions) {
     this.doFetch = opts.fetch
@@ -106,6 +135,9 @@ export class DeviceBackend implements HaloBackend {
     this.now = opts.now ?? Date.now
     this.newId = opts.newId ?? (() => globalThis.crypto.randomUUID())
     this.timeoutMs = opts.timeoutMs ?? RESOLVE_TIMEOUT_MS
+    this.tmdbCredential = opts.tmdbCredential
+    this.onTmdbRefused = opts.onTmdbRefused
+    this.tmdbFetch = opts.tmdbFetch ?? opts.fetch
   }
 
   /* ── Addons ─────────────────────────────────────────────────────────────── */
@@ -286,6 +318,56 @@ export class DeviceBackend implements HaloBackend {
       await this.store.write('settings', JSON.stringify({ version: DOCUMENT_VERSION, ...next }))
       return next
     })
+  }
+
+  /* ── People and lookups ─────────────────────────────────────────────────── */
+
+  /** People search and id lookups work while a key is saved that TMDB has not refused; magnets need an account. */
+  async getCapabilities(): Promise<Capabilities> {
+    const usable = (await this.tmdbClient()) !== null
+    return { people: usable, lookup: usable, magnets: false, magnetsCachedOnly: true }
+  }
+
+  async searchPeople(query: string): Promise<PeopleSearch> {
+    return readPeopleSearch(await this.peopleCall((client) => peopleSearchAnswer(client, query)))
+  }
+
+  async getPerson(tmdbId: number): Promise<PersonDetail> {
+    return readPerson(await this.peopleCall((client) => personAnswer(client, String(tmdbId))))
+  }
+
+  async lookup(source: 'imdb' | 'tvdb', id: string): Promise<IdLookup> {
+    return readIdLookup(await this.peopleCall((client) => lookupAnswer(client, source, id)))
+  }
+
+  /** The route's answer as the server would give it: its body on 200, else the same `HaloApiError`. */
+  private async peopleCall(answer: (client: TmdbClient) => Promise<RouteAnswer>): Promise<unknown> {
+    const client = await this.tmdbClient()
+    if (!client) throw apiError(404, 'not_available')
+    const result = await answer(client)
+    if (result.status !== 200) {
+      const body = result.body as { error?: unknown }
+      throw apiError(result.status, typeof body.error === 'string' ? body.error : 'lookup failed')
+    }
+    return result.body
+  }
+
+  private async tmdbClient(): Promise<TmdbClient | null> {
+    const credential = (await this.tmdbCredential?.()) ?? null
+    if (!credential || credential.value === this.refusedKey) return null
+    if (this.tmdb?.value !== credential.value) {
+      const client = createTmdbClient({
+        credential,
+        fetch: this.tmdbFetch,
+        now: this.now,
+        onRefused: () => {
+          this.refusedKey = credential.value
+          this.onTmdbRefused?.(credential)
+        },
+      })
+      this.tmdb = { value: credential.value, client }
+    }
+    return this.tmdb.client
   }
 
   /* ── Internals ──────────────────────────────────────────────────────────── */
