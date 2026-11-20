@@ -7,7 +7,10 @@
 //! folder rather than the WebView2 profile, which gets reset. Every write is
 //! atomic. Documents are named by a fixed enum, so the webview can never
 //! choose a path. The addon list is DPAPI-protected because addon URLs can
-//! carry debrid API keys, the same reason download requests are.
+//! carry debrid API keys, the same reason download requests are, and so is the
+//! viewer's own TMDB key (people search without an account). The key is this
+//! PC's alone: it never moves into an account, so clearing the documents an
+//! account took over leaves it in place.
 
 use crate::secure_fs::{os_error_code, protect, unprotect, write_durably};
 use serde::Deserialize;
@@ -27,9 +30,11 @@ pub enum DeviceCollection {
     Library,
     WatchStates,
     Settings,
+    TmdbKey,
 }
 
 impl DeviceCollection {
+    /// The documents that move into an account on sign-in, and that `clear` removes.
     const ALL: [DeviceCollection; 5] = [
         DeviceCollection::Profile,
         DeviceCollection::Addons,
@@ -45,11 +50,12 @@ impl DeviceCollection {
             DeviceCollection::Library => "library.json",
             DeviceCollection::WatchStates => "watch-states.json",
             DeviceCollection::Settings => "settings.json",
+            DeviceCollection::TmdbKey => "tmdb-key.bin",
         }
     }
 
     fn is_protected(self) -> bool {
-        matches!(self, DeviceCollection::Addons)
+        matches!(self, DeviceCollection::Addons | DeviceCollection::TmdbKey)
     }
 }
 
@@ -79,17 +85,27 @@ impl DeviceStore {
         write_document(&self.dir, collection, contents)
     }
 
+    /// Removes one document; one that was never written is already gone.
+    pub async fn remove(&self, collection: DeviceCollection) -> Result<(), String> {
+        let _guard = self.lock.lock().await;
+        remove_document(&self.dir, collection)
+    }
+
     /// Removes every device document, after its contents moved into an account.
     pub async fn clear(&self) -> Result<(), String> {
         let _guard = self.lock.lock().await;
         for collection in DeviceCollection::ALL {
-            match fs::remove_file(self.dir.join(collection.file_name())) {
-                Ok(()) => {}
-                Err(error) if error.kind() == ErrorKind::NotFound => {}
-                Err(error) => return Err(format!("could not remove this PC's saved data: {error}")),
-            }
+            remove_document(&self.dir, collection)?;
         }
         Ok(())
+    }
+}
+
+fn remove_document(dir: &Path, collection: DeviceCollection) -> Result<(), String> {
+    match fs::remove_file(dir.join(collection.file_name())) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("could not remove this PC's saved data: {error}")),
     }
 }
 
@@ -195,6 +211,24 @@ mod tests {
         }
         // Clearing again finds nothing to remove and still succeeds.
         store.clear().await.unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn clear_keeps_the_tmdb_key_and_remove_takes_one_document() {
+        let dir = temp_dir("keep-key");
+        let store = DeviceStore::new(dir.clone());
+        // Written unprotected here: DPAPI needs the interactive profile (see the ignored test).
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("tmdb-key.bin"), b"opaque").unwrap();
+        store.write(DeviceCollection::Library, "{}").await.unwrap();
+        store.clear().await.unwrap();
+        assert!(dir.join("tmdb-key.bin").exists());
+        store.remove(DeviceCollection::TmdbKey).await.unwrap();
+        assert!(!dir.join("tmdb-key.bin").exists());
+        store.remove(DeviceCollection::TmdbKey).await.unwrap();
+        let parsed: DeviceCollection = serde_json::from_str("\"tmdbKey\"").unwrap();
+        assert_eq!(parsed, DeviceCollection::TmdbKey);
         fs::remove_dir_all(&dir).unwrap();
     }
 

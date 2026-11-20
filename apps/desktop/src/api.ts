@@ -21,6 +21,7 @@ import {
 import { installedSignInAddons, signInAddonFor } from './auth/installedAddons'
 import type { SignInAddon } from './auth/signInAddons'
 import { nativeDeviceStore, type DeviceProfile } from './device/deviceStore'
+import { markTmdbKeyRefused, usableTmdbCredential } from './device/tmdbKey'
 
 /**
  * All API traffic goes through the shell's native fetch (tauri-plugin-http →
@@ -193,7 +194,13 @@ export function activateDevice(profile: DeviceProfile): void {
   sessionKind = null
   activeServerUrl = SERVER_URL
   deviceProfile = profile
-  backend = new DeviceBackend({ fetch: nativeFetch, store: nativeDeviceStore })
+  backend = new DeviceBackend({
+    fetch: nativeFetch,
+    store: nativeDeviceStore,
+    // People search and IMDb/TVDB links ask TMDB with the viewer's own key.
+    tmdbCredential: usableTmdbCredential,
+    onTmdbRefused: markTmdbKeyRefused,
+  })
 }
 
 /** Holds on to a profile whose data still has to move into the signed-in account, without using it. */

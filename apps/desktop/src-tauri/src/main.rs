@@ -312,6 +312,14 @@ async fn device_store_write(
 }
 
 #[tauri::command]
+async fn device_store_remove(
+    state: State<'_, device_store::DeviceStore>,
+    collection: device_store::DeviceCollection,
+) -> Result<(), String> {
+    state.remove(collection).await
+}
+
+#[tauri::command]
 async fn device_store_clear(state: State<'_, device_store::DeviceStore>) -> Result<(), String> {
     state.clear().await
 }
@@ -602,6 +610,7 @@ fn main() {
             device_store_read,
             device_store_write,
             device_store_clear,
+            device_store_remove,
             downloads_set_account,
             downloads_clear_account,
             downloads_adopt_account,

@@ -346,3 +346,67 @@
   font-weight: 600;
   color: #fff;
 }
+
+/* The TMDB key card (Halo without an account): what it is above, the key box
+   across the card below lined up under the text, TMDB's credit at the foot. */
+.tmdb-card {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 12px 16px;
+  padding: 14px 16px;
+}
+.tmdb-card-glyph {
+  display: flex;
+  padding-top: 2px;
+  color: var(--t1);
+}
+.tmdb-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tmdb-card-hint {
+  font-size: 13px;
+  color: var(--t3);
+}
+.tmdb-card-link {
+  font-size: inherit;
+  color: var(--ac);
+}
+.tmdb-card-link:hover {
+  text-decoration: underline;
+}
+.tmdb-card-saved {
+  display: flex;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 14px;
+  color: var(--t2);
+}
+.tmdb-card-check {
+  display: flex;
+  margin-right: -6px;
+  color: var(--su);
+}
+.tmdb-card-entry {
+  grid-column: 2 / 4;
+  display: flex;
+  gap: 8px;
+}
+.tmdb-card-save {
+  min-width: 88px;
+  padding-inline: 18px;
+}
+.tmdb-card-credit {
+  grid-column: 2 / 4;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.tmdb-card-status {
+  margin: 4px 0 0 2px;
+  font-size: 14px;
+  color: var(--t2);
+}

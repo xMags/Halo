@@ -2,6 +2,7 @@ import { DEFAULT_ADDON_URLS, LANGUAGE_OPTIONS, type AddonEntry } from '@halo/cor
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import avatar from '../assets/user-avatar.png'
+import { TmdbKeyCard } from './TmdbKeyCard'
 import { RELEASES_URL, useBuildInfo } from './about'
 import { ComboBox } from '../components/ComboBox'
 import { showDialog } from '../components/Dialog'
@@ -944,6 +945,8 @@ function DeviceAccountSection() {
           Sign in to sync
         </button>
       </div>
+
+      <TmdbKeyCard />
     </Section>
   )
 }
