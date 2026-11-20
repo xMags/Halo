@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -120,7 +121,9 @@ internal fun SearchScreen(
 
     var term by rememberSaveable { mutableStateOf("") }
     var activeQuery by rememberSaveable { mutableStateOf("") }
-    var filter by rememberSaveable { mutableStateOf(SearchFilter.All) }
+    var chosenFilter by rememberSaveable { mutableStateOf(SearchFilter.All) }
+    // Only a tablet can choose one (see the chips below); a phone always shows everything.
+    val filter = if (responsive.isTablet) chosenFilter else SearchFilter.All
     var focused by remember { mutableStateOf(false) }
     var suggestionsDismissed by remember { mutableStateOf(false) }
     var attempt by remember { mutableIntStateOf(0) }
@@ -259,8 +262,10 @@ internal fun SearchScreen(
         // The suggestions float over the page under the field rather than pushing it down.
         Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-        if (textMode) {
-            FilterChips(filter, onPick = { filter = it }, modifier = Modifier.padding(horizontal = gutter).padding(top = HaloSpacing.Sm))
+        // A phone has no kind chips: its results are short enough to scan, and the
+        // chips cost a row of a small screen. A tablet shows them once there is a query.
+        if (responsive.isTablet && textMode && !idle) {
+            FilterChips(filter, onPick = { chosenFilter = it }, modifier = Modifier.padding(horizontal = gutter).padding(top = HaloSpacing.Sm))
         }
 
         val status = view.status
@@ -295,6 +300,7 @@ internal fun SearchScreen(
                     full("recent") {
                         RecentSearches(
                             terms = recent,
+                            asRows = !responsive.isTablet,
                             onRunAgain = { searchAgain(it); focusManager.clearFocus() },
                             onRemove = { graph.searchHistory.remove(it) },
                             onClear = { graph.searchHistory.clear() },
@@ -348,7 +354,7 @@ internal fun SearchScreen(
                         SearchEmptyState(
                             glyph = HaloIcons.Filter,
                             text = "No ${if (filter == SearchFilter.Movies) "movies" else "series"} match “${view.revealedQuery}”.",
-                            action = "Show all results" to { filter = SearchFilter.All },
+                            action = "Show all results" to { chosenFilter = SearchFilter.All },
                         )
                     }
                     view.nothingFound -> full("nothing") {
@@ -472,8 +478,13 @@ private fun Suggestions(suggestions: List<String>, onPick: (String) -> Unit, mod
 }
 
 @Composable
-private fun RecentSearches(terms: List<String>, onRunAgain: (String) -> Unit, onRemove: (String) -> Unit, onClear: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(HaloSpacing.Sm)) {
+/**
+ * The recent searches: a list of rows on a phone, where a full-width row is
+ * easy to hit and a long term has room; pills on a tablet, where a narrow list
+ * down a wide page is mostly empty space.
+ */
+private fun RecentSearches(terms: List<String>, asRows: Boolean, onRunAgain: (String) -> Unit, onRemove: (String) -> Unit, onClear: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(if (asRows) 0.dp else HaloSpacing.Sm)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Recent", color = HaloColors.TextDim, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             // Clearing the history is destructive, so it is red.
@@ -484,6 +495,10 @@ private fun RecentSearches(terms: List<String>, onRunAgain: (String) -> Unit, on
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.clickable(role = Role.Button, onClick = onClear).padding(HaloSpacing.Xs),
             )
+        }
+        if (asRows) {
+            terms.forEach { entry -> RecentRow(entry, onRunAgain = { onRunAgain(entry) }, onRemove = { onRemove(entry) }) }
+            return@Column
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm), verticalArrangement = Arrangement.spacedBy(HaloSpacing.Sm)) {
             terms.forEach { entry ->
@@ -517,5 +532,32 @@ private fun RecentSearches(terms: List<String>, onRunAgain: (String) -> Unit, on
                 }
             }
         }
+    }
+}
+
+/** One past search as a row: the clock, the term (tap to search it again) and a separate remove target. */
+@Composable
+private fun RecentRow(term: String, onRunAgain: () -> Unit, onRemove: () -> Unit) {
+    Column {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm)) {
+            Row(
+                Modifier
+                    .weight(1f)
+                    .clickable(role = Role.Button, onClick = onRunAgain)
+                    .padding(vertical = HaloSpacing.Sm + 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm + 2.dp),
+            ) {
+                Icon(HaloIcons.Clock, contentDescription = null, tint = HaloColors.TextDim, modifier = Modifier.size(17.dp))
+                Text(term, color = HaloColors.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Icon(
+                imageVector = HaloIcons.Close,
+                contentDescription = "Remove $term from recent searches",
+                tint = HaloColors.TextDim,
+                modifier = Modifier.clickable(role = Role.Button, onClick = onRemove).padding(HaloSpacing.Sm).size(15.dp),
+            )
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(HaloColors.Hairline))
     }
 }
