@@ -20,7 +20,9 @@ const localJwks = createLocalJWKSet({ keys: [{ ...(await exportJWK(publicKey)), 
 export type App = ReturnType<typeof createApp>
 
 /** Fresh in-memory DB and a wired-up OIDC-mode app verifying against the test JWKS. */
-export function makeApp(opts: { safeFetch?: typeof fetch; addonFailureLogger?: AddonFailureLogger } = {}): { app: App; db: Db } {
+export function makeApp(
+  opts: { safeFetch?: typeof fetch; addonFailureLogger?: AddonFailureLogger; tmdbReadToken?: string } = {},
+): { app: App; db: Db } {
   const db = createDb(':memory:')
   const app = createApp({
     db,
@@ -28,6 +30,7 @@ export function makeApp(opts: { safeFetch?: typeof fetch; addonFailureLogger?: A
     corsOrigins: ['http://localhost:5173'],
     safeFetch: opts.safeFetch,
     addonFailureLogger: opts.addonFailureLogger ?? (() => {}),
+    ...(opts.tmdbReadToken ? { tmdbReadToken: opts.tmdbReadToken } : {}),
   })
   return { app, db }
 }

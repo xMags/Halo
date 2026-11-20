@@ -13,11 +13,14 @@ export interface Env {
   corsOrigins: string[]
   /** Absent unless both ADDON_EGRESS_* settings are given. */
   addonEgress?: AddonEgress
+  /** TMDB "API Read Access Token" for people search, person pages and id lookups; absent turns them off. */
+  tmdbReadToken?: string
 }
 
 /** Fail fast on missing or half-configured auth — the server must not boot into an ambiguous mode. */
 export function loadEnv(): Env {
   const addonEgress = loadAddonEgress()
+  const tmdbReadToken = loadTmdbReadToken()
   return {
     auth: loadAuthEnv(),
     dbPath: join(process.env.DATA_DIR ?? './data', 'halo.sqlite'),
@@ -28,7 +31,24 @@ export function loadEnv(): Env {
       ...(process.env.CORS_ORIGINS?.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
     ],
     ...(addonEgress ? { addonEgress } : {}),
+    ...(tmdbReadToken ? { tmdbReadToken } : {}),
   }
+}
+
+const TMDB_READ_TOKEN = /^[A-Za-z0-9._-]{20,1024}$/
+
+/**
+ * The optional TMDB read token. A value of the wrong shape stops startup
+ * rather than booting with the features silently off; the message never
+ * repeats the value, since it is a secret.
+ */
+export function loadTmdbReadToken(raw = process.env.TMDB_READ_TOKEN): string | undefined {
+  const token = raw?.trim()
+  if (!token) return undefined
+  if (!TMDB_READ_TOKEN.test(token)) {
+    throw new Error('TMDB_READ_TOKEN must be 20 to 1024 letters, digits, dots, underscores or hyphens (see .env.example)')
+  }
+  return token
 }
 
 const HOSTNAME = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/

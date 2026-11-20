@@ -1,9 +1,14 @@
 import { and, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
 import { z } from 'zod'
 import {
   catalogExtraProblem,
+  createTmdbClient,
+  lookupAnswer,
+  peopleSearchAnswer,
+  personAnswer,
+  type RouteAnswer,
   fetchCatalog,
   fetchManifests,
   MAX_BINGE_GROUP_LENGTH,
@@ -36,6 +41,7 @@ import type { Db } from './db'
 import { globalAddons, libraryItems, userAddons, users, userSettings, watchStates } from './schema'
 import { logAddonFailure, type AddonFailureLogger } from './addonResolution'
 import { ProxyTargetError } from './proxyGuard'
+import { WindowRateLimiter } from './rateLimit'
 import { safeFetch } from './safeFetch'
 
 export interface AppConfig {
@@ -50,7 +56,17 @@ export interface AppConfig {
   safeFetch?: typeof fetch
   /** Structured failure sink. Events are constructed from a fixed safe field allowlist. */
   addonFailureLogger?: AddonFailureLogger
+  /**
+   * TMDB read token for people search, person pages and id lookups. Without
+   * it those routes answer 404 `not_available` and `/capabilities` says so.
+   * TMDB is reached through `safeFetch`, so tests and the fixture server can
+   * answer for it.
+   */
+  tmdbReadToken?: string
 }
+
+/** People and lookup requests one account may make a minute, together: each can cost several TMDB calls on the shared token. */
+const PEOPLE_REQUESTS_PER_MINUTE = 60
 
 // Constant scrypt work on unknown usernames too, so a missing user can't be
 // distinguished from a wrong password by response timing.
@@ -173,6 +189,11 @@ export function createApp(config: AppConfig) {
   // Bounded like every other addon request: without a budget, one URL that
   // accepts the connection and never answers holds the save open for good.
   const manifestFetch = { fetch: doSafeFetch, timeoutMs: RESOLVE_TIMEOUT_MS }
+  const tmdb = config.tmdbReadToken
+    ? createTmdbClient({ credential: { kind: 'readToken', value: config.tmdbReadToken }, fetch: doSafeFetch })
+    : null
+  const peopleLimiter = new WindowRateLimiter(PEOPLE_REQUESTS_PER_MINUTE, 60_000)
+  const logUpstream = (where: string, failure: string): void => console.warn(`[halo-upstream] ${where}: ${failure}`)
   const app = new Hono()
 
   app.use(
@@ -641,6 +662,34 @@ export function createApp(config: AppConfig) {
     if (problem) return c.json({ error: problem }, 400)
     return c.json(await resolveSubtitles(effectiveAddons(c.get('user').id), type, videoId, query, resolveContext))
   })
+
+  // What this server offers beyond the shared contract, so the apps can hide
+  // what it lacks. Magnets need a debrid account this server never holds.
+  authed.get('/capabilities', (c) =>
+    c.json({ people: tmdb !== null, lookup: tmdb !== null, magnets: { enabled: false, cachedOnly: true } }),
+  )
+
+  /** Answers a people or lookup route: 404 without a token, 429 past the account's budget, else the shared answer. */
+  const peopleRoute = async (
+    c: Context<{ Variables: AuthVariables }>,
+    answer: (client: NonNullable<typeof tmdb>) => Promise<RouteAnswer>,
+  ): Promise<Response> => {
+    if (!tmdb) return c.json({ error: 'not_available' }, 404)
+    const retryAfter = peopleLimiter.take(c.get('user').id)
+    if (retryAfter !== null) {
+      c.header('Retry-After', String(retryAfter))
+      return c.json({ error: 'rate_limited', retryAfter }, 429)
+    }
+    const result = await answer(tmdb)
+    return c.json(result.body as object, result.status)
+  }
+
+  authed.get('/people/search', (c) => peopleRoute(c, (client) => peopleSearchAnswer(client, c.req.query('q'), logUpstream)))
+  authed.get('/people/:tmdbId', (c) => peopleRoute(c, (client) => personAnswer(client, c.req.param('tmdbId'), logUpstream)))
+  // A pasted IMDb or TVDB link, as the title (by IMDb id) or person it names.
+  authed.get('/lookup', (c) =>
+    peopleRoute(c, (client) => lookupAnswer(client, c.req.query('source'), c.req.query('id'), logUpstream)),
+  )
 
   app.route('/', authed)
   return app

@@ -22,11 +22,13 @@ const app = createApp({
       : { mode: 'local', jwtSecret: env.auth.jwtSecret },
   corsOrigins: env.corsOrigins,
   ...(env.addonEgress ? { safeFetch: createSafeFetch(env.addonEgress) } : {}),
+  ...(env.tmdbReadToken ? { tmdbReadToken: env.tmdbReadToken } : {}),
 })
 
 if (env.auth.mode === 'local') ensureAdminUser(db, env.auth.adminPassword)
 
 serve({ fetch: app.fetch, port: env.port }, (info) => {
   const egress = env.addonEgress ? `, egress via ${env.addonEgress.proxyUrl} for ${[...env.addonEgress.hosts].join(', ')}` : ''
-  console.log(`halo api listening on :${info.port} (auth: ${env.auth.mode}${egress})`)
+  const people = env.tmdbReadToken ? ', people search on' : ''
+  console.log(`halo api listening on :${info.port} (auth: ${env.auth.mode}${egress}${people})`)
 })
