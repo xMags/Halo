@@ -10,6 +10,7 @@ import { ensureAdminUser } from '../src/bootstrap'
 import { createDb, type Db } from '../src/db'
 import { globalAddons, libraryItems, userAddons, users, watchStates } from '../src/schema'
 import { FIXTURE_ADDONS, FIXTURE_TITLES, fixtureAddonFetch } from './fixtureAddons'
+import { FIXTURE_TMDB_TOKEN, fixtureTmdbFetch, isFixtureTmdbUrl } from './fixtureTmdb'
 
 /**
  * Development server: the real API, wired to canned addons.
@@ -93,6 +94,7 @@ function main(): void {
   const addonFetch = fixtureAddonFetch(FIXTURE_ADDONS, mediaUrl, subtitleUrl)
   const localFixtureFetch: typeof fetch = async (input, init) => {
     const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (isFixtureTmdbUrl(href)) return fixtureTmdbFetch(href, init)
     const url = new URL(href)
     if (url.origin === origin() && url.pathname.startsWith(`${SUBTITLE_PATH}/`)) {
       const id = url.pathname.slice(SUBTITLE_PATH.length + 1).replace(/\.srt$/, '')
@@ -110,6 +112,13 @@ function main(): void {
     // guard is the real one either way, which is why a fixture addon cannot
     // simply be hosted on this machine.
     safeFetch: options.passthrough ? safeFetch : localFixtureFetch,
+    // Canned TMDB answers its own token; passthrough asks the real one, so it
+    // needs a real token from the environment (people search is off without).
+    ...(options.passthrough
+      ? process.env.TMDB_READ_TOKEN
+        ? { tmdbReadToken: process.env.TMDB_READ_TOKEN }
+        : {}
+      : { tmdbReadToken: FIXTURE_TMDB_TOKEN }),
   })
 
   ensureAdminUser(db, ADMIN_PASSWORD)
@@ -138,6 +147,7 @@ function main(): void {
     console.log(`  sign in     admin / ${ADMIN_PASSWORD}`)
     console.log(`  storage     ${options.dbPath === ':memory:' ? 'in memory (resets on restart)' : options.dbPath}`)
     console.log(`  addons      ${options.passthrough ? 'real, over the network' : 'canned'}`)
+    console.log(`  people      ${options.passthrough ? (process.env.TMDB_READ_TOKEN ? 'real TMDB' : 'off (no TMDB_READ_TOKEN)') : 'canned TMDB (see dev/fixtureTmdb.ts)'}`)
     const mediaDescription = options.mediaUrl
       ? 'external fixture URL enabled'
       : mediaFile

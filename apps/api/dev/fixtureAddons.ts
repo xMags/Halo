@@ -173,9 +173,23 @@ function preview(title: Title): MetaPreview {
   }
 }
 
+/**
+ * A pictured cast (`app_extras.cast`) for one title: a cast card with a TMDB
+ * id opens that person's page, and one without falls back to a search by
+ * name.
+ */
+const PICTURED_CAST: Record<string, NonNullable<MetaDetail['app_extras']>['cast']> = {
+  tt1375666: [
+    { name: 'Leonardo DiCaprio', character: 'Cobb', photo: 'https://image.tmdb.org/t/p/w185/wo2hJpn04vbtmh0B9utCFdsQhxM.jpg', tmdbId: 6193 },
+    { name: 'Christopher Nolan', character: 'Director', photo: 'https://image.tmdb.org/t/p/w185/xuAIuYSmsUzKlUMBFGVZaWsY3DZ.jpg' },
+  ],
+}
+
 function detail(title: Title): MetaDetail {
+  const cast = PICTURED_CAST[title.id]
   return {
     ...preview(title),
+    ...(cast ? { app_extras: { cast } } : {}),
     runtime: title.runtime,
     videos: title.videos ?? [],
     cast: ['A Performer', 'Another Performer', 'A Third Performer'],
