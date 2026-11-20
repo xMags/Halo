@@ -88,6 +88,8 @@ export interface MetaPerson {
   /** The part played; absent for crew. */
   character?: string
   photo?: string
+  /** The person's TMDB id, which opens their person page. */
+  tmdbId?: number
 }
 
 export interface MetaDetail extends MetaPreview {

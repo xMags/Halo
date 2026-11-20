@@ -179,7 +179,7 @@ export function sanitizeCast(raw: unknown): MetaPerson[] | null {
   for (const entry of raw) {
     if (cast.length >= MAX_CAST) break
     if (!entry || typeof entry !== 'object') continue
-    const { name, character, photo } = entry as Record<string, unknown>
+    const { name, character, photo, tmdbId, id } = entry as Record<string, unknown>
     const cleanName = boundedText(name)
     if (!cleanName) continue
     const person: MetaPerson = { name: cleanName }
@@ -187,9 +187,17 @@ export function sanitizeCast(raw: unknown): MetaPerson[] | null {
     if (part) person.character = part
     const picture = httpsUrl(photo)
     if (picture) person.photo = picture
+    // The TMDB addon sends its person id as `id`; a server that sanitized the
+    // cast already sends `tmdbId`, which wins.
+    const personId = positiveSafeInteger(tmdbId) ?? positiveSafeInteger(id)
+    if (personId !== null) person.tmdbId = personId
     cast.push(person)
   }
   return cast.some((person) => person.photo) ? cast : null
+}
+
+function positiveSafeInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null
 }
 
 function boundedText(value: unknown): string | null {

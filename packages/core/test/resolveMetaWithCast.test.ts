@@ -112,3 +112,17 @@ test('no addon naming the title resolves to nothing rather than an empty meta', 
   const { ctx } = context({ 'https://cinemeta.test/meta/series/tt1.json': { meta: null } })
   assert.equal(await resolveMetaWithCast([cinemeta], 'series', 'tt1', ctx), null)
 })
+
+test('a cast member carries a valid TMDB id, a server-given tmdbId winning over the addon id', () => {
+  const cast = sanitizeCast([
+    { name: 'Server Id', tmdbId: 11, photo: 'https://image.tmdb.org/t/p/w185/a.jpg' },
+    { name: 'Addon Id', id: 12 },
+    { name: 'Bad Id', id: '13' },
+    { name: 'Fraction', tmdbId: 1.25, id: 0 },
+    { name: 'Both', tmdbId: 14, id: 15 },
+  ])
+  assert.deepEqual(
+    cast?.map((person) => person.tmdbId),
+    [11, 12, undefined, undefined, 14],
+  )
+})
