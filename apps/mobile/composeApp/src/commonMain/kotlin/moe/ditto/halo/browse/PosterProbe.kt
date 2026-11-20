@@ -47,6 +47,21 @@ internal class PosterProbe(private val http: HttpClient) {
             .toSet()
     }
 
+    /**
+     * Whether one poster link leads to an image: true or false once asked,
+     * null while that could not be found out (which the search treats as a
+     * poster that loads). Answers are remembered for the session.
+     */
+    suspend fun linkLoads(url: String): Boolean? {
+        lock.withLock { known[url] }?.let { return it }
+        val answer = inFlight.withPermit { ask(url) } ?: return null
+        lock.withLock { known[url] = answer }
+        return answer
+    }
+
+    /** What is already known about a link, without asking. */
+    suspend fun knownLink(url: String): Boolean? = lock.withLock { known[url] }
+
     /** The sources a card tries, in its order: the addon's poster, then Stremio's own for an IMDb title. */
     private suspend fun hasArtwork(meta: MetaCard): Boolean {
         val sources = listOfNotNull(meta.poster?.takeUnless { hasNoPoster(meta) }, metahubPosterUrl(meta.id)).distinct()
