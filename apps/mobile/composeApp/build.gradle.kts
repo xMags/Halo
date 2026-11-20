@@ -1,6 +1,11 @@
 import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.util.Properties
 
@@ -18,6 +23,65 @@ abstract class ValidateReleaseSigningTask : DefaultTask() {
                 append("Configure Halo release signing in Gradle user properties or environment variables.")
             }
         }
+    }
+}
+
+/**
+ * The shared rule vectors (the JSON files in `packages/core/test/vectors`) as a Kotlin
+ * source for commonTest: iOS tests cannot read files from the repository, so
+ * each file's text becomes a string the tests parse. Long files are split into
+ * pieces, since one JVM string constant holds at most 64 KB.
+ */
+abstract class GenerateRuleVectorsTask : DefaultTask() {
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val vectorsDir: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val files = vectorsDir.get().asFile.listFiles { file -> file.extension == "json" }.orEmpty().sortedBy { it.name }
+        check(files.isNotEmpty()) { "No rule vectors found in ${vectorsDir.get().asFile}" }
+        val out = outputDir.get().asFile.resolve("moe/ditto/halo/vectors")
+        out.deleteRecursively()
+        out.mkdirs()
+        val body = StringBuilder()
+        body.appendLine("// Generated from packages/core/test/vectors by generateRuleVectors. Do not edit.")
+        body.appendLine("package moe.ditto.halo.vectors")
+        body.appendLine()
+        body.appendLine("internal object RuleVectors {")
+        for (file in files) {
+            val name = file.nameWithoutExtension.split('-').mapIndexed { index, part ->
+                if (index == 0) part else part.replaceFirstChar { it.uppercase() }
+            }.joinToString("")
+            val pieces = file.readText(Charsets.UTF_8).chunked(16_000).map { piece ->
+                buildString {
+                    append('"')
+                    for (c in piece) {
+                        val code = c.code
+                        when {
+                            code == 0x5C -> append("\\\\")
+                            code == 0x22 -> append("\\\"")
+                            code == 0x24 -> append("\\$")
+                            code == 0x0A -> append("\\n")
+                            code == 0x0D -> append("\\r")
+                            code == 0x09 -> append("\\t")
+                            // Escaped surrogates too, so a pair split across two pieces still joins up.
+                            code < 0x20 || c.isSurrogate() -> append("\\u").append(code.toString(16).padStart(4, '0'))
+                            else -> append(c)
+                        }
+                    }
+                    append('"')
+                }
+            }
+            body.appendLine("    val $name: String = listOf(")
+            pieces.forEach { body.appendLine("        $it,") }
+            body.appendLine("    ).joinToString(\"\")")
+        }
+        body.appendLine("}")
+        out.resolve("RuleVectors.kt").writeText(body.toString(), Charsets.UTF_8)
     }
 }
 
@@ -85,6 +149,11 @@ tasks.configureEach {
     }
 }
 
+val generateRuleVectors = tasks.register<GenerateRuleVectorsTask>("generateRuleVectors") {
+    vectorsDir.set(rootProject.file("../../packages/core/test/vectors"))
+    outputDir.set(layout.buildDirectory.dir("generated/ruleVectors"))
+}
+
 kotlin {
     iosArm64()
     iosSimulatorArm64()
@@ -110,8 +179,10 @@ kotlin {
         commonMain {
             kotlin.srcDir(if (hasLocalSignInAddons) localSignInAddons.resolve("commonMain") else file("src/signInAddons/kotlin"))
         }
-        if (hasLocalSignInAddons && localSignInAddons.resolve("commonTest").isDirectory) {
-            commonTest {
+        commonTest {
+            // The shared rule vectors, so these tests hold the app to the same cases as @halo/core.
+            kotlin.srcDir(generateRuleVectors.map { it.outputDir })
+            if (hasLocalSignInAddons && localSignInAddons.resolve("commonTest").isDirectory) {
                 kotlin.srcDir(localSignInAddons.resolve("commonTest"))
             }
         }

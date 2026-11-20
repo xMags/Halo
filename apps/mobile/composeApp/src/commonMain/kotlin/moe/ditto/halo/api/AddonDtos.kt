@@ -60,6 +60,13 @@ data class ManifestCatalog(
     val supportsSearch: Boolean
         get() = extra.any { it.name == SearchExtra } || extraSupported.contains(SearchExtra)
 
+    /**
+     * Whether the search query alone is enough to ask it: a catalog that also
+     * insists on another extra (a genre) cannot answer a plain search.
+     */
+    val needsOnlySearch: Boolean
+        get() = extra.none { it.isRequired && it.name != SearchExtra } && extraRequired.all { it == SearchExtra }
+
     companion object {
         const val SearchExtra = "search"
     }
@@ -158,6 +165,12 @@ data class MetaPreview(
     override val genres: List<String> = emptyList(),
     override val behaviorHints: MetaBehaviorHints? = null,
     @SerialName("imdb_id") override val imdbId: String? = null,
+    /**
+     * Search only: this title's poster link was tried and its host has no
+     * such image, so search ranks it as a title without artwork. Never sent
+     * or stored.
+     */
+    @Transient val posterMissing: Boolean = false,
 ) : MetaCard
 
 @Serializable
