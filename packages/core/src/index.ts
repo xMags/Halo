@@ -161,3 +161,13 @@ export {
   type SearchQueryParts,
   type SearchTitle,
 } from './search/board'
+export {
+  classifySearchInput,
+  SEARCH_MAGNET_NAME_MAX_LENGTH,
+  SEARCH_WEB_LINK_MAX_LENGTH,
+  SEARCH_WEB_LINK_TITLE_MAX_LENGTH,
+  UNSUPPORTED_REASONS,
+  type SearchInput,
+  type SearchInputKind,
+  type TvdbKind,
+} from './search/input'

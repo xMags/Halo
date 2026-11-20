@@ -1,0 +1,357 @@
+{
+  "about": "Pasted search input, shared by the TypeScript tests (packages/core) and the Kotlin commonTest (apps/mobile). Each row is the trimmed box text, the kind it reads as, and the fields of that kind that must match; fields a row leaves out are not checked.",
+  "rows": [
+    {
+      "input": "dune",
+      "kind": "text"
+    },
+    {
+      "input": "Dune: Part Two",
+      "kind": "text"
+    },
+    {
+      "input": "Re:Zero",
+      "kind": "text"
+    },
+    {
+      "input": "blade runner 2049",
+      "kind": "text"
+    },
+    {
+      "input": "c12fe1c06bba254a9dc9f519b335aa7c1367a88a",
+      "kind": "text"
+    },
+    {
+      "input": "tt123456",
+      "kind": "text"
+    },
+    {
+      "input": "tt12345678901",
+      "kind": "text"
+    },
+    {
+      "input": "www.imdb.com/title/tt0111161",
+      "kind": "text"
+    },
+    {
+      "input": "tt0111161",
+      "kind": "imdbTitle",
+      "imdbId": "tt0111161"
+    },
+    {
+      "input": "TT0111161",
+      "kind": "imdbTitle",
+      "imdbId": "tt0111161"
+    },
+    {
+      "input": "tt1234567890",
+      "kind": "imdbTitle",
+      "imdbId": "tt1234567890"
+    },
+    {
+      "input": "https://www.imdb.com/title/tt0111161/",
+      "kind": "imdbTitle",
+      "imdbId": "tt0111161"
+    },
+    {
+      "input": "http://imdb.com/title/tt0111161",
+      "kind": "imdbTitle",
+      "imdbId": "tt0111161"
+    },
+    {
+      "input": "https://m.imdb.com/title/tt0903747/episodes/?season=2#top",
+      "kind": "imdbTitle",
+      "imdbId": "tt0903747"
+    },
+    {
+      "input": "HTTPS://WWW.IMDB.COM/TITLE/TT0111161/?ref_=nv_sr_1",
+      "kind": "imdbTitle",
+      "imdbId": "tt0111161"
+    },
+    {
+      "input": "https://www.imdb.com/fr/title/tt0111161/",
+      "kind": "imdbTitle",
+      "imdbId": "tt0111161"
+    },
+    {
+      "input": "https://www.imdb.com/name/nm0000138/",
+      "kind": "imdbPerson",
+      "personId": "nm0000138"
+    },
+    {
+      "input": "https://www.imdb.com/chart/top/",
+      "kind": "unsupported",
+      "reason": "This IMDb link isn't a title or a person."
+    },
+    {
+      "input": "https://thetvdb.com/?tab=series&id=81189",
+      "kind": "tvdbNumeric",
+      "tvdbKind": "series",
+      "tvdbId": "81189"
+    },
+    {
+      "input": "https://www.thetvdb.com/?id=81189&tab=series",
+      "kind": "tvdbNumeric",
+      "tvdbKind": "series",
+      "tvdbId": "81189"
+    },
+    {
+      "input": "https://thetvdb.com/dereferrer/series/81189",
+      "kind": "tvdbNumeric",
+      "tvdbKind": "series",
+      "tvdbId": "81189"
+    },
+    {
+      "input": "https://thetvdb.com/dereferrer/movie/123",
+      "kind": "tvdbNumeric",
+      "tvdbKind": "movie",
+      "tvdbId": "123"
+    },
+    {
+      "input": "https://thetvdb.com/series/breaking-bad",
+      "kind": "tvdbSlug",
+      "tvdbKind": "series",
+      "displayName": "breaking-bad"
+    },
+    {
+      "input": "https://thetvdb.com/movies/dune-part-two/",
+      "kind": "tvdbSlug",
+      "tvdbKind": "movie",
+      "displayName": "dune-part-two"
+    },
+    {
+      "input": "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&dn=Some+Film",
+      "kind": "magnet",
+      "infoHash": "c12fe1c06bba254a9dc9f519b335aa7c1367a88a"
+    },
+    {
+      "input": "magnet:?xt=urn:btih:C12FE1C06BBA254A9DC9F519B335AA7C1367A88A",
+      "kind": "magnet",
+      "infoHash": "c12fe1c06bba254a9dc9f519b335aa7c1367a88a"
+    },
+    {
+      "input": "MAGNET:?XT=URN:BTIH:YEX6DQDLXISUVHOJ6UM3GNNKPQJWPKEK",
+      "kind": "magnet",
+      "infoHash": "c12fe1c06bba254a9dc9f519b335aa7c1367a88a"
+    },
+    {
+      "input": "magnet:?xt=urn:btih:yex6dqdlxisuvhoj6um3gnnkpqjwpkek",
+      "kind": "magnet",
+      "infoHash": "c12fe1c06bba254a9dc9f519b335aa7c1367a88a"
+    },
+    {
+      "input": "magnet:?xt=urn:btih:BCW2LJ5GDA5K4HQJ3AY56Z2I2VTASWQQ",
+      "kind": "magnet",
+      "infoHash": "08ada5a7a6183aae1e09d831df6748d566095a10"
+    },
+    {
+      "input": "magnet:?xt=urn:btih:77777777777777777777777777777777",
+      "kind": "magnet",
+      "infoHash": "ffffffffffffffffffffffffffffffffffffffff"
+    },
+    {
+      "input": "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&xt=urn:btmh:1220abcd",
+      "kind": "magnet",
+      "infoHash": "c12fe1c06bba254a9dc9f519b335aa7c1367a88a"
+    },
+    {
+      "input": "magnet:?xt=urn:btmh:1220caf1e1c30e81cb361b9ee167c4aa64228a7fa4fa9f6105232b28ad099f3a302e",
+      "kind": "unsupported",
+      "reason": "This magnet link uses the newer v2 format, which isn't supported."
+    },
+    {
+      "input": "magnet:?xt=urn:btih:12345",
+      "kind": "unsupported",
+      "reason": "This magnet link has no valid info hash."
+    },
+    {
+      "input": "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10",
+      "kind": "unsupported",
+      "reason": "This magnet link has no valid info hash."
+    },
+    {
+      "input": "magnet:?dn=nothing",
+      "kind": "unsupported",
+      "reason": "This magnet link has no valid info hash."
+    },
+    {
+      "input": "https://cdn.example.com/films/Some%20Film.mkv",
+      "kind": "webLink",
+      "host": "cdn.example.com"
+    },
+    {
+      "input": "HTTP://Media.Example.org:8080/video.mp4?token=abc",
+      "kind": "webLink",
+      "host": "media.example.org"
+    },
+    {
+      "input": "http://[::1]:8080/a.mp4",
+      "kind": "webLink",
+      "host": "[::1]"
+    },
+    {
+      "input": "https://user:pass@example.com/a.mp4",
+      "kind": "unsupported",
+      "reason": "Links with a user name or password aren't supported."
+    },
+    {
+      "input": "https://user@example.com/a.mp4",
+      "kind": "unsupported",
+      "reason": "Links with a user name or password aren't supported."
+    },
+    {
+      "input": "https:///a.mp4",
+      "kind": "unsupported",
+      "reason": "This link isn't valid."
+    },
+    {
+      "input": "https://example.com:99999/a.mp4",
+      "kind": "unsupported",
+      "reason": "This link isn't valid."
+    },
+    {
+      "input": "https://example.com/a b.mp4",
+      "kind": "unsupported",
+      "reason": "This link isn't valid."
+    },
+    {
+      "input": "https://example.com\\a.mp4",
+      "kind": "unsupported",
+      "reason": "This link isn't valid."
+    },
+    {
+      "input": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "kind": "unsupported",
+      "reason": "YouTube and live TV links aren't supported."
+    },
+    {
+      "input": "https://youtu.be/dQw4w9WgXcQ",
+      "kind": "unsupported",
+      "reason": "YouTube and live TV links aren't supported."
+    },
+    {
+      "input": "https://M.YOUTUBE.COM/watch?v=x",
+      "kind": "unsupported",
+      "reason": "YouTube and live TV links aren't supported."
+    },
+    {
+      "input": "https://www.twitch.tv/somechannel",
+      "kind": "unsupported",
+      "reason": "YouTube and live TV links aren't supported."
+    },
+    {
+      "input": "https://notyoutube.com/a.mp4",
+      "kind": "webLink",
+      "host": "notyoutube.com"
+    },
+    {
+      "input": "file:///C:/Videos/film.mkv",
+      "kind": "unsupported",
+      "reason": "Files on this PC can't be opened from Search."
+    },
+    {
+      "input": "file:C:/Videos/film.mkv",
+      "kind": "unsupported",
+      "reason": "Files on this PC can't be opened from Search."
+    },
+    {
+      "input": "C:\\Videos\\film.mkv",
+      "kind": "unsupported",
+      "reason": "Files on this PC can't be opened from Search."
+    },
+    {
+      "input": "d:/film.mkv",
+      "kind": "unsupported",
+      "reason": "Files on this PC can't be opened from Search."
+    },
+    {
+      "input": "\\\\server\\share\\film.mkv",
+      "kind": "unsupported",
+      "reason": "Files on this PC can't be opened from Search."
+    },
+    {
+      "input": "//server/share/film.mkv",
+      "kind": "unsupported",
+      "reason": "Files on this PC can't be opened from Search."
+    },
+    {
+      "input": "ftp://example.com/a.mp4",
+      "kind": "unsupported",
+      "reason": "This kind of link isn't supported."
+    },
+    {
+      "input": "javascript:alert(1)",
+      "kind": "unsupported",
+      "reason": "This kind of link isn't supported."
+    },
+    {
+      "input": "stremio://detail/movie/tt0111161",
+      "kind": "unsupported",
+      "reason": "This kind of link isn't supported."
+    },
+    {
+      "input": "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&dn=Some+Film%20%282024%29%0A%E2%80%AE&tr=udp%3A%2F%2Ftracker.example%3A1337&tr=http://other.example/announce",
+      "kind": "magnet",
+      "infoHash": "c12fe1c06bba254a9dc9f519b335aa7c1367a88a",
+      "displayName": "Some Film (2024)"
+    },
+    {
+      "input": "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&dn=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "magnet",
+      "infoHash": "c12fe1c06bba254a9dc9f519b335aa7c1367a88a",
+      "displayName": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "input": "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&dn=Am%C3%A9lie",
+      "kind": "magnet",
+      "infoHash": "c12fe1c06bba254a9dc9f519b335aa7c1367a88a",
+      "displayName": "Amélie"
+    },
+    {
+      "input": "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&dn=%C0%AFx",
+      "kind": "magnet",
+      "infoHash": "c12fe1c06bba254a9dc9f519b335aa7c1367a88a",
+      "displayName": "��x"
+    },
+    {
+      "input": "https://example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "webLink",
+      "host": "example.com",
+      "url": "https://example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "input": "a very long plain sentence about films a very long plain sentence about films a very long plain sentence about films a very long plain sentence about films a very long plain sentence about films a very long plain sentence about films a very long plain sentence about films a very long plain sentence about films a very long plain sentence about films a very long plain sentence about films a very long plain sentence about films a very long plain sentence about films a very long plain sentence about",
+      "kind": "text"
+    },
+    {
+      "input": "https://example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "unsupported",
+      "reason": "This link is too long."
+    },
+    {
+      "input": "https://cdn.example.com/films/Some%20Film%20(2024).mkv?sig=1#t=5",
+      "kind": "webLink",
+      "host": "cdn.example.com",
+      "displayName": "Some Film (2024).mkv",
+      "url": "https://cdn.example.com/films/Some%20Film%20(2024).mkv?sig=1#t=5"
+    },
+    {
+      "input": "https://cdn.example.com/",
+      "kind": "webLink",
+      "host": "cdn.example.com",
+      "displayName": "cdn.example.com"
+    },
+    {
+      "input": "https://cdn.example.com/a%0Db%E2%80%AEc.mp4",
+      "kind": "webLink",
+      "host": "cdn.example.com",
+      "displayName": "abc.mp4"
+    },
+    {
+      "input": "https://cdn.example.com/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "kind": "webLink",
+      "host": "cdn.example.com",
+      "displayName": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ]
+}
