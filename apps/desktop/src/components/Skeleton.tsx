@@ -160,28 +160,6 @@ export function DetailSkeleton() {
   )
 }
 
-/** Top search match placeholder matching `.top-match`. */
-export function TopMatchSkeleton() {
-  return (
-    <div className="top-match top-match-skeleton" aria-hidden>
-      <div className="art top-match-poster skeleton" />
-      <div className="top-match-body">
-        <div className="skeleton skeleton-text" style={{ width: 84, height: 12 }} />
-        <div
-          className="skeleton skeleton-text"
-          style={{ width: '60%', maxWidth: 320, height: 30, borderRadius: 4 }}
-        />
-        <div className="skeleton skeleton-text" style={{ width: 200, height: 14 }} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 4 }}>
-          <div className="skeleton skeleton-text" style={{ width: '92%', height: 14 }} />
-          <div className="skeleton skeleton-text" style={{ width: '70%', height: 14 }} />
-        </div>
-        <div className="skeleton" style={{ width: 210, height: 36, borderRadius: 4, marginTop: 10 }} />
-      </div>
-    </div>
-  )
-}
-
 /** Download row placeholder matching `.dl-row`. */
 export function DownloadRowSkeleton() {
   return (

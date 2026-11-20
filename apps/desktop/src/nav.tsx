@@ -1,7 +1,8 @@
 import type { MetaPreview } from '@halo/core'
 import type { CatalogPaging } from './browse/catalogPaging'
 import type { HomeFilter } from './home/homeRows'
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import { forgetSearchGlide, leaveSearch } from './search/searchGlide'
 
 /**
  * Minimal screen stack with rail sections — a handful of screens doesn't
@@ -39,6 +40,22 @@ export interface PlayerParams {
   videoSize?: number
   /** Request headers the addon says this stream needs (a Referer, an auth header). */
   headers?: Record<string, string>
+  /**
+   * False for a pasted link (or a magnet nobody could identify): no video id
+   * or title stands behind it, so nothing is kept in watch history, nothing
+   * resumes, no addon is asked for subtitles and no subtitle choice is
+   * remembered. Absent means true.
+   */
+  recordsHistory?: false
+}
+
+/** A person page: by TMDB id when one is known, else found by name. */
+export interface PersonParams {
+  /** 0 when only the name is known (a cast entry without an id). */
+  tmdbId: number
+  personName: string
+  /** What the page shows until the server's answer, already https. */
+  photo?: string
 }
 
 /** What the sources sheet needs to resolve and label a video's streams. */
@@ -85,6 +102,7 @@ export type Screen =
   | { name: 'downloads' }
   | { name: 'settings' }
   | { name: 'detail'; type: string; id: string }
+  | ({ name: 'person' } & PersonParams)
   | ({ name: 'catalog' } & CatalogParams)
   | ({ name: 'player' } & PlayerParams)
 
@@ -112,12 +130,16 @@ const NavContext = createContext<NavContextValue | null>(null)
 export function NavProvider({ children }: { children: ReactNode }) {
   const [stack, setStack] = useState<Screen[]>([{ name: 'home' }])
   const [sheet, setSheet] = useState<StreamsParams | null>(null)
+  /** The stack as last rendered, for knowing which screen a move leaves. */
+  const stackRef = useRef(stack)
+  stackRef.current = stack
 
   // Any navigation dismisses the sheet: it describes one video, and leaving
   // that video behind would strand it over an unrelated screen.
   const push = useCallback((screen: Screen) => {
     setSheet(null)
     setStack((s) => [...s, screen])
+    forgetSearchGlide()
   }, [])
   const pop = useCallback(() => {
     setSheet(null)
@@ -125,8 +147,14 @@ export function NavProvider({ children }: { children: ReactNode }) {
   }, [])
   const replace = useCallback((screen: Screen) => setStack((s) => [...s.slice(0, -1), screen]), [])
   const setRoot = useCallback((section: Section) => {
-    setSheet(null)
-    setStack([{ name: section }])
+    const move = () => {
+      setSheet(null)
+      setStack([{ name: section }])
+    }
+    // Leaving the Search page itself: back Home after Home's box glided in, the field glides back.
+    const current = stackRef.current
+    if (current.length === 1 && current[0]!.name === 'search' && section !== 'search') leaveSearch(section === 'home', move)
+    else move()
   }, [])
   const reset = useCallback(() => {
     setSheet(null)

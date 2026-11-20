@@ -1,414 +1,436 @@
-import type { MetaPreview } from '@halo/core'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  cappedQuery,
+  classifySearchInput,
+  isSearchableQuery,
+  metaKey,
+  personRowLine,
+  knownForLabel,
+  searchSuggestions,
+  SEARCH_DEBOUNCE_MS,
+  SEARCH_RECENT_SHOWN,
+  type PersonSummary,
+} from '@halo/core'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArtImage } from '../components/ArtImage'
-import { cardArtworkUrl, metahubPosterUrl } from '../components/artworkUrl'
 import { FluentIcon } from '../components/FluentIcon'
 import { PosterCard } from '../components/PosterCard'
-import { SearchBox } from '../components/SearchBox'
-import { SectionHeader } from '../components/SectionHeader'
-import { ShelfSkeleton, TopMatchSkeleton } from '../components/Skeleton'
-import { ratingLabel } from '../format'
-import { movieVideoId, playableFromPreview } from '../browse/playableVideo'
-import { useTitleMenu } from '../browse/titleMenu'
+import { PosterCardSkeleton } from '../components/Skeleton'
+import { useCapabilities } from '../capabilities'
 import { useNav } from '../nav'
-import { browsableCatalogs, useCatalog, useEffectiveAddons, useLibrary, useSearch } from '../queries'
+import { SEARCH_FIELD_TRANSITION } from './searchGlide'
+import { addSearchTerm, clearSearchHistory, getSearchHistory, removeSearchTerm, type SearchHistoryEntry } from './searchHistory'
 import { setSearchQuery, useSearchQuery } from './searchQuery'
-import {
-  addSearchTerm,
-  clearSearchHistory,
-  getSearchHistory,
-  removeSearchTerm,
-  type SearchHistoryEntry,
-} from './searchHistory'
-import { useMissingArt } from './missingArt'
-import { hasNoPoster, interleave, libraryMatches, metaKey, refineResults, suggestedSearches } from './searchResults'
+import { ActionCard, SlotSkeleton, TopMatchCard } from './SearchSlots'
+import { useLinkAction } from './useLinkAction'
+import { useSearchSession, type SearchFilter } from './useSearchSession'
 
-/** Short enough to feel live while typing, long enough not to ask every addon per keystroke. */
-const DEBOUNCE_MS = 250
-const MIN_QUERY = 2
-/** No title is longer, and the server caps a catalog's search text well above it. */
-const MAX_QUERY = 120
-/** At most this many recent searches, and only as many as fit on one line. */
-const RECENT_SHOWN = 6
-/** Enough popular titles to browse without a search, short of a whole catalog. */
-const POPULAR_SHOWN = 24
+/*
+ * Search: no page title, a centred pill field, quiet kind chips under it and
+ * one status line. Before a query, the recent searches and a legend of what
+ * the box accepts. During one: the people the words name, one slot (the top
+ * match, or the action card for a pasted link), what the library already
+ * holds, then the results, which once shown never move (useSearchSession).
+ */
 
-const FILTERS = [
+const FILTERS: Array<{ value: SearchFilter; label: string }> = [
   { value: null, label: 'All' },
   { value: 'movie', label: 'Movies' },
   { value: 'series', label: 'Series' },
-] as const
+]
 
-/**
- * What is popular, for the screen before a search: the first films catalog and
- * the first series catalog the addons offer (Home's own rows, so usually
- * cached already), taking turns, narrowed by the kind filter.
- */
-function usePopular(typeFilter: string | null): { metas: MetaPreview[]; loading: boolean } {
-  const { data: addons } = useEffectiveAddons()
-  const catalogs = addons ? browsableCatalogs(addons) : []
-  const movies = catalogs.find((c) => c.catalog.type === 'movie')
-  const series = catalogs.find((c) => c.catalog.type === 'series')
-  const movieQuery = useCatalog(movies?.addonId ?? '', 'movie', movies?.catalog.id ?? '', {
-    enabled: !!movies && typeFilter !== 'series',
-  })
-  const seriesQuery = useCatalog(series?.addonId ?? '', 'series', series?.catalog.id ?? '', {
-    enabled: !!series && typeFilter !== 'movie',
-  })
-  const lists = [
-    typeFilter === 'series' ? [] : (movieQuery.data ?? []),
-    typeFilter === 'movie' ? [] : (seriesQuery.data ?? []),
-  ]
-  return {
-    metas: interleave(lists).slice(0, POPULAR_SHOWN),
-    loading: movieQuery.isLoading || seriesQuery.isLoading,
-  }
-}
+/** The box holds the whole text (a long pasted link is read whole); words are cut to the search's length. */
+const FIELD_MAX_LENGTH = 2048
+const RESULTS_SKELETON_COUNT = 12
 
 export function Search() {
   const term = useSearchQuery()
-  const [debounced, setDebounced] = useState(term)
+  const { push, setRoot } = useNav()
+  const { capabilities, needsTmdbKey, refreshIfFailed } = useCapabilities()
+  const [activeQuery, setActiveQuery] = useState(() => cappedQuery(term))
+  const [filter, setFilter] = useState<SearchFilter>(null)
+  const [focused, setFocused] = useState(false)
+  const [suggestionsDismissed, setSuggestionsDismissed] = useState(false)
   const [history, setHistory] = useState<SearchHistoryEntry[]>(() => getSearchHistory())
-  const [typeFilter, setTypeFilter] = useState<string | null>(null)
-  const [boxFocused, setBoxFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // What the server offers is asked again on arrival when it could not be had.
+  useEffect(refreshIfFailed, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const input = useMemo(() => classifySearchInput(term.trim()), [term])
+  const textMode = input.kind === 'text'
+  // No catalog is asked about a link; what an earlier query asked is dropped.
+  const query = textMode ? activeQuery.trim() : ''
+  const active = textMode && isSearchableQuery(query)
+  const view = useSearchSession(query, active, filter)
+  const action = useLinkAction(input)
+
+  // Words wait for a pause in typing; too short to search goes back to the empty page at once.
   useEffect(() => {
-    const timer = setTimeout(() => setDebounced(term), DEBOUNCE_MS)
-    return () => clearTimeout(timer)
-  }, [term])
+    if (!textMode) return
+    const capped = cappedQuery(term)
+    if (!isSearchableQuery(capped)) {
+      setActiveQuery(capped)
+      return
+    }
+    const timer = window.setTimeout(() => setActiveQuery(capped), SEARCH_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+  }, [term, textMode])
 
-  const { groups, topMatch, pending, failed, total } = useSearch(debounced)
-  const { data: library } = useLibrary()
-  const popular = usePopular(typeFilter)
-  const query = debounced.trim()
-  const active = query.length >= MIN_QUERY
-  const waiting = active && pending > 0
+  /** Only words are remembered, never a pasted link. */
+  const record = (value: string) => {
+    if (classifySearchInput(value.trim()).kind !== 'text') return
+    setHistory(addSearchTerm(value))
+  }
+  const recordQuery = () => record(query)
 
-  // History records only deliberate acts (submitting the query or opening a
-  // result), never the debounced keystroke stream (mobile parity).
-  const recordTerm = (value: string) => setHistory(addSearchTerm(value))
+  const change = (value: string) => {
+    setSuggestionsDismissed(false)
+    setSearchQuery(value.slice(0, FIELD_MAX_LENGTH))
+  }
 
-  /** Clicked history entry: search immediately, no debounce wait. */
+  /** A past search or a suggestion: searched at once, no pause. */
   const searchAgain = (value: string) => {
-    setSearchQuery(value)
-    setDebounced(value)
-    recordTerm(value)
+    const capped = cappedQuery(value)
+    setSuggestionsDismissed(true)
+    setSearchQuery(capped)
+    setActiveQuery(capped)
+    record(capped)
     inputRef.current?.focus()
   }
 
-  const forget = (value: string) => setHistory(removeSearchTerm(value))
-  const forgetAll = () => setHistory(clearSearchHistory())
-  const recent = history.slice(0, RECENT_SHOWN)
-  const suggestions = boxFocused ? suggestedSearches(history, term) : []
+  const openTopMatch = () => {
+    const top = view.topMatch
+    if (!top) return
+    recordQuery()
+    push({ name: 'detail', type: top.type, id: top.id })
+  }
 
-  // The top match is the best guess for the query itself, picked before the
-  // kind filter so the filter does not move it (the native page does too). It
-  // is shown once, above everything, so the lists below leave it out; so do
-  // the results for whatever the library already shows.
-  const fromLibrary = useMemo(
-    () => (active ? libraryMatches(library, query).filter((meta) => !typeFilter || meta.type === typeFilter) : []),
-    [active, library, query, typeFilter],
-  )
-  // Taking turns keeps every addon's ranking and folds two addons' copies of
-  // a title into one.
-  const merged = useMemo(() => {
-    const shownAbove = topMatch ? [...fromLibrary, topMatch] : fromLibrary
-    const lists = groups.map((group) => group.metas.filter((meta) => !typeFilter || meta.type === typeFilter))
-    return interleave(lists, shownAbove)
-  }, [groups, fromLibrary, topMatch, typeFilter])
-  // The top match as the card shows it: the same title, with what the other
-  // addons' copies of it know (a rating, a synopsis, a poster that loads).
-  const topMatchShown = useMemo(
-    () => (topMatch ? (interleave([[topMatch], ...groups.map((group) => group.metas)])[0] ?? topMatch) : null),
-    [topMatch, groups],
-  )
-  const missingArt = useMissingArt(merged)
-  // Then what was asked for comes first, and what nobody asked for goes.
-  const results = useMemo(() => refineResults(merged, query, missingArt), [merged, query, missingArt])
+  const submit = () => {
+    if (!textMode) {
+      action?.primary?.run()
+      return
+    }
+    if (!isSearchableQuery(term)) return
+    setSuggestionsDismissed(true)
+    const capped = cappedQuery(term)
+    // The top match of exactly what the box holds: Enter opens it, as the
+    // hint beside its button says. Text not searched yet is searched instead.
+    if (view.topMatch && !view.stale && capped === activeQuery) {
+      openTopMatch()
+      return
+    }
+    setActiveQuery(capped)
+    record(capped)
+  }
 
-  const filterLabel = typeFilter === 'movie' ? 'movies' : typeFilter === 'series' ? 'series' : 'titles'
-  const failedNames = [...new Set(failed.map((target) => target.addonName))]
-  const nothingFound = active && pending === 0 && !topMatch && fromLibrary.length === 0 && results.length === 0
-  const filteredAway = active && pending === 0 && fromLibrary.length === 0 && results.length === 0 && groups.length > 0
+  const openPerson = (person: PersonSummary) => {
+    if (!capabilities.people || person.tmdbId <= 0) return
+    recordQuery()
+    push({ name: 'person', tmdbId: person.tmdbId, personName: person.name, ...(person.photo ? { photo: person.photo } : {}) })
+  }
+
+  const historyTerms = history.map((entry) => entry.term)
+  const suggestions =
+    focused && !suggestionsDismissed && textMode ? searchSuggestions(historyTerms, cappedQuery(term), view.foundNames(cappedQuery(term))) : []
+  const recent = historyTerms.slice(0, SEARCH_RECENT_SHOWN)
+  const idle = !active && textMode
+  const placeholder = capabilities.people
+    ? 'Search films, series and people, or paste a link'
+    : 'Search films and series, or paste a link'
 
   return (
     <div className="view">
-      <SectionHeader title="Search" />
-      <div className="search-head">
-        <div className="search-box-wrap">
-          <SearchBox
-            large
-            autoFocus
-            inputRef={inputRef}
-            value={term}
-            // Past this length the server refuses the search outright, which
-            // would read as the addons being unreachable.
-            onChange={(value) => setSearchQuery(value.slice(0, MAX_QUERY))}
-            onFocus={() => setBoxFocused(true)}
-            onBlur={() => setBoxFocused(false)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && term.trim().length >= MIN_QUERY) {
-                setDebounced(term)
-                recordTerm(term)
-              } else if (e.key === 'Escape' && term) {
-                e.stopPropagation()
-                setSearchQuery('')
-              }
-            }}
-          />
-          {suggestions.length > 0 && (
-            <div className="search-suggest list-card" role="listbox" aria-label="Past searches">
-              {suggestions.map((suggestion) => (
+      <div className="srch">
+        <div className="srch-head">
+          <div className="srch-field-col">
+            <div className="srch-field" style={{ viewTransitionName: SEARCH_FIELD_TRANSITION }}>
+              <input
+                ref={inputRef}
+                autoFocus
+                spellCheck={false}
+                maxLength={FIELD_MAX_LENGTH}
+                placeholder={placeholder}
+                aria-label="Search"
+                value={term}
+                onChange={(event) => change(event.target.value)}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') submit()
+                  else if (event.key === 'Escape' && term) {
+                    event.stopPropagation()
+                    change('')
+                  }
+                }}
+              />
+              {term && (
                 <button
-                  key={suggestion}
                   type="button"
-                  role="option"
-                  aria-selected={false}
-                  className="search-suggest-row"
-                  // Taken on press, before the box's blur would remove the list.
-                  onMouseDown={(e) => {
-                    e.preventDefault()
-                    searchAgain(suggestion)
+                  className="srch-clear"
+                  aria-label="Clear"
+                  title="Clear"
+                  // Pressing keeps the caret in the box.
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    change('')
+                    inputRef.current?.focus()
                   }}
                 >
-                  <span style={{ color: 'var(--t3)', display: 'flex' }}>
-                    <FluentIcon glyph="clock" size={14} />
-                  </span>
-                  <span className="ellipsis">{suggestion}</span>
+                  <FluentIcon glyph="clear" size={10} />
                 </button>
-              ))}
+              )}
+              <span className="srch-glyph" aria-hidden>
+                <FluentIcon glyph="search" size={18} />
+              </span>
             </div>
-          )}
+            {suggestions.length > 0 && (
+              <div className="srch-suggest" role="listbox" aria-label="Search suggestions">
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    className="srch-suggest-row"
+                    // Taken on press, before the box's blur would remove the list.
+                    onMouseDown={(event) => {
+                      event.preventDefault()
+                      searchAgain(suggestion)
+                    }}
+                  >
+                    <FluentIcon glyph="search" size={14} />
+                    <span className="ellipsis">{suggestion}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="srch-chips" role="radiogroup" aria-label="Kind">
+            {FILTERS.map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                role="radio"
+                aria-checked={filter === option.value}
+                className={`srch-chip ${filter === option.value ? 'srch-chip-on' : ''}`}
+                onClick={() => setFilter(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          {FILTERS.map((f) => (
-            <button
-              key={f.label}
-              type="button"
-              className={`chip ${typeFilter === f.value ? 'chip-active' : ''}`}
-              onClick={() => setTypeFilter(f.value)}
-            >
-              {f.label}
-            </button>
-          ))}
+        {active && view.status && (
+          <div className={`srch-status ${view.status.failed ? 'srch-status-failed' : ''}`} role="status">
+            {view.status.spinner && <span className="spinner" />}
+            <span className="ellipsis">{view.status.text}</span>
+          </div>
+        )}
+
+        <div className="srch-body">
+          {idle && recent.length > 0 && (
+            <div className="srch-recent">
+              <span className="srch-recent-label">Recent</span>
+              <div className="srch-recent-pills">
+                {recent.map((entry) => (
+                  <div key={entry} className="srch-pill">
+                    <button type="button" className="srch-pill-open" onClick={() => searchAgain(entry)}>
+                      <span className="ellipsis">{entry}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="srch-pill-remove"
+                      aria-label={`Remove ${entry} from recent searches`}
+                      title="Remove"
+                      onClick={() => setHistory(removeSearchTerm(entry))}
+                    >
+                      <FluentIcon glyph="close" size={9} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="srch-link srch-link-danger" onClick={() => setHistory(clearSearchHistory())}>
+                Clear
+              </button>
+            </div>
+          )}
+
+          {idle && <SearchHints people={capabilities.people} lookup={capabilities.lookup} magnets={capabilities.magnets} needsTmdbKey={needsTmdbKey} onOpenSettings={() => setRoot('settings')} />}
+
+          {!textMode && action && (
+            <div className="srch-results">
+              <ActionCard model={action} />
+            </div>
+          )}
+
+          {active && (
+            <div className={`srch-results ${view.stale ? 'srch-stale' : ''}`}>
+              {view.people.length > 0 && (
+                <section className="srch-section">
+                  <h2 className="srch-section-title">People</h2>
+                  <div className="srch-people">
+                    {view.people.map((person) => (
+                      <PersonCard key={person.tmdbId} person={person} onOpen={() => openPerson(person)} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {view.topMatch && <TopMatchCard title={view.topMatch} onOpen={openTopMatch} />}
+              {view.skeleton && <SlotSkeleton />}
+
+              {view.library.length > 0 && (
+                <section className="srch-section">
+                  <h2 className="srch-section-title">In your library</h2>
+                  <div className="search-grid">
+                    {view.library.map((meta) => (
+                      <PosterCard key={metaKey(meta)} meta={meta} showKind={filter === null} onBeforePress={recordQuery} softPlaceholder />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {view.results.length > 0 && (
+                <section className="srch-section">
+                  <h2 className="srch-section-title">
+                    Results <span className="srch-count">{view.results.length}</span>
+                  </h2>
+                  <div className="search-grid">
+                    {view.results.map((meta) => (
+                      <PosterCard key={metaKey(meta)} meta={meta} showKind={filter === null} onBeforePress={recordQuery} softPlaceholder />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {view.skeleton && (
+                <section className="srch-section" aria-hidden>
+                  <h2 className="srch-section-title">Results</h2>
+                  <div className="search-grid">
+                    {Array.from({ length: RESULTS_SKELETON_COUNT }, (_, index) => (
+                      <PosterCardSkeleton key={index} />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+
+          {active && view.filteredEmpty && (
+            <EmptyState glyph="filter" text={`No ${filter === 'movie' ? 'movies' : 'series'} match “${view.revealedQuery}”.`}>
+              <button type="button" className="srch-link" onClick={() => setFilter(null)}>
+                Show all results
+              </button>
+            </EmptyState>
+          )}
+          {active && view.nothingFound && (
+            <EmptyState glyph="search" title="No matching titles" text="Check the spelling, or try fewer words." />
+          )}
+          {active && view.addonsUnreachable && (
+            <EmptyState glyph="networkOff" title="Search could not reach your addons" text="Check your connection and try again.">
+              <button type="button" className="btn srch-slot-btn" onClick={view.retry}>
+                Try again
+              </button>
+            </EmptyState>
+          )}
+          {active && view.noAddons && (
+            <EmptyState glyph="plugin" title="None of your addons can search" text="Add one that can, such as Cinemeta, in Settings.">
+              <button type="button" className="btn srch-slot-btn" onClick={() => setRoot('settings')}>
+                Open Settings
+              </button>
+            </EmptyState>
+          )}
         </div>
       </div>
-
-      {!active && recent.length > 0 && (
-        <div className="search-section">
-          <div className="recent-head">
-            <div className="kicker">RECENT</div>
-            <button type="button" className="btn-link recent-clear" onClick={forgetAll}>
-              Clear
-            </button>
-          </div>
-          <div className="recent-pills">
-            {recent.map((entry) => (
-              <div key={entry.term} className="recent-pill">
-                <button type="button" className="recent-pill-open" onClick={() => searchAgain(entry.term)}>
-                  <span style={{ color: 'var(--t3)', display: 'flex' }}>
-                    <FluentIcon glyph="clock" size={13} />
-                  </span>
-                  <span className="ellipsis">{entry.term}</span>
-                </button>
-                <button
-                  type="button"
-                  className="recent-pill-remove"
-                  aria-label={`Remove ${entry.term} from recent searches`}
-                  title="Remove"
-                  onClick={() => forget(entry.term)}
-                >
-                  <FluentIcon glyph="delete" size={11} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {!active && (popular.loading || popular.metas.length > 0) && (
-        <div className="search-section">
-          <div className="kicker">POPULAR RIGHT NOW</div>
-          {popular.metas.length > 0 ? (
-            <div className="search-grid">
-              {popular.metas.map((meta) => (
-                <PosterCard key={metaKey(meta)} meta={meta} showKind={!typeFilter} />
-              ))}
-            </div>
-          ) : (
-            <ShelfSkeleton titleWidth={0} count={6} />
-          )}
-        </div>
-      )}
-
-      {active && failedNames.length > 0 && (
-        <div className="search-note search-section" role="status">
-          {failed.length === total
-            ? 'Search could not reach your addons. Check your connection and try again.'
-            : `${failedNames.join(', ')} did not answer, so ${failedNames.length === 1 ? 'its' : 'their'} results are missing.`}
-        </div>
-      )}
-      {active && total === 0 && (
-        <div className="state-note search-empty">
-          None of your addons can search. Add one that can, such as Cinemeta, in Settings.
-        </div>
-      )}
-
-      {active && topMatchShown && (
-        <div className="search-section">
-          <TopMatchCard meta={topMatchShown} onOpen={() => recordTerm(query)} />
-        </div>
-      )}
-      {waiting && !topMatch && (
-        <div className="search-section">
-          <TopMatchSkeleton />
-        </div>
-      )}
-
-      {fromLibrary.length > 0 && (
-        <div className="search-section">
-          <div className="kicker">IN YOUR LIBRARY</div>
-          <div className="search-grid">
-            {fromLibrary.map((meta) => (
-              <PosterCard
-                key={metaKey(meta)}
-                meta={meta}
-                showKind={!typeFilter}
-                onBeforePress={() => recordTerm(query)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {active && results.length > 0 && (
-        <div className="search-section">
-          <div className="kicker">
-            RESULTS <span className="search-count">{results.length}</span>
-          </div>
-          <div className="search-grid">
-            {results.map((meta) => (
-              <PosterCard
-                key={metaKey(meta)}
-                meta={meta}
-                showKind={!typeFilter}
-                onBeforePress={() => recordTerm(query)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-      {waiting && results.length === 0 && (
-        <div className="search-section">
-          <ShelfSkeleton titleWidth={0} count={6} />
-        </div>
-      )}
-      {waiting && results.length > 0 && (
-        <div className="search-note search-note-pending search-section" role="status">
-          <span className="spinner" /> Still asking {pending} more {pending === 1 ? 'catalog' : 'catalogs'}…
-        </div>
-      )}
-
-      {filteredAway && typeFilter && (
-        <div className="state-note search-empty">
-          No {filterLabel} match {'“'}
-          {query}
-          {'”'}.{' '}
-          <button type="button" className="btn-link" onClick={() => setTypeFilter(null)}>
-            Show all results
-          </button>
-        </div>
-      )}
-      {nothingFound && !typeFilter && total > 0 && failed.length < total && (
-        <div className="state-note search-empty">No matching titles.</div>
-      )}
-      <div className="search-foot" />
     </div>
   )
 }
 
-/**
- * The single best guess for the query, drawn as Home draws its featured
- * title: its art across the card, its poster at the size of the cards below,
- * and the two things a viewer does next. Clicking anywhere else on it opens
- * the title page, as a poster would.
- */
-function TopMatchCard({ meta, onOpen }: { meta: MetaPreview; onOpen: () => void }) {
-  const { push, openSheet } = useNav()
-  const titleMenu = useTitleMenu()
-  const { data: library } = useLibrary()
-  const itemId = `${meta.type}:${meta.id}`
-  const inLibrary = (library ?? []).some((i) => i.id === itemId && !i.removedAt)
-  const isSeries = meta.type === 'series'
-  const rating = ratingLabel(meta.imdbRating)
-  // The backdrop when the addon sent one; otherwise the poster, softened.
-  const poster = hasNoPoster(meta) ? metahubPosterUrl(meta.id) : meta.poster
-  const backdrop = meta.background ?? poster
-
-  const openDetail = () => {
-    onOpen()
-    push({ name: 'detail', type: meta.type, id: meta.id })
-  }
-  // Home's primary action: a series needs an episode chosen, and the title
-  // page is the picker; a film goes straight to its sources.
-  const play = () => {
-    if (isSeries || !playableFromPreview(meta)) return openDetail()
-    onOpen()
-    openSheet({
-      type: meta.type,
-      videoId: movieVideoId(meta),
-      itemId,
-      metaId: meta.id,
-      title: meta.name,
-      showName: meta.name,
-      ...(meta.poster ? { poster: meta.poster } : {}),
-    })
-  }
-
+/** One person of the people row: their portrait in a poster card, the 2:3 shape TMDB's photos come in. */
+function PersonCard({ person, onOpen }: { person: PersonSummary; onOpen: () => void }) {
   return (
-    <div
-      className="top-match"
-      onClick={openDetail}
-      onContextMenu={(event) => titleMenu.forPoster(event, meta, onOpen)}
-    >
-      <div className="top-match-media" aria-hidden>
-        <div className="art hero-placeholder" />
-        {backdrop && (
-          <div
-            className={`top-match-backdrop ${meta.background ? '' : 'top-match-backdrop-soft'}`}
-            style={{ backgroundImage: `url(${cardArtworkUrl(backdrop)})` }}
-          />
+    <button type="button" className="poster srch-person" title={personRowLine(person) || person.name} onClick={onOpen}>
+      <div className="art poster-art">
+        <ArtImage src={person.photo ?? undefined} placeholder="person" lazy />
+        <div className="poster-badge">PERSON</div>
+      </div>
+      <div className="card-title ellipsis">{person.name}</div>
+      <div className="card-meta ellipsis">{knownForLabel(person.knownFor)}</div>
+    </button>
+  )
+}
+
+/** What the box accepts, as a legend; the items do nothing when clicked. */
+function SearchHints({
+  people,
+  lookup,
+  magnets,
+  needsTmdbKey,
+  onOpenSettings,
+}: {
+  people: boolean
+  lookup: boolean
+  magnets: boolean
+  needsTmdbKey: boolean
+  onOpenSettings: () => void
+}) {
+  return (
+    <div className="srch-hints">
+      <div className="srch-hints-title">You can search anything…</div>
+      <div className="srch-hints-grid">
+        <div className="srch-hint">
+          <FluentIcon glyph="film" size={30} />
+          <span>Movies &amp; Series</span>
+        </div>
+        {people && (
+          <div className="srch-hint">
+            <FluentIcon glyph="person" size={30} />
+            <span>Actors, Directors &amp; Writers</span>
+          </div>
         )}
-        <div className="top-match-scrim" />
-      </div>
-      <div className="art top-match-poster">
-        <ArtImage src={hasNoPoster(meta) ? undefined : meta.poster} fallback={metahubPosterUrl(meta.id)} label={meta.name} />
-      </div>
-      <div className="top-match-body">
-        <div className="kicker kicker-accent">TOP MATCH</div>
-        <div className="top-match-title ellipsis">{meta.name}</div>
-        <div className="hero-facts">
-          {rating && <span className="hero-rating">{rating}</span>}
-          {rating && <span className="dot-sep">·</span>}
-          <span className="top-match-kind">{isSeries ? 'SERIES' : 'MOVIE'}</span>
-          {meta.releaseInfo && <span className="dot-sep">·</span>}
-          {meta.releaseInfo && <span>{meta.releaseInfo}</span>}
-          {inLibrary && <span className="dot-sep">·</span>}
-          {inLibrary && <span>In library</span>}
+        <div className="srch-hint">
+          <FluentIcon glyph="link" size={30} />
+          <span>{magnets ? 'HTTP & Magnet Links' : 'HTTP Links'}</span>
         </div>
-        {meta.description && <div className="top-match-blurb">{meta.description}</div>}
-        {/* The buttons act for themselves; a press on one is not a press on the card. */}
-        <div className="hero-actions" onClick={(event) => event.stopPropagation()}>
-          <button type="button" className="btn-accent h36" onClick={play}>
-            <FluentIcon glyph="play" size={14} />
-            <span>{isSeries ? 'Choose episode' : 'Play'}</span>
-          </button>
-          <button type="button" className="btn h36" onClick={openDetail}>
-            Details
-          </button>
+        <div className="srch-hint">
+          <span className="srch-imdb-mark" aria-hidden>
+            <span>IMDb</span>
+          </span>
+          {/* TVDB links need the lookup; without it only IMDb title links open. */}
+          <span>{lookup ? 'IMDb / TVDB Links' : 'IMDb Links'}</span>
         </div>
       </div>
+      {needsTmdbKey && (
+        <div className="srch-hints-note">
+          Add a free TMDB key in{' '}
+          <button type="button" className="srch-link" onClick={onOpenSettings}>
+            Settings
+          </button>{' '}
+          to also find actors, directors and writers, and open TVDB links.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function EmptyState({
+  glyph,
+  title,
+  text,
+  children,
+}: {
+  glyph: 'filter' | 'search' | 'networkOff' | 'plugin'
+  title?: string
+  text: string
+  children?: ReactNode
+}) {
+  return (
+    <div className="srch-empty">
+      <FluentIcon glyph={glyph} size={36} />
+      {title && <div className="srch-empty-title">{title}</div>}
+      <div className="srch-empty-text">{text}</div>
+      {children}
     </div>
   )
 }

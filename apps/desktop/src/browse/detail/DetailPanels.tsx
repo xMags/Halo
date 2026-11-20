@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { FluentIcon } from '../../components/FluentIcon'
 import { ScrollRow } from '../../components/ScrollRow'
 import { initials, ratingLabel } from '../../format'
+import { useCapabilities } from '../../capabilities'
 import { useNav } from '../../nav'
 import { useEffectiveAddons, useGenreCatalog } from '../../queries'
 import { pickGenreCatalog, type GenreCatalog } from '../similarTitles'
@@ -52,20 +53,40 @@ export function CastPanel({ meta }: { meta: MetaDetail }) {
   )
 }
 
-/** A person's card; pressing it looks them up on IMDb in the browser. */
+/**
+ * A person's card. With people search it opens their page (by TMDB id when the
+ * cast entry gave one, else by name); without, it looks them up on IMDb in
+ * the browser.
+ */
 function CreditCard({ credit }: { credit: Credit }) {
+  const { push } = useNav()
+  const { capabilities } = useCapabilities()
+  const open = () => {
+    if (capabilities.people) {
+      push({
+        name: 'person',
+        tmdbId: credit.tmdbId ?? 0,
+        personName: credit.name,
+        ...(credit.photo?.startsWith('https://') ? { photo: credit.photo } : {}),
+      })
+      return
+    }
+    void openUrl(personSearchUrl(credit.name)).catch(() => undefined)
+  }
   return (
     <button
       type="button"
       className="credit"
-      title={`Look up ${credit.name} on IMDb`}
-      onClick={() => void openUrl(personSearchUrl(credit.name)).catch(() => undefined)}
+      title={capabilities.people ? credit.name : `Look up ${credit.name} on IMDb`}
+      onClick={open}
     >
       <span className="credit-art">
         <FadeArt src={credit.photo} fallback={initials(credit.name)} />
-        <span className="credit-open" aria-hidden>
-          <FluentIcon glyph="openInNewWindow" size={12} />
-        </span>
+        {!capabilities.people && (
+          <span className="credit-open" aria-hidden>
+            <FluentIcon glyph="openInNewWindow" size={12} />
+          </span>
+        )}
       </span>
       <span className="credit-name ellipsis">{credit.name}</span>
       {credit.role && <span className="credit-role ellipsis">{credit.role}</span>}

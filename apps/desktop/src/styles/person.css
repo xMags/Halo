@@ -1,0 +1,154 @@
+/* ── Person page ───────────────────────────────────────────────────────── */
+/* 28 above, the layout step's gutter at the sides, 40 below. */
+.prs {
+  display: flex;
+  flex-direction: column;
+  padding: 28px var(--gu) 40px;
+}
+/* Words and an arrow, no plate. */
+.prs-back {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 4px 6px 4px 0;
+  font-size: 14px;
+  color: var(--t2);
+}
+.prs-back:hover {
+  color: var(--t1);
+}
+
+/* The header, in one quiet box: the photo as a 200x300 portrait, the 2:3
+   shape TMDB's profile photos come in, then who they are. Both sides hang
+   from the top, so an opened biography grows downward. */
+.prs-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 48px;
+  padding: 36px 40px;
+  border-radius: 16px;
+  background: var(--cd);
+  border: 1px solid var(--cs);
+}
+.prs-photo {
+  flex: 0 0 200px;
+  width: 200px;
+  height: 300px;
+  border-radius: 6px;
+  border: 1px solid var(--cs);
+  background: var(--at);
+}
+/* Initials until the photo loads, or for good without one. */
+.prs-initials {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 60px var(--display);
+  color: var(--ac);
+}
+.prs-photo img {
+  position: relative;
+}
+.prs-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.prs-kicker {
+  font-size: 13px;
+  color: var(--t3);
+}
+.prs-name {
+  margin: 0;
+  font: 600 44px/50px var(--display);
+  letter-spacing: -0.44px;
+  color: var(--t1);
+  overflow-wrap: anywhere;
+}
+/* About 130 characters to a line; four lines until Read more opens it. */
+.prs-bio {
+  max-width: 980px;
+  margin: 6px 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 25px;
+  color: var(--t2);
+  white-space: pre-line;
+}
+.prs-bio-open {
+  display: block;
+  -webkit-line-clamp: unset;
+}
+.prs-more {
+  align-self: flex-start;
+  padding: 2px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--t1);
+  text-decoration: underline;
+}
+
+/* The body: 32 under the header box, its sections 26 apart. */
+.prs-body {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  margin-top: 32px;
+}
+.prs-loading {
+  display: flex;
+  justify-content: center;
+  padding: 44px 0;
+}
+/* The server ran out of time mapping some credits. */
+.prs-partial {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--cat);
+  border: 1px solid var(--cas);
+  font-size: 13px;
+  color: var(--t2);
+}
+.prs-films-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.prs-films-title {
+  margin: 0;
+  font: 600 20px var(--display);
+  color: var(--t1);
+}
+.prs-count {
+  margin-top: 3px;
+  font-size: 14px;
+  color: var(--t3);
+}
+.prs-chips {
+  margin-top: 0;
+}
+.prs-empty {
+  padding: 44px 0;
+  text-align: center;
+}
+
+/* A narrow content column: the portrait sits above the text. */
+@container (max-width: 700px) {
+  .prs-head {
+    flex-direction: column;
+    gap: 24px;
+    padding: 24px;
+  }
+  .prs-name {
+    font-size: 34px;
+    line-height: 40px;
+  }
+}

@@ -10,23 +10,16 @@ import {
   type Subtitle,
   type WatchState,
 } from '@halo/core'
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { fetchWithHeaders } from './player/requestHeaders'
 import { pendingWatchStates, settleWatchStates, stageWatchStates } from './player/watchOutbox'
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 import { getAccountClient, getClient } from './api'
 import { useSession } from './auth/session'
 import { removedRows } from './browse/watchMarks'
 import { chunked } from './device/mergeIntoAccount'
 import { isHomeCatalogType } from './home/homeRows'
-import {
-  searchProgress,
-  uniqueMetas,
-  type SearchProgress,
-  type SearchTarget,
-  type TargetState,
-} from './search/searchResults'
 
 /**
  * Data layer, ported from the former Expo client's queries.ts (same query keys and
@@ -273,68 +266,6 @@ export function useAddonSubtitles(opts: SubtitleOptions) {
       }
     },
   })
-}
-
-/**
- * Fan-out search across every installed catalog that supports the `search`
- * extra (Cinemeta's do). Each catalog is its own query, so its row shows as
- * soon as it answers instead of waiting for the slowest addon, and a catalog
- * that fails is reported rather than silently dropped. Duplicates are
- * possible across rows (two addons can know the same title), as in Stremio,
- * where every catalog owns its row.
- */
-export function useSearch(term: string): SearchProgress {
-  const { data: addons } = useEffectiveAddons()
-  const trimmed = term.trim()
-  const enabled = !!addons && trimmed.length >= 2
-  const targets = useMemo(
-    (): SearchTarget[] =>
-      (addons ?? []).flatMap((addon) =>
-        addon.manifest.catalogs
-          .filter(
-            (c) =>
-              (c.extra ?? []).some((e) => e.name === 'search') ||
-              (c.extraSupported ?? []).includes('search'),
-          )
-          // Only the query is sent, so a catalog that also insists on another
-          // extra (a genre, say) cannot answer and would only be reported as
-          // an addon that failed.
-          .filter(
-            (c) =>
-              !(c.extra ?? []).some((e) => e.isRequired && e.name !== 'search') &&
-              !(c.extraRequired ?? []).some((name) => name !== 'search'),
-          )
-          .map((c) => ({
-            key: `${addon.id}/${c.type}/${c.id}`,
-            addonId: addon.id,
-            addonName: addon.manifest.name,
-            type: c.type,
-            id: c.id,
-            title: c.name ?? addon.manifest.name,
-          })),
-      ),
-    [addons],
-  )
-  const results = useQueries({
-    queries: targets.map((t) => ({
-      queryKey: ['search', trimmed, t.addonId, t.type, t.id] as const,
-      enabled,
-      staleTime: 60_000,
-      // One failed catalog is reported at once; a retry would hold its row's
-      // fate back for seconds while the rest have answered.
-      retry: false,
-      queryFn: async () =>
-        uniqueMetas((await getClient().getCatalog(t.addonId, t.type, t.id, { search: trimmed })).metas ?? []),
-    })),
-  })
-  if (!enabled) return searchProgress([], [])
-  return searchProgress(
-    targets,
-    results.map((r): TargetState =>
-      r.isSuccess ? { status: 'done', metas: r.data } : r.isError ? { status: 'failed' } : { status: 'pending' },
-    ),
-    trimmed,
-  )
 }
 
 export function useLibrary() {

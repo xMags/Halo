@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { LibraryItem, MetaPreview } from '@halo/core'
-import { libraryMatches, suggestedSearches } from '../src/search/searchResults.ts'
+import { libraryMatches } from '../src/search/searchResults.ts'
 
 // The rules shared with the other clients are tested in @halo/core
-// (packages/core/test/searchResults.test.ts); these are the desktop's own.
+// (packages/core/test/searchBoard.test.ts); this is the desktop's own.
 
 const ids = (metas: MetaPreview[]) => metas.map((meta) => `${meta.type}:${meta.id}`)
 
@@ -32,16 +32,4 @@ test('libraryMatches finds every word, ignoring case and accents, newest first',
   assert.deepEqual(ids(libraryMatches(library, 'TWO dune')), ['movie:tt2'])
   assert.deepEqual(ids(libraryMatches(library, 'amelie')), ['movie:tt3'])
   assert.deepEqual(libraryMatches(library, '   '), [])
-})
-
-test('suggestedSearches offers past searches containing what is typed', () => {
-  const history = [
-    { term: 'dune part two', at: 3 },
-    { term: 'Dune', at: 2 },
-    { term: 'the office', at: 1 },
-  ]
-  assert.deepEqual(suggestedSearches(history, 'dun'), ['dune part two', 'Dune'])
-  // What is already typed is not offered back.
-  assert.deepEqual(suggestedSearches(history, 'dune'), ['dune part two'])
-  assert.deepEqual(suggestedSearches(history, ''), [])
 })

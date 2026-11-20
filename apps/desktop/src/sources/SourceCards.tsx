@@ -97,6 +97,31 @@ export function OfflineCard({ copy, onPlay }: { copy: OfflineCopy; onPlay: () =>
   )
 }
 
+/**
+ * The file of a magnet pasted in Search that the server matched to this video,
+ * above the ranked sources: its name and size, and Play. Its other files are
+ * never listed.
+ */
+export function MagnetCard({ fileName, size, onPlay }: { fileName: string; size: string; onPlay: () => void }) {
+  return (
+    <div className="sx-offline">
+      <div className="sx-card-line">
+        <span className="sx-status-dot sx-tone-instant" />
+        <span className="sx-status-label sx-tone-instant">Your magnet</span>
+        <span className="sx-sep">·</span>
+        <span className="sx-by">{size}</span>
+      </div>
+      <div className="sx-medal-line">
+        <span className="sx-meta-line ellipsis">{fileName}</span>
+      </div>
+      <button type="button" className="sx-btn sx-h44 sx-play-offline" onClick={onPlay}>
+        <FluentIcon glyph="playSolid" size={15} />
+        <span>Play</span>
+      </button>
+    </div>
+  )
+}
+
 /** The recommended source, on its own card, with the two things a viewer does with it. */
 export function PickCard({
   pick,

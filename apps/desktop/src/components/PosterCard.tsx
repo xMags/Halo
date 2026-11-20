@@ -13,6 +13,8 @@ interface Props {
   metaLine?: string
   /** Runs before navigation — e.g. recording the search term that led here. */
   onBeforePress?: () => void
+  /** The soft film or series placeholder instead of the striped one (Search and the person page only). */
+  softPlaceholder?: boolean
 }
 
 /**
@@ -20,7 +22,7 @@ interface Props {
  * or still loading falls back to the placeholder fill with the title printed
  * on it, so a slow image never reads as a broken card.
  */
-export function PosterCard({ meta, showKind, metaLine, onBeforePress }: Props) {
+export function PosterCard({ meta, showKind, metaLine, onBeforePress, softPlaceholder }: Props) {
   const { push } = useNav()
   const titleMenu = useTitleMenu()
   const sub = metaLine ?? posterMeta(meta)
@@ -37,7 +39,13 @@ export function PosterCard({ meta, showKind, metaLine, onBeforePress }: Props) {
       onContextMenu={(event) => titleMenu.forPoster(event, meta, onBeforePress)}
     >
       <div className="art poster-art">
-        <ArtImage src={meta.poster} fallback={metahubPosterUrl(meta.id)} label={meta.name} lazy />
+        <ArtImage
+          src={meta.poster}
+          fallback={metahubPosterUrl(meta.id)}
+          label={meta.name}
+          lazy
+          {...(softPlaceholder ? { placeholder: meta.type === 'series' ? 'series' : 'movie' } : {})}
+        />
         {showKind && <div className="poster-badge">{meta.type.toUpperCase()}</div>}
       </div>
       <div className="card-title ellipsis">{meta.name}</div>

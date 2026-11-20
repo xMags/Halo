@@ -13,6 +13,7 @@ import { Home } from './home/Home'
 import { Library } from './browse/Library'
 import { History } from './history/History'
 import { Login } from './auth/Login'
+import { Person } from './person/Person'
 import { Player } from './player/Player'
 import { Search } from './search/Search'
 import { Settings } from './settings/Settings'
@@ -134,7 +135,8 @@ function Shell() {
   // all. Fullscreen state lives above the video key so an autoplay replace can
   // remount media state without desynchronizing the native window.
   if (screen.name === 'player') {
-    return <Player key={screen.videoId} {...screen} windowFullscreen={windowFullscreen} />
+    // A pasted link has no video id; its address keys it instead.
+    return <Player key={screen.videoId || screen.url} {...screen} windowFullscreen={windowFullscreen} />
   }
 
   // A title page is drawn on its art in both themes, so the whole window goes
@@ -177,6 +179,9 @@ function Stack() {
       // Keyed by title: opening one title from another's page (the rail, a
       // context menu) must start fresh, not inherit its season and scroll.
       return <Detail key={`${screen.type}:${screen.id}`} type={screen.type} id={screen.id} />
+    case 'person':
+      // Keyed by person, as a title page is by title.
+      return <Person key={`${screen.tmdbId}:${screen.personName}`} tmdbId={screen.tmdbId} personName={screen.personName} photo={screen.photo} />
     case 'catalog':
       return <Catalog title={screen.title} source={screen.source} items={screen.items} more={screen.more} />
     case 'player':

@@ -20,7 +20,7 @@ import { useNav, type StreamsParams } from '../nav'
 import { useStreams, useWatchStates } from '../queries'
 import { useSettings } from '../settings/syncedSettings'
 import { revealSettingsSection, type SettingsSection } from '../settings/settingsSection'
-import { languageName, type DeviceContext } from './sourcePresentation'
+import { formatStreamSize, languageName, type DeviceContext } from './sourcePresentation'
 import {
   SORTS,
   buildListing,
@@ -36,7 +36,8 @@ import {
   type SourceSort,
   type VideoDownload,
 } from './sourcesModel'
-import { GroupHeader, OfflineCard, PickCard, RevealRow, SourceCard } from './SourceCards'
+import { GroupHeader, MagnetCard, OfflineCard, PickCard, RevealRow, SourceCard } from './SourceCards'
+import { useMagnetFileFor } from '../magnets/magnetStore'
 import { SheetFooter } from './SheetFooter'
 import { Banner, EmptyState, Resolving } from './SheetStates'
 
@@ -64,6 +65,8 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
   const { push, setRoot, closeSheet } = useNav()
   const queryClient = useQueryClient()
   const query = useStreams(params.type, params.videoId)
+  // A magnet pasted in Search that the server matched to this very video.
+  const magnetFile = useMagnetFileFor(params.type, params.videoId)
   const { data: watchStates } = useWatchStates()
   const { downloads } = useDownloads()
   const settings = useSettings()
@@ -451,6 +454,30 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
               copy and the filters included, as the phone's page does. */}
           <div ref={scrollerRef} className="sx-scroller">
             <div className="sx-list">
+              {magnetFile && (
+                <MagnetCard
+                  fileName={magnetFile.name}
+                  size={formatStreamSize(magnetFile.sizeBytes > 0 ? magnetFile.sizeBytes : null)}
+                  onPlay={() =>
+                    // The play link is on the signed-in server and carries its
+                    // own signed token: it opens bare, with no account header.
+                    push({
+                      name: 'player',
+                      url: magnetFile.playUrl,
+                      videoId: params.videoId,
+                      itemId: params.itemId,
+                      type: params.type,
+                      title: params.title,
+                      filename: magnetFile.name,
+                      ...(magnetFile.sizeBytes > 0 ? { videoSize: magnetFile.sizeBytes } : {}),
+                      ...(params.metaId ? { metaId: params.metaId } : {}),
+                      ...(params.showName ? { showName: params.showName } : {}),
+                      ...(params.episodeLabel ? { episodeLabel: params.episodeLabel } : {}),
+                      ...(params.poster ? { poster: params.poster } : {}),
+                    })
+                  }
+                />
+              )}
               {offline && (
                 <OfflineCard
                   copy={offline}

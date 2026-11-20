@@ -1,51 +1,314 @@
 /* ── Search ────────────────────────────────────────────────────────────── */
-/* The box and the kind filter, then one section after another: recent and
-   popular before a search; the top match, library matches and the merged
-   results during one. */
-.search-head {
-  padding: 8px var(--gu) 0;
+/* No page title: the centred pill leads the page, quiet kind chips under
+   it, one fixed status line, then the body's sections 30 apart. 40 above
+   and below; the sides are the layout step's gutter. */
+.srch {
+  display: flex;
+  flex-direction: column;
+  padding: 40px var(--gu);
 }
-/* The suggestions hang from the box, over whatever is below it. */
-.search-box-wrap {
+
+/* The head is drawn above the sections after it, so the suggestions hanging
+   from the field cover them. */
+.srch-head {
   position: relative;
-  width: fit-content;
-  max-width: 100%;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-.search-suggest {
+.srch-field-col {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 560px;
+}
+
+/* A 56 high pill: a quiet fill and a 1px ring at rest and with the caret,
+   never the stock accent underline. */
+.srch-field {
+  position: relative;
+  height: 56px;
+  border-radius: 28px;
+  background: var(--ct);
+  border: 1px solid var(--cts);
+}
+.srch-field:hover {
+  background: var(--cth);
+}
+.srch-field:focus-within {
+  background: var(--tfa);
+  border-color: var(--chs);
+}
+.srch-field input {
+  width: 100%;
+  height: 100%;
+  padding: 0 88px 0 28px;
+  background: none;
+  border: 0;
+  outline: none;
+  font-size: 16px;
+  color: var(--t1);
+}
+.srch-field input::placeholder {
+  color: var(--tps);
+}
+.srch-clear {
   position: absolute;
-  top: calc(100% + 4px);
+  top: 50%;
+  right: 52px;
+  width: 28px;
+  height: 28px;
+  margin-top: -14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--sb);
+  color: var(--t2);
+}
+.srch-clear:hover {
+  background: var(--cth);
+}
+.srch-glyph {
+  position: absolute;
+  top: 50%;
+  right: 22px;
+  margin-top: -9px;
+  display: flex;
+  color: var(--t2);
+  pointer-events: none;
+}
+
+/* The suggestions take no room of their own: they hang 6 under the pill, as wide as it. */
+.srch-suggest {
+  position: absolute;
+  top: calc(100% + 6px);
   left: 0;
   right: 0;
-  z-index: 5;
+  padding: 6px 0;
+  border-radius: 20px;
+  background: var(--fl);
+  border: 1px solid var(--cs);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
-.search-suggest-row {
+.srch-suggest-row {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
+  gap: 14px;
+  padding: 11px 22px;
   font-size: 15px;
   color: var(--t2);
   text-align: left;
-  border-top: 1px solid var(--dv);
 }
-.search-suggest-row:first-child {
-  border-top: 0;
+.srch-suggest-row .fluent-icon {
+  color: var(--t3);
 }
-.search-suggest-row:hover {
+.srch-suggest-row:hover {
   background: var(--tt);
   color: var(--t1);
 }
-.search-section {
+
+/* Quiet chips: no plate at rest, a plain wash when chosen. */
+.srch-chips {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+}
+.srch-chip {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 15px;
+  font-size: 14px;
+  color: var(--t3);
+}
+.srch-chip:hover {
+  background: var(--tt);
+  color: var(--t2);
+}
+.srch-chip-on,
+.srch-chip-on:hover {
+  background: var(--sb);
+  color: var(--t1);
+}
+
+/* One status line whenever a query is active; its text changes, its height never does. */
+.srch-status {
+  align-self: center;
+  max-width: 720px;
+  height: 20px;
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.srch-status-failed {
+  color: var(--ca);
+}
+
+.srch-body {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  margin-top: 22px;
+}
+
+/* Recent: one centred line, the label, up to six outline pills and Clear. */
+.srch-recent {
+  align-self: center;
+  max-width: 920px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.srch-recent-label {
+  font-size: 12px;
+  color: var(--t3);
+}
+.srch-recent-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  height: 30px;
+  overflow: hidden;
+  min-width: 0;
+}
+.srch-pill {
+  height: 30px;
+  max-width: 260px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--cs);
+  border-radius: 15px;
+}
+.srch-pill-open {
+  height: 100%;
+  min-width: 0;
+  padding: 0 4px 0 12px;
+  display: flex;
+  align-items: center;
+  border-radius: 15px 0 0 15px;
+  font-size: 13px;
+  color: var(--t2);
+}
+.srch-pill-open:hover {
+  color: var(--t1);
+}
+.srch-pill-remove {
+  width: 20px;
+  height: 20px;
+  margin-right: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--t3);
+}
+.srch-pill-remove:hover {
+  background: var(--crt);
+  color: var(--cr);
+}
+.srch-link {
+  padding: 0 2px;
+  font-size: inherit;
+  color: var(--ac);
+}
+.srch-link:hover {
+  text-decoration: underline;
+}
+.srch-recent .srch-link {
+  font-size: 12px;
+}
+.srch-link-danger {
+  color: var(--cr);
+}
+
+/* What the box accepts, as a legend; the items do nothing when clicked. */
+.srch-hints {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  padding: 96px 0 40px;
+}
+.srch-hints-title {
+  font: 400 20px/1.3 var(--display);
+  color: var(--t3);
+  text-align: center;
+}
+.srch-hints-grid {
+  width: 100%;
+  max-width: 760px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px 16px;
+}
+/* Three to a row (two when narrow), a shorter last row centred. */
+.srch-hint {
+  flex: 0 0 calc((100% - 32px) / 3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  font-size: 14px;
+  color: var(--t2);
+  text-align: center;
+}
+.srch-hint > .fluent-icon {
+  color: var(--t3);
+}
+/* No IMDb mark in Segoe Fluent Icons: the word, heavy, in a rounded frame, as tall as the other glyphs. */
+.srch-imdb-mark {
+  height: 30px;
+  display: flex;
+  align-items: center;
+}
+.srch-imdb-mark > span {
+  padding: 2px 5px;
+  border: 1.5px solid var(--t3);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  color: var(--t3);
+}
+.srch-hints-note {
+  max-width: 560px;
+  font-size: 13px;
+  color: var(--t3);
+  text-align: center;
+}
+
+/* Everything a query shows, dimmed as one while the next query's answers are awaited. */
+.srch-results {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.srch-stale {
+  opacity: 0.45;
+}
+.srch-section {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin: 26px var(--gu) 0;
 }
-.search-count {
-  margin-left: 6px;
-  color: var(--t4);
+.srch-section-title {
+  margin: 0;
+  font: 600 18px/1.3 var(--display);
+  color: var(--t1);
+}
+.srch-count {
+  margin-left: 8px;
+  font: 400 14px var(--sans);
+  color: var(--t3);
 }
 /* Posters across the whole row, as every grid in the app. */
 .search-grid {
@@ -57,169 +320,232 @@
   width: auto;
   min-width: 0;
 }
-.search-empty {
-  margin-top: 30px;
-  padding-left: 0;
-  text-align: center;
+/* People keep the poster width: at most three, not stretched across the row. */
+.srch-people {
+  display: flex;
+  gap: 14px 22px;
 }
-.search-foot {
-  height: 40px;
+.srch-person {
+  width: var(--pw);
 }
 
-/* The best guess for the query, drawn as Home draws its featured title: the
-   title's own art across the card under the hero's scrim, with its poster at
-   the size of the cards below it, so it reads as the first and largest of
-   the results rather than a row above them. */
-.top-match {
-  position: relative;
-  display: grid;
-  grid-template-columns: var(--pw) minmax(0, 1fr);
-  gap: 26px;
+/* The slot: the top match or the action card, one frame, 176 at least. */
+.srch-slot {
+  min-height: 176px;
+  display: flex;
   align-items: center;
-  padding: 22px 26px;
+  gap: 22px;
+  padding: 22px 28px;
+  border-radius: 16px;
+  background: var(--cd);
   border: 1px solid var(--cs);
-  border-radius: 8px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: border-color 0.12s ease;
+  transition: border-color 0.12s;
 }
-.top-match:hover {
+.srch-slot-click {
+  cursor: pointer;
+}
+.srch-slot-click:hover {
   border-color: var(--t4);
 }
-.top-match-media {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.top-match-backdrop {
-  position: absolute;
-  inset: 0;
-  background-size: cover;
-  background-position: center 22%;
-}
-/* A title with no backdrop of its own gets its poster, softened until it is
-   colour and light rather than a stretched picture. */
-.top-match-backdrop-soft {
-  inset: -48px;
-  filter: blur(34px) saturate(1.25);
-}
-/* The hero's haze, held longer: here the text shares the card with a poster
-   and runs past the middle, so the picture clears only toward the far edge. */
-.top-match-scrim {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, var(--hs1) 0%, var(--hs1) 38%, var(--hs2) 68%, transparent 100%);
-}
-:root[data-theme='light'] .top-match-scrim {
-  background: linear-gradient(90deg, var(--hs1) 0%, var(--hs1) 52%, var(--hs2) 76%, transparent 100%);
-}
-.top-match-poster {
-  position: relative;
-  width: var(--pw);
-  aspect-ratio: 2 / 3;
-  padding: 0;
+.srch-slot-poster {
+  flex: 0 0 100px;
+  width: 100px;
+  height: 150px;
+  border-radius: 6px;
   border: 1px solid var(--cs);
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
 }
-.top-match-body {
-  position: relative;
+.srch-slot-text {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 8px;
+}
+.srch-slot-kicker {
+  font: 400 12px/1.2 var(--mono);
+  letter-spacing: 1.44px;
+  color: var(--t3);
+}
+.srch-slot-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font: 600 24px/29px var(--display);
+  letter-spacing: -0.24px;
+  color: var(--t1);
+  overflow-wrap: anywhere;
+}
+.srch-slot-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
-  max-width: 640px;
+  font-size: 13px;
+  color: var(--t2);
 }
-.top-match-title {
-  font-family: var(--display);
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: -0.3px;
-  line-height: 1.15;
-  color: var(--t1);
+.srch-slot-rating {
+  color: var(--ca);
 }
-.top-match-kind {
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.6px;
+.srch-slot-mono {
+  font: 400 12px var(--mono);
+  letter-spacing: 0.48px;
+  color: var(--t2);
 }
-.top-match-blurb {
-  font-size: 15px;
-  line-height: 1.45;
-  color: var(--t1);
+/* About 62 characters to a line, three lines. */
+.srch-slot-blurb {
+  max-width: 500px;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-.top-match .hero-actions {
-  margin-top: 8px;
-}
-
-/* Recent searches as pills; each opens its term, its × forgets it. One line
-   only: pills that do not fit the width wrap onto a second line, which is
-   clipped away, so the row never spills past the page or grows taller. */
-.recent-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.recent-clear {
-  padding: 0 2px;
-  font-size: 13px;
-}
-.recent-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  height: 34px;
-  overflow: hidden;
-}
-.recent-pill {
-  display: flex;
-  align-items: center;
-  height: 34px;
-  box-sizing: border-box;
-  max-width: 280px;
-  border: 1px solid var(--cs);
-  border-radius: 16px;
-  background: var(--cd);
-}
-.recent-pill:hover {
-  background: var(--tt);
-}
-.recent-pill-open {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 4px 6px 12px;
   font-size: 14px;
+  line-height: 20px;
   color: var(--t2);
 }
-.recent-pill-remove {
-  flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  margin-right: 5px;
-  display: grid;
-  place-items: center;
-  border-radius: 11px;
-  color: var(--t3);
-}
-.recent-pill-remove:hover {
-  background: var(--cs);
-  color: var(--t1);
-}
-
-.search-note {
+.srch-slot-secondary {
+  max-width: 500px;
   font-size: 13px;
   color: var(--t3);
+  overflow-wrap: anywhere;
 }
-.search-note-pending {
-  flex-direction: row;
+.srch-slot-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+/* The slot's primary action: a 38 high pill, semibold. */
+.srch-slot-btn {
+  height: 38px;
+  padding: 0 20px;
+  border-radius: 19px;
+  font-weight: 600;
+}
+.srch-key {
+  padding: 1px 6px;
+  border: 1px solid var(--cts);
+  border-radius: 4px;
+  font: 400 11px var(--mono);
+  color: var(--t3);
+}
+/* A magnet the server is still fetching: 4 high, at most 420 wide. */
+.srch-progress {
+  max-width: 420px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--cs);
+  overflow: hidden;
+}
+.srch-progress > div {
+  height: 100%;
+  background: var(--ac);
+  transition: width 0.3s;
+}
+/* The action card's glyph tile, coloured by its tone. */
+.srch-tile {
+  flex: 0 0 56px;
+  width: 56px;
+  height: 56px;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--sb);
+  color: var(--t2);
+}
+.srch-tone-warn {
+  background: var(--cat);
+  color: var(--ca);
+}
+.srch-tone-bad {
+  background: var(--crt);
+  color: var(--cr);
+}
+.srch-tone-mute {
+  color: var(--t3);
+}
+.srch-slot-skeleton {
+  height: 176px;
+  border-radius: 16px;
+  background: var(--sb);
+}
+
+/* The states a query can end in with nothing to show, centred. */
+.srch-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 56px 0;
+  text-align: center;
+}
+.srch-empty > .fluent-icon {
+  margin-bottom: 6px;
+  color: var(--t4);
+}
+.srch-empty-title {
+  font: 600 20px/1.3 var(--display);
+  color: var(--t1);
+}
+.srch-empty-text {
+  font-size: 14px;
+  color: var(--t3);
+}
+.srch-empty .srch-slot-btn {
+  margin-top: 6px;
+  font-weight: 400;
+}
+
+/* A narrow content column: the slot's poster shrinks and the legend takes two columns. */
+@container (max-width: 700px) {
+  .srch-slot-poster {
+    flex-basis: 76px;
+    width: 76px;
+    height: 114px;
+  }
+  .srch-hint {
+    flex-basis: calc((100% - 16px) / 2);
+  }
+}
+
+/* Home's box, which opens Search: it looks like the box it glides into. */
+.home-search {
+  width: 300px;
+  height: 32px;
+  display: flex;
   align-items: center;
   gap: 8px;
+  padding: 0 10px 0 11px;
+  border-radius: 6px;
+  background: var(--ct);
+  border: 1px solid var(--cts);
+  font-size: 15px;
+  color: var(--t3);
+  text-align: left;
+}
+.home-search:hover {
+  background: var(--cth);
+}
+.home-search .fluent-icon {
+  color: var(--t2);
+}
+
+/* The glide (search/searchGlide.ts): only the field moves; the page is swapped
+   at once, never cross-faded, so the transparent window never shows through. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+::view-transition-group(search-field) {
+  animation-duration: 0.32s;
+  animation-timing-function: cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+:root[data-glide='back']::view-transition-group(search-field) {
+  animation-duration: 0.2s;
+  animation-timing-function: cubic-bezier(0, 0, 0, 1);
+}
+::view-transition-old(search-field),
+::view-transition-new(search-field) {
+  height: 100%;
 }

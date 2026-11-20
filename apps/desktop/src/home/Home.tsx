@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { ArtImage } from '../components/ArtImage'
 import { FluentIcon } from '../components/FluentIcon'
 import { PosterCard } from '../components/PosterCard'
-import { SearchBox } from '../components/SearchBox'
 import { SectionHeader } from '../components/SectionHeader'
 import { Segmented } from '../components/Segmented'
 import { Shelf } from '../components/Shelf'
@@ -39,7 +38,7 @@ import {
   useWatchStates,
   type BrowsableCatalog,
 } from '../queries'
-import { setSearchQuery, useSearchQuery } from '../search/searchQuery'
+import { glideIntoSearch, SEARCH_FIELD_TRANSITION } from '../search/searchGlide'
 import { HERO_DWELL_MS } from '../theme'
 
 /**
@@ -65,7 +64,6 @@ export function Home() {
   const { state } = useSession()
   const [filter, setFilter] = useState<HomeFilter>('all')
   const { setRoot, push } = useNav()
-  const query = useSearchQuery()
   const { data: addons, isLoading, error } = useEffectiveAddons()
   const { data: library } = useLibrary()
   const { data: watchStates } = useWatchStates()
@@ -94,13 +92,21 @@ export function Home() {
     <div className="view">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 28, paddingBottom: 48 }}>
         <SectionHeader title="Home">
-          <SearchBox
-            value={query}
-            onChange={setSearchQuery}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') setRoot('search')
-            }}
-          />
+          {/* Looks like a search box, but is a button: it opens Search, whose
+              field takes the caret, as the rail and Ctrl+K do. The box glides
+              into that field (searchGlide.ts). A real text box here would
+              also fire whenever focus came back to it, such as on returning Home. */}
+          <button
+            type="button"
+            className="home-search"
+            title="Search (Ctrl+K)"
+            aria-label="Search"
+            style={{ viewTransitionName: SEARCH_FIELD_TRANSITION }}
+            onClick={() => glideIntoSearch(() => setRoot('search'))}
+          >
+            <span className="spacer ellipsis">Search movies and series</span>
+            <FluentIcon glyph="search" size={14} />
+          </button>
           <Segmented options={FILTERS} value={filter} onChange={setFilter} />
         </SectionHeader>
 

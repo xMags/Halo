@@ -250,6 +250,15 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const subTracks = useMemo(() => tracks.filter((t) => t.type === 'sub'), [tracks])
   const audioTracks = useMemo(() => tracks.filter((t) => t.type === 'audio'), [tracks])
 
+  /**
+   * A pasted link stands for no title: nothing about it is kept in history,
+   * resumed, or remembered as a subtitle choice (see `PlayerParams`).
+   */
+  const recordsHistory = params.recordsHistory !== false
+  const rememberChoice = (choice: Parameters<typeof rememberSubtitleChoice>[2]) => {
+    if (recordsHistory) rememberSubtitleChoice(params.videoId, params.itemId, choice)
+  }
+
   const subs = useAddonSubtitles({
     type: params.type,
     videoId: params.videoId,
@@ -257,7 +266,8 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     streamHeaders: params.headers,
     filename: params.filename,
     videoSize: params.videoSize,
-    enabled: params.sourceKind !== 'download',
+    // A download plays offline, and a pasted link names no video an addon knows.
+    enabled: params.sourceKind !== 'download' && recordsHistory,
   })
 
   // Live values in refs so the report interval never resets on ticks.
@@ -304,7 +314,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const currentWatchState = useCallback((): WatchState | null => {
     const { positionSec, durationSec: total } = progressRef.current
     // Too short / barely started — not worth a history row (mobile parity).
-    if (total < 60 || positionSec < 5) return null
+    if (!recordsHistory || total < 60 || positionSec < 5) return null
     return {
       videoId: params.videoId,
       itemId: params.itemId,
@@ -452,7 +462,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
                 void mpvCmd('sub-add', localSubtitlePath)
                   .then(() => {
                     if (params.subtitleLang) {
-                      rememberSubtitleChoice(params.videoId, params.itemId, {
+                      rememberChoice( {
                         kind: 'downloaded',
                         lang: params.subtitleLang,
                       })
@@ -526,7 +536,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       const states = await queryClient
         .ensureQueryData({ queryKey: ['watchStates'], queryFn: () => getClient().getWatchStates() })
         .catch(() => null)
-      priorStateRef.current = states?.find((s) => s.videoId === params.videoId) ?? null
+      priorStateRef.current = recordsHistory ? (states?.find((s) => s.videoId === params.videoId) ?? null) : null
 
       if (disposed) return
       // Leftover external sub tracks can survive on the shared mpv handle (a
@@ -907,7 +917,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
         await mpvSet('sid', String(existing.id))
         setActiveExternalId(sub.id)
         if (remember) {
-          rememberSubtitleChoice(params.videoId, params.itemId, {
+          rememberChoice( {
             kind: 'external',
             lang: sub.lang,
             subId: sub.id,
@@ -928,7 +938,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       await mpvCmd('sub-add', sub.url, 'select', key, sub.lang)
       setActiveExternalId(sub.id)
       if (remember) {
-        rememberSubtitleChoice(params.videoId, params.itemId, {
+        rememberChoice( {
           kind: 'external',
           lang: sub.lang,
           subId: sub.id,
@@ -948,14 +958,14 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const chooseOff = () => {
     void selectEmbeddedSub('no').then((selected) => {
       if (!selected) return
-      rememberSubtitleChoice(params.videoId, params.itemId, { kind: 'off' })
+      rememberChoice( { kind: 'off' })
       setActiveExternalId(null)
     })
   }
   const chooseEmbedded = (track: MpvTrack) => {
     void selectEmbeddedSub(track.id).then((selected) => {
       if (!selected) return
-      rememberSubtitleChoice(params.videoId, params.itemId, {
+      rememberChoice( {
         kind: 'embedded',
         lang: track.lang,
         trackName: track.title,
@@ -1006,7 +1016,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       subTracks.find((t) => !t.external && t.lang && languageMatches(t.lang, lang))
     const externalByLang = (lang: string) => externals.find((s) => languageMatches(s.lang, lang))
 
-    const remembered = getSubtitleChoice(params.videoId, params.itemId)
+    const remembered = recordsHistory ? getSubtitleChoice(params.videoId, params.itemId) : null
     // Downloading with a subtitle is a newer choice than an "Off" made before.
     if (remembered?.kind === 'off' && !hasLocalSubtitleRef.current) {
       subDefaultAppliedRef.current = true
@@ -1538,6 +1548,9 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
                         {/* A download plays offline, so its addons are never asked. */}
                         {params.sourceKind === 'download' && (
                           <div className="prail-hint">Not available for downloads.</div>
+                        )}
+                        {params.sourceKind !== 'download' && !recordsHistory && (
+                          <div className="prail-hint">Not available for links.</div>
                         )}
                         {subs.isLoading && (
                           <div className="prail-hint">

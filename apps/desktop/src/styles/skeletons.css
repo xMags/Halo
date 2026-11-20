@@ -77,15 +77,6 @@
   background: var(--cd);
 }
 
-.top-match-skeleton {
-  pointer-events: none;
-  background: var(--cd);
-}
-.top-match-skeleton .top-match-poster {
-  box-shadow: none;
-  background: var(--cd);
-}
-
 .dl-skeleton-row {
   pointer-events: none;
 }
@@ -140,6 +131,19 @@
   height: 100%;
   object-fit: cover;
   display: block;
+}
+.art-soft {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, var(--phs-a), var(--phs-b));
+  color: var(--phs-glyph);
+}
+/* Drawn over the soft placeholder once it loads; only where one is used. */
+.art-soft + img {
+  position: relative;
 }
 .art-label {
   position: absolute;

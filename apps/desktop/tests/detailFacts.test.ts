@@ -70,13 +70,27 @@ test('credits prefer the pictured cast, close with directors, and never repeat a
     },
   })
   assert.deepEqual(credits, [
-    { name: 'Ahaan Panday', role: 'Krish Kapoor', photo: 'https://img.test/a.jpg' },
-    { name: 'Aneet Padda', role: 'Vaani Batra', photo: null },
-    { name: 'Mohit Suri', role: 'Director', photo: null },
+    { name: 'Ahaan Panday', role: 'Krish Kapoor', photo: 'https://img.test/a.jpg', tmdbId: null },
+    { name: 'Aneet Padda', role: 'Vaani Batra', photo: null, tmdbId: null },
+    { name: 'Mohit Suri', role: 'Director', photo: null, tmdbId: null },
   ])
 })
 
-test('a cast card searches IMDb people for the name', () => {
+test('a pictured cast entry keeps a valid TMDB id, from the server or the addon', () => {
+  const cast = [
+    { name: 'Server', tmdbId: 11 },
+    { name: 'Addon', id: 12 },
+    { name: 'Text', id: '13' },
+    { name: 'Fraction', tmdbId: 1.5 },
+    { name: 'Zero', id: 0 },
+  ] as Array<{ name: string; tmdbId?: number }>
+  assert.deepEqual(
+    creditsOf({ app_extras: { cast } }).map((credit) => credit.tmdbId),
+    [11, 12, null, null, null],
+  )
+})
+
+test('a cast card without people search searches IMDb people for the name', () => {
   assert.equal(personSearchUrl(' Aneet Padda '), 'https://www.imdb.com/find/?q=Aneet%20Padda&s=nm')
 })
 
@@ -91,7 +105,7 @@ test('the trailer links to YouTube, from either trailer list, and only for a rea
 })
 
 test('credits fall back to the plain cast names', () => {
-  assert.deepEqual(creditsOf({ cast: ['Tim Robbins'] }), [{ name: 'Tim Robbins', role: null, photo: null }])
+  assert.deepEqual(creditsOf({ cast: ['Tim Robbins'] }), [{ name: 'Tim Robbins', role: null, photo: null, tmdbId: null }])
 })
 
 test('about rows keep only the facts the addon sent', () => {

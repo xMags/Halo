@@ -46,6 +46,14 @@ const GLYPHS = {
   globe: '',
   sort: '',
   playSolid: '',
+  film: '',
+  tv: '',
+  person: '',
+  link: '',
+  idCard: '',
+  filter: '',
+  plugin: '',
+  networkOff: '',
 } as const
 
 export type FluentGlyph = keyof typeof GLYPHS

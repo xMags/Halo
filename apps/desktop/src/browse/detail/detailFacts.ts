@@ -70,6 +70,21 @@ export interface Credit {
   name: string
   role: string | null
   photo: string | null
+  /** The person's TMDB id when the cast entry gave a valid one; opens their page directly. */
+  tmdbId: number | null
+}
+
+/**
+ * A cast entry's TMDB id: the server's `tmdbId`, else the addon's own numeric
+ * `id` (a title's own cast reaches the app as the addon sent it). Anything
+ * that is not a positive whole number is none.
+ */
+export function castTmdbId(person: MetaPerson): number | null {
+  const raw = person as MetaPerson & { id?: unknown }
+  for (const candidate of [raw.tmdbId, raw.id]) {
+    if (typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate > 0) return candidate
+  }
+  return null
 }
 
 /**
@@ -85,9 +100,10 @@ export function creditsOf(meta: Pick<MetaDetail, 'cast' | 'director' | 'app_extr
           name: person.name,
           role: person.character || null,
           photo: person.photo || null,
+          tmdbId: castTmdbId(person),
         }))
-      : (meta.cast ?? []).map((name) => ({ name, role: null, photo: null }))
-  const crew: Credit[] = (meta.director ?? []).map((name) => ({ name, role: 'Director', photo: null }))
+      : (meta.cast ?? []).map((name) => ({ name, role: null, photo: null, tmdbId: null }))
+  const crew: Credit[] = (meta.director ?? []).map((name) => ({ name, role: 'Director', photo: null, tmdbId: null }))
   const seen = new Set<string>()
   return [...cast, ...crew].filter((credit) => {
     const key = credit.name.trim().toLowerCase()
@@ -98,9 +114,8 @@ export function creditsOf(meta: Pick<MetaDetail, 'cast' | 'director' | 'app_extr
 }
 
 /**
- * Where a cast card leads: IMDb's people search for the name. Addons send no
- * person id, so a search is the honest link; IMDb because its ratings are the
- * ones the page shows.
+ * Where a cast card leads without people search: IMDb's people search for the
+ * name, IMDb because its ratings are the ones the page shows.
  */
 export function personSearchUrl(name: string): string {
   return `https://www.imdb.com/find/?q=${encodeURIComponent(name.trim())}&s=nm`

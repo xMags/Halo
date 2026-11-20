@@ -1,26 +1,9 @@
 import { foldedText, type LibraryItem, type MetaPreview } from '@halo/core'
-import type { SearchHistoryEntry } from './searchHistory'
 
 /*
- * The rules that turn several catalogs' answers into one list live in
- * `@halo/core` (`search/results.ts`), shared with every other client. What is
- * here is what only this app has: its library and its search history.
+ * What only this app has beside the shared search rules (`@halo/core`'s
+ * `search/board.ts`): its library, matched against the query.
  */
-export {
-  byRelevance,
-  hasNoPoster,
-  interleave,
-  metaKey,
-  nameRelevance,
-  refineResults,
-  searchProgress,
-  titleIdentities,
-  uniqueMetas,
-  type SearchProgress,
-  type SearchResultGroup,
-  type SearchTarget,
-  type TargetState,
-} from '@halo/core'
 
 /** The query's words; a title matches when its name holds every one of them. */
 function queryWords(query: string): string[] {
@@ -47,20 +30,4 @@ export function libraryMatches(library: readonly LibraryItem[] | undefined, quer
       name: item.name,
       ...(item.poster ? { poster: item.poster } : {}),
     }))
-}
-
-/**
- * Past searches that contain what is being typed, most recent first, for
- * picking one instead of typing it out. The term itself is not suggested back.
- */
-export function suggestedSearches(history: readonly SearchHistoryEntry[], typed: string, limit = 5): string[] {
-  const needle = foldedText(typed.trim())
-  if (!needle) return []
-  return history
-    .map((entry) => entry.term)
-    .filter((term) => {
-      const candidate = foldedText(term)
-      return candidate !== needle && candidate.includes(needle)
-    })
-    .slice(0, limit)
 }

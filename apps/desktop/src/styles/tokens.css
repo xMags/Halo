@@ -20,6 +20,11 @@
   --cth: rgba(52, 60, 78, 0.6);
   --sb: rgba(40, 46, 60, 0.5);
   --sbp: rgba(40, 46, 60, 0.35);
+  /* Search's and the person page's soft placeholder: a poster or portrait
+     that has not arrived, a gradient and one faint glyph. */
+  --phs-a: #23263a;
+  --phs-b: #1a1c2b;
+  --phs-glyph: rgba(255, 255, 255, 0.18);
   --t1: #f4f6fb;
   --t2: #c7cdd9;
   --t3: #8b93a5;
@@ -101,6 +106,9 @@
    white text on it and it on white both read. Not the native WinUI greys. */
 :root[data-theme='light'] {
   --m: #f4f6fa;
+  --phs-a: #e6e9f1;
+  --phs-b: #dadee8;
+  --phs-glyph: rgba(16, 24, 40, 0.22);
   --ly: rgba(255, 255, 255, 0.7);
   --nvl: rgba(255, 255, 255, 0.55);
   --nvs: rgba(16, 24, 40, 0.06);
