@@ -239,6 +239,7 @@ internal fun SettingsScreen(
                     onSignOut = onSignOut,
                     onSignIn = onSignIn,
                     accountAvatar = { size -> AccountAvatar(graph, onClick = null, size = size) },
+                    tmdbKeyCard = if (graph.signedIn) null else { { TmdbKeyCard(graph) } },
                     onOpenDebugGate = onOpenDebugGate,
                 )
             }

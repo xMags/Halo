@@ -68,6 +68,7 @@ import moe.ditto.halo.auth.SystemEpochClock
 import moe.ditto.halo.auth.builtInServerUrl
 import moe.ditto.halo.auth.installedSignInAddons
 import moe.ditto.halo.device.PlatformDeviceStore
+import moe.ditto.halo.people.TmdbKeys
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlaybackStatus
 import moe.ditto.halo.player.PlayerState
@@ -111,6 +112,7 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
         val deviceStore = remember(dependencies) {
             PlatformDeviceStore(dependencies.secureStorage, dependencies.keyValueStore)
         }
+        val tmdbKeys = remember(dependencies) { TmdbKeys(dependencies.secureStorage) }
         val sessionController = remember(dependencies) {
             val authHttpClient = HttpClient()
             SessionController(
@@ -226,6 +228,7 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                     subtitleCacheDirectory = dependencies.subtitleCacheDirectory,
                     downloadRuntime = dependencies.downloadRuntime,
                     downloadStorage = dependencies.downloadStorage,
+                    tmdbKeys = tmdbKeys,
                 )
             }
         }

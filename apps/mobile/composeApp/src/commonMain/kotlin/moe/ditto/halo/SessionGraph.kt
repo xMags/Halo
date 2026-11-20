@@ -15,7 +15,9 @@ import moe.ditto.halo.auth.EpochClock
 import moe.ditto.halo.auth.SystemEpochClock
 import moe.ditto.halo.auth.TokenProvider
 import moe.ditto.halo.browse.AddonsRepository
+import moe.ditto.halo.browse.BackendSearchSources
 import moe.ditto.halo.browse.BrowseRepository
+import moe.ditto.halo.browse.SearchEngine
 import moe.ditto.halo.browse.PosterProbe
 import moe.ditto.halo.cache.HaloKey
 import moe.ditto.halo.cache.QueryCache
@@ -24,6 +26,11 @@ import moe.ditto.halo.device.DeviceBackend
 import moe.ditto.halo.device.PlatformDeviceStore
 import moe.ditto.halo.device.moveRecordsIntoAccount
 import moe.ditto.halo.downloads.AddonDownloadSubtitles
+import moe.ditto.halo.magnets.ReadyMagnet
+import moe.ditto.halo.people.SessionCapabilities
+import moe.ditto.halo.people.TmdbKeySaveResult
+import moe.ditto.halo.people.TmdbKeys
+import moe.ditto.halo.people.saveTmdbKey
 import moe.ditto.halo.downloads.DeviceDownloadRuntime
 import moe.ditto.halo.downloads.DownloadStoragePort
 import moe.ditto.halo.player.StreamVideoHasher
@@ -36,6 +43,9 @@ import moe.ditto.halo.sync.AccountRepository
 import moe.ditto.halo.sync.LibraryRepository
 import moe.ditto.halo.sync.SettingsRepository
 import moe.ditto.halo.sync.WatchStateRepository
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 /** What a session's screens are answered from. */
 internal sealed interface SessionMode {
@@ -73,6 +83,11 @@ internal class SessionGraph(
     subtitleCacheDirectory: String,
     downloadRuntime: DeviceDownloadRuntime,
     downloadStorage: DownloadStoragePort,
+    /**
+     * The viewer's own TMDB key, kept on the phone across sessions. Only Halo
+     * without an account uses it: an account's server has its own token.
+     */
+    val tmdbKeys: TmdbKeys,
     private val clock: EpochClock = SystemEpochClock,
 ) {
     /**
@@ -97,7 +112,7 @@ internal class SessionGraph(
 
     /** The phone's own backend, which only Halo without an account uses. */
     private val deviceBackend: DeviceBackend? =
-        if (accountClient == null) DeviceBackend(httpClient, deviceStore, clock) else null
+        if (accountClient == null) DeviceBackend(httpClient, deviceStore, clock, tmdbKeys = tmdbKeys) else null
 
     /** What every screen asks: the account's server, or the phone itself without one. */
     val backend: HaloBackend = accountClient ?: checkNotNull(deviceBackend)
@@ -124,6 +139,29 @@ internal class SessionGraph(
     /** Asks image hosts which search results have artwork; talks to them, not to Halo. */
     val posterProbe = PosterProbe(httpClient)
     val subtitleFiles = SubtitleFileCache(backend, subtitleCacheDirectory)
+
+    /** People search, id lookups and magnets, as this session offers them; without an account it follows the TMDB key. */
+    val capabilities = SessionCapabilities(scope, backend::getCapabilities, if (accountClient == null) tmdbKeys.status else null)
+
+    /** Checks a pasted TMDB key with TMDB and keeps it on the phone when TMDB takes it. */
+    suspend fun saveTmdbKey(pasted: String): TmdbKeySaveResult = saveTmdbKey(httpClient, tmdbKeys, pasted)
+
+    /** The session's clock, for screens that time something themselves (a magnet's polling limit). */
+    fun nowMs(): Long = clock.nowMs()
+
+    /** The last pasted magnet that came back ready, offered on its title page. */
+    val readyMagnet = ReadyMagnet()
+
+    val searchEngine = SearchEngine(
+        sources = BackendSearchSources(
+            backend = backend,
+            addons = addons::effective,
+            capabilities = capabilities::settled,
+            posterProbe = posterProbe,
+        ),
+        clock = clock,
+        currentYear = { Instant.fromEpochMilliseconds(clock.nowMs()).toLocalDateTime(TimeZone.currentSystemDefault()).year },
+    )
 
     /**
      * Device-owned and application-scoped. This graph contributes only its

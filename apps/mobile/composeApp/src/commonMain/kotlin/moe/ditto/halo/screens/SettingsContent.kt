@@ -84,6 +84,8 @@ internal fun SettingsContent(
     onOpenDebugGate: (() -> Unit)?,
     /** The account's picture at a given size; the screen supplies it, as it needs the session. */
     accountAvatar: @Composable (Dp) -> Unit = {},
+    /** Halo without an account's TMDB key card, under the account card; null when signed in. */
+    tmdbKeyCard: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val responsive = rememberResponsive()
@@ -106,6 +108,7 @@ internal fun SettingsContent(
         onSignIn = onSignIn,
         onOpenDebugGate = onOpenDebugGate,
         accountAvatar = accountAvatar,
+        tmdbKeyCard = tmdbKeyCard,
         withTitleAndCredits = !wide,
     )
     if (wide) {
@@ -170,6 +173,7 @@ private fun settingsBlocks(
     onSignIn: () -> Unit,
     onOpenDebugGate: (() -> Unit)?,
     accountAvatar: @Composable (Dp) -> Unit,
+    tmdbKeyCard: (@Composable () -> Unit)?,
     withTitleAndCredits: Boolean,
 ): List<SettingsBlock> = buildList {
     val preferences = state.settings ?: UserSettings.Empty
@@ -355,6 +359,9 @@ private fun settingsBlocks(
                 SettingsDivider()
                 ActionSettingRow(label = "Sign in", onClick = onSignIn)
             }
+        }
+        tmdbKeyCard?.let { card ->
+            item(key = "tmdb-key") { Box(Modifier.padding(top = HaloSpacing.Md)) { card() } }
         }
     }
 
