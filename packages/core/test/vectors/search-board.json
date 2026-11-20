@@ -1,0 +1,2326 @@
+{
+  "about": "Search ranking and board rules, shared by the TypeScript tests (packages/core) and the Kotlin commonTest (apps/mobile). Titles default to type movie. \"refine\" reveals one catalog (addon rank 0) and lists what passes the cutoffs, top match included, in rank order. Years are judged against currentYear.",
+  "currentYear": 2026,
+  "nameRelevance": [
+    {
+      "name": "Amélie",
+      "query": "amelie",
+      "tier": 0
+    },
+    {
+      "name": "Spider-Man: No Way Home",
+      "query": "spider man",
+      "tier": 1
+    },
+    {
+      "name": "WALL·E",
+      "query": "wall e",
+      "tier": 0
+    },
+    {
+      "name": "Dr. Strange",
+      "query": "doctor strange",
+      "tier": 0
+    },
+    {
+      "name": "Doctor Strange",
+      "query": "dr strange",
+      "tier": 0
+    },
+    {
+      "name": "Mr. Robot",
+      "query": "mister robot",
+      "tier": 0
+    },
+    {
+      "name": "Doctor Stranger",
+      "query": "doctor strange",
+      "tier": 2
+    },
+    {
+      "name": "Doctor Strange in the Multiverse of Madness",
+      "query": "doctor strange",
+      "tier": 1
+    },
+    {
+      "name": "The Strange Case of Doctor Rx",
+      "query": "doctor strange",
+      "tier": 3
+    },
+    {
+      "name": "Amuthu Dosthara",
+      "query": "doctor strange",
+      "tier": 6
+    }
+  ],
+  "parseQuery": [
+    {
+      "query": "  dune   2021 ",
+      "full": "dune   2021",
+      "name": "dune",
+      "year": 2021
+    },
+    {
+      "query": "1917",
+      "full": "1917",
+      "name": "1917",
+      "year": null
+    },
+    {
+      "query": "blade runner 2049",
+      "full": "blade runner 2049",
+      "name": "blade runner 2049",
+      "year": null
+    },
+    {
+      "query": "wonder woman 1984",
+      "full": "wonder woman 1984",
+      "name": "wonder woman",
+      "year": 1984
+    },
+    {
+      "query": "dune 1887",
+      "full": "dune 1887",
+      "name": "dune 1887",
+      "year": null
+    },
+    {
+      "query": "dune 2028",
+      "full": "dune 2028",
+      "name": "dune",
+      "year": 2028
+    },
+    {
+      "query": "dune 12021",
+      "full": "dune 12021",
+      "name": "dune 12021",
+      "year": null
+    }
+  ],
+  "hasNoPoster": [
+    {
+      "poster": "https://image.tmdb.org/t/p/w500null",
+      "none": true
+    },
+    {
+      "poster": "https://image.tmdb.org/t/p/w500/abc.jpg",
+      "none": false
+    },
+    {
+      "none": true
+    },
+    {
+      "poster": "https://mediafusion.test/poster/movie/mf1706190.jpg",
+      "none": true
+    },
+    {
+      "poster": "https://mediafusion.test/poster/series/mf12.png",
+      "none": true
+    },
+    {
+      "poster": "https://mediafusion.test/poster/movie/mf12.jpg?v=3",
+      "none": true
+    },
+    {
+      "poster": "https://cdn.test/cards/12.jpg",
+      "id": "mf12",
+      "none": true
+    },
+    {
+      "poster": "https://cdn.test/cards/12.jpg",
+      "id": "tt12",
+      "none": false
+    },
+    {
+      "poster": "https://live.metahub.space/poster/medium/tt1211837/img",
+      "none": false
+    }
+  ],
+  "rank": [
+    {
+      "case": "two addons ids for one title merge into the better-ranked copy",
+      "query": "dune",
+      "sorted": true,
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt1160419",
+              "type": "movie",
+              "name": "Dune",
+              "releaseInfo": "2021"
+            },
+            {
+              "id": "tt15239678",
+              "type": "movie",
+              "name": "Dune: Part Two",
+              "releaseInfo": "2024"
+            }
+          ]
+        },
+        {
+          "target": "t/movie",
+          "type": "movie",
+          "addonRank": 1,
+          "titles": [
+            {
+              "id": "tmdb:438631",
+              "type": "movie",
+              "name": "Dune",
+              "releaseInfo": "2021"
+            },
+            {
+              "id": "tmdb:693134",
+              "type": "movie",
+              "name": "Dune Part Two",
+              "releaseInfo": "2024"
+            }
+          ]
+        },
+        {
+          "target": "c/series",
+          "type": "series",
+          "addonRank": 2,
+          "titles": [
+            {
+              "id": "tt10466872",
+              "type": "series",
+              "name": "Dune: Prophecy",
+              "releaseInfo": "2024–"
+            },
+            {
+              "id": "tmdb:90228",
+              "type": "series",
+              "name": "Dune: Prophecy",
+              "releaseInfo": "2024-2025"
+            }
+          ]
+        }
+      ],
+      "keys": [
+        "movie:tt1160419",
+        "movie:tt15239678",
+        "series:tt10466872"
+      ]
+    },
+    {
+      "case": "same names of other years, kinds or without a year stay apart",
+      "query": "dune",
+      "sorted": true,
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt1160419",
+              "type": "movie",
+              "name": "Dune",
+              "releaseInfo": "2021"
+            },
+            {
+              "id": "tt0087182",
+              "type": "movie",
+              "name": "Dune",
+              "releaseInfo": "1984"
+            }
+          ]
+        },
+        {
+          "target": "t/movie",
+          "type": "movie",
+          "addonRank": 1,
+          "titles": [
+            {
+              "id": "tt0142032",
+              "type": "series",
+              "name": "Dune",
+              "releaseInfo": "2000"
+            },
+            {
+              "id": "tmdb:1",
+              "type": "movie",
+              "name": "Dune"
+            },
+            {
+              "id": "tmdb:2",
+              "type": "movie",
+              "name": "Dune"
+            }
+          ]
+        }
+      ],
+      "keys": [
+        "movie:tmdb:1",
+        "movie:tmdb:2",
+        "movie:tt0087182",
+        "movie:tt1160419",
+        "series:tt0142032"
+      ]
+    },
+    {
+      "case": "copies are one by IMDb id and the kept copy gains rating and a poster that loads",
+      "query": "crime doctor",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt0035767",
+              "type": "movie",
+              "name": "The Crime Doctor's Strangest Case",
+              "releaseInfo": "1943",
+              "poster": "https://images.metahub.space/poster/small/tt0035767/img"
+            }
+          ]
+        },
+        {
+          "target": "t/movie",
+          "type": "movie",
+          "addonRank": 1,
+          "titles": [
+            {
+              "id": "tmdb:84650",
+              "type": "movie",
+              "name": "Crime Doctor: Strangest Case",
+              "releaseInfo": "1944",
+              "imdbRating": "6.3",
+              "poster": "https://image.tmdb.org/t/p/w500/4at.jpg",
+              "imdb_id": "tt0035767"
+            }
+          ]
+        }
+      ],
+      "keys": [
+        "movie:tt0035767"
+      ],
+      "first": {
+        "imdbRating": "6.3",
+        "poster": "https://image.tmdb.org/t/p/w500/4at.jpg"
+      }
+    },
+    {
+      "case": "a file-name entry folds into the title it names (file first)",
+      "query": "doctor strange",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "mf1706190",
+              "type": "movie",
+              "name": "Doctor Strange (2016)",
+              "poster": "https://mediafusion.test/poster/movie/mf1706190.jpg"
+            }
+          ]
+        },
+        {
+          "target": "t/movie",
+          "type": "movie",
+          "addonRank": 1,
+          "titles": [
+            {
+              "id": "tt1211837",
+              "type": "movie",
+              "name": "Doctor Strange",
+              "releaseInfo": "2016",
+              "poster": "https://live.metahub.space/poster/medium/tt1211837/img"
+            }
+          ]
+        }
+      ],
+      "keys": [
+        "movie:tt1211837"
+      ],
+      "first": {
+        "name": "Doctor Strange",
+        "poster": "https://live.metahub.space/poster/medium/tt1211837/img"
+      }
+    },
+    {
+      "case": "a file-name entry folds into the title it names (real first)",
+      "query": "doctor strange",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt1211837",
+              "type": "movie",
+              "name": "Doctor Strange",
+              "releaseInfo": "2016",
+              "poster": "https://live.metahub.space/poster/medium/tt1211837/img"
+            }
+          ]
+        },
+        {
+          "target": "t/movie",
+          "type": "movie",
+          "addonRank": 1,
+          "titles": [
+            {
+              "id": "mf1706190",
+              "type": "movie",
+              "name": "Doctor Strange (2016)",
+              "poster": "https://mediafusion.test/poster/movie/mf1706190.jpg"
+            }
+          ]
+        }
+      ],
+      "keys": [
+        "movie:tt1211837"
+      ],
+      "first": {
+        "name": "Doctor Strange",
+        "poster": "https://live.metahub.space/poster/medium/tt1211837/img"
+      }
+    },
+    {
+      "case": "a file-name entry alone keeps its place with the year out of its name",
+      "query": "doctor strange",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "mf1706190",
+              "type": "movie",
+              "name": "Doctor Strange (2016)",
+              "poster": "https://mediafusion.test/poster/movie/mf1706190.jpg"
+            }
+          ]
+        }
+      ],
+      "keys": [
+        "movie:mf1706190"
+      ],
+      "first": {
+        "name": "Doctor Strange",
+        "releaseInfo": "2016"
+      }
+    },
+    {
+      "case": "a name holding a year matches the full query",
+      "query": "wonder woman 1984",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt7126948",
+              "type": "movie",
+              "name": "Wonder Woman 1984",
+              "releaseInfo": "2020",
+              "poster": "https://image.tmdb.org/t/p/w500/tt7126948.jpg"
+            }
+          ]
+        }
+      ],
+      "keys": [
+        "movie:tt7126948"
+      ],
+      "firstTier": 0
+    },
+    {
+      "case": "the typed year breaks a tie",
+      "query": "dune 2021",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt0087182",
+              "type": "movie",
+              "name": "Dune",
+              "releaseInfo": "1984",
+              "poster": "https://image.tmdb.org/t/p/w500/tt0087182.jpg"
+            },
+            {
+              "id": "tt1160419",
+              "type": "movie",
+              "name": "Dune",
+              "releaseInfo": "2021",
+              "poster": "https://image.tmdb.org/t/p/w500/tt1160419.jpg"
+            }
+          ]
+        }
+      ],
+      "keys": [
+        "movie:tt1160419",
+        "movie:tt0087182"
+      ]
+    },
+    {
+      "case": "without a year the addon order stands",
+      "query": "dune",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt0087182",
+              "type": "movie",
+              "name": "Dune",
+              "releaseInfo": "1984",
+              "poster": "https://image.tmdb.org/t/p/w500/tt0087182.jpg"
+            },
+            {
+              "id": "tt1160419",
+              "type": "movie",
+              "name": "Dune",
+              "releaseInfo": "2021",
+              "poster": "https://image.tmdb.org/t/p/w500/tt1160419.jpg"
+            }
+          ]
+        }
+      ],
+      "keys": [
+        "movie:tt0087182",
+        "movie:tt1160419"
+      ]
+    },
+    {
+      "case": "copies, then position, then addon rank order equal names, whatever the arrival order",
+      "query": "alien",
+      "reversedToo": true,
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt0118583",
+              "type": "movie",
+              "name": "Alien Resurrection",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt0118583.jpg"
+            },
+            {
+              "id": "tt2316204",
+              "type": "movie",
+              "name": "Alien Covenant",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt2316204.jpg"
+            },
+            {
+              "id": "tt18412256",
+              "type": "movie",
+              "name": "Alien Romulus",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt18412256.jpg"
+            }
+          ]
+        },
+        {
+          "target": "t/movie",
+          "type": "movie",
+          "addonRank": 1,
+          "titles": [
+            {
+              "id": "tt0094631",
+              "type": "movie",
+              "name": "Alien Nation",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt0094631.jpg"
+            },
+            {
+              "id": "tt2316204",
+              "type": "movie",
+              "name": "Alien Covenant",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt2316204.jpg"
+            }
+          ]
+        }
+      ],
+      "keys": [
+        "movie:tt2316204",
+        "movie:tt0118583",
+        "movie:tt0094631",
+        "movie:tt18412256"
+      ],
+      "firstRank": {
+        "copies": 2,
+        "bestPosition": 1,
+        "addonRank": 0
+      }
+    }
+  ],
+  "byRelevance": [
+    {
+      "query": "doctor strange",
+      "titles": [
+        {
+          "id": "1",
+          "type": "series",
+          "name": "Doctor Stranger"
+        },
+        {
+          "id": "2",
+          "type": "movie",
+          "name": "Doctor Strange in the Multiverse of Madness"
+        },
+        {
+          "id": "3",
+          "type": "series",
+          "name": "Amuthu Dosthara"
+        },
+        {
+          "id": "4",
+          "type": "movie",
+          "name": "Dr. Strangelove"
+        },
+        {
+          "id": "5",
+          "type": "movie",
+          "name": "Doctor Strange"
+        },
+        {
+          "id": "6",
+          "type": "movie",
+          "name": "The Strange Case of Doctor Rx"
+        }
+      ],
+      "ids": [
+        "5",
+        "2",
+        "1",
+        "4",
+        "6",
+        "3"
+      ]
+    }
+  ],
+  "refine": [
+    {
+      "case": "a screenful naming every word drops loose names",
+      "query": "doctor strange",
+      "titles": [
+        {
+          "id": "tmdb:0",
+          "type": "movie",
+          "name": "Doctor Strange 0",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:0.jpg"
+        },
+        {
+          "id": "tmdb:1",
+          "type": "movie",
+          "name": "Doctor Strange 1",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:1.jpg"
+        },
+        {
+          "id": "tmdb:2",
+          "type": "movie",
+          "name": "Doctor Strange 2",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:2.jpg"
+        },
+        {
+          "id": "tmdb:3",
+          "type": "movie",
+          "name": "Doctor Strange 3",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:3.jpg"
+        },
+        {
+          "id": "tmdb:4",
+          "type": "movie",
+          "name": "Doctor Strange 4",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:4.jpg"
+        },
+        {
+          "id": "tmdb:5",
+          "type": "movie",
+          "name": "Doctor Strange 5",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:5.jpg"
+        },
+        {
+          "id": "tmdb:6",
+          "type": "movie",
+          "name": "Doctor Strange 6",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:6.jpg"
+        },
+        {
+          "id": "tmdb:7",
+          "type": "movie",
+          "name": "Doctor Strange 7",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:7.jpg"
+        },
+        {
+          "id": "tmdb:90",
+          "type": "movie",
+          "name": "Doctor Sleep",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:90.jpg"
+        },
+        {
+          "id": "tmdb:91",
+          "type": "movie",
+          "name": "Strangers",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:91.jpg"
+        }
+      ],
+      "ids": [
+        "tmdb:0",
+        "tmdb:1",
+        "tmdb:2",
+        "tmdb:3",
+        "tmdb:4",
+        "tmdb:5",
+        "tmdb:6",
+        "tmdb:7"
+      ]
+    },
+    {
+      "case": "loose names stay short of a screenful",
+      "query": "doctor strange",
+      "titles": [
+        {
+          "id": "tmdb:1",
+          "type": "movie",
+          "name": "Doctor Strange 1",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:1.jpg"
+        },
+        {
+          "id": "tmdb:2",
+          "type": "movie",
+          "name": "Doctor Strange 2",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:2.jpg"
+        },
+        {
+          "id": "tmdb:3",
+          "type": "movie",
+          "name": "Doctor Strange 3",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:3.jpg"
+        },
+        {
+          "id": "tmdb:4",
+          "type": "movie",
+          "name": "Doctor Strange 4",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:4.jpg"
+        },
+        {
+          "id": "tmdb:5",
+          "type": "movie",
+          "name": "Doctor Strange 5",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:5.jpg"
+        },
+        {
+          "id": "tmdb:6",
+          "type": "movie",
+          "name": "Doctor Strange 6",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:6.jpg"
+        },
+        {
+          "id": "tmdb:7",
+          "type": "movie",
+          "name": "Doctor Strange 7",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:7.jpg"
+        },
+        {
+          "id": "tmdb:90",
+          "type": "movie",
+          "name": "Doctor Sleep",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:90.jpg"
+        },
+        {
+          "id": "tmdb:91",
+          "type": "movie",
+          "name": "Strangers",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:91.jpg"
+        }
+      ],
+      "count": 9
+    },
+    {
+      "case": "product codes go",
+      "query": "e",
+      "titles": [
+        {
+          "id": "tmdb:1",
+          "type": "movie",
+          "name": "Doctor Strange",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:1.jpg"
+        },
+        {
+          "id": "tmdb:2",
+          "type": "movie",
+          "name": "MIMK-180 I received a strange treatment from a doctor",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:2.jpg"
+        },
+        {
+          "id": "tmdb:3",
+          "type": "movie",
+          "name": "THX 1138",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:3.jpg"
+        },
+        {
+          "id": "tmdb:4",
+          "type": "movie",
+          "name": "WALL-E",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:4.jpg"
+        }
+      ],
+      "ids": [
+        "tmdb:4",
+        "tmdb:1"
+      ]
+    },
+    {
+      "case": "product codes go even matching every word",
+      "query": "strange doctor",
+      "titles": [
+        {
+          "id": "tmdb:1",
+          "type": "movie",
+          "name": "Doctor Strange",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:1.jpg"
+        },
+        {
+          "id": "tmdb:2",
+          "type": "movie",
+          "name": "MIMK-180 I received a strange treatment from a doctor",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:2.jpg"
+        },
+        {
+          "id": "tmdb:3",
+          "type": "movie",
+          "name": "THX 1138",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:3.jpg"
+        },
+        {
+          "id": "tmdb:4",
+          "type": "movie",
+          "name": "WALL-E",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:4.jpg"
+        }
+      ],
+      "ids": [
+        "tmdb:1"
+      ]
+    },
+    {
+      "case": "a result sharing no word goes",
+      "query": "doctor strange",
+      "titles": [
+        {
+          "id": "tmdb:1",
+          "type": "movie",
+          "name": "Doctor Strange",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:1.jpg"
+        },
+        {
+          "id": "tmdb:2",
+          "type": "movie",
+          "name": "Faust and the Devil",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:2.jpg"
+        },
+        {
+          "id": "tmdb:3",
+          "type": "movie",
+          "name": "Dr. Strange",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:3.jpg"
+        }
+      ],
+      "ids": [
+        "tmdb:1",
+        "tmdb:3"
+      ]
+    },
+    {
+      "case": "an answer in another language stays whole",
+      "query": "doctor strange",
+      "titles": [
+        {
+          "id": "tmdb:1",
+          "type": "movie",
+          "name": "डॉक्टर स्ट्रेंज",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:1.jpg"
+        },
+        {
+          "id": "tmdb:2",
+          "type": "movie",
+          "name": "कुछ और",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:2.jpg"
+        }
+      ],
+      "count": 2
+    },
+    {
+      "case": "year and artwork: relevance before completeness",
+      "query": "doctor strange",
+      "titles": [
+        {
+          "id": "tmdb:1",
+          "type": "movie",
+          "name": "Doctor Strange Love",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500null"
+        },
+        {
+          "id": "tmdb:2",
+          "type": "movie",
+          "name": "Untitled Doctor Strange Movie",
+          "releaseInfo": "",
+          "poster": "https://image.tmdb.org/t/p/w500null"
+        },
+        {
+          "id": "tt3",
+          "type": "movie",
+          "name": "Doctor Strange 3",
+          "poster": "https://images.metahub.space/poster/small/tt3/img"
+        },
+        {
+          "id": "tt4",
+          "type": "movie",
+          "name": "Doctor Strange: Multiversal Madness",
+          "releaseInfo": "2016",
+          "poster": "https://images.metahub.space/poster/small/tt4/img"
+        },
+        {
+          "id": "tmdb:5",
+          "type": "movie",
+          "name": "Doctor Strange in the Multiverse of Madness",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:5.jpg"
+        },
+        {
+          "id": "tmdb:6",
+          "type": "movie",
+          "name": "The Strange Case of Doctor Rx",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:6.jpg"
+        }
+      ],
+      "ids": [
+        "tt4",
+        "tmdb:5",
+        "tmdb:1",
+        "tt3",
+        "tmdb:6"
+      ]
+    },
+    {
+      "case": "an artless title goes beside a screenful of complete ones",
+      "query": "doctor strange",
+      "titles": [
+        {
+          "id": "tmdb:0",
+          "type": "movie",
+          "name": "Doctor Strange 0",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:0.jpg"
+        },
+        {
+          "id": "tmdb:1",
+          "type": "movie",
+          "name": "Doctor Strange 1",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:1.jpg"
+        },
+        {
+          "id": "tmdb:2",
+          "type": "movie",
+          "name": "Doctor Strange 2",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:2.jpg"
+        },
+        {
+          "id": "tmdb:3",
+          "type": "movie",
+          "name": "Doctor Strange 3",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:3.jpg"
+        },
+        {
+          "id": "tmdb:4",
+          "type": "movie",
+          "name": "Doctor Strange 4",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:4.jpg"
+        },
+        {
+          "id": "tmdb:5",
+          "type": "movie",
+          "name": "Doctor Strange 5",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:5.jpg"
+        },
+        {
+          "id": "tmdb:6",
+          "type": "movie",
+          "name": "Doctor Strange 6",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:6.jpg"
+        },
+        {
+          "id": "tmdb:7",
+          "type": "movie",
+          "name": "Doctor Strange 7",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:7.jpg"
+        },
+        {
+          "id": "tmdb:99",
+          "type": "movie",
+          "name": "Doctor Strange Love",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500null"
+        }
+      ],
+      "absent": [
+        "tmdb:99"
+      ]
+    },
+    {
+      "case": "an artless title stays last short of a screenful",
+      "query": "doctor strange",
+      "titles": [
+        {
+          "id": "tmdb:1",
+          "type": "movie",
+          "name": "Doctor Strange 1",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:1.jpg"
+        },
+        {
+          "id": "tmdb:2",
+          "type": "movie",
+          "name": "Doctor Strange 2",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:2.jpg"
+        },
+        {
+          "id": "tmdb:3",
+          "type": "movie",
+          "name": "Doctor Strange 3",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:3.jpg"
+        },
+        {
+          "id": "tmdb:4",
+          "type": "movie",
+          "name": "Doctor Strange 4",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:4.jpg"
+        },
+        {
+          "id": "tmdb:5",
+          "type": "movie",
+          "name": "Doctor Strange 5",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:5.jpg"
+        },
+        {
+          "id": "tmdb:6",
+          "type": "movie",
+          "name": "Doctor Strange 6",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:6.jpg"
+        },
+        {
+          "id": "tmdb:7",
+          "type": "movie",
+          "name": "Doctor Strange 7",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500/tmdb:7.jpg"
+        },
+        {
+          "id": "tmdb:99",
+          "type": "movie",
+          "name": "Doctor Strange Love",
+          "releaseInfo": "2016",
+          "poster": "https://image.tmdb.org/t/p/w500null"
+        }
+      ],
+      "lastId": "tmdb:99"
+    }
+  ],
+  "board": [
+    {
+      "case": "the exact name is the top match and is not listed again",
+      "query": "breaking bad",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "m1",
+              "type": "movie",
+              "name": "El Camino: A Breaking Bad Movie",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/m1.jpg"
+            }
+          ]
+        },
+        {
+          "target": "c/series",
+          "type": "series",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "s1",
+              "type": "series",
+              "name": "Breaking Bad",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/s1.jpg"
+            }
+          ]
+        },
+        {
+          "target": "t/movie",
+          "type": "movie",
+          "addonRank": 1,
+          "titles": [
+            {
+              "id": "m9",
+              "type": "movie",
+              "name": "Breaking Bad Habits",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/m9.jpg"
+            }
+          ]
+        }
+      ],
+      "top": "s1",
+      "titles": [
+        "m9",
+        "m1"
+      ]
+    },
+    {
+      "case": "with a year typed the title from that year is the top match",
+      "query": "dune 2021",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt0087182",
+              "type": "movie",
+              "name": "Dune",
+              "releaseInfo": "1984",
+              "poster": "https://image.tmdb.org/t/p/w500/tt0087182.jpg"
+            },
+            {
+              "id": "tt1160419",
+              "type": "movie",
+              "name": "Dune",
+              "releaseInfo": "2021",
+              "poster": "https://image.tmdb.org/t/p/w500/tt1160419.jpg"
+            }
+          ]
+        }
+      ],
+      "top": "tt1160419"
+    },
+    {
+      "case": "an empty catalog does not hold the top match back",
+      "query": "doctor strange",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": []
+        },
+        {
+          "target": "t/movie",
+          "type": "movie",
+          "addonRank": 1,
+          "titles": [
+            {
+              "id": "tt1",
+              "type": "movie",
+              "name": "Doctor Strange",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt1.jpg"
+            }
+          ]
+        }
+      ],
+      "top": "tt1",
+      "titles": []
+    },
+    {
+      "case": "no answers show nothing",
+      "query": "doctor strange",
+      "answers": [],
+      "top": null,
+      "titles": []
+    },
+    {
+      "case": "a name merely holding the words is no top match",
+      "query": "breaking bad",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "m1",
+              "type": "movie",
+              "name": "El Camino: A Breaking Bad Movie",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/m1.jpg"
+            }
+          ]
+        }
+      ],
+      "top": null,
+      "titles": [
+        "m1"
+      ]
+    },
+    {
+      "case": "an exact name of another year than typed is no top match",
+      "query": "dune 2021",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt0087182",
+              "type": "movie",
+              "name": "Dune",
+              "releaseInfo": "1984",
+              "poster": "https://image.tmdb.org/t/p/w500/tt0087182.jpg"
+            }
+          ]
+        }
+      ],
+      "top": null
+    },
+    {
+      "case": "a name nobody is known by keeps no unrelated titles",
+      "query": "christopher nolan",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt1",
+              "type": "movie",
+              "name": "Inside Christopher Nolan's Oppenheimer",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt1.jpg"
+            },
+            {
+              "id": "tt2",
+              "type": "movie",
+              "name": "Interstellar",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt2.jpg"
+            },
+            {
+              "id": "tt3",
+              "type": "movie",
+              "name": "Christopher Columbus",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt3.jpg"
+            },
+            {
+              "id": "tmdb:4",
+              "type": "movie",
+              "name": "Some Short",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500null"
+            },
+            {
+              "id": "tt5",
+              "type": "movie",
+              "name": "Inception",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt5.jpg"
+            }
+          ]
+        }
+      ],
+      "titles": [
+        "tt1",
+        "tt3"
+      ]
+    },
+    {
+      "case": "a person's films stay after the titles named like the query, and a late answer is judged the same",
+      "query": "christopher nolan",
+      "meaning": "person",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt1",
+              "type": "movie",
+              "name": "Inside Christopher Nolan's Oppenheimer",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt1.jpg"
+            },
+            {
+              "id": "tt2",
+              "type": "movie",
+              "name": "Interstellar",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt2.jpg"
+            },
+            {
+              "id": "tt3",
+              "type": "movie",
+              "name": "Christopher Columbus",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt3.jpg"
+            },
+            {
+              "id": "tmdb:4",
+              "type": "movie",
+              "name": "Some Short",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500null"
+            },
+            {
+              "id": "tt5",
+              "type": "movie",
+              "name": "Inception",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt5.jpg"
+            }
+          ]
+        }
+      ],
+      "titles": [
+        "tt1",
+        "tt2",
+        "tt5"
+      ],
+      "cutoffs": {
+        "keepCredited": true,
+        "dropSomeWords": true
+      },
+      "steps": [
+        {
+          "absorb": {
+            "target": "t/movie",
+            "type": "movie",
+            "addonRank": 1,
+            "titles": [
+              {
+                "id": "tt6",
+                "type": "movie",
+                "name": "Tenet",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tt6.jpg"
+              },
+              {
+                "id": "tt7",
+                "type": "movie",
+                "name": "Christopher Robin",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tt7.jpg"
+              }
+            ]
+          },
+          "appends": [
+            "tt6"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "a title named exactly the query is what was meant, person or not",
+      "query": "dune",
+      "meaning": "person",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt8",
+              "type": "movie",
+              "name": "Dune",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt8.jpg"
+            },
+            {
+              "id": "tt9",
+              "type": "movie",
+              "name": "Arrival",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt9.jpg"
+            }
+          ]
+        }
+      ],
+      "top": "tt8",
+      "titles": [],
+      "cutoffs": {
+        "keepCredited": false
+      },
+      "steps": [
+        {
+          "admitPersonWork": false
+        }
+      ]
+    },
+    {
+      "case": "known to be a person only after the reveal: nothing shown moves and their work is appended",
+      "query": "christopher nolan",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt1",
+              "type": "movie",
+              "name": "Inside Christopher Nolan's Oppenheimer",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt1.jpg"
+            },
+            {
+              "id": "tt2",
+              "type": "movie",
+              "name": "Interstellar",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt2.jpg"
+            },
+            {
+              "id": "tt3",
+              "type": "movie",
+              "name": "Christopher Columbus",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt3.jpg"
+            },
+            {
+              "id": "tmdb:4",
+              "type": "movie",
+              "name": "Some Short",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500null"
+            },
+            {
+              "id": "tt5",
+              "type": "movie",
+              "name": "Inception",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt5.jpg"
+            }
+          ]
+        }
+      ],
+      "titles": [
+        "tt1",
+        "tt3"
+      ],
+      "steps": [
+        {
+          "admitPersonWork": true
+        },
+        {
+          "admitPersonWork": false
+        },
+        {
+          "absorb": {
+            "target": "c/movie",
+            "type": "movie",
+            "addonRank": 0,
+            "titles": [
+              {
+                "id": "tt1",
+                "type": "movie",
+                "name": "Inside Christopher Nolan's Oppenheimer",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tt1.jpg"
+              },
+              {
+                "id": "tt2",
+                "type": "movie",
+                "name": "Interstellar",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tt2.jpg"
+              },
+              {
+                "id": "tt3",
+                "type": "movie",
+                "name": "Christopher Columbus",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tt3.jpg"
+              },
+              {
+                "id": "tmdb:4",
+                "type": "movie",
+                "name": "Some Short",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500null"
+              },
+              {
+                "id": "tt5",
+                "type": "movie",
+                "name": "Inception",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tt5.jpg"
+              }
+            ]
+          },
+          "appends": [
+            "tt2",
+            "tt5"
+          ],
+          "updates": [],
+          "topMatchUpdate": null
+        },
+        {
+          "absorb": {
+            "target": "t/movie",
+            "type": "movie",
+            "addonRank": 1,
+            "titles": [
+              {
+                "id": "tt6",
+                "type": "movie",
+                "name": "Tenet",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tt6.jpg"
+              },
+              {
+                "id": "tt5",
+                "type": "movie",
+                "name": "Inception",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tt5.jpg"
+              }
+            ]
+          },
+          "appends": [
+            "tt6"
+          ]
+        }
+      ],
+      "finalTitles": [
+        "tt1",
+        "tt3",
+        "tt2",
+        "tt5",
+        "tt6"
+      ]
+    },
+    {
+      "case": "a poster link that leads nowhere drops a person's film and puts a named one after those with art",
+      "query": "christopher nolan",
+      "meaning": "person",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt1",
+              "type": "movie",
+              "name": "Inside Christopher Nolan's Oppenheimer",
+              "releaseInfo": "2016",
+              "poster": "https://images.metahub.space/poster/small/tt1/img",
+              "posterMissing": true
+            },
+            {
+              "id": "tt2",
+              "type": "movie",
+              "name": "IMDb Asks",
+              "releaseInfo": "2016",
+              "poster": "https://images.metahub.space/poster/small/tt2/img",
+              "posterMissing": true
+            },
+            {
+              "id": "tt3",
+              "type": "movie",
+              "name": "Interstellar",
+              "releaseInfo": "2016",
+              "poster": "https://images.metahub.space/poster/small/tt3/img"
+            },
+            {
+              "id": "tmdb:4",
+              "type": "movie",
+              "name": "Some Short",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500null"
+            },
+            {
+              "id": "tt5",
+              "type": "movie",
+              "name": "Inception",
+              "releaseInfo": "2016",
+              "poster": "https://images.metahub.space/poster/small/tt5/img"
+            }
+          ]
+        }
+      ],
+      "titles": [
+        "tt1",
+        "tt3",
+        "tt5"
+      ]
+    },
+    {
+      "case": "a better addon answering late still lands after the last card",
+      "query": "doctor strange",
+      "answers": [
+        {
+          "target": "t/movie",
+          "type": "movie",
+          "addonRank": 1,
+          "titles": [
+            {
+              "id": "tt1",
+              "type": "movie",
+              "name": "Doctor Strange",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt1.jpg"
+            },
+            {
+              "id": "tt2",
+              "type": "movie",
+              "name": "Doctor Strange 2",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt2.jpg"
+            }
+          ]
+        }
+      ],
+      "top": "tt1",
+      "titles": [
+        "tt2"
+      ],
+      "steps": [
+        {
+          "absorb": {
+            "target": "c/movie",
+            "type": "movie",
+            "addonRank": 0,
+            "titles": [
+              {
+                "id": "tt9",
+                "type": "movie",
+                "name": "Doctor Strange",
+                "releaseInfo": "1978",
+                "poster": "https://image.tmdb.org/t/p/w500/tt9.jpg"
+              },
+              {
+                "id": "tt3",
+                "type": "movie",
+                "name": "Doctor Strange 3",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tt3.jpg"
+              }
+            ]
+          },
+          "appends": [
+            "tt9",
+            "tt3"
+          ],
+          "updates": [],
+          "topMatchUpdate": null
+        }
+      ],
+      "finalTitles": [
+        "tt2",
+        "tt9",
+        "tt3"
+      ],
+      "finalTop": "tt1"
+    },
+    {
+      "case": "a late copy fills a shown card in place and the top match too",
+      "query": "doctor strange",
+      "answers": [
+        {
+          "target": "t/movie",
+          "type": "movie",
+          "addonRank": 1,
+          "titles": [
+            {
+              "id": "tt1211837",
+              "type": "movie",
+              "name": "Doctor Strange",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tt1211837.jpg"
+            },
+            {
+              "id": "tmdb:5",
+              "type": "movie",
+              "name": "Doctor Strange in the Multiverse of Madness",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tmdb:5.jpg",
+              "imdb_id": "tt9419884"
+            }
+          ]
+        }
+      ],
+      "top": "tt1211837",
+      "titles": [
+        "tmdb:5"
+      ],
+      "steps": [
+        {
+          "absorb": {
+            "target": "c/movie",
+            "type": "movie",
+            "addonRank": 0,
+            "titles": [
+              {
+                "id": "tt9419884",
+                "type": "movie",
+                "name": "Doctor Strange in the Multiverse of Madness",
+                "releaseInfo": "2022",
+                "imdbRating": "6.9",
+                "description": "Wanda."
+              },
+              {
+                "id": "tt1211837",
+                "type": "movie",
+                "name": "Doctor Strange",
+                "releaseInfo": "2016",
+                "imdbRating": "7.5"
+              }
+            ]
+          },
+          "appends": [],
+          "updates": [
+            {
+              "index": 0,
+              "id": "tmdb:5",
+              "imdbRating": "6.9",
+              "description": "Wanda.",
+              "poster": "https://image.tmdb.org/t/p/w500/tmdb:5.jpg"
+            }
+          ],
+          "topMatchUpdate": {
+            "id": "tt1211837",
+            "imdbRating": "7.5"
+          }
+        },
+        {
+          "absorb": {
+            "target": "c/movie",
+            "type": "movie",
+            "addonRank": 0,
+            "titles": [
+              {
+                "id": "tt9419884",
+                "type": "movie",
+                "name": "Doctor Strange in the Multiverse of Madness",
+                "releaseInfo": "2022",
+                "imdbRating": "6.9",
+                "description": "Wanda."
+              },
+              {
+                "id": "tt1211837",
+                "type": "movie",
+                "name": "Doctor Strange",
+                "releaseInfo": "2016",
+                "imdbRating": "7.5"
+              }
+            ]
+          },
+          "appends": [],
+          "updates": [],
+          "topMatchUpdate": null
+        }
+      ]
+    },
+    {
+      "case": "a screenful sets every cutoff and late titles they drop are not appended",
+      "query": "doctor strange",
+      "answers": [
+        {
+          "target": "t/movie",
+          "type": "movie",
+          "addonRank": 1,
+          "titles": [
+            {
+              "id": "tmdb:0",
+              "type": "movie",
+              "name": "Doctor Strange 0",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tmdb:0.jpg"
+            },
+            {
+              "id": "tmdb:1",
+              "type": "movie",
+              "name": "Doctor Strange 1",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tmdb:1.jpg"
+            },
+            {
+              "id": "tmdb:2",
+              "type": "movie",
+              "name": "Doctor Strange 2",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tmdb:2.jpg"
+            },
+            {
+              "id": "tmdb:3",
+              "type": "movie",
+              "name": "Doctor Strange 3",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tmdb:3.jpg"
+            },
+            {
+              "id": "tmdb:4",
+              "type": "movie",
+              "name": "Doctor Strange 4",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tmdb:4.jpg"
+            },
+            {
+              "id": "tmdb:5",
+              "type": "movie",
+              "name": "Doctor Strange 5",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tmdb:5.jpg"
+            },
+            {
+              "id": "tmdb:6",
+              "type": "movie",
+              "name": "Doctor Strange 6",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tmdb:6.jpg"
+            },
+            {
+              "id": "tmdb:7",
+              "type": "movie",
+              "name": "Doctor Strange 7",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tmdb:7.jpg"
+            }
+          ]
+        }
+      ],
+      "cutoffs": {
+        "dropUnrelated": true,
+        "dropSomeWords": true,
+        "dropArtless": true
+      },
+      "steps": [
+        {
+          "absorb": {
+            "target": "c/movie",
+            "type": "movie",
+            "addonRank": 0,
+            "titles": [
+              {
+                "id": "tmdb:90",
+                "type": "movie",
+                "name": "Doctor Sleep",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tmdb:90.jpg"
+              },
+              {
+                "id": "tmdb:91",
+                "type": "movie",
+                "name": "Faust and the Devil",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tmdb:91.jpg"
+              },
+              {
+                "id": "tmdb:92",
+                "type": "movie",
+                "name": "Doctor Strange Love",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500null"
+              }
+            ]
+          },
+          "appends": [],
+          "updates": [],
+          "topMatchUpdate": null
+        }
+      ]
+    },
+    {
+      "case": "cutoffs frozen at a small reveal are not tightened by a late screenful",
+      "query": "doctor strange",
+      "answers": [
+        {
+          "target": "t/movie",
+          "type": "movie",
+          "addonRank": 1,
+          "titles": [
+            {
+              "id": "tmdb:0",
+              "type": "movie",
+              "name": "Doctor Strange 0",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tmdb:0.jpg"
+            },
+            {
+              "id": "tmdb:1",
+              "type": "movie",
+              "name": "Doctor Strange 1",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500/tmdb:1.jpg"
+            }
+          ]
+        }
+      ],
+      "cutoffs": {
+        "dropUnrelated": true,
+        "dropSomeWords": false,
+        "dropArtless": false
+      },
+      "steps": [
+        {
+          "absorb": {
+            "target": "c/movie",
+            "type": "movie",
+            "addonRank": 0,
+            "titles": [
+              {
+                "id": "tmdb:2",
+                "type": "movie",
+                "name": "Doctor Strange 2",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tmdb:2.jpg"
+              },
+              {
+                "id": "tmdb:3",
+                "type": "movie",
+                "name": "Doctor Strange 3",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tmdb:3.jpg"
+              },
+              {
+                "id": "tmdb:4",
+                "type": "movie",
+                "name": "Doctor Strange 4",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tmdb:4.jpg"
+              },
+              {
+                "id": "tmdb:5",
+                "type": "movie",
+                "name": "Doctor Strange 5",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tmdb:5.jpg"
+              },
+              {
+                "id": "tmdb:6",
+                "type": "movie",
+                "name": "Doctor Strange 6",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tmdb:6.jpg"
+              },
+              {
+                "id": "tmdb:7",
+                "type": "movie",
+                "name": "Doctor Strange 7",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tmdb:7.jpg"
+              },
+              {
+                "id": "tmdb:90",
+                "type": "movie",
+                "name": "Doctor Sleep",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tmdb:90.jpg"
+              },
+              {
+                "id": "tmdb:91",
+                "type": "movie",
+                "name": "Faust and the Devil",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500/tmdb:91.jpg"
+              },
+              {
+                "id": "tmdb:92",
+                "type": "movie",
+                "name": "Doctor Strange Love",
+                "releaseInfo": "2016",
+                "poster": "https://image.tmdb.org/t/p/w500null"
+              }
+            ]
+          },
+          "appends": [
+            "tmdb:2",
+            "tmdb:3",
+            "tmdb:4",
+            "tmdb:5",
+            "tmdb:6",
+            "tmdb:7",
+            "tmdb:90",
+            "tmdb:92"
+          ]
+        }
+      ]
+    }
+  ],
+  "posterLinks": [
+    {
+      "query": "christopher nolan",
+      "meaning": "person",
+      "answers": [
+        {
+          "target": "c/movie",
+          "type": "movie",
+          "addonRank": 0,
+          "titles": [
+            {
+              "id": "tt1",
+              "type": "movie",
+              "name": "Inside Christopher Nolan's Oppenheimer",
+              "releaseInfo": "2016",
+              "poster": "https://images.metahub.space/poster/small/tt1/img"
+            },
+            {
+              "id": "tt2",
+              "type": "movie",
+              "name": "IMDb Asks",
+              "releaseInfo": "2016",
+              "poster": "https://images.metahub.space/poster/small/tt2/img"
+            },
+            {
+              "id": "tt3",
+              "type": "movie",
+              "name": "Interstellar",
+              "releaseInfo": "2016",
+              "poster": "https://images.metahub.space/poster/small/tt3/img"
+            },
+            {
+              "id": "tmdb:4",
+              "type": "movie",
+              "name": "Some Short",
+              "releaseInfo": "2016",
+              "poster": "https://image.tmdb.org/t/p/w500null"
+            },
+            {
+              "id": "tt5",
+              "type": "movie",
+              "name": "Inception",
+              "releaseInfo": "2016",
+              "poster": "https://images.metahub.space/poster/small/tt5/img"
+            }
+          ]
+        }
+      ],
+      "limit": 24,
+      "links": [
+        "https://images.metahub.space/poster/small/tt1/img",
+        "https://images.metahub.space/poster/small/tt2/img",
+        "https://images.metahub.space/poster/small/tt3/img",
+        "https://images.metahub.space/poster/small/tt5/img"
+      ]
+    }
+  ],
+  "mergeCopies": [
+    {
+      "case": "a copy with a poster that draws clears the missing mark",
+      "kept": {
+        "id": "tt2",
+        "type": "movie",
+        "name": "IMDb Asks",
+        "releaseInfo": "2016",
+        "poster": "https://images.metahub.space/poster/small/tt2/img",
+        "posterMissing": true
+      },
+      "other": {
+        "id": "tt2",
+        "type": "movie",
+        "name": "IMDb Asks",
+        "releaseInfo": "2016",
+        "poster": "https://image.tmdb.org/t/p/w500/asks.jpg"
+      },
+      "posterMissing": false,
+      "poster": "https://image.tmdb.org/t/p/w500/asks.jpg"
+    },
+    {
+      "case": "without a better poster the mark stays",
+      "kept": {
+        "id": "tt2",
+        "type": "movie",
+        "name": "IMDb Asks",
+        "releaseInfo": "2016",
+        "poster": "https://images.metahub.space/poster/small/tt2/img",
+        "posterMissing": true
+      },
+      "other": {
+        "id": "tt2",
+        "type": "movie",
+        "name": "IMDb Asks",
+        "releaseInfo": "2016",
+        "poster": "https://images.metahub.space/poster/small/tt2/img",
+        "posterMissing": true
+      },
+      "posterMissing": true
+    }
+  ],
+  "reveal": [
+    {
+      "pending": 0,
+      "total": 3,
+      "answeredWithItems": 0,
+      "sinceMs": 10,
+      "decision": "reveal"
+    },
+    {
+      "pending": 0,
+      "total": 0,
+      "answeredWithItems": 0,
+      "sinceMs": 0,
+      "decision": "reveal"
+    },
+    {
+      "pending": 2,
+      "total": 3,
+      "answeredWithItems": 1,
+      "sinceMs": 249,
+      "decision": "wait"
+    },
+    {
+      "pending": 1,
+      "total": 3,
+      "answeredWithItems": 2,
+      "sinceMs": 600,
+      "decision": "wait"
+    },
+    {
+      "pending": 1,
+      "total": 3,
+      "answeredWithItems": 2,
+      "sinceMs": 1200,
+      "decision": "reveal"
+    },
+    {
+      "pending": 1,
+      "total": 3,
+      "answeredWithItems": 0,
+      "sinceMs": 5000,
+      "decision": "wait"
+    },
+    {
+      "pending": 1,
+      "total": 3,
+      "answeredWithItems": 1,
+      "sinceMs": 5000,
+      "decision": "reveal"
+    }
+  ],
+  "suggestions": [
+    {
+      "history": [
+        "dune part two",
+        "Dune",
+        "the office"
+      ],
+      "typed": "dun",
+      "found": [],
+      "expect": [
+        "dune part two",
+        "Dune"
+      ]
+    },
+    {
+      "history": [
+        "dune part two",
+        "Dune",
+        "the office"
+      ],
+      "typed": "dune",
+      "found": [],
+      "expect": [
+        "dune part two"
+      ]
+    },
+    {
+      "history": [
+        "dune part two",
+        "Dune",
+        "the office"
+      ],
+      "typed": "",
+      "found": [],
+      "expect": []
+    },
+    {
+      "history": [
+        "a1x",
+        "a2x",
+        "a3x",
+        "a4x",
+        "a5x",
+        "a6x"
+      ],
+      "typed": "x",
+      "found": [],
+      "expect": [
+        "a1x",
+        "a2x",
+        "a3x",
+        "a4x",
+        "a5x"
+      ]
+    },
+    {
+      "history": [
+        "dune part two",
+        "Dune",
+        "the office"
+      ],
+      "typed": "dun",
+      "found": [
+        "Christopher Nolan",
+        "dune",
+        "  ",
+        "Dune Part Two",
+        "Arrival"
+      ],
+      "expect": [
+        "dune part two",
+        "Dune",
+        "Christopher Nolan",
+        "Arrival"
+      ]
+    },
+    {
+      "history": [],
+      "typed": "crystophar nolan",
+      "found": [
+        "Christopher Nolan",
+        "dune",
+        "  ",
+        "Dune Part Two",
+        "Arrival"
+      ],
+      "expect": [
+        "Christopher Nolan",
+        "dune",
+        "Dune Part Two",
+        "Arrival"
+      ]
+    },
+    {
+      "history": [],
+      "typed": "arrival",
+      "found": [
+        "Christopher Nolan",
+        "dune",
+        "  ",
+        "Dune Part Two",
+        "Arrival"
+      ],
+      "expect": [
+        "Christopher Nolan",
+        "dune",
+        "Dune Part Two"
+      ]
+    },
+    {
+      "history": [],
+      "typed": "",
+      "found": [
+        "Christopher Nolan"
+      ],
+      "expect": []
+    }
+  ],
+  "failureNote": [
+    {
+      "failed": [
+        "Cinemeta",
+        "Cinemeta"
+      ],
+      "total": 2,
+      "note": "Search could not reach your addons. Check your connection and try again."
+    },
+    {
+      "failed": [
+        "Cinemeta",
+        "Cinemeta"
+      ],
+      "total": 3,
+      "note": "Cinemeta did not answer, so its results are missing."
+    },
+    {
+      "failed": [
+        "Cinemeta",
+        "TMDB"
+      ],
+      "total": 4,
+      "note": "Cinemeta, TMDB did not answer, so their results are missing."
+    },
+    {
+      "failed": [],
+      "total": 4,
+      "note": ""
+    }
+  ],
+  "stillAsking": [
+    {
+      "pending": 1,
+      "note": "Still asking 1 more catalog…"
+    },
+    {
+      "pending": 3,
+      "note": "Still asking 3 more catalogs…"
+    }
+  ]
+}

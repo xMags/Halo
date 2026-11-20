@@ -247,8 +247,18 @@ export function refineResults(
 
 const IMDB_ID = /^tt\d+$/
 
+/** Whether an id is an IMDb title id, `tt` and digits. */
+export function isImdbId(id: string): boolean {
+  return IMDB_ID.test(id)
+}
+
+/** Whether a name opens with a studio's product code (see `PRODUCT_CODE_NAME`). */
+export function isProductCodeName(name: string): boolean {
+  return PRODUCT_CODE_NAME.test(name)
+}
+
 /** The first four-digit year of a release line: `2021`, `2016–2025` and `2024-` all give their start. */
-function releaseYear(releaseInfo: string | undefined): string | null {
+export function releaseYear(releaseInfo: string | undefined): string | null {
   return releaseInfo?.match(/\d{4}/)?.[0] ?? null
 }
 
@@ -315,7 +325,7 @@ export function interleave(
  * without it, and the year as the release line when there was none. That is
  * what lets such an entry be recognised as the copy of a real title it is.
  */
-function withYearOutOfName(meta: MetaPreview): MetaPreview {
+export function withYearOutOfName<T extends MetaPreview>(meta: T): T {
   const match = /^(.*\S)\s*\((\d{4})\)$/.exec(meta.name)
   if (!match) return meta
   return { ...meta, name: match[1]!, releaseInfo: releaseYear(meta.releaseInfo) ? meta.releaseInfo : match[2]! }
@@ -326,9 +336,11 @@ function withYearOutOfName(meta: MetaPreview): MetaPreview {
  * the other is named by its IMDb id: that is the id every addon can find
  * streams and details by, where an addon's own id works with that addon alone.
  */
-function oneTitleFrom(kept: MetaPreview, other: MetaPreview): MetaPreview {
-  return IMDB_ID.test(kept.id) || !IMDB_ID.test(other.id) ? withDetailsFrom(kept, other) : withDetailsFrom(other, kept)
+export function mergeCopies<T extends MetaPreview & { posterMissing?: boolean }>(kept: T, other: T): T {
+  return IMDB_ID.test(kept.id) || !IMDB_ID.test(other.id) ? fillMissingDetails(kept, other) : fillMissingDetails(other, kept)
 }
+
+const oneTitleFrom = mergeCopies
 
 /**
  * The better-ranked copy of a title, with what only the other copy knew.
@@ -336,15 +348,24 @@ function oneTitleFrom(kept: MetaPreview, other: MetaPreview): MetaPreview {
  * dead; the TMDB addon sends a rating and a poster that loads. The id stays
  * the kept copy's, since that is the one streams are found by.
  */
-function withDetailsFrom(kept: MetaPreview, other: MetaPreview): MetaPreview {
-  const poster = hasNoPoster(kept) || isMetahubPoster(kept.poster) ? (hasNoPoster(other) ? kept.poster : other.poster) : kept.poster
-  return {
+export function fillMissingDetails<T extends MetaPreview & { posterMissing?: boolean }>(kept: T, other: T): T {
+  // A copy whose poster is known not to load has no poster at all.
+  const otherHasNone = hasNoPoster(other) || other.posterMissing === true
+  const poster =
+    hasNoPoster(kept) || isMetahubPoster(kept.poster) || kept.posterMissing === true
+      ? otherHasNone
+        ? kept.poster
+        : other.poster
+      : kept.poster
+  const merged: T = {
     ...kept,
     ...(poster ? { poster } : {}),
     ...(kept.imdbRating || !other.imdbRating ? {} : { imdbRating: other.imdbRating }),
     ...(kept.releaseInfo || !other.releaseInfo ? {} : { releaseInfo: other.releaseInfo }),
     ...(kept.description || !other.description ? {} : { description: other.description }),
   }
+  if (!otherHasNone && merged.posterMissing) delete merged.posterMissing
+  return merged
 }
 
 /** Stremio's own poster hosts, which a card tries by IMDb id anyway. */
