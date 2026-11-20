@@ -1,12 +1,16 @@
 package moe.ditto.halo.api
 
 import io.ktor.client.statement.HttpResponse
+import moe.ditto.halo.people.Capabilities
+import moe.ditto.halo.people.IdLookup
+import moe.ditto.halo.people.PeopleSearch
+import moe.ditto.halo.people.PersonDetail
 
 /**
  * Everything the app's screens ask of a backend. [HaloClient] answers it from
  * the user's account on the Halo server; `DeviceBackend` answers it on the
  * phone for people using Halo without an account. Account-only calls (who is
- * signed in, the admin's global addons) stay on [HaloClient].
+ * signed in, the admin's global addons, magnets) stay on [HaloClient].
  *
  * Both answer with the same shapes and fail with the same [HaloApiException]
  * statuses, so a screen cannot tell which one it is talking to.
@@ -74,4 +78,19 @@ interface HaloBackend {
      * addon's host. Throws on a non-success status.
      */
     suspend fun openSubtitleFile(url: String): HttpResponse
+
+    /**
+     * What this backend offers beyond the shared contract: people search, id
+     * lookups, magnets. A server without the route offers none of it.
+     */
+    suspend fun getCapabilities(): Capabilities
+
+    /** People named so (or, for a misspelling, the ones it most likely means). The query is 2 to 120 characters once trimmed. */
+    suspend fun searchPeople(query: String): PeopleSearch
+
+    /** A person page: who they are and their films and series. */
+    suspend fun getPerson(tmdbId: Long): PersonDetail
+
+    /** A pasted IMDb or TVDB link ([source] `imdb` or `tvdb`), as the title (by IMDb id) or person it names. */
+    suspend fun lookup(source: String, id: String): IdLookup
 }

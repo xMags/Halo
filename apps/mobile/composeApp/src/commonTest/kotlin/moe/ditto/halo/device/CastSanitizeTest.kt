@@ -26,6 +26,20 @@ class CastSanitizeTest {
     }
 
     @Test
+    fun aCastMemberCarriesAValidTmdbIdTheServersWinning() {
+        val extras = Json.parseToJsonElement(
+            """{"cast":[
+                {"name":"Server Id","tmdbId":11,"photo":"https://image.tmdb.org/t/p/w185/a.jpg"},
+                {"name":"Addon Id","id":12},
+                {"name":"Bad Id","id":"13"},
+                {"name":"Fraction","tmdbId":1.25,"id":0},
+                {"name":"Both","tmdbId":14,"id":15}
+            ]}""",
+        )
+        assertEquals(listOf(11L, 12L, null, null, 14L), sanitizeCast(extras)?.map { it.tmdbId })
+    }
+
+    @Test
     fun aCastWithNobodyPicturedIsNone() {
         assertNull(sanitizeCast(Json.parseToJsonElement("""{"cast":[{"name":"A"}]}""")))
         assertNull(sanitizeCast(Json.parseToJsonElement("""{"cast":"nope"}""")))

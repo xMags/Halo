@@ -62,9 +62,18 @@ internal fun sanitizeCast(extras: JsonElement?): List<MetaPerson>? {
         if (cast.size >= MaxCast) break
         val person = entry as? JsonObject ?: continue
         val name = boundedText(person["name"]) ?: continue
-        cast += MetaPerson(name = name, character = boundedText(person["character"]), photo = httpsUrl(person["photo"]))
+        // The TMDB addon sends its person id as `id`; a sanitized cast already carries `tmdbId`, which wins.
+        val tmdbId = positiveSafeInteger(person["tmdbId"]) ?: positiveSafeInteger(person["id"])
+        cast += MetaPerson(name = name, character = boundedText(person["character"]), photo = httpsUrl(person["photo"]), tmdbId = tmdbId)
     }
     return cast.takeIf { list -> list.any { it.photo != null } }
+}
+
+private fun positiveSafeInteger(value: JsonElement?): Long? {
+    val primitive = value as? JsonPrimitive ?: return null
+    if (primitive.isString) return null
+    val number = primitive.content.toDoubleOrNull() ?: return null
+    return number.takeIf { it > 0 && it <= 9_007_199_254_740_991.0 && it == kotlin.math.floor(it) }?.toLong()
 }
 
 private fun boundedText(value: JsonElement?): String? {

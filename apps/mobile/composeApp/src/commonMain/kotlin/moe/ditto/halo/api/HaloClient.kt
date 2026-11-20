@@ -21,7 +21,23 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import moe.ditto.halo.auth.TokenProvider
+import moe.ditto.halo.magnets.MagnetAnswerException
+import moe.ditto.halo.magnets.MagnetRequest
+import moe.ditto.halo.magnets.isMagnetId
+import moe.ditto.halo.magnets.readMagnet
+import moe.ditto.halo.people.Capabilities
+import moe.ditto.halo.people.IdLookup
+import moe.ditto.halo.people.PeopleAnswerException
+import moe.ditto.halo.people.PeopleSearch
+import moe.ditto.halo.people.PersonDetail
+import moe.ditto.halo.people.readCapabilities
+import moe.ditto.halo.people.readIdLookup
+import moe.ditto.halo.people.readPeopleSearch
+import moe.ditto.halo.people.readPerson
 
 /**
  * The server answered with a non-success status. Transport failures are not
@@ -264,6 +280,89 @@ class HaloClient(
     /** Subtitle files come through the server's proxy, which applies its address guard. */
     override suspend fun openSubtitleFile(url: String): HttpResponse = getAddonProxyResponse(url)
 
+    /**
+     * What this server offers beyond the shared contract. A server without the
+     * route (404) offers none of it, a definitive answer; any other failure
+     * throws, so the caller reads everything as off for now and asks again later.
+     */
+    override suspend fun getCapabilities(): Capabilities = try {
+        peopleAnswer { readCapabilities(json(HttpMethod.Get, "/capabilities")) }
+    } catch (missing: HaloApiException) {
+        if (missing.status == 404) Capabilities.None else throw missing
+    }
+
+    override suspend fun searchPeople(query: String): PeopleSearch {
+        val q = query.trim()
+        if (q.length < 2 || q.length > 120) throw HaloApiException(400, "q must be 2 to 120 characters")
+        return peopleAnswer { readPeopleSearch(json(HttpMethod.Get, "/people/search", query = mapOf("q" to q))) }
+    }
+
+    override suspend fun getPerson(tmdbId: Long): PersonDetail {
+        if (tmdbId <= 0) throw HaloApiException(400, "tmdbId must be a positive whole number")
+        return peopleAnswer { readPerson(json(HttpMethod.Get, "/people/$tmdbId")) }
+    }
+
+    override suspend fun lookup(source: String, id: String): IdLookup {
+        val valid = when (source) {
+            "tvdb" -> TvdbIdShape.matches(id)
+            "imdb" -> ImdbLookupShape.matches(id)
+            else -> false
+        }
+        if (!valid) throw HaloApiException(400, "not a $source id")
+        return peopleAnswer { readIdLookup(json(HttpMethod.Get, "/lookup", query = mapOf("source" to source, "id" to id))) }
+    }
+
+    /**
+     * Hands a pasted magnet to the server: only its info hash (and its name,
+     * for showing) leave the phone, never a tracker. Play links in the answer
+     * are rebuilt on this client's own server.
+     */
+    suspend fun addMagnet(infoHash: String, name: String?): MagnetRequest {
+        if (!InfoHashShape.matches(infoHash)) throw HaloApiException(400, "infoHash must be 40 lower-case hex characters")
+        val fields = mutableMapOf<String, JsonElement>("infoHash" to JsonPrimitive(infoHash))
+        if (!name.isNullOrEmpty()) fields["name"] = JsonPrimitive(name)
+        return magnet(json(HttpMethod.Post, "/magnets", body = HaloJson.encodeToString(JsonObject.serializer(), JsonObject(fields))))
+    }
+
+    suspend fun getMagnet(id: String): MagnetRequest {
+        if (!isMagnetId(id)) throw HaloApiException(400, "not a magnet request id")
+        return magnet(json(HttpMethod.Get, "/magnets/$id"))
+    }
+
+    /** Stops and forgets a magnet request (a download under way is cancelled). */
+    suspend fun forgetMagnet(id: String) {
+        if (!isMagnetId(id)) throw HaloApiException(400, "not a magnet request id")
+        exchange(HttpMethod.Delete, "/magnets/$id")
+    }
+
+    /** An answer the strict people readers refuse is a malformed response, as a DTO that fails to decode is. */
+    private inline fun <T> peopleAnswer(read: () -> T): T = try {
+        read()
+    } catch (_: PeopleAnswerException) {
+        throw MalformedResponseException()
+    }
+
+    private fun magnet(value: JsonElement): MagnetRequest = try {
+        readMagnet(value, baseUrl)
+    } catch (_: MagnetAnswerException) {
+        throw MalformedResponseException()
+    }
+
+    /** A success body as JSON, for answers read by the strict readers rather than decoded into DTOs. */
+    private suspend fun json(
+        method: HttpMethod,
+        path: String,
+        body: String? = null,
+        query: Map<String, String> = emptyMap(),
+    ): JsonElement {
+        val text = exchange(method, path, body, query)
+        return try {
+            HaloJson.parseToJsonElement(text)
+        } catch (_: SerializationException) {
+            throw MalformedResponseException()
+        }
+    }
+
     private suspend fun <T> request(
         method: HttpMethod,
         path: String,
@@ -386,6 +485,10 @@ class HaloClient(
     }
 
 }
+
+private val TvdbIdShape = Regex("""^\d{1,10}$""")
+private val ImdbLookupShape = Regex("""^(?:tt|nm)\d{1,10}$""")
+private val InfoHashShape = Regex("""^[0-9a-f]{40}$""")
 
 /** The server caps a stored picture at ~512 KB; anything far beyond that is not one. */
 private const val MaxAvatarBytes = 1024 * 1024

@@ -27,6 +27,23 @@ import moe.ditto.halo.api.SubtitlesResult
 import moe.ditto.halo.api.UserSettings
 import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.auth.EpochClock
+import kotlinx.serialization.json.JsonElement
+import moe.ditto.halo.people.Capabilities
+import moe.ditto.halo.people.IdLookup
+import moe.ditto.halo.people.PeopleAnswerException
+import moe.ditto.halo.people.PeopleSearch
+import moe.ditto.halo.people.PersonDetail
+import moe.ditto.halo.people.RouteAnswer
+import moe.ditto.halo.people.TmdbClient
+import moe.ditto.halo.people.TmdbKeys
+import moe.ditto.halo.people.lookupAnswer
+import moe.ditto.halo.people.peopleSearchAnswer
+import moe.ditto.halo.people.personAnswer
+import moe.ditto.halo.people.readIdLookup
+import moe.ditto.halo.people.readPeopleSearch
+import moe.ditto.halo.people.readPerson
+import moe.ditto.halo.people.stringOrNull
+import moe.ditto.halo.people.objectOrNull
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -55,8 +72,19 @@ internal class DeviceBackend(
     private val store: DeviceStore,
     private val clock: EpochClock,
     private val resolver: AddonResolver = AddonResolver(http),
+    /**
+     * The viewer's own TMDB key, for people search, person pages and id
+     * lookups (the server answers those with its own token). Read on each
+     * call, so a key saved or removed in Settings applies at once; null (or no
+     * usable key) turns the features off.
+     */
+    private val tmdbKeys: TmdbKeys? = null,
 ) : HaloBackend {
     private val locks = DeviceCollection.entries.associateWith { Mutex() }
+
+    /** One client per key, so its caches live as long as the key does. */
+    private var tmdb: Pair<String, TmdbClient>? = null
+    private val tmdbLock = Mutex()
 
     /* ── Addons ─────────────────────────────────────────────────────────── */
 
@@ -182,6 +210,46 @@ internal class DeviceBackend(
     }
 
     /** Straight from the addon's host: there is no server here to proxy through. */
+    /* ── People and lookups ─────────────────────────────────────────────── */
+
+    /** People search and id lookups work while a key is saved that TMDB has not refused; magnets need an account. */
+    override suspend fun getCapabilities(): Capabilities {
+        val usable = tmdbClient() != null
+        return Capabilities(people = usable, lookup = usable, magnets = false, magnetsCachedOnly = true)
+    }
+
+    override suspend fun searchPeople(query: String): PeopleSearch =
+        people({ peopleSearchAnswer(it, query) }) { readPeopleSearch(it) }
+
+    override suspend fun getPerson(tmdbId: Long): PersonDetail =
+        people({ personAnswer(it, tmdbId.toString(), clock::nowMs) }) { readPerson(it) }
+
+    override suspend fun lookup(source: String, id: String): IdLookup =
+        people({ lookupAnswer(it, source, id) }) { readIdLookup(it) }
+
+    /** The route's answer as the server would give it: its body read on 200, else the same [HaloApiException]. */
+    private suspend fun <T> people(answer: suspend (TmdbClient) -> RouteAnswer, read: (JsonElement) -> T): T {
+        val client = tmdbClient() ?: throw apiError(404, "not_available")
+        val result = answer(client)
+        if (result.status != 200) throw apiError(result.status, result.body.objectOrNull()?.get("error").stringOrNull() ?: "lookup failed")
+        return try {
+            read(result.body)
+        } catch (_: PeopleAnswerException) {
+            throw apiError(502, "lookup failed")
+        }
+    }
+
+    private suspend fun tmdbClient(): TmdbClient? {
+        val keys = tmdbKeys ?: return null
+        val credential = keys.usableCredential() ?: return null
+        return tmdbLock.withLock {
+            tmdb?.takeIf { it.first == credential.value }?.second
+                ?: TmdbClient(http, credential, clock::nowMs, onRefused = { keys.markRefused(credential) }).also {
+                    tmdb = credential.value to it
+                }
+        }
+    }
+
     override suspend fun openSubtitleFile(url: String): HttpResponse {
         val response = http.get(url)
         if (!response.status.isSuccess()) {

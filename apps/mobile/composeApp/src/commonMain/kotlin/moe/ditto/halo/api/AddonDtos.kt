@@ -3,6 +3,9 @@ package moe.ditto.halo.api
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlin.math.floor
 
 /**
  * Stremio addon protocol types, as they reach this client.
@@ -241,7 +244,20 @@ data class MetaPerson(
     /** The part played; absent for crew. */
     val character: String? = null,
     val photo: String? = null,
-)
+    /**
+     * The person's TMDB id, which opens their person page: the server's
+     * `tmdbId`, or the TMDB addon's own numeric `id` (a title's own cast
+     * reaches the app as the addon sent it). Read through [castTmdbId].
+     */
+    val tmdbId: Long? = null,
+    @SerialName("id") val addonId: JsonElement? = null,
+) {
+    /** A valid TMDB id for this person, or null: positive whole numbers only, the server's winning over the addon's. */
+    val castTmdbId: Long?
+        get() = tmdbId?.takeIf { it > 0 } ?: (addonId as? JsonPrimitive)
+            ?.takeUnless { it.isString }?.content?.toDoubleOrNull()
+            ?.takeIf { it > 0 && it <= 9_007_199_254_740_991.0 && it == floor(it) }?.toLong()
+}
 
 @Serializable
 data class StreamBehaviorHints(
