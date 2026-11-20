@@ -1,65 +1,12 @@
 import type { MetaPreview } from '../addon/types'
 
 /*
- * How a search across several addons' catalogs becomes one list: which
- * catalog's answer leads, how two addons' copies of a title become one, what
- * order the titles take and which of them are not worth showing. Shared by
- * every client so they cannot rank or filter differently; the Kotlin app
- * carries the same rules in `browse/SearchResults.kt`.
+ * The search rules every client shares about one title: how well its name
+ * answers a query, the identities two addons' copies of it share, how those
+ * copies become one, and whether its poster is a poster at all. The ranking
+ * and the board built on them are in `board.ts`. The Kotlin app carries the
+ * same rules in `browse/SearchResults.kt`.
  */
-
-/** One searchable catalog: an installed addon's catalog that takes a `search` extra. */
-export interface SearchTarget {
-  key: string
-  addonId: string
-  addonName: string
-  type: string
-  id: string
-  /** The catalog's own name, the row's title. */
-  title: string
-}
-
-/** Where one catalog's answer stands. */
-export type TargetState =
-  | { status: 'pending' }
-  | { status: 'failed' }
-  | { status: 'done'; metas: MetaPreview[] }
-
-/** One result row: a catalog that answered with titles. */
-export interface SearchResultGroup {
-  key: string
-  title: string
-  addonName: string
-  type: string
-  metas: MetaPreview[]
-}
-
-export interface SearchProgress {
-  /** Rows so far, in addon order; a catalog's row appears as soon as it answers. */
-  groups: SearchResultGroup[]
-  /**
-   * The best guess for the query. Each catalog's own first title is a
-   * candidate, and the one whose name answers the query best wins, the
-   * earlier catalog on a tie: a search for a series must not be topped by a
-   * film only because films are asked first, nor an exact name by a longer
-   * one only because its addon is listed first.
-   *
-   * It never swaps once shown. A candidate named exactly what was typed is
-   * shown as soon as no earlier catalog is still out, since nothing later can
-   * beat it; otherwise it stays undecided (null) until every catalog has
-   * answered.
-   *
-   * Without a query it is the first title of the first catalog that answered
-   * with any, undecided while an earlier catalog is still out.
-   */
-  topMatch: MetaPreview | null
-  /** Catalogs still out. */
-  pending: number
-  /** Catalogs that failed, for naming the addons that did not answer. */
-  failed: SearchTarget[]
-  /** Catalogs asked. */
-  total: number
-}
 
 /** A catalog's titles without repeats; addons sometimes list one title twice. */
 export function uniqueMetas(metas: readonly MetaPreview[]): MetaPreview[] {
@@ -70,51 +17,6 @@ export function uniqueMetas(metas: readonly MetaPreview[]): MetaPreview[] {
     seen.add(key)
     return true
   })
-}
-
-/** What the search screen shows from each catalog's state, as answers arrive. */
-export function searchProgress(
-  targets: readonly SearchTarget[],
-  states: readonly TargetState[],
-  query?: string,
-): SearchProgress {
-  const groups: SearchResultGroup[] = []
-  const failed: SearchTarget[] = []
-  /** Each answering catalog's first title, with whether a catalog before it is still out. */
-  const candidates: Array<{ meta: MetaPreview; afterPending: boolean }> = []
-  let pending = 0
-  targets.forEach((target, index) => {
-    const state = states[index] ?? { status: 'pending' }
-    if (state.status === 'pending') {
-      pending += 1
-      return
-    }
-    if (state.status === 'failed') {
-      failed.push(target)
-      return
-    }
-    if (state.metas.length === 0) return
-    groups.push({ key: target.key, title: target.title, addonName: target.addonName, type: target.type, metas: state.metas })
-    candidates.push({ meta: state.metas[0]!, afterPending: pending > 0 })
-  })
-  return { groups, topMatch: chooseTopMatch(candidates, pending, query), pending, failed, total: targets.length }
-}
-
-function chooseTopMatch(
-  candidates: ReadonlyArray<{ meta: MetaPreview; afterPending: boolean }>,
-  pending: number,
-  query: string | undefined,
-): MetaPreview | null {
-  const first = candidates[0]
-  if (!first) return null
-  if (query === undefined) return first.afterPending ? null : first.meta
-  const ranked = candidates.map((candidate) => ({ ...candidate, relevance: nameRelevance(candidate.meta.name, query) }))
-  if (pending > 0) {
-    const exact = ranked.find((candidate) => candidate.relevance === EXACT_NAME)
-    return exact && !exact.afterPending ? exact.meta : null
-  }
-  // Array.sort is stable, so the earlier catalog keeps a tie.
-  return [...ranked].sort((a, b) => a.relevance - b.relevance)[0]!.meta
 }
 
 /** `type:id`, the identity two addons share for one title. */
@@ -178,10 +80,6 @@ export function byRelevance<T extends Pick<MetaPreview, 'name'>>(metas: readonly
     .map((entry) => entry.meta)
 }
 
-/** The relevance of a name that shares no word with the query. */
-const UNRELATED_NAME = 6
-/** Results with a year and artwork that make the ones without artwork not worth showing. */
-const ENOUGH_COMPLETE = 8
 /**
  * A name that opens with a studio's product code, `ABCD-123 …`: how adult
  * video is catalogued, and what indexes that carry it list it under. A general
@@ -189,61 +87,6 @@ const ENOUGH_COMPLETE = 8
  * screen unasked, so they are left out whatever else they match.
  */
 const PRODUCT_CODE_NAME = /^[A-Z]{2,6}-\d{3,5}\b/
-
-/** The relevance of a name that holds only some of the query's words. */
-const SOME_WORDS = 5
-/** Results holding every word of the query that make the ones holding only some not worth showing. */
-const ENOUGH_NAMED = 8
-
-/**
- * The merged results as the screen shows them: what was asked for first, and
- * without what nobody asked for.
- *
- * Addons pad a search with everything their index brushes against: titles
- * that share no word with the query (matched on a description or a foreign
- * alternative title), announced films with no release year, and entries with
- * no artwork at all. So:
- * - a title listed under a product code is left out (`PRODUCT_CODE_NAME`);
- * - a title sharing no word with the query is left out, as long as some
- *   result does name it (when none does, as with an addon answering in
- *   another language, everything stays);
- * - a title with neither a release year nor artwork is left out: there is
- *   nothing to show for it and nothing to play;
- * - the rest are ordered by name relevance, with the ones missing a year or
- *   artwork after all that have both;
- * - once a search has a screenful of results with both (`ENOUGH_COMPLETE`),
- *   the ones without artwork are left out too. With fewer, they stay: a
- *   rare title's only listing may be one nobody uploaded a poster for;
- * - once a screenful holds every word of the query (`ENOUGH_NAMED`), the ones
- *   holding only some are left out: for "doctor strange", every title with
- *   "doctor" or "strange" somewhere in it is not what was asked.
- *
- * `missingArt` holds the keys (`type:id`) of titles whose poster is known not
- * to load, beyond what the addon's answer already admits (`hasNoPoster`).
- */
-export function refineResults(
-  metas: readonly MetaPreview[],
-  query: string,
-  missingArt: ReadonlySet<string> = new Set(),
-): MetaPreview[] {
-  const entries = metas.map((meta) => ({
-    meta,
-    relevance: nameRelevance(meta.name, query),
-    undated: releaseYear(meta.releaseInfo) === null,
-    artless: hasNoPoster(meta) ? !IMDB_ID.test(meta.id) || missingArt.has(metaKey(meta)) : missingArt.has(metaKey(meta)),
-  }))
-  const listed = entries.filter((entry) => !PRODUCT_CODE_NAME.test(entry.meta.name))
-  const someNamed = listed.some((entry) => entry.relevance < UNRELATED_NAME)
-  const wellNamed = listed.filter((entry) => entry.relevance < SOME_WORDS).length >= ENOUGH_NAMED
-  const named = listed
-    .filter((entry) => !(someNamed && entry.relevance === UNRELATED_NAME))
-    .filter((entry) => !(wellNamed && entry.relevance === SOME_WORDS))
-  const plenty = named.filter((entry) => !entry.undated && !entry.artless).length >= ENOUGH_COMPLETE
-  return named
-    .filter((entry) => !(entry.artless && (entry.undated || plenty)))
-    .sort((a, b) => Number(a.undated || a.artless) - Number(b.undated || b.artless) || a.relevance - b.relevance)
-    .map((entry) => entry.meta)
-}
 
 const IMDB_ID = /^tt\d+$/
 
@@ -282,44 +125,6 @@ export function titleIdentities(meta: Pick<MetaPreview, 'type' | 'id' | 'name' |
 }
 
 /**
- * Several ranked lists as one: every list's first title, then every list's
- * second, and so on, each title once even when two addons name it by different
- * ids (see `titleIdentities`). Taking turns keeps each addon's own ranking
- * without letting the first addon's long tail bury the others' best; of two
- * copies of a title, the better-ranked one stays. Titles shown elsewhere on
- * the screen are passed in `exclude` and left out.
- */
-export function interleave(
-  lists: readonly (readonly MetaPreview[])[],
-  exclude: readonly MetaPreview[] = [],
-): MetaPreview[] {
-  const excluded = new Set(exclude.flatMap(titleIdentities))
-  /** Where in `merged` each identity's title sits. */
-  const placed = new Map<string, number>()
-  const merged: MetaPreview[] = []
-  const longest = Math.max(0, ...lists.map((list) => list.length))
-  for (let rank = 0; rank < longest; rank += 1) {
-    for (const list of lists) {
-      const listed = list[rank]
-      if (!listed) continue
-      const meta = withYearOutOfName(listed)
-      const identities = titleIdentities(meta)
-      if (identities.some((identity) => excluded.has(identity))) continue
-      const kept = identities.map((identity) => placed.get(identity)).find((index) => index !== undefined)
-      if (kept !== undefined) {
-        merged[kept] = oneTitleFrom(merged[kept]!, meta)
-        // Whatever else the second copy is known by now finds the same card.
-        identities.forEach((identity) => placed.set(identity, kept))
-        continue
-      }
-      identities.forEach((identity) => placed.set(identity, merged.length))
-      merged.push(meta)
-    }
-  }
-  return merged
-}
-
-/**
  * A title whose name carries its year, as "Doctor Strange (2016)" does on
  * entries an addon made from file names (MediaFusion's `mf…` ones): the name
  * without it, and the year as the release line when there was none. That is
@@ -340,7 +145,6 @@ export function mergeCopies<T extends MetaPreview & { posterMissing?: boolean }>
   return IMDB_ID.test(kept.id) || !IMDB_ID.test(other.id) ? fillMissingDetails(kept, other) : fillMissingDetails(other, kept)
 }
 
-const oneTitleFrom = mergeCopies
 
 /**
  * The better-ranked copy of a title, with what only the other copy knew.
