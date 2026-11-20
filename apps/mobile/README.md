@@ -48,6 +48,12 @@ reached from Settings and is absent from a build that is not debuggable.
   grid, catalog row, hero scrim, segmented control, search fields, select
   sheet) over Coil image loading and Haze backdrop blur, plus a four-tab shell
   on a type-safe navigation graph with repository-backed Settings
+- Search ported from `@halo/core` (`browse/SearchBoard.kt`,
+  `browse/SearchInput.kt`, `browse/SearchEngine.kt`, `people/`, `magnets/`):
+  results revealed once and never moved, people and person pages, pasted
+  IMDb/TVDB/web/magnet links. The common tests run the shared JSON cases in
+  `packages/core/test/vectors/`, compiled in by the `generateRuleVectors`
+  task; `.\gradlew.bat :composeApp:testDebugUnitTest` runs them on the JVM.
 - Common tests (auth discovery, login state machine, player lifecycle, API
   decoding, cache, sync repositories, device-local stores, responsive
   classification), iOS host-bridge tests, nine XCUITest suites (ownership,

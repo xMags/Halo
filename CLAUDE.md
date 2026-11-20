@@ -2,8 +2,10 @@
 
 Open media center: Stremio addon protocol, iOS-first, device-local downloads
 for offline watching (the feature Stremio lacks). Single user, self-hosted API
-(eventually halo.ditto.moe). Server never stores media; torrents are out of
-scope — streams come from debrid/HTTP addons as direct URLs.
+(eventually halo.ditto.moe). Server never stores media and the apps never run
+a torrent client: streams come from debrid/HTTP addons as direct URLs, and a
+magnet pasted into Search plays only through a server's debrid account when
+its `/capabilities` offers magnets (this API reports them off).
 
 ## Layout & commands
 
@@ -13,12 +15,23 @@ no build orchestration on purpose.
 
 | Path | What | Verify with |
 | --- | --- | --- |
-| `packages/core` | Addon protocol client, addon resolvers shared by the API and the on-device backend, subtitle utils (OpenSubtitles hash, srt→vtt, languages), typed API client and `DeviceBackend` | `pnpm --filter @halo/core typecheck` + `pnpm --filter @halo/core test` |
+| `packages/core` | Addon protocol client, addon resolvers shared by the API and the on-device backend, subtitle utils (OpenSubtitles hash, srt→vtt, languages), typed API client and `DeviceBackend`; Search's rules (`search/`: the reveal-once board and pasted-input classifier), people and TMDB (`people/`) and magnet readers and card policy (`magnets/`) | `pnpm --filter @halo/core typecheck` + `pnpm --filter @halo/core test` |
 | `apps/api` | Hono + Drizzle/better-sqlite3 sync backend | `pnpm --filter @halo/api test` (vitest), then curl |
 | `apps/mobile` | Compose Multiplatform client (iOS-first, Android kept compiling) over libmpv. Standalone Gradle project outside the pnpm workspace; its `README.md` is the guide | `.\gradlew.bat :composeApp:compileCommonMainKotlinMetadata` and `:composeApp:compileTestKotlinIosSimulatorArm64` (Apple framework and XCUITests need macOS) |
 | `apps/desktop` | Tauri v2 client (Windows-first), React UI over mpv, device-local downloads. `src/` is grouped by feature (auth, home, search, browse, sources, player, downloads, settings); styles are `src/styles/` partials | typecheck + `pnpm --filter @halo/desktop test` + `cargo build` in `src-tauri` (needs `vendor/mpv/libmpv-2.dll`, see `vendor/README.md`) |
 
 Dev: `pnpm dev` (api :8787, needs `apps/api/.env` from `.env.example`).
+Search's rules are written twice, in `@halo/core` (API and desktop) and in
+Kotlin (`apps/mobile`, `browse/`, `people/`, `magnets/`), and both are held to
+the same JSON cases in `packages/core/test/vectors/`: the core tests read them
+directly, and mobile's `generateRuleVectors` Gradle task compiles them into
+its common tests. Change a rule in both, with a case in the vectors.
+
+People search, person pages and IMDb/TVDB lookups need TMDB: the API reads
+`TMDB_READ_TOKEN` (`apps/api/.env.example`; unset turns them off), and Halo
+without an account uses the viewer's own key, kept on the device (DPAPI on
+the desktop, secure storage on mobile) and never synced.
+
 Client work against a disposable server: `pnpm --filter @halo/api dev:fixtures`
 runs the real API on :18790 in local mode (`admin`/`fixture-pass`) over an
 in-memory DB and canned addons, seeded with addons, a library and watch history
