@@ -11,15 +11,18 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,134 +32,214 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import moe.ditto.halo.SessionGraph
-import moe.ditto.halo.browse.MinSearchTermLength
-import moe.ditto.halo.browse.mergedSearchResults
-import moe.ditto.halo.browse.searchTopMatch
-import moe.ditto.halo.browse.titleIdentities
-import moe.ditto.halo.browse.titleKey
-import moe.ditto.halo.browse.topMatchWithDetails
-import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.MetaPreview
-import moe.ditto.halo.api.playableFromPreview
-import moe.ditto.halo.browse.savedSearchMatches
+import moe.ditto.halo.browse.SearchDebounceMs
+import moe.ditto.halo.browse.SearchInput
+import moe.ditto.halo.browse.SearchRecentShown
+import moe.ditto.halo.browse.cappedQuery
+import moe.ditto.halo.browse.classifySearchInput
+import moe.ditto.halo.browse.hasNoPoster
+import moe.ditto.halo.browse.isSearchableQuery
+import moe.ditto.halo.browse.searchSuggestions
 import moe.ditto.halo.cache.QueryState
-import moe.ditto.halo.ui.PosterGrid
-import moe.ditto.halo.ui.CenterMessage
+import moe.ditto.halo.people.PersonSummary
+import moe.ditto.halo.people.TmdbKeyStatus
+import moe.ditto.halo.shell.PersonRoute
+import moe.ditto.halo.shell.PlayerRoute
 import moe.ditto.halo.ui.HaloColors
+import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.HaloLayout
 import moe.ditto.halo.ui.HaloRadius
+import moe.ditto.halo.ui.HaloSkeleton
 import moe.ditto.halo.ui.HaloSpacing
-import moe.ditto.halo.ui.HaloType
+import moe.ditto.halo.ui.PosterCard
+import moe.ditto.halo.ui.PosterItem
 import moe.ditto.halo.ui.SearchField
 import moe.ditto.halo.ui.rememberResponsive
 
-/**
- * Long enough that typing a title does not fan out a request per keystroke,
- * short enough that pausing feels like the search starting on its own.
+/*
+ * Search: a field with Cancel, quiet kind chips under it and one status line.
+ * Before a query, the recent searches and a legend of what the field accepts.
+ * During one: the people the words name, one slot (the top match, or the
+ * action card for a pasted link), what the library already holds, then the
+ * results, which once shown never move (SearchEngine). One layout for phones
+ * and tablets; the columns follow the width. The desktop's Search is the same
+ * page (`search/Search.tsx`).
  */
-private const val DebounceMs = 350L
 
-/**
- * Search across every installed addon, shown as one list as on the desktop.
- *
- * The catalogs' answers are merged ([mergedSearchResults]): which addon found
- * a title is not what a viewer is looking for, and a row per catalog showed
- * the same film once per addon that knows it. What the viewer has in their
- * library leads the list.
- */
+/** The field holds the whole text (a long pasted link is read whole); words are cut to the search's length. */
+private const val FieldMaxLength = 2048
+private const val ResultsSkeletonCount = 12
+private const val StaleAlpha = 0.45f
+
+/** Where Search's taps lead. */
+internal class SearchNavigation(
+    val openDetail: (MetaRef) -> Unit,
+    val openPerson: (PersonRoute) -> Unit,
+    val play: (PlayerRoute) -> Unit,
+    val openSettings: () -> Unit,
+    val close: () -> Unit,
+)
+
 @Composable
 internal fun SearchScreen(
     graph: SessionGraph,
-    onOpenDetail: (MetaRef) -> Unit,
-    /** The top match's Play: a film goes straight to its sources. */
-    onPlayMovie: (MetaCard) -> Unit,
-    onClose: () -> Unit,
+    navigation: SearchNavigation,
     modifier: Modifier = Modifier,
+    /** The field's modifier, for the glide from Home's search button. */
+    fieldModifier: Modifier = Modifier,
 ) {
     val responsive = rememberResponsive()
-    // A tablet held sideways gets the desktop's search: one merged grid.
-    if (usesWideSearch(responsive)) {
-        WideSearchScreen(graph, onOpenDetail, onPlayMovie, onClose, modifier)
-        return
-    }
-    var term by remember { mutableStateOf("") }
-    var debounced by remember { mutableStateOf("") }
+    val focusManager = LocalFocusManager.current
+    val capabilitiesState by graph.capabilities.state.collectAsState()
+    val capabilities = capabilitiesState.capabilities
+    val keyStatus by graph.tmdbKeys.status.collectAsState()
+    val needsTmdbKey = !graph.signedIn && keyStatus != TmdbKeyStatus.Working
 
-    // Restarting the effect on every keystroke cancels the pending delay, which
-    // is the whole debounce — no timer handle to hold or clear.
-    LaunchedEffect(term) {
-        delay(DebounceMs)
-        debounced = term
-    }
-
+    var term by rememberSaveable { mutableStateOf("") }
+    var activeQuery by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf(SearchFilter.All) }
+    var focused by remember { mutableStateOf(false) }
+    var suggestionsDismissed by remember { mutableStateOf(false) }
+    var attempt by remember { mutableIntStateOf(0) }
     val history by graph.searchHistory.terms.collectAsState()
-    val results by remember(graph, debounced) { graph.browse.search(debounced) }.collectAsState(QueryState())
-    // Already cached by the time search is opened, so its matches render before
-    // any addon answers.
-    val library by remember(graph) { graph.library.observe() }.collectAsState(QueryState())
 
-    val trimmed = debounced.trim()
-    val searching = trimmed.length >= MinSearchTermLength
-    val saved = remember(library.value, trimmed) { savedSearchMatches(library.value, trimmed) }
+    // What the server offers is asked again on arrival when it could not be had.
+    LaunchedEffect(graph) { graph.capabilities.refreshIfFailed() }
 
-    // History records deliberate acts only — submitting, re-running a past term,
-    // or opening a result. The debounced keystroke stream is not intent.
-    val record = { value: String -> graph.searchHistory.add(value); Unit }
-    val runAgain = { value: String ->
-        term = value
-        debounced = value
-        record(value)
+    val input = remember(term) { classifySearchInput(term.trim()) }
+    val textMode = input is SearchInput.Text
+    // No catalog is asked about a link; what an earlier query asked is dropped.
+    val query = if (textMode) activeQuery.trim() else ""
+    val active = textMode && isSearchableQuery(query)
+    val view = rememberSearchView(graph, query, active, filter, attempt)
+    val action = rememberLinkAction(
+        graph = graph,
+        input = input,
+        capabilities = capabilitiesState,
+        navigation = LinkActionNavigation(navigation.openDetail, navigation.openPerson, navigation.play),
+    )
+
+    // Words wait for a pause in typing; too short to search goes back to the empty page at once.
+    LaunchedEffect(term, textMode) {
+        if (!textMode) return@LaunchedEffect
+        val capped = cappedQuery(term)
+        if (!isSearchableQuery(capped)) {
+            activeQuery = capped
+            return@LaunchedEffect
+        }
+        delay(SearchDebounceMs)
+        activeQuery = capped
     }
+
+    /** Only words are remembered, never a pasted link. */
+    val record = { value: String ->
+        if (classifySearchInput(value.trim()) is SearchInput.Text && isSearchableQuery(value)) graph.searchHistory.add(value.trim())
+        Unit
+    }
+    val recordQuery = { record(query) }
+    val change = { value: String ->
+        suggestionsDismissed = false
+        term = value.take(FieldMaxLength)
+    }
+    /** A past search or a suggestion: searched at once, no pause. */
+    val searchAgain = { value: String ->
+        val capped = cappedQuery(value)
+        suggestionsDismissed = true
+        term = capped
+        activeQuery = capped
+        record(capped)
+    }
+    val openTitle = { meta: MetaPreview ->
+        recordQuery()
+        navigation.openDetail(MetaRef(meta.type, meta.id))
+    }
+    val openPerson = { person: PersonSummary ->
+        if (capabilities.people && person.tmdbId > 0) {
+            recordQuery()
+            navigation.openPerson(PersonRoute(person.tmdbId, person.name, person.photo))
+        }
+    }
+    val submit = {
+        if (!textMode) {
+            action?.primary?.run?.invoke()
+        } else if (isSearchableQuery(term)) {
+            suggestionsDismissed = true
+            val capped = cappedQuery(term)
+            val top = view.topMatch
+            // The top match of exactly what the field holds: the Search key opens
+            // it. Text not searched yet is searched instead.
+            if (top != null && !view.stale && capped == activeQuery) {
+                openTitle(top)
+            } else {
+                activeQuery = capped
+                record(capped)
+                focusManager.clearFocus()
+            }
+        }
+    }
+
+    val suggestions = if (focused && !suggestionsDismissed && textMode) {
+        searchSuggestions(history, cappedQuery(term), view.foundNames(cappedQuery(term)))
+    } else {
+        emptyList()
+    }
+    val idle = !active && textMode
+    val placeholder = if (capabilities.people) "Films, series, people or a link" else "Films, series or a link"
+    val library by remember(graph) { graph.library.observe() }.collectAsState(QueryState())
+    val savedIds = remember(library.value) { library.value.orEmpty().filterNot { it.isRemoved }.map { it.id }.toSet() }
 
     val gutter = responsive.gutter
+    val gridState = rememberLazyGridState()
+    // Dragging the results puts the keyboard away; otherwise it covers half of them.
+    LaunchedEffect(gridState.isScrollInProgress) {
+        if (gridState.isScrollInProgress) focusManager.clearFocus()
+    }
 
     Column(
         modifier
             .fillMaxSize()
             .background(HaloColors.Background)
-            // The rail floats over the leading edge; everything on this screen
-            // begins beside it, and the gutter is measured from there.
             .padding(start = responsive.contentInsetStart)
-            .padding(
-                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
-                    responsive.pick(HaloSpacing.Xs, HaloSpacing.Sm),
-            ),
+            .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + responsive.pick(HaloSpacing.Xs, HaloSpacing.Sm)),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = gutter)
-                .padding(bottom = responsive.pick(HaloSpacing.Md, HaloSpacing.Lg)),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = gutter),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Md),
         ) {
             Box(
-                // Capped rather than full-bleed: the clear button on a
-                // tablet-wide field ends up a hand's width from the text.
-                Modifier.weight(1f, fill = false).widthIn(max = HaloLayout.SearchFieldMaxWidth),
+                fieldModifier
+                    .weight(1f, fill = false)
+                    .widthIn(max = HaloLayout.SearchFieldMaxWidth)
+                    .onFocusChanged { focused = it.hasFocus },
             ) {
                 SearchField(
                     value = term,
-                    onValueChange = { term = it },
-                    onClear = { term = "" },
-                    onSubmit = { if (term.trim().length >= MinSearchTermLength) record(term) },
+                    onValueChange = change,
+                    onClear = { change("") },
+                    onSubmit = { submit() },
                     autoFocus = true,
+                    placeholder = placeholder,
                 )
             }
             Text(
@@ -164,286 +247,262 @@ internal fun SearchScreen(
                 color = HaloColors.Accent,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .clickable(role = Role.Button, onClick = onClose)
-                    .padding(vertical = HaloSpacing.Xs),
+                modifier = Modifier.clickable(role = Role.Button, onClick = navigation.close).padding(vertical = HaloSpacing.Xs),
             )
         }
 
-        if (!searching) {
-            SearchHistory(
-                terms = history,
-                gutter = gutter,
-                // A stacked list of four words down the side of a tablet is a
-                // column of empty space; the same terms wrap as chips instead.
-                asChips = responsive.isTablet,
-                onRunAgain = runAgain,
-                onRemove = { graph.searchHistory.remove(it) },
-                onClear = { graph.searchHistory.clear() },
-            )
-            return@Column
+        if (suggestions.isNotEmpty()) {
+            Suggestions(suggestions, onPick = { picked -> searchAgain(picked); focusManager.clearFocus() }, modifier = Modifier.padding(horizontal = gutter))
         }
 
-        val groups = results.value
-        when {
-            // A failed search is not an empty one. Every per-catalog failure is
-            // already swallowed inside the fan-out, so an error here means the
-            // addon list itself could not be read — saying "no results" would
-            // blame the query for a dead connection. Saved matches still show:
-            // they came from the cache and are unaffected by that failure.
-            groups == null && results.error != null && saved.isEmpty() ->
-                CenterMessage("Could not reach your Halo server.")
-            groups == null && saved.isEmpty() ->
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = HaloColors.Accent)
-                }
-            groups.orEmpty().isEmpty() && saved.isEmpty() -> CenterMessage("No results for “$trimmed”.")
-            else -> {
-                val gridState = rememberLazyGridState()
-                val focusManager = LocalFocusManager.current
-                // Dragging the results dismisses the keyboard, as it does in the
-                // shipping client — otherwise it covers half of what was found.
-                LaunchedEffect(gridState.isScrollInProgress) {
-                    if (gridState.isScrollInProgress) focusManager.clearFocus()
-                }
-                // What the viewer already owns leads: it is what they have
-                // definitely chosen before, and it needs no request to appear.
-                // The addons' answers follow as one list, without those titles.
-                // The best guess leads, on a card of its own, so the lists
-                // below leave it out.
-                val topMatch = remember(groups, trimmed) {
-                    groups?.let { answered -> searchTopMatch(answered, trimmed)?.let { topMatchWithDetails(it, answered) } }
-                }
-                val owned = remember(saved, topMatch) {
-                    val above = topMatch?.let(::titleIdentities).orEmpty().toSet()
-                    saved.map { it.metaPreview() }.filterNot { meta -> titleIdentities(meta).any { it in above } }
-                }
-                // Which of them have artwork is only known by asking; until the
-                // answers are in, the list is judged on what the addons said.
-                val shownAbove = remember(owned, topMatch) { owned + listOfNotNull(topMatch) }
-                val candidates = remember(groups, shownAbove, trimmed) {
-                    mergedSearchResults(groups.orEmpty(), trimmed, exclude = shownAbove)
-                }
-                var missingArt by remember(trimmed) { mutableStateOf(emptySet<String>()) }
-                LaunchedEffect(candidates) { missingArt = graph.posterProbe.missing(candidates) }
-                val found = remember(groups, shownAbove, trimmed, missingArt) {
-                    mergedSearchResults(groups.orEmpty(), trimmed, exclude = shownAbove, missingArt = missingArt)
-                }
-                // The library's matches show first and the top match lands above
-                // them, while the grid keeps what was on screen in place, which
-                // would leave the card scrolled out of sight. So the grid goes
-                // back to the top when it arrives, unless the viewer has already
-                // moved down this search themselves.
-                val topMatchKey = topMatch?.let(::titleKey)
-                LaunchedEffect(topMatchKey) {
-                    if (topMatchKey != null && gridState.firstVisibleItemIndex <= 1) gridState.scrollToItem(0)
-                }
-                val openTop: (MetaPreview) -> Unit = { meta ->
-                    record(trimmed)
-                    onOpenDetail(MetaRef(meta.type, meta.id))
-                }
-                val titles = remember(owned, found) { owned + found }
-                PosterGrid(
-                    items = remember(titles) { titles.map { it.posterItem() } },
-                    columns = responsive.posterColumns,
-                    onItemClick = { item ->
-                        // The term earned its place in history: it found
-                        // something worth opening.
-                        record(trimmed)
-                        onOpenDetail(item.metaRef())
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    // No tab-bar allowance: this screen covers the bar.
-                    contentPadding = PaddingValues(start = gutter, end = gutter, bottom = HaloSpacing.Xl),
-                    showLabels = true,
-                    header = topMatch?.let { meta ->
-                        {
-                            SearchTopMatchCard(
-                                meta = meta,
-                                inLibrary = saved.any { it.id == "${meta.type}:${meta.id}" },
-                                onOpen = { openTop(meta) },
-                                onPlay = {
-                                    // A TMDB-listed film names its playable id only in
-                                    // its full meta, so its title page is the way in.
-                                    if (meta.type == "movie" && meta.playableFromPreview) {
-                                        record(trimmed)
-                                        onPlayMovie(meta)
-                                    } else {
-                                        openTop(meta)
-                                    }
-                                },
-                                modifier = Modifier.padding(bottom = HaloSpacing.Sm),
-                            )
-                        }
-                    },
-                    itemMenu = posterMenu(titles),
-                    // The addons' answers keep arriving behind the library's; a
-                    // spinner under what has landed says so without hiding it.
-                    footer = if (groups != null) {
-                        null
-                    } else {
-                        {
-                            Box(
-                                Modifier.fillMaxWidth().padding(vertical = HaloSpacing.Lg),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator(color = HaloColors.Accent)
-                            }
-                        }
-                    },
-                    state = gridState,
-                )
-            }
+        if (textMode) {
+            FilterChips(filter, onPick = { filter = it }, modifier = Modifier.padding(horizontal = gutter).padding(top = HaloSpacing.Sm))
         }
-    }
-}
 
-@Composable
-private fun SearchHistory(
-    terms: List<String>,
-    gutter: Dp,
-    asChips: Boolean,
-    onRunAgain: (String) -> Unit,
-    onRemove: (String) -> Unit,
-    onClear: () -> Unit,
-) {
-    if (terms.isEmpty()) {
-        CenterMessage("Search every installed addon — titles, series, anything.")
-        return
-    }
-
-    val head: @Composable () -> Unit = {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = HaloSpacing.Xs),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(text = "Recent", style = HaloType.Heading.copy(fontSize = 16.sp, letterSpacing = (-0.2).sp))
-            Text(
-                text = "Clear",
-                color = HaloColors.Accent,
-                fontSize = 13.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .clickable(role = Role.Button, onClick = onClear)
-                    .padding(HaloSpacing.Xs),
-            )
-        }
-    }
-
-    if (asChips) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(start = gutter, end = gutter)
-                .padding(vertical = HaloSpacing.Xs),
-        ) {
-            head()
-            FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(top = HaloSpacing.Sm),
-                horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
-                verticalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
-            ) {
-                terms.forEach { entry ->
-                    HistoryChip(
-                        term = entry,
-                        onRunAgain = { onRunAgain(entry) },
-                        onRemove = { onRemove(entry) },
-                    )
-                }
-            }
-        }
-        return
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = gutter, vertical = HaloSpacing.Xs),
-    ) {
-        item(key = "recent-head") { head() }
-        items(items = terms, key = { it }) { entry ->
-            HistoryRow(
-                term = entry,
-                onRunAgain = { onRunAgain(entry) },
-                onRemove = { onRemove(entry) },
-            )
-        }
-    }
-}
-
-/**
- * One past term as a chip: the tablet's form of the phone's [HistoryRow].
- *
- * The remove affordance rides inside the chip rather than at the end of a row,
- * because there is no row for it to end — but it stays a separate target, so
- * running a term again and forgetting it are not the same tap.
- */
-@Composable
-private fun HistoryChip(term: String, onRunAgain: () -> Unit, onRemove: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(HaloRadius.Pill))
-            .background(HaloColors.Glass)
-            .border(1.dp, HaloColors.GlassBorder, RoundedCornerShape(HaloRadius.Pill))
-            .clickable(role = Role.Button, onClick = onRunAgain)
-            .padding(start = 14.dp, end = HaloSpacing.Sm, top = 7.dp, bottom = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(text = term, color = HaloColors.TextMeta, fontSize = 12.5.sp, maxLines = 1)
-        Icon(
-            imageVector = HaloIcons.Trash,
-            contentDescription = "Remove $term",
-            tint = HaloColors.TextDim,
-            modifier = Modifier
-                .clickable(role = Role.Button, onClick = onRemove)
-                .size(13.dp),
-        )
-    }
-}
-
-@Composable
-private fun HistoryRow(term: String, onRunAgain: () -> Unit, onRemove: () -> Unit) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
-        ) {
+        val status = view.status
+        if (active && status != null && (status.text.isNotEmpty() || status.spinner)) {
             Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(role = Role.Button, onClick = onRunAgain)
-                    .padding(vertical = HaloSpacing.Sm + 4.dp),
+                Modifier.fillMaxWidth().padding(horizontal = gutter).padding(top = HaloSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm + 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
             ) {
-                Icon(
-                    imageVector = HaloIcons.Clock,
-                    contentDescription = null,
-                    tint = HaloColors.TextDim,
-                    modifier = Modifier.size(17.dp),
-                )
+                if (status.spinner) CircularProgressIndicator(color = HaloColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(13.dp))
                 Text(
-                    text = term,
-                    color = HaloColors.Text,
-                    fontSize = 15.sp,
+                    text = status.text,
+                    color = if (status.failed) HaloColors.Gold else HaloColors.TextDim,
+                    fontSize = 12.5.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Icon(
-                imageVector = HaloIcons.Trash,
-                contentDescription = "Remove $term",
-                tint = HaloColors.TextDim,
+        }
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(responsive.posterColumns),
+            state = gridState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = gutter, end = gutter, top = HaloSpacing.Md, bottom = HaloSpacing.Xl),
+            horizontalArrangement = Arrangement.spacedBy(responsive.posterGridGap),
+            verticalArrangement = Arrangement.spacedBy(responsive.posterGridRowGap),
+        ) {
+            if (idle) {
+                val recent = history.take(SearchRecentShown)
+                if (recent.isNotEmpty()) {
+                    full("recent") {
+                        RecentSearches(
+                            terms = recent,
+                            onRunAgain = { searchAgain(it); focusManager.clearFocus() },
+                            onRemove = { graph.searchHistory.remove(it) },
+                            onClear = { graph.searchHistory.clear() },
+                        )
+                    }
+                }
+                full("hints") {
+                    SearchHints(
+                        people = capabilities.people,
+                        lookup = capabilities.lookup,
+                        magnets = capabilities.magnets,
+                        needsTmdbKey = needsTmdbKey,
+                        onOpenSettings = navigation.openSettings,
+                        modifier = Modifier.padding(top = HaloSpacing.Lg),
+                    )
+                }
+            }
+
+            if (!textMode && action != null) {
+                full("action") { ActionCard(action) }
+            }
+
+            if (active) {
+                val dim = if (view.stale) Modifier.alpha(StaleAlpha) else Modifier
+                if (view.people.isNotEmpty()) {
+                    sectionTitle("people", "People")
+                    items(view.people, key = { "person:${it.tmdbId}" }) { person ->
+                        PersonCard(person, onOpen = { openPerson(person) }, modifier = dim)
+                    }
+                }
+                view.topMatch?.let { top ->
+                    full("top") { TopMatchCard(top, inLibrary = "${top.type}:${top.id}" in savedIds, onOpen = { openTitle(top) }, modifier = dim) }
+                }
+                if (view.skeleton) full("slot-skeleton") { SlotSkeleton() }
+                if (view.library.isNotEmpty()) {
+                    sectionTitle("library", "In your library")
+                    titles("library", view.library, filter, dim, openTitle)
+                }
+                if (view.results.isNotEmpty()) {
+                    sectionTitle("results", "Results", count = view.results.size)
+                    titles("result", view.results, filter, dim, openTitle)
+                }
+                if (view.skeleton) {
+                    sectionTitle("skeleton-title", "Results")
+                    items(ResultsSkeletonCount, key = { "skeleton:$it" }) {
+                        HaloSkeleton(Modifier.fillMaxWidth().aspectRatio(1f / HaloDimensions.PosterRatio).clip(RoundedCornerShape(HaloRadius.Md)))
+                    }
+                }
+                when {
+                    view.filteredEmpty -> full("filtered-empty") {
+                        SearchEmptyState(
+                            glyph = HaloIcons.Filter,
+                            text = "No ${if (filter == SearchFilter.Movies) "movies" else "series"} match “${view.revealedQuery}”.",
+                            action = "Show all results" to { filter = SearchFilter.All },
+                        )
+                    }
+                    view.nothingFound -> full("nothing") {
+                        SearchEmptyState(HaloIcons.Search, title = "No matching titles", text = "Check the spelling, or try fewer words.")
+                    }
+                    view.addonsUnreachable -> full("unreachable") {
+                        SearchEmptyState(
+                            glyph = HaloIcons.CloudOff,
+                            title = "Search could not reach your addons",
+                            text = "Check your connection and try again.",
+                            action = "Try again" to { attempt += 1 },
+                        )
+                    }
+                    view.noAddons -> full("no-addons") {
+                        SearchEmptyState(
+                            glyph = HaloIcons.Extension,
+                            title = "None of your addons can search",
+                            text = "Add one that can, such as Cinemeta, in Settings.",
+                            action = "Open Settings" to navigation.openSettings,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun LazyGridScope.full(key: String, content: @Composable () -> Unit) {
+    item(key = key, span = { GridItemSpan(maxLineSpan) }) { content() }
+}
+
+private fun LazyGridScope.sectionTitle(key: String, title: String, count: Int? = null) {
+    full("title:$key") {
+        Row(Modifier.padding(top = HaloSpacing.Sm), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm)) {
+            Text(title, color = HaloColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            count?.let { Text("$it", color = HaloColors.TextFaint, fontSize = 13.sp) }
+        }
+    }
+}
+
+private fun LazyGridScope.titles(prefix: String, titles: List<MetaPreview>, filter: SearchFilter, dim: Modifier, onOpen: (MetaPreview) -> Unit) {
+    items(titles, key = { "$prefix:${it.type}:${it.id}" }) { meta ->
+        val menus = LocalTitleMenus.current
+        PosterCard(
+            item = meta.searchPosterItem(showKind = filter == SearchFilter.All),
+            onClick = { onOpen(meta) },
+            modifier = dim,
+            showLabel = true,
+            onLongPress = menus?.let { { it.openPoster(meta) } },
+        )
+    }
+}
+
+/** A result as a card: the year (and, under All, the kind) beneath its name; no art shows its name instead. */
+private fun MetaPreview.searchPosterItem(showKind: Boolean): PosterItem = PosterItem(
+    key = "$type:$id",
+    title = name,
+    posterUrl = poster.takeUnless { posterMissing || hasNoPoster(this) },
+    subtitle = listOfNotNull(
+        if (showKind) (if (type == "series") "Series" else "Movie") else null,
+        releaseInfo?.takeIf { it.isNotBlank() },
+    ).joinToString(" · "),
+    softPlaceholder = true,
+)
+
+@Composable
+private fun FilterChips(selected: SearchFilter, onPick: (SearchFilter) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm)) {
+        SearchFilter.entries.forEach { option ->
+            val on = option == selected
+            Text(
+                text = option.label,
+                color = if (on) HaloColors.Text else HaloColors.TextDim,
+                fontSize = 13.sp,
+                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier
-                    .clickable(role = Role.Button, onClick = onRemove)
-                    .padding(HaloSpacing.Sm)
-                    .size(16.dp),
+                    .clip(RoundedCornerShape(HaloRadius.Pill))
+                    .background(if (on) HaloColors.FieldFill else HaloColors.Background)
+                    .border(1.dp, if (on) HaloColors.GlassBorder else HaloColors.Hairline, RoundedCornerShape(HaloRadius.Pill))
+                    .clickable(role = Role.RadioButton, onClick = { onPick(option) })
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
             )
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(HaloColors.Hairline))
+    }
+}
+
+@Composable
+private fun Suggestions(suggestions: List<String>, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        modifier
+            .padding(top = HaloSpacing.Xs)
+            .widthIn(max = HaloLayout.SearchFieldMaxWidth)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(HaloRadius.Md))
+            .background(HaloColors.SurfaceHigh)
+            .border(1.dp, HaloColors.GlassBorder, RoundedCornerShape(HaloRadius.Md)),
+    ) {
+        suggestions.forEach { suggestion ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(role = Role.Button, onClick = { onPick(suggestion) })
+                    .padding(horizontal = HaloSpacing.Md, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm),
+            ) {
+                Icon(HaloIcons.Search, contentDescription = null, tint = HaloColors.TextDim, modifier = Modifier.size(15.dp))
+                Text(suggestion, color = HaloColors.Text, fontSize = 14.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentSearches(terms: List<String>, onRunAgain: (String) -> Unit, onRemove: (String) -> Unit, onClear: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(HaloSpacing.Sm)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Recent", color = HaloColors.TextDim, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            // Clearing the history is destructive, so it is red.
+            Text(
+                text = "Clear",
+                color = HaloColors.Danger,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable(role = Role.Button, onClick = onClear).padding(HaloSpacing.Xs),
+            )
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(HaloSpacing.Sm), verticalArrangement = Arrangement.spacedBy(HaloSpacing.Sm)) {
+            terms.forEach { entry ->
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(HaloRadius.Pill))
+                        .background(HaloColors.Glass)
+                        .border(1.dp, HaloColors.GlassBorder, RoundedCornerShape(HaloRadius.Pill)),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = entry,
+                        color = HaloColors.TextMeta,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .widthIn(max = 220.dp)
+                            .clickable(role = Role.Button, onClick = { onRunAgain(entry) })
+                            .padding(start = 14.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
+                    )
+                    Icon(
+                        imageVector = HaloIcons.Close,
+                        contentDescription = "Remove $entry from recent searches",
+                        tint = HaloColors.TextDim,
+                        modifier = Modifier
+                            .clickable(role = Role.Button, onClick = { onRemove(entry) })
+                            .padding(start = 2.dp, end = 10.dp, top = 8.dp, bottom = 8.dp)
+                            .size(12.dp),
+                    )
+                }
+            }
+        }
     }
 }

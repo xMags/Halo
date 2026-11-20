@@ -83,7 +83,6 @@ import moe.ditto.halo.browse.episodeTag
 import moe.ditto.halo.browse.formatReleaseDate
 import moe.ditto.halo.browse.formatRuntime
 import moe.ditto.halo.browse.medal
-import moe.ditto.halo.browse.personSearchUrl
 import moe.ditto.halo.browse.seasonLabel
 import moe.ditto.halo.browse.trailerUrl
 import moe.ditto.halo.downloads.DownloadStatus
@@ -188,6 +187,7 @@ internal fun DetailWideBody(
     onPlayEpisode: (MetaVideo) -> Unit,
     onOpenDetail: (MetaRef) -> Unit,
     onOpenShelf: (ShelfSnapshot) -> Unit,
+    onOpenCredit: (Credit) -> Unit,
 ) {
     val gutter = wideDetailGutter(responsive)
     val heroHeight = wideDetailHeroHeight(responsive)
@@ -258,6 +258,7 @@ internal fun DetailWideBody(
                 item(key = "people") {
                     PeoplePanels(
                         credits = credits,
+                        onOpenCredit = onOpenCredit,
                         about = about,
                         besideEachOther = responsive.contentWidth >= SplitMinWidth,
                         glass = backdrop,
@@ -718,12 +719,13 @@ private fun WideEpisodeRow(
 @Composable
 private fun PeoplePanels(
     credits: List<Credit>,
+    onOpenCredit: (Credit) -> Unit,
     about: List<Pair<String, String>>,
     besideEachOther: Boolean,
     glass: HazeState,
     modifier: Modifier,
 ) {
-    val cast = @Composable { CastPanel(credits, glass) }
+    val cast = @Composable { CastPanel(credits, glass, onOpenCredit) }
     when {
         credits.isEmpty() -> AboutPanel(about, glass, scrolls = false, modifier = modifier.fillMaxWidth())
         about.isEmpty() -> Box(modifier) { cast() }
@@ -761,10 +763,9 @@ private fun BesideLayout(modifier: Modifier, main: @Composable () -> Unit, side:
 
 private val AboutPanelWidth = 360.dp
 
-/** The pictured cast, else names on initials; pressing a card looks the person up. */
+/** The pictured cast, else names on initials; pressing a card opens the person ([onOpen]). */
 @Composable
-private fun CastPanel(credits: List<Credit>, glass: HazeState) {
-    val uriHandler = LocalUriHandler.current
+private fun CastPanel(credits: List<Credit>, glass: HazeState, onOpen: (Credit) -> Unit) {
     Column(Modifier.fillMaxWidth().wideGlass(glass).padding(top = 20.dp, bottom = 22.dp)) {
         PanelTitle(
             "Cast and crew",
@@ -781,9 +782,7 @@ private fun CastPanel(credits: List<Credit>, glass: HazeState) {
                     Modifier
                         .width(128.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable(role = Role.Button, onClickLabel = "Look up ${credit.name}") {
-                            runCatching { uriHandler.openUri(personSearchUrl(credit.name)) }
-                        },
+                        .clickable(role = Role.Button, onClickLabel = credit.name) { onOpen(credit) },
                 ) {
                     Box(
                         Modifier.width(128.dp).height(160.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.05f)),

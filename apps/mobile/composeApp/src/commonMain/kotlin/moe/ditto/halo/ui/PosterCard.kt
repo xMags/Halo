@@ -2,6 +2,7 @@ package moe.ditto.halo.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
@@ -18,9 +19,12 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -40,6 +44,14 @@ data class PosterItem(
     val posterUrl: String? = null,
     /** 0..1 watch progress; null for anything never played. */
     val progress: Float? = null,
+    /** A second, dimmer line under the label (a year, a role); shown only with labels. */
+    val subtitle: String? = null,
+    /**
+     * Art that is missing or fails to load shows the title on a muted card
+     * instead of a blank one. Search and person pages only, where a title
+     * without a poster is common and still worth reading.
+     */
+    val softPlaceholder: Boolean = false,
 ) {
     /** Stremio's poster for the title, when the key's id is an IMDb one. */
     val fallbackPosterUrl: String? get() = metahubPosterUrl(key.substringAfter(':'))
@@ -86,6 +98,11 @@ fun PosterCard(
                 .fillMaxWidth()
                 .aspectRatio(1f / HaloDimensions.PosterRatio)
                 .clip(PosterShape),
+            failure = if (item.softPlaceholder) {
+                { SoftPosterPlaceholder(item.title) }
+            } else {
+                null
+            },
         )
         val progress = item.progress
         if (progress != null && progress > MinVisibleProgress) {
@@ -114,7 +131,37 @@ fun PosterCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 6.dp),
             )
+            item.subtitle?.takeIf { it.isNotBlank() }?.let { line ->
+                Text(
+                    text = line,
+                    color = HaloColors.TextFaint,
+                    fontSize = 10.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+            }
         }
+    }
+}
+
+/** The title on a muted card, for art that is missing or does not load. */
+@Composable
+private fun BoxScope.SoftPosterPlaceholder(title: String) {
+    Box(
+        Modifier.matchParentSize().background(HaloColors.SurfaceHigh).padding(HaloSpacing.Sm),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = title,
+            color = HaloColors.TextMeta,
+            fontSize = 12.sp,
+            lineHeight = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

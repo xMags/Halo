@@ -54,7 +54,17 @@ internal data class PlaybackContext(
     val localSubtitlePath: String? = null,
     /** That subtitle's language code, when the download recorded one. */
     val localSubtitleLang: String? = null,
+    /**
+     * False for a link pasted into Search (or a magnet's unidentified video):
+     * it is no title, so nothing about it is kept (no progress, no resume, no
+     * subtitle choice) and no addon is asked about it.
+     */
+    val recordsHistory: Boolean = true,
 ) {
+    /** Whether addons may be asked about this video (subtitles, and the hash they are matched by). */
+    val asksAddons: Boolean
+        get() = !isDownload && recordsHistory
+
     /** True when this is an episode of something rather than a film. */
     val isEpisode: Boolean
         get() = episodeTag != null

@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
 import moe.ditto.halo.SessionGraph
+import moe.ditto.halo.shell.PersonRoute
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.MetaDetail
 import moe.ditto.halo.api.MetaPreview
@@ -73,6 +74,7 @@ import moe.ditto.halo.browse.formatReleaseDate
 import moe.ditto.halo.browse.formatRuntime
 import moe.ditto.halo.browse.lastWatchedSeason
 import moe.ditto.halo.browse.pageContaining
+import moe.ditto.halo.browse.Credit
 import moe.ditto.halo.browse.personSearchUrl
 import moe.ditto.halo.browse.pickGenreCatalog
 import moe.ditto.halo.browse.seasonLabel
@@ -128,7 +130,20 @@ internal fun DetailScreen(
      * has room for.
      */
     sourcesRequest: ((MetaDetail, MetaVideo?) -> SourcesRequest)? = null,
+    /** A cast card's person page; without people search a card looks the person up on IMDb instead. */
+    onOpenPerson: (PersonRoute) -> Unit,
 ) {
+    val capabilitiesState by graph.capabilities.state.collectAsState()
+    val creditUriHandler = LocalUriHandler.current
+    // With people search a card opens the person page (by TMDB id when the cast
+    // entry gave one, else by name); without, it looks them up on IMDb.
+    val openCredit: (Credit) -> Unit = { credit ->
+        if (capabilitiesState.capabilities.people) {
+            onOpenPerson(PersonRoute(credit.tmdbId ?: 0, credit.name, credit.photo?.takeIf { it.startsWith("https://") }))
+        } else {
+            runCatching { creditUriHandler.openUri(personSearchUrl(credit.name)) }
+        }
+    }
     val responsive = rememberResponsive()
     val scope = rememberCoroutineScope()
     val itemId = remember(type, metaId) { LibraryRepository.itemId(type, metaId) }
@@ -279,6 +294,7 @@ internal fun DetailScreen(
                             onPlayEpisode = { openSources(it) },
                             onOpenDetail = onOpenDetail,
                             onOpenShelf = onOpenShelf,
+                            onOpenCredit = openCredit,
                         )
                     } else DetailBody(
                         modifier = Modifier.glassSource(bodyHaze),
@@ -309,6 +325,7 @@ internal fun DetailScreen(
                         onPlayEpisode = { openSources(it) },
                         onOpenDetail = onOpenDetail,
                         onOpenShelf = onOpenShelf,
+                        onOpenCredit = openCredit,
                     )
 
                     // Last children of the root box, so they draw over the hero and
@@ -447,6 +464,7 @@ private fun DetailBody(
     onPlayEpisode: (MetaVideo) -> Unit,
     onOpenDetail: (MetaRef) -> Unit,
     onOpenShelf: (ShelfSnapshot) -> Unit,
+    onOpenCredit: (Credit) -> Unit,
 ) {
     val tablet = responsive.isTablet
     val gutter = if (tablet) responsive.gutter else PhoneGutter
@@ -552,7 +570,7 @@ private fun DetailBody(
                         "${credits.size} ${if (credits.size == 1) "PERSON" else "PEOPLE"}",
                         Modifier.padding(horizontal = gutter),
                     )
-                    CastRow(credits, gutter) { credit -> runCatching { uriHandler.openUri(personSearchUrl(credit.name)) } }
+                    CastRow(credits, gutter, onOpenCredit)
                 }
             }
         }

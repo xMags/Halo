@@ -4,10 +4,10 @@ import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.MetaPreview
 
 /*
- * How a search across several addons' catalogs becomes a list worth reading:
- * which title leads, what order the rest take and which are not worth showing.
- * A port of `@halo/core`'s `search/results.ts`, which the desktop runs; keep
- * the two in step, down to the numbers, so both apps answer a query alike.
+ * The text and artwork rules Search ranks by (SearchBoard.kt): folding a name,
+ * how well it answers a query, whether an answer has a poster, a year in a
+ * name, and a rating that is one. Ports of `@halo/core`'s search helpers;
+ * keep the two in step, down to the numbers, so both apps answer a query alike.
  */
 
 /** Latin letters with their accents, each followed by the plain letter it folds to. */
@@ -33,25 +33,8 @@ private const val ExactName = 0
 /** The relevance of a name that begins with what was typed, mid-word. */
 private const val BeginsWithQuery = 2
 
-/**
- * A name that opens with a studio's product code, `ABCD-123 …`: how adult
- * video is catalogued, and what indexes that carry it list it under. A general
- * search is never for one of these, and its poster is nothing to put on a
- * screen unasked, so they are left out whatever else they match.
- */
-private val ProductCodeName = Regex("""^[A-Z]{2,6}-\d{3,5}\b""")
-
-/** The relevance of a name that holds only some of the query's words. */
-private const val SomeWords = 5
-
-/** Results holding every word of the query that make the ones holding only some not worth showing. */
-private const val EnoughNamed = 8
-
 /** The relevance of a name that shares no word with the query. */
 private const val UnrelatedName = 6
-
-/** Results with a year and artwork that make the ones without artwork not worth showing. */
-private const val EnoughComplete = 8
 
 /**
  * How well a title's name answers the query, lower is better: the name is the
@@ -105,134 +88,6 @@ fun hasNoPoster(meta: MetaCard): Boolean {
 }
 
 private val ReleaseYearDigits = Regex("""\d{4}""")
-private val ImdbTitleId = Regex("""^tt\d+$""")
-
-/**
- * The results as the screen shows them: what was asked for first, and without
- * what nobody asked for.
- *
- * - A title listed under a product code is left out ([ProductCodeName]).
- * - A title sharing no word with the query is left out, as long as some
- *   result does name it (when none does, as with an addon answering in
- *   another language, everything stays).
- * - A title with neither a release year nor artwork is left out: there is
- *   nothing to show for it and nothing to play.
- * - The rest are ordered by name relevance, with the ones missing a year or
- *   artwork after all that have both.
- * - Once there is a screenful with both ([EnoughComplete]), the ones without
- *   artwork are left out too.
- * - Once a screenful holds every word of the query ([EnoughNamed]), the ones
- *   holding only some are left out.
- *
- * Artwork is judged by what the answer says ([hasNoPoster]): a title Stremio
- * can picture by its IMDb id is taken to have some. [missingArt] holds the
- * keys ([titleKey]) of titles whose artwork is known not to load.
- */
-fun <T : MetaCard> refineResults(metas: List<T>, query: String, missingArt: Set<String> = emptySet()): List<T> {
-    data class Entry(val meta: T, val relevance: Int, val undated: Boolean, val artless: Boolean) {
-        val incomplete: Boolean get() = undated || artless
-    }
-    val entries = metas.map { meta ->
-        val knownMissing = titleKey(meta) in missingArt
-        Entry(
-            meta = meta,
-            relevance = nameRelevance(meta.name, query),
-            undated = meta.releaseInfo?.let(ReleaseYearDigits::containsMatchIn) != true,
-            artless = if (hasNoPoster(meta)) !ImdbTitleId.matches(meta.id) || knownMissing else knownMissing,
-        )
-    }
-    val listed = entries.filterNot { ProductCodeName.containsMatchIn(it.meta.name) }
-    val someNamed = listed.any { it.relevance < UnrelatedName }
-    val wellNamed = listed.count { it.relevance < SomeWords } >= EnoughNamed
-    val named = listed
-        .filterNot { someNamed && it.relevance == UnrelatedName }
-        .filterNot { wellNamed && it.relevance == SomeWords }
-    val plenty = named.count { !it.incomplete } >= EnoughComplete
-    return named
-        .filterNot { it.artless && (it.undated || plenty) }
-        // sortedWith is stable, so the addons' own ranking holds within a level.
-        .sortedWith(compareBy<Entry> { it.incomplete }.thenBy { it.relevance })
-        .map { it.meta }
-}
-
-/**
- * The best guess for the query. Each catalog's own first title is a
- * candidate, and the one whose name answers the query best wins, the earlier
- * catalog on a tie: a search for a series must not be topped by a film only
- * because films are asked first, nor an exact name by a longer one only
- * because its addon is listed first.
- */
-fun searchTopMatch(groups: List<SearchResultGroup>, query: String): MetaPreview? =
-    groups.mapNotNull { it.metas.firstOrNull() }
-        // minByOrNull keeps the first of equals, so the earlier catalog keeps a tie.
-        .minByOrNull { nameRelevance(it.name, query) }
-
-/**
- * The catalogs' rows for a search, cleaned as one search rather than row by
- * row. Which titles are worth showing is decided over everything the catalogs
- * returned together ([refineResults]): a short row cannot tell that the
- * search as a whole has plenty of better answers, and would keep its
- * one-word matches and file-name entries. Two addons' copies of a title
- * become one card ([asOneTitleWith]), shown in the first row that has it, and
- * each row lists what is left of it best-named first. A row left with nothing
- * is dropped.
- */
-fun refineSearchGroups(groups: List<SearchResultGroup>, query: String): List<SearchResultGroup> {
-    val tidied = groups.map { group -> group.metas.map { it.withYearOutOfName() } }
-    val kept = refineResults(interleaveTitles(tidied, merge = MetaPreview::asOneTitleWith), query)
-    val rank = kept.withIndex().associate { (index, meta) -> titleKey(meta) to index }
-    /** Every identity of every surviving card, so each catalog's own copy finds it. */
-    val cardFor = buildMap<String, MetaPreview> {
-        kept.forEach { meta ->
-            // The first card to claim an identity keeps it (no JVM-only putIfAbsent: this is shared code).
-            titleIdentities(meta).forEach { identity -> if (identity !in this) put(identity, meta) }
-        }
-    }
-    val shown = mutableSetOf<String>()
-    return groups.mapIndexedNotNull { index, group ->
-        val cards = tidied[index]
-            .mapNotNull { meta -> titleIdentities(meta).firstNotNullOfOrNull { cardFor[it] } }
-            .distinctBy(::titleKey)
-            .filter { shown.add(titleKey(it)) }
-            .sortedBy { rank.getValue(titleKey(it)) }
-        if (cards.isEmpty()) null else group.copy(metas = cards)
-    }
-}
-
-/**
- * Every catalog's answer as one list, as the desktop shows a search: the
- * catalogs take turns so each keeps its own ranking, two addons' copies of a
- * title become one card, and the result is cleaned and ordered as one search
- * ([refineResults]). Titles already shown above the list, such as the
- * viewer's own library matches, are passed in [exclude] and left out.
- */
-fun mergedSearchResults(
-    groups: List<SearchResultGroup>,
-    query: String,
-    exclude: List<MetaCard> = emptyList(),
-    /** Keys of titles whose artwork is known not to load ([PosterProbe]). */
-    missingArt: Set<String> = emptySet(),
-): List<MetaPreview> = refineResults(
-    interleaveTitles(
-        groups.map { it.metas },
-        exclude = exclude,
-        merge = MetaPreview::asOneTitleWith,
-        tidy = MetaPreview::withYearOutOfName,
-    ),
-    query,
-    missingArt,
-)
-
-/**
- * The top match as its card shows it: the same title, with what the other
- * catalogs' copies of it know (a rating, a synopsis, a poster that loads).
- */
-fun topMatchWithDetails(topMatch: MetaPreview, groups: List<SearchResultGroup>): MetaPreview =
-    interleaveTitles(
-        listOf(listOf(topMatch)) + groups.map { it.metas },
-        merge = MetaPreview::asOneTitleWith,
-        tidy = MetaPreview::withYearOutOfName,
-    ).firstOrNull() ?: topMatch
 
 private val YearInName = Regex("""^(.*\S)\s*\((\d{4})\)$""")
 
@@ -247,32 +102,6 @@ fun MetaPreview.withYearOutOfName(): MetaPreview {
     val dated = releaseInfo?.let(ReleaseYearDigits::containsMatchIn) == true
     return copy(name = match.groupValues[1], releaseInfo = if (dated) releaseInfo else match.groupValues[2])
 }
-
-/**
- * Two copies of one title as one. The better-ranked copy leads, unless only
- * the other is named by its IMDb id: that is the id every addon can find
- * streams and details by, where an addon's own id works with that addon alone.
- */
-fun MetaPreview.asOneTitleWith(other: MetaPreview): MetaPreview =
-    if (ImdbTitleId.matches(id) || !ImdbTitleId.matches(other.id)) withDetailsFrom(other) else other.withDetailsFrom(this)
-
-private val MetahubHost = Regex("""^https://[a-z0-9-]+\.metahub\.space/""")
-
-/** Stremio's own poster hosts, which a card tries by IMDb id anyway. */
-private fun isMetahubPoster(poster: String?): Boolean = poster != null && MetahubHost.containsMatchIn(poster)
-
-/**
- * The better-ranked copy of a title, with what only the other copy knew.
- * Cinemeta ranks well but sends a name, a year and a poster link that is often
- * dead; the TMDB addon sends a rating and a poster that loads. The id stays
- * the kept copy's, since that is the one streams are found by.
- */
-fun MetaPreview.withDetailsFrom(other: MetaPreview): MetaPreview = copy(
-    poster = if ((hasNoPoster(this) || isMetahubPoster(poster)) && !hasNoPoster(other)) other.poster else poster,
-    imdbRating = imdbRating?.takeIf { it.isNotBlank() } ?: other.imdbRating,
-    releaseInfo = releaseInfo?.takeIf { it.isNotBlank() } ?: other.releaseInfo,
-    description = description?.takeIf { it.isNotBlank() } ?: other.description,
-)
 
 /**
  * A rating that is one: its number, or null. Addons send "0.0" (or nothing a

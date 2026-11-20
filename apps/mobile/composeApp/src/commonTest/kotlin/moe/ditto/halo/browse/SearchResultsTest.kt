@@ -7,10 +7,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** The same cases as `@halo/core`'s `searchResults.test.ts`: the two must answer alike. */
+/** The text and artwork rules Search ranks by, as `@halo/core` answers them. */
 class SearchResultsTest {
-    private fun named(id: String, name: String, type: String = "movie") = MetaPreview(id = id, type = type, name = name)
-
     private fun full(
         id: String,
         name: String,
@@ -19,22 +17,6 @@ class SearchResultsTest {
     ) = MetaPreview(id = id, type = "movie", name = name, releaseInfo = releaseInfo, poster = poster)
 
     private val noPoster = "https://image.tmdb.org/t/p/w500null"
-
-    @Test
-    fun namesThatAnswerTheQueryComeFirstEachLevelKeepingTheOrderGiven() {
-        val merged = listOf(
-            full("1", "Doctor Stranger"),
-            full("2", "Doctor Strange in the Multiverse of Madness"),
-            full("3", "Amuthu Dosthara"),
-            full("4", "Dr. Strangelove"),
-            full("5", "Doctor Strange"),
-            full("6", "The Strange Case of Doctor Rx"),
-        )
-
-        // The one sharing no word with the query is gone; the rest are best-named first.
-        // "Dr. Strangelove" reads as "doctor strangelove", which begins with the query as "Doctor Stranger" does.
-        assertEquals(listOf("5", "2", "1", "4", "6"), refineResults(merged, "doctor strange").map { it.id })
-    }
 
     @Test
     fun relevanceIgnoresCaseAccentsAndPunctuation() {
@@ -46,88 +28,10 @@ class SearchResultsTest {
     }
 
     @Test
-    fun whenNothingNamesTheQueryEverythingStays() {
-        val localized = listOf(full("tmdb:1", "डॉक्टर स्ट्रेंज"), full("tmdb:2", "कुछ और"))
-
-        assertEquals(2, refineResults(localized, "doctor strange").size)
-    }
-
-    @Test
-    fun aTitleWithNeitherAYearNorArtworkGoesAndOneMissingEitherComesLast() {
-        val results = listOf(
-            full("tmdb:1", "Doctor Strange Love", poster = noPoster),
-            full("tmdb:2", "Untitled Doctor Strange Movie", releaseInfo = "", poster = noPoster),
-            full("tt3", "Doctor Strange 3", releaseInfo = null, poster = "https://images.metahub.space/poster/small/tt3/img"),
-            full("tmdb:5", "Doctor Strange in the Multiverse of Madness"),
-            full("tmdb:6", "The Strange Case of Doctor Rx"),
-        )
-
-        assertEquals(
-            listOf("tmdb:5", "tmdb:6", "tmdb:1", "tt3"),
-            refineResults(results, "doctor strange").map { it.id },
-        )
-        // Once the poster link is known to be dead, the undated one has nothing to show.
-        assertEquals(
-            listOf("tmdb:5", "tmdb:6", "tmdb:1"),
-            refineResults(results, "doctor strange", missingArt = setOf("movie:tt3")).map { it.id },
-        )
-    }
-
-    @Test
-    fun withAScreenfulOfCompleteResultsTheOnesWithoutArtworkAreLeftOut() {
-        val complete = (0 until 8).map { full("tmdb:$it", "Doctor Strange $it") }
-        val artless = full("tmdb:99", "Doctor Strange Love", poster = noPoster)
-
-        assertFalse(refineResults(complete + artless, "doctor strange").any { it.id == "tmdb:99" })
-        assertEquals("tmdb:99", refineResults(complete.drop(1) + artless, "doctor strange").last().id)
-    }
-
-    @Test
     fun theTmdbAddonsLinkToAMissingImageIsNoPoster() {
         assertTrue(hasNoPoster(full("a", "A", poster = noPoster)))
         assertTrue(hasNoPoster(full("a", "A", poster = null)))
         assertFalse(hasNoPoster(full("a", "A")))
-    }
-
-    @Test
-    fun theTopMatchIsTheBestNamedFirstTitleNotTheFirstCatalogToAnswer() {
-        val film = SearchResultGroup("c/movie", "Movies", listOf(named("m1", "El Camino: A Breaking Bad Movie")))
-        val show = SearchResultGroup("c/series", "Series", listOf(named("s1", "Breaking Bad", "series")))
-        val other = SearchResultGroup("t/movie", "Movies", listOf(named("m9", "Breaking Bad Habits")))
-
-        assertEquals("s1", searchTopMatch(listOf(film, show, other), "breaking bad")?.id)
-        // The exact name leads even when a longer one's addon is listed first.
-        assertEquals("s1", searchTopMatch(listOf(other, film, show), "breaking bad")?.id)
-        // A tie goes to the earlier catalog.
-        assertEquals("m1", searchTopMatch(listOf(film, other), "nothing alike")?.id)
-        assertNull(searchTopMatch(emptyList(), "breaking bad"))
-    }
-
-    @Test
-    fun twoAddonsCopiesOfATitleAreOneByImdbIdAndTheKeptCopyGainsWhatTheOtherKnew() {
-        val cinemeta = MetaPreview(
-            id = "tt0035767",
-            type = "movie",
-            name = "The Crime Doctor's Strangest Case",
-            releaseInfo = "1943",
-            poster = "https://images.metahub.space/poster/small/tt0035767/img",
-        )
-        val tmdb = MetaPreview(
-            id = "tmdb:84650",
-            type = "movie",
-            name = "Crime Doctor: Strangest Case",
-            releaseInfo = "1944",
-            imdbRating = "6.3",
-            poster = "https://image.tmdb.org/t/p/w500/4at.jpg",
-            imdbId = "tt0035767",
-        )
-
-        val merged = interleaveTitles(listOf(listOf(cinemeta), listOf(tmdb)), merge = MetaPreview::asOneTitleWith)
-
-        assertEquals(1, merged.size)
-        assertEquals("tt0035767", merged[0].id)
-        assertEquals("6.3", merged[0].imdbRating)
-        assertEquals("https://image.tmdb.org/t/p/w500/4at.jpg", merged[0].poster)
     }
 
     @Test
@@ -138,142 +42,9 @@ class SearchResultsTest {
     }
 
     @Test
-    fun withAScreenfulNamingEveryWordTitlesNamingOnlySomeAreLeftOut() {
-        val named = (0 until 8).map { full("tmdb:$it", "Doctor Strange $it") }
-        val loose = listOf(full("tmdb:90", "Doctor Sleep"), full("tmdb:91", "Strangers"))
-
-        assertEquals(named.map { it.id }, refineResults(named + loose, "doctor strange").map { it.id })
-        assertEquals(9, refineResults(named.drop(1) + loose, "doctor strange").size)
-    }
-
-    @Test
-    fun anEntryMadeFromAFileNameIsTheTitleItNamesAndTheImdbCopyLeads() {
-        val fromFile = MetaPreview(
-            id = "mf1706190",
-            type = "movie",
-            name = "Doctor Strange (2016)",
-            poster = "https://mediafusion.test/poster/movie/mf1706190.jpg",
-        )
-        val real = MetaPreview(
-            id = "tt1211837",
-            type = "movie",
-            name = "Doctor Strange",
-            releaseInfo = "2016",
-            poster = "https://live.metahub.space/poster/medium/tt1211837/img",
-        )
-
-        for (lists in listOf(listOf(listOf(fromFile), listOf(real)), listOf(listOf(real), listOf(fromFile)))) {
-            val merged = interleaveTitles(lists, merge = MetaPreview::asOneTitleWith, tidy = MetaPreview::withYearOutOfName)
-            assertEquals(1, merged.size)
-            assertEquals("tt1211837", merged[0].id)
-            assertEquals("Doctor Strange", merged[0].name)
-            assertEquals(real.poster, merged[0].poster)
-        }
-        val alone = fromFile.withYearOutOfName()
-        assertEquals("Doctor Strange", alone.name)
-        assertEquals("2016", alone.releaseInfo)
-        assertTrue(hasNoPoster(fromFile))
-        assertFalse(hasNoPoster(real))
-    }
-
-    @Test
     fun anEntryMadeFromAFileNameIsKnownByItsIdWhereverItsCardIsServedFrom() {
         assertTrue(hasNoPoster(full("mf12", "Doctor Strange", poster = "https://cdn.test/cards/12.jpg")))
         assertFalse(hasNoPoster(full("tt12", "Doctor Strange", poster = "https://cdn.test/cards/12.jpg")))
-    }
-
-    @Test
-    fun theRowsOfASearchAreCleanedAsOneSearch() {
-        val films = SearchResultGroup(
-            "c/movie",
-            "Movies",
-            (0 until 8).map { full("tt$it", "Doctor Strange $it") },
-        )
-        val fromFiles = SearchResultGroup(
-            "mf/movie",
-            "MediaFusion",
-            listOf(
-                // A copy of a real title, one that is nobody's copy, and a real title of its own.
-                full("mf100", "Doctor Strange 3 (2016)", releaseInfo = null, poster = "https://mf.test/poster/movie/mf100.jpg"),
-                full("mf200", "Doctor Strange Rip", poster = "https://mf.test/poster/movie/mf200.jpg"),
-                full("tt900", "Doctor Strange: The Making"),
-            ),
-        )
-        val series = SearchResultGroup(
-            "c/series",
-            "Series",
-            listOf(full("tt50", "Doctor Odyssey"), full("tt51", "Doctors")),
-        )
-
-        val rows = refineSearchGroups(listOf(films, fromFiles, series), "doctor strange")
-
-        // The short Series row had only one-word matches, and the search has plenty of full ones.
-        assertEquals(listOf("c/movie", "mf/movie"), rows.map { it.key })
-        assertEquals(8, rows[0].metas.size)
-        // The copy is on the first row already; the entry with nothing but a drawn card is gone.
-        assertEquals(listOf("tt900"), rows[1].metas.map { it.id })
-    }
-
-    @Test
-    fun everyCatalogsAnswerBecomesOneListWithoutWhatIsShownAbove() {
-        val films = SearchResultGroup("c/movie", "Movies", listOf(full("tt1", "Doctor Strange"), full("tt2", "Doctor Strange 2")))
-        val more = SearchResultGroup(
-            "t/movie",
-            "TMDB",
-            listOf(
-                full("tmdb:9", "Doctor Strange", poster = "https://image.tmdb.org/t/p/w500/9.jpg").copy(imdbId = "tt1"),
-                full("tmdb:7", "Doctor Strange: The Making"),
-            ),
-        )
-        val series = SearchResultGroup("c/series", "Series", listOf(full("tt5", "Doctor Stranger")))
-
-        val all = mergedSearchResults(listOf(films, more, series), "doctor strange")
-        // One card per title, best-named first, whichever catalog it came from.
-        assertEquals(listOf("tt1", "tt2", "tmdb:7", "tt5"), all.map { it.id })
-
-        val withoutOwned = mergedSearchResults(listOf(films, more, series), "doctor strange", exclude = listOf(full("tt1", "Doctor Strange")))
-        assertEquals(listOf("tt2", "tmdb:7", "tt5"), withoutOwned.map { it.id })
-    }
-
-    @Test
-    fun aTitleListedUnderAProductCodeIsLeftOut() {
-        val results = listOf(
-            full("tmdb:1", "Doctor Strange"),
-            full("tmdb:2", "MIMK-180 I received a strange treatment from a doctor"),
-            full("tmdb:3", "THX 1138"),
-            full("tmdb:4", "WALL-E"),
-        )
-
-        assertEquals(listOf("tmdb:4", "tmdb:1"), refineResults(results, "e").map { it.id })
-        assertEquals(listOf("tmdb:1"), refineResults(results, "strange doctor").map { it.id })
-    }
-
-    @Test
-    fun theTopMatchGainsWhatTheOtherCatalogsKnowAboutIt() {
-        val top = MetaPreview(id = "tt1", type = "movie", name = "Doctor Strange", releaseInfo = "2016")
-        val films = SearchResultGroup("c/movie", "Movies", listOf(top))
-        val more = SearchResultGroup(
-            "t/movie",
-            "TMDB",
-            listOf(
-                MetaPreview(
-                    id = "tmdb:9",
-                    type = "movie",
-                    name = "Doctor Strange",
-                    releaseInfo = "2016",
-                    imdbRating = "7.5",
-                    description = "A surgeon learns sorcery.",
-                    poster = "https://image.tmdb.org/t/p/w500/9.jpg",
-                ),
-            ),
-        )
-
-        val shown = topMatchWithDetails(top, listOf(films, more))
-
-        assertEquals("tt1", shown.id)
-        assertEquals("7.5", shown.imdbRating)
-        assertEquals("A surgeon learns sorcery.", shown.description)
-        assertEquals("https://image.tmdb.org/t/p/w500/9.jpg", shown.poster)
     }
 
     @Test

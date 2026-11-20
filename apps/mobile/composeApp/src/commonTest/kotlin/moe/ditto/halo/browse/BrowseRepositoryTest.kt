@@ -1,5 +1,7 @@
 package moe.ditto.halo.browse
 
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
@@ -13,6 +15,7 @@ import moe.ditto.halo.api.MetaResponse
 import moe.ditto.halo.api.Stream
 import moe.ditto.halo.api.StreamsResult
 import moe.ditto.halo.cache.QueryCache
+import moe.ditto.halo.people.Capabilities
 import moe.ditto.halo.sync.FakeClock
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -164,57 +167,31 @@ class BrowseRepositoryTest {
     }
 
     @Test
-    fun searchesEverySearchCapableCatalogAndKeepsOneRowPerAnswer() = runTest {
+    fun searchAsksOnlyCatalogsThatCanSearchWithTheQueryAsTheSearchExtra() = runTest {
         val api = browseApi { request ->
             when (request.url.encodedPath) {
                 "/addons" -> addonsJson(user = searchable)
-                "/catalog" -> when (request.url.parameters["type"]) {
-                    "movie" -> catalogJson(listOf(meta("tt1", name = "The Matrix")))
-                    // A catalog with no matches is not a row with no results.
-                    else -> catalogJson(emptyList())
-                }
+                "/catalog" -> catalogJson(listOf(meta("tt1", name = "The Matrix")))
                 else -> error("unexpected request to ${request.url}")
             }
         }
-        val repository = repository(api)
+        val cache = QueryCache(backgroundScope, FakeClock())
+        val addons = AddonsRepository(api.client, cache)
+        val sources = BackendSearchSources(
+            backend = api.client,
+            addons = addons::effective,
+            capabilities = { Capabilities.None },
+            posterProbe = PosterProbe(HttpClient(MockEngine { error("no poster is asked about here") })),
+        )
 
-        val groups = repository.search("  matrix  ").first { it.value != null }.value
+        val targets = boardTargets(sources.addons())
+        // The catalog that cannot search is never a target.
+        assertEquals(listOf("movie/top", "series/top"), targets.map { "${it.type}/${it.catalogId}" })
+        val found = sources.catalog(targets.first(), "matrix")
 
-        assertEquals(listOf("Popular – Movie"), groups?.map { it.title })
-        assertEquals(listOf("The Matrix"), groups?.single()?.metas?.map { it.name })
-        // The non-searchable catalog is never asked, and the term reaches the
-        // ones that are as the protocol's `search` extra, trimmed.
-        assertEquals(2, api.reads("/catalog").size)
-        assertTrue(api.reads("/catalog").all { it.url.parameters["search"] == "matrix" })
-    }
-
-    @Test
-    fun oneFailingCatalogDoesNotFailTheSearch() = runTest {
-        // Addons are third-party and time out routinely; a shared failure would
-        // turn one slow addon into an empty screen.
-        val api = BrowseApi { request ->
-            when {
-                request.url.encodedPath == "/addons" -> HttpStatusCode.OK to addonsJson(user = searchable)
-                request.url.parameters["type"] == "series" ->
-                    HttpStatusCode.BadGateway to """{"error":"catalog fetch failed"}"""
-                else -> HttpStatusCode.OK to catalogJson(listOf(meta("tt1", name = "The Matrix")))
-            }
-        }
-        val repository = repository(api)
-
-        val groups = repository.search("matrix").first { it.value != null }.value
-
-        assertEquals(listOf("Popular – Movie"), groups?.map { it.title })
-    }
-
-    @Test
-    fun doesNotSearchOnATermTooShortToMeanAnything() = runTest {
-        val api = browseApi { error("nothing should be requested") }
-        val repository = repository(api)
-
-        repository.search("a").first()
-
-        assertTrue(api.requests.isEmpty())
+        assertEquals(listOf("The Matrix"), found.map { it.name })
+        assertEquals(1, api.reads("/catalog").size)
+        assertEquals("matrix", api.reads("/catalog").single().url.parameters["search"])
     }
 
     /** One cache shared by both repositories, exactly as the app wires them. */

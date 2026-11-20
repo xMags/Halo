@@ -102,6 +102,8 @@ import moe.ditto.halo.ui.rememberResponsive
 internal fun HomeScreen(
     graph: SessionGraph,
     onOpenSearch: () -> Unit,
+    /** The search button's modifier, for the glide into Search's field. */
+    searchFieldModifier: Modifier = Modifier,
     onOpenDetail: (MetaRef) -> Unit,
     /** Movies play straight from the featured card; series open their detail screen instead. */
     onPlayMovie: (MetaCard) -> Unit,
@@ -237,6 +239,7 @@ internal fun HomeScreen(
                 title = "Halo",
                 modifier = Modifier.padding(horizontal = gutter),
                 onOpenSearch = onOpenSearch,
+                searchModifier = searchFieldModifier,
                 filter = filter,
                 onFilterChange = { filter = it },
                 leading = { HomeHaloMark() },

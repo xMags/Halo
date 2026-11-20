@@ -2,6 +2,8 @@ package moe.ditto.halo.ui
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
@@ -321,6 +323,44 @@ object HaloIcons {
                 "4 4-1.79 4-4-1.79-4-4-4zm0 6c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z",
         )
     }
+
+    /** A web link (Material "link"). */
+    val Link: ImageVector by lazy {
+        icon(
+            "M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 " +
+                "13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z",
+        )
+    }
+
+    /** Films and series (Material "movie"). */
+    val Movie: ImageVector by lazy {
+        icon("M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z")
+    }
+
+    /** A kind filter that left nothing (Material "filter_list"). */
+    val Filter: ImageVector by lazy {
+        icon("M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z")
+    }
+
+    /** Nothing could be reached (Material "cloud_off"). */
+    val CloudOff: ImageVector by lazy {
+        icon(
+            "M19.35 10.04C18.67 6.59 15.64 4 12 4c-1.48 0-2.85.43-4.01 1.17l1.46 1.46C10.21 6.23 11.08 6 12 6c3.04 0 " +
+                "5.5 2.46 5.5 5.5v.5H19c1.66 0 3 1.34 3 3 0 1.13-.64 2.11-1.56 2.62l1.45 1.45C23.16 18.16 24 16.68 24 " +
+                "15c0-2.64-2.05-4.78-4.65-4.96zM3 5.27l2.75 2.74C2.56 8.15 0 10.77 0 14c0 3.31 2.69 6 6 6h11.73l2 2L21 " +
+                "20.73 4.27 4 3 5.27zM7.73 10l8 8H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h1.73z",
+        )
+    }
+
+    /** An IMDb or TVDB id: a card with a portrait and two lines, drawn as strokes. */
+    val IdCard: ImageVector by lazy {
+        strokedIcon("M4 5.5h16a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 17V7A1.5 1.5 0 0 1 4 5.5z", "M6 9.5h4v5H6z", "M13 10h5", "M13 14h4")
+    }
+
+    /** A magnet link: a horseshoe magnet, drawn as strokes, as the desktop draws it. */
+    val Magnet: ImageVector by lazy {
+        strokedIcon("M6,4 H10 V12 A2,2 0 0 0 14,12 V4 H18 V12 A6,6 0 0 1 6,12 Z", "M6,8 H10", "M14,8 H18")
+    }
 }
 
 /**
@@ -339,6 +379,26 @@ private fun icon(vararg pathData: String): ImageVector =
             addPath(
                 pathData = PathParser().parsePathString(data).toNodes(),
                 fill = SolidColor(Color.White),
+            )
+        }
+    }.build()
+
+/** A glyph drawn as 1.6-unit round strokes rather than filled, for the two drawn here rather than taken from Material. */
+private fun strokedIcon(vararg pathData: String): ImageVector =
+    ImageVector.Builder(
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        pathData.forEach { data ->
+            addPath(
+                pathData = PathParser().parsePathString(data).toNodes(),
+                fill = null,
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 1.6f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
             )
         }
     }.build()

@@ -47,6 +47,7 @@ import moe.ditto.halo.api.HaloApiException
 import moe.ditto.halo.api.MalformedResponseException
 import moe.ditto.halo.api.SessionRejectedException
 import moe.ditto.halo.api.Stream
+import moe.ditto.halo.api.StreamBehaviorHints
 import moe.ditto.halo.api.StreamsResult
 import moe.ditto.halo.api.UserSettings
 import moe.ditto.halo.browse.SourceDetails
@@ -68,6 +69,9 @@ import moe.ditto.halo.downloads.DownloadStartResult
 import moe.ditto.halo.downloads.DownloadStatus
 import moe.ditto.halo.downloads.sourceFingerprint
 import moe.ditto.halo.sync.runtimeMinutes
+import moe.ditto.halo.magnets.MagnetCopy
+import moe.ditto.halo.magnets.MagnetFile
+import moe.ditto.halo.magnets.magnetFileFor
 import moe.ditto.halo.ui.CenterMessage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloRadius
@@ -234,6 +238,9 @@ internal fun SourcesPicker(
     // subject rather than of any one row.
     val downloads by graph.downloads.entries.collectAsState()
     val download = remember(downloads, videoId) { downloads.firstOrNull { it.videoId == videoId } }
+    // A magnet pasted in Search that the server matched to this very video.
+    val readyMagnet by graph.readyMagnet.request.collectAsState()
+    val magnetFile = remember(readyMagnet, type, videoId) { readyMagnet?.let { magnetFileFor(it, type, videoId) } }
     // A finished copy leads the list: nothing an addon offers starts faster.
     val menus = LocalTitleMenus.current
     val offline = download?.takeIf { it.status == DownloadStatus.Done && menus != null }
@@ -277,6 +284,11 @@ internal fun SourcesPicker(
                 refusal = refusal,
                 offline = offline,
                 onPlayOffline = { entry -> menus?.playDownload(entry) },
+                magnet = magnetFile,
+                // The server's play link carries its own signed token, so it is
+                // played as a source of no addon: no headers, and no addon to
+                // ask for what follows it.
+                onPlayMagnet = { file -> onPlay(MagnetAddon, magnetStream(file)) },
                 runtimeSeconds = (runtimeMinutes(meta.value?.runtime) ?: 0) * 60.0,
                 view = view,
                 onOpenSort = { sortOpen = true },
@@ -449,6 +461,9 @@ internal fun StreamsContent(
      */
     offline: DownloadEntry? = null,
     onPlayOffline: (DownloadEntry) -> Unit = {},
+    /** The file of a magnet pasted in Search that stands for this video; shown above the sources too. */
+    magnet: MagnetFile? = null,
+    onPlayMagnet: (MagnetFile) -> Unit = {},
     /** The video's length, for what each file asks of the line; zero when unknown. */
     runtimeSeconds: Double = 0.0,
     view: SourcesView = remember { SourcesView() },
@@ -484,9 +499,16 @@ internal fun StreamsContent(
             )
         }
         val body = Modifier.fillMaxWidth().weight(1f)
-        if (offline != null && state !is StreamsContentState.Sources) {
-            Box(Modifier.padding(contentPadding.horizontalOnly())) {
-                OfflineCard(entry = offline, onPlay = { onPlayOffline(offline) })
+        if (state !is StreamsContentState.Sources) {
+            if (offline != null) {
+                Box(Modifier.padding(contentPadding.horizontalOnly())) {
+                    OfflineCard(entry = offline, onPlay = { onPlayOffline(offline) })
+                }
+            }
+            if (magnet != null) {
+                Box(Modifier.padding(contentPadding.horizontalOnly())) {
+                    MagnetSourceCard(file = magnet, onPlay = { onPlayMagnet(magnet) })
+                }
             }
         }
         when (state) {
@@ -518,6 +540,8 @@ internal fun StreamsContent(
                         view = view,
                         offline = offline,
                         onPlayOffline = onPlayOffline,
+                        magnet = magnet,
+                        onPlayMagnet = onPlayMagnet,
                         refusal = refusal,
                         onRetry = onRetry,
                         onPlay = { entry -> onPlay(entry.addon, entry.stream) },
@@ -545,6 +569,8 @@ private fun ColumnScope.SourcesList(
     /** This video's finished download, shown above everything addons offer. */
     offline: DownloadEntry?,
     onPlayOffline: (DownloadEntry) -> Unit,
+    magnet: MagnetFile?,
+    onPlayMagnet: (MagnetFile) -> Unit,
     refusal: String?,
     onRetry: () -> Unit,
     onPlay: (SourceEntry) -> Unit,
@@ -577,6 +603,9 @@ private fun ColumnScope.SourcesList(
     LazyColumn(modifier = modifier, contentPadding = contentPadding) {
         offline?.let { entry ->
             item(key = "offline") { OfflineCard(entry = entry, onPlay = { onPlayOffline(entry) }) }
+        }
+        magnet?.let { file ->
+            item(key = "magnet") { MagnetSourceCard(file = file, onPlay = { onPlayMagnet(file) }) }
         }
         if (refusal != null) {
             item(key = "download-refusal") { RefusalNotice(refusal) }
@@ -709,3 +738,14 @@ private fun PaddingValues.horizontalOnly(): PaddingValues {
     val direction = LocalLayoutDirection.current
     return PaddingValues(start = calculateStartPadding(direction), end = calculateEndPadding(direction))
 }
+
+/** The source a magnet's file plays as: no addon offered it. */
+private val MagnetAddon = AddonSource(id = "", name = MagnetCopy.SourceName)
+
+/** A magnet's file as a stream: the server's play link, its name and size, nothing else. */
+private fun magnetStream(file: MagnetFile): Stream = Stream(
+    url = file.playUrl,
+    name = MagnetCopy.SourceName,
+    title = file.name,
+    behaviorHints = StreamBehaviorHints(filename = file.name, videoSize = file.sizeBytes.takeIf { it > 0 }),
+)

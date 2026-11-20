@@ -147,7 +147,8 @@ internal fun PlayerScreen(
      */
     onSelectEpisode: (EpisodeChoice) -> Unit,
     /** Opens the picker for [context] after the player has safely wound down. */
-    onPickAnotherSource: () -> Unit,
+    /** Null when there is no list to pick from (a pasted link): the error overlay leaves the button out. */
+    onPickAnotherSource: (() -> Unit)?,
     /** What is being played and what to call it; see [PlaybackContext]. */
     context: PlaybackContext,
     onBack: () -> Unit,
@@ -184,7 +185,8 @@ internal fun PlayerScreen(
     // session have to agree on.
     val item = remember(context) {
         MediaItem(
-            id = context.videoId,
+            // A pasted link has no video id; the link is all there is to name it by.
+            id = if (context.recordsHistory) context.videoId else context.url,
             title = context.displayTitle,
             url = context.url,
             headers = if (context.isDownload) emptyMap() else context.requestHeaders,
@@ -258,7 +260,7 @@ internal fun PlayerScreen(
             // is not held for it: the history is normally cached already, and
             // when it is not the wait for it is bounded. A stream of unknown
             // length opens with no duration, which resumePosition accepts.
-            launch {
+            if (context.recordsHistory) launch {
                 val saved = graph.watchStates.loadedProgressFor(context.videoId, ResumeHistoryWaitMillis)
                     ?: return@launch
                 val opened = playback.state.first { it.current == item && it.opened }
@@ -333,7 +335,7 @@ internal fun PlayerScreen(
     // needed, or asked for and answered (with a hash or with nothing). The
     // subtitle restore waits on it; see [subtitleSelectionMayRun].
     var fingerprintSettled by remember(item) {
-        mutableStateOf(context.isDownload || fingerprint != null)
+        mutableStateOf(!context.asksAddons || fingerprint != null)
     }
     LaunchedEffect(item) {
         // Nothing to hash for a file already on the device, and nobody to ask
@@ -356,7 +358,7 @@ internal fun PlayerScreen(
     // run on it.
     val addonSubtitleState by key(item, fingerprint) {
         remember {
-            if (context.isDownload) return@remember flowOf(QueryState<List<AddonSubtitles>>())
+            if (!context.asksAddons) return@remember flowOf(QueryState<List<AddonSubtitles>>())
             graph.browse.subtitles(
                 type = context.type,
                 videoId = context.videoId,
@@ -387,7 +389,7 @@ internal fun PlayerScreen(
     var selectionRound by remember(item) { mutableStateOf(0) }
     // A download has no addon query; otherwise its first answer has to be in,
     // since the query starts out as an empty result that is not fetching yet.
-    val addonSubtitlesKnown = context.isDownload || addonSubtitleState.value != null || addonSubtitleState.error != null
+    val addonSubtitlesKnown = !context.asksAddons || addonSubtitleState.value != null || addonSubtitleState.error != null
     LaunchedEffect(
         item,
         selectionRound,
@@ -411,7 +413,7 @@ internal fun PlayerScreen(
         if (!mayRun) return@LaunchedEffect
 
         val selection = resolveSubtitleSelection(
-            remembered = graph.subtitleChoices.choiceFor(context.videoId, context.itemId),
+            remembered = if (context.recordsHistory) graph.subtitleChoices.choiceFor(context.videoId, context.itemId) else null,
             tracks = state.tracks,
             addonSubtitles = addonSubtitles,
             preferredLang = graph.settings.current().preferredSubtitleLang,
@@ -911,7 +913,7 @@ internal fun PlayerScreen(
                     // not a new decision, and writing it back would let a
                     // preference reinforce itself into looking like one.
                     val track = state.tracks.subtitles.firstOrNull { it.id == id }
-                    graph.subtitleChoices.remember(
+                    if (context.recordsHistory) graph.subtitleChoices.remember(
                         videoId = context.videoId,
                         itemId = context.itemId,
                         choice = track?.let(::embeddedChoice) ?: OffChoice,
@@ -936,7 +938,7 @@ internal fun PlayerScreen(
                                 },
                                 onLoaded = {
                                     controller.selectAddonSubtitle(option.id)
-                                    graph.subtitleChoices.remember(
+                                    if (context.recordsHistory) graph.subtitleChoices.remember(
                                         videoId = context.videoId,
                                         itemId = context.itemId,
                                         choice = externalChoice(option),
@@ -1051,7 +1053,7 @@ internal fun PlayerScreen(
                         )
                     }
                 },
-                onPickAnotherSource = { leaveTo(onPickAnotherSource) },
+                onPickAnotherSource = onPickAnotherSource?.let { pick -> { leaveTo(pick) } },
             )
         }
     }

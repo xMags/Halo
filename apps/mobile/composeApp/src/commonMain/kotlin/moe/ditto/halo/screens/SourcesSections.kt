@@ -52,6 +52,8 @@ import moe.ditto.halo.browse.medalFor
 import moe.ditto.halo.browse.metaLine
 import moe.ditto.halo.browse.parseSourceInfo
 import moe.ditto.halo.downloads.DownloadEntry
+import moe.ditto.halo.magnets.MagnetCopy
+import moe.ditto.halo.magnets.MagnetFile
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.HaloRadius
@@ -650,4 +652,53 @@ internal object SourcesPalette {
     val ButtonFill = Color.White.copy(alpha = 0.059f)
     val ControlShape = RoundedCornerShape(4.dp)
     val Track = Color.White.copy(alpha = 0.10f)
+}
+
+/**
+ * The file of a magnet pasted in Search that the server matched to this
+ * video, above the ranked sources: its name and size, and Play. Its other
+ * files are never listed.
+ */
+@Composable
+internal fun MagnetSourceCard(file: MagnetFile, onPlay: () -> Unit) {
+    val shape = RoundedCornerShape(10.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = HaloSpacing.Md)
+            .clip(shape)
+            .background(SourcesPalette.CardFill)
+            .border(1.dp, PillOnEdge, shape)
+            .padding(18.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.size(8.dp).clip(RoundedCornerShape(HaloRadius.Pill)).background(HaloColors.Success))
+            Text(MagnetCopy.SourceName, color = HaloColors.Success, fontSize = 13.5.sp)
+            formatBytes(file.sizeBytes).takeIf { it.isNotEmpty() }?.let { size ->
+                Text("·", color = SourcesPalette.Faint, fontSize = 13.5.sp)
+                Text(size, color = HaloColors.TextDim, fontSize = 13.5.sp)
+            }
+        }
+        Text(
+            text = file.name,
+            style = monoStyle(12.sp, FontWeight.Normal, color = HaloColors.TextDim),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 14.dp),
+        )
+        Row(
+            modifier = Modifier
+                .padding(top = HaloSpacing.Md)
+                .fillMaxWidth()
+                .height(46.dp)
+                .clip(SourcesPalette.ControlShape)
+                .background(HaloColors.Text)
+                .clickable(role = Role.Button, onClick = onPlay),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(HaloIcons.Play, contentDescription = null, tint = HaloColors.Background, modifier = Modifier.size(20.dp))
+            Text("Play", color = HaloColors.Background, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp))
+        }
+    }
 }

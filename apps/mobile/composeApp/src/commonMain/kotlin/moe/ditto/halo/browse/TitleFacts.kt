@@ -17,7 +17,13 @@ import moe.ditto.halo.sync.runtimeMinutes
  */
 
 /** A person on the cast row: the part they play, or their crew role. */
-data class Credit(val name: String, val role: String?, val photo: String?)
+data class Credit(
+    val name: String,
+    val role: String?,
+    val photo: String?,
+    /** Opens the person page by id when the addon's pictured cast named one. */
+    val tmdbId: Long? = null,
+)
 
 /**
  * The cast row: the addon's pictured cast when it sends one (TMDB), else the
@@ -27,7 +33,7 @@ data class Credit(val name: String, val role: String?, val photo: String?)
 fun creditsOf(meta: MetaDetail): List<Credit> {
     val pictured = meta.appExtras?.cast.orEmpty()
     val cast = if (pictured.isNotEmpty()) {
-        pictured.map { Credit(it.name, it.character?.ifBlank { null }, it.photo?.ifBlank { null }) }
+        pictured.map { Credit(it.name, it.character?.ifBlank { null }, it.photo?.ifBlank { null }, it.castTmdbId) }
     } else {
         meta.cast.map { Credit(it, null, null) }
     }

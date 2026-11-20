@@ -90,6 +90,11 @@ fun HaloAsyncImage(
      * its own to fall back on.
      */
     fallbackUrl: String? = null,
+    /**
+     * Shown in place of the art when there is none, or none loads. Null keeps
+     * the bare surface every grid outside Search has always shown.
+     */
+    failure: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     val primary = url?.takeIf { it.isNotBlank() }
     val secondary = fallbackUrl?.takeIf { it.isNotBlank() && it != primary }
@@ -97,7 +102,7 @@ fun HaloAsyncImage(
     val model = if (onFallback) secondary else primary
     if (model == null) {
         Box(modifier.background(HaloColors.Surface)) {
-            placeholder?.invoke(this)
+            (failure ?: placeholder)?.invoke(this)
         }
         return
     }
@@ -125,6 +130,9 @@ fun HaloAsyncImage(
             contentScale = contentScale,
             alignment = alignment,
         )
+        if (failure != null && failed && (onFallback || secondary == null)) {
+            Box(Modifier.matchParentSize().background(HaloColors.Surface)) { failure() }
+        }
         // Kept composed through the whole fade: dropping it the moment the load
         // succeeds would swap the skeleton out in one frame, with nothing left
         // to animate.

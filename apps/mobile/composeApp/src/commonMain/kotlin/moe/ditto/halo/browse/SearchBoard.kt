@@ -79,6 +79,12 @@ fun cappedQuery(text: String): String {
     return text.substring(0, length)
 }
 
+/**
+ * Below this a query matches almost everything, so asking every catalog costs
+ * one request each and returns noise.
+ */
+const val MinSearchTermLength = 2
+
 /** Whether a query, trimmed, is long enough to search. */
 fun isSearchableQuery(query: String): Boolean = query.trim().length >= MinSearchTermLength
 

@@ -47,7 +47,6 @@ sealed class HaloKey(override val id: String, val staleMs: Long) : QueryKey {
     data class Subtitles(val type: String, val videoId: String, val source: String?) :
         HaloKey("subtitles/$type/$videoId/${source ?: "none"}", Forever)
 
-    data class Search(val term: String) : HaloKey("search/$term", 1.minutes.inWholeMilliseconds)
 
     /** Synced collections are read fresh: another device may have changed them. */
     data object Library : HaloKey("library", Always)

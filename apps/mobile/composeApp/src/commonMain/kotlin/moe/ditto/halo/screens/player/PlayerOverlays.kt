@@ -437,7 +437,7 @@ internal fun UpNextCard(
 internal fun PlaybackErrorCard(
     engineMessage: String?,
     onRetry: () -> Unit,
-    onPickAnotherSource: () -> Unit,
+    onPickAnotherSource: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -520,19 +520,21 @@ internal fun PlaybackErrorCard(
                         .clickable(role = Role.Button, onClick = onRetry)
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                 )
-                Text(
-                    text = "Pick another source",
-                    color = HaloColors.OnPrimary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(HaloRadius.Md))
-                        .background(HaloColors.Primary)
-                        .clickable(role = Role.Button, onClick = onPickAnotherSource)
-                        .padding(vertical = 10.dp),
-                )
+                if (onPickAnotherSource != null) {
+                    Text(
+                        text = "Pick another source",
+                        color = HaloColors.OnPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(HaloRadius.Md))
+                            .background(HaloColors.Primary)
+                            .clickable(role = Role.Button, onClick = onPickAnotherSource)
+                            .padding(vertical = 10.dp),
+                    )
+                }
             }
         }
     }

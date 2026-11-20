@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
@@ -87,6 +89,8 @@ import moe.ditto.halo.resources.Res
 import moe.ditto.halo.resources.halo_mark
 import moe.ditto.halo.screens.player.EpisodeChoice
 import moe.ditto.halo.screens.player.PlayerScreen
+import moe.ditto.halo.screens.PersonScreen
+import moe.ditto.halo.screens.SearchNavigation
 import moe.ditto.halo.screens.SearchScreen
 import moe.ditto.halo.screens.SettingsScreen
 import moe.ditto.halo.screens.ShelfScreen
@@ -124,6 +128,10 @@ import org.jetbrains.compose.resources.painterResource
  * The whole graph is registered as the blur source here, so any frosted surface
  * anywhere inside a screen samples that screen's own content.
  */
+/** The shared element Home's search button and Search's field are drawn as. */
+private const val SearchFieldKey = "search-field"
+
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 internal fun HaloShell(
     graph: SessionGraph,
@@ -174,165 +182,196 @@ internal fun HaloShell(
 
     CompositionLocalProvider(LocalHazeState provides hazeState, LocalTitleMenus provides titleMenus.menus) {
         Box(modifier.fillMaxSize().background(HaloColors.Background)) {
-            NavHost(
-                navController = navController,
-                startDestination = HomeRoute,
-                modifier = Modifier.fillMaxSize().glassSource(hazeState),
-                // Tabs are peers: switching between them is not a journey and gets
-                // no animation, which is also what the platform does with a tab
-                // bar. Only a push onto a covering screen animates, and it animates
-                // in the direction it travels.
-                enterTransition = { if (targetState.destination.isPushed()) pushEnter() else EnterTransition.None },
-                exitTransition = { if (targetState.destination.isPushed()) pushExit() else ExitTransition.None },
-                popEnterTransition = {
-                    if (initialState.destination.isPushed()) popEnter() else EnterTransition.None
-                },
-                popExitTransition = {
-                    if (initialState.destination.isPushed()) popExit() else ExitTransition.None
-                },
-            ) {
-                composable<HomeRoute> {
-                    HomeScreen(
-                        graph = graph,
-                        onOpenSearch = { navController.navigate(SearchRoute) },
-                        onOpenDetail = { navController.openDetail(it) },
-                        onPlayMovie = { meta -> navController.navigate(movieSources(meta)) },
-                        onOpenShelf = { snapshot -> navController.navigate(ShelfRoute(shelves.put(snapshot))) },
-                        onOpenHistory = {
-                            libraryView = LibraryView.History
-                            navController.switchTab(LibraryRoute)
-                        },
-                        onOpenSettings = { navController.switchTab(SettingsRoute) },
-                        onOpenLibrary = {
-                            libraryView = LibraryView.Saved
-                            navController.switchTab(LibraryRoute)
-                        },
-                    )
-                }
-                composable<ShelfRoute> { entry ->
-                    ShelfScreen(
-                        graph = graph,
-                        snapshot = shelves[entry.toRoute<ShelfRoute>().key],
-                        onBack = { navController.popBackStack() },
-                        onOpenDetail = { navController.openDetail(it) },
-                    )
-                }
-                composable<SearchRoute> {
-                    SearchScreen(
-                        graph = graph,
-                        onOpenDetail = { navController.openDetail(it) },
-                        onPlayMovie = { meta -> navController.navigate(movieSources(meta)) },
-                        onClose = { navController.popBackStack() },
-                    )
-                }
-                composable<LibraryRoute> {
-                    LibraryScreen(
-                        graph = graph,
-                        onOpenDetail = { navController.openDetail(it) },
-                        onOpenSources = { navController.navigate(it) },
-                        requestedView = libraryView,
-                        onViewRequestTaken = { libraryView = null },
-                    )
-                }
-                composable<DetailRoute> { entry ->
-                    val route = entry.toRoute<DetailRoute>()
-                    DetailScreen(
-                        graph = graph,
-                        type = route.type,
-                        metaId = route.metaId,
-                        onBack = { navController.popBackStack() },
-                        onPlayMovie = { meta -> navController.navigate(movieSources(meta)) },
-                        onPlayEpisode = { meta, video -> navController.navigate(episodeSources(meta, video)) },
-                        onOpenDetail = { navController.openDetail(it) },
-                        onOpenShelf = { snapshot -> navController.navigate(ShelfRoute(shelves.put(snapshot))) },
-                        // Where there is room beside the title, the picker
-                        // arrives as a rail over it instead of as a screen that
-                        // replaces it. The routes it builds are the same ones
-                        // the pushed picker is given.
-                        sourcesRequest = { meta, video ->
-                            navController.sourcesRequest(
-                                if (video == null) movieSources(meta) else episodeSources(meta, video),
-                            )
-                        },
-                    )
-                }
-                composable<StreamsRoute> { entry ->
-                    val route = entry.toRoute<StreamsRoute>()
-                    StreamsScreen(
-                        graph = graph,
-                        type = route.type,
-                        metaId = route.metaId,
-                        videoId = route.videoId,
-                        kicker = route.sourcesKicker,
-                        title = route.sourcesTitle,
-                        onBack = { navController.popBackStack() },
-                        onOpenPlayback = { navController.switchTab(SettingsRoute) },
-                        downloadMedia = { addon, stream, url -> route.downloadMedia(addon, stream, url) },
-                        onPlay = { addon, stream ->
-                            val url = stream.url ?: return@StreamsScreen
-                            // The picker is replaced rather than stacked, so
-                            // leaving the player returns to the title. Being
-                            // handed the source list again after choosing from
-                            // it reads as the choice not having taken.
-                            navController.navigate(route.playerRoute(addon, stream, url)) {
-                                popUpTo<StreamsRoute> { inclusive = true }
-                            }
-                        },
-                    )
-                }
-                composable<PlayerRoute> { entry ->
-                    val route = entry.toRoute<PlayerRoute>()
-                    PlayerScreen(
-                        graph = graph,
-                        playback = playback,
-                        surface = playerSurface,
-                        bundledSubtitleFonts = bundledSubtitleFonts,
-                        system = playerSystem,
-                        videoFrames = videoFrames,
-                        context = route.playbackContext(),
-                        // Both outcomes replace the player rather than stacking
-                        // on it, so back still returns to the title rather than
-                        // walking every episode watched in this sitting.
-                        onSelectEpisode = { choice ->
-                            when (choice) {
-                                is EpisodeChoice.Resolved ->
-                                    navController.navigate(route.withContext(choice.context)) {
+            // Home's search button and Search's field are one element: the field
+            // glides from where the button was while Search slides in.
+            SharedTransitionLayout(Modifier.fillMaxSize()) {
+                val sharedScope = this
+                NavHost(
+                    navController = navController,
+                    startDestination = HomeRoute,
+                    modifier = Modifier.fillMaxSize().glassSource(hazeState),
+                    // Tabs are peers: switching between them is not a journey and gets
+                    // no animation, which is also what the platform does with a tab
+                    // bar. Only a push onto a covering screen animates, and it animates
+                    // in the direction it travels.
+                    enterTransition = { if (targetState.destination.isPushed()) pushEnter() else EnterTransition.None },
+                    exitTransition = { if (targetState.destination.isPushed()) pushExit() else ExitTransition.None },
+                    popEnterTransition = {
+                        if (initialState.destination.isPushed()) popEnter() else EnterTransition.None
+                    },
+                    popExitTransition = {
+                        if (initialState.destination.isPushed()) popExit() else ExitTransition.None
+                    },
+                ) {
+                    composable<HomeRoute> {
+                        HomeScreen(
+                            graph = graph,
+                            onOpenSearch = { navController.navigate(SearchRoute) },
+                            searchFieldModifier = with(sharedScope) {
+                                Modifier.sharedBounds(rememberSharedContentState(SearchFieldKey), animatedVisibilityScope = this@composable)
+                            },
+                            onOpenDetail = { navController.openDetail(it) },
+                            onPlayMovie = { meta -> navController.navigate(movieSources(meta)) },
+                            onOpenShelf = { snapshot -> navController.navigate(ShelfRoute(shelves.put(snapshot))) },
+                            onOpenHistory = {
+                                libraryView = LibraryView.History
+                                navController.switchTab(LibraryRoute)
+                            },
+                            onOpenSettings = { navController.switchTab(SettingsRoute) },
+                            onOpenLibrary = {
+                                libraryView = LibraryView.Saved
+                                navController.switchTab(LibraryRoute)
+                            },
+                        )
+                    }
+                    composable<ShelfRoute> { entry ->
+                        ShelfScreen(
+                            graph = graph,
+                            snapshot = shelves[entry.toRoute<ShelfRoute>().key],
+                            onBack = { navController.popBackStack() },
+                            onOpenDetail = { navController.openDetail(it) },
+                        )
+                    }
+                    composable<SearchRoute> {
+                        SearchScreen(
+                            graph = graph,
+                            fieldModifier = with(sharedScope) {
+                                Modifier.sharedBounds(rememberSharedContentState(SearchFieldKey), animatedVisibilityScope = this@composable)
+                            },
+                            navigation = SearchNavigation(
+                                openDetail = { navController.openDetail(it) },
+                                openPerson = { navController.navigate(it) },
+                                play = { navController.navigate(it) },
+                                openSettings = { navController.switchTab(SettingsRoute) },
+                                close = { navController.popBackStack() },
+                            ),
+                        )
+                    }
+                    composable<PersonRoute> { entry ->
+                        val route = entry.toRoute<PersonRoute>()
+                        PersonScreen(
+                            graph = graph,
+                            tmdbId = route.tmdbId,
+                            name = route.name,
+                            photo = route.photo,
+                            onBack = { navController.popBackStack() },
+                            onOpenDetail = { navController.openDetail(it) },
+                        )
+                    }
+                    composable<LibraryRoute> {
+                        LibraryScreen(
+                            graph = graph,
+                            onOpenDetail = { navController.openDetail(it) },
+                            onOpenSources = { navController.navigate(it) },
+                            requestedView = libraryView,
+                            onViewRequestTaken = { libraryView = null },
+                        )
+                    }
+                    composable<DetailRoute> { entry ->
+                        val route = entry.toRoute<DetailRoute>()
+                        DetailScreen(
+                            graph = graph,
+                            type = route.type,
+                            metaId = route.metaId,
+                            onBack = { navController.popBackStack() },
+                            onPlayMovie = { meta -> navController.navigate(movieSources(meta)) },
+                            onPlayEpisode = { meta, video -> navController.navigate(episodeSources(meta, video)) },
+                            onOpenDetail = { navController.openDetail(it) },
+                            onOpenShelf = { snapshot -> navController.navigate(ShelfRoute(shelves.put(snapshot))) },
+                            onOpenPerson = { navController.navigate(it) },
+                            // Where there is room beside the title, the picker
+                            // arrives as a rail over it instead of as a screen that
+                            // replaces it. The routes it builds are the same ones
+                            // the pushed picker is given.
+                            sourcesRequest = { meta, video ->
+                                navController.sourcesRequest(
+                                    if (video == null) movieSources(meta) else episodeSources(meta, video),
+                                )
+                            },
+                        )
+                    }
+                    composable<StreamsRoute> { entry ->
+                        val route = entry.toRoute<StreamsRoute>()
+                        StreamsScreen(
+                            graph = graph,
+                            type = route.type,
+                            metaId = route.metaId,
+                            videoId = route.videoId,
+                            kicker = route.sourcesKicker,
+                            title = route.sourcesTitle,
+                            onBack = { navController.popBackStack() },
+                            onOpenPlayback = { navController.switchTab(SettingsRoute) },
+                            downloadMedia = { addon, stream, url -> route.downloadMedia(addon, stream, url) },
+                            onPlay = { addon, stream ->
+                                val url = stream.url ?: return@StreamsScreen
+                                // The picker is replaced rather than stacked, so
+                                // leaving the player returns to the title. Being
+                                // handed the source list again after choosing from
+                                // it reads as the choice not having taken.
+                                navController.navigate(route.playerRoute(addon, stream, url)) {
+                                    popUpTo<StreamsRoute> { inclusive = true }
+                                }
+                            },
+                        )
+                    }
+                    composable<PlayerRoute> { entry ->
+                        val route = entry.toRoute<PlayerRoute>()
+                        PlayerScreen(
+                            graph = graph,
+                            playback = playback,
+                            surface = playerSurface,
+                            bundledSubtitleFonts = bundledSubtitleFonts,
+                            system = playerSystem,
+                            videoFrames = videoFrames,
+                            context = route.playbackContext(),
+                            // Both outcomes replace the player rather than stacking
+                            // on it, so back still returns to the title rather than
+                            // walking every episode watched in this sitting.
+                            onSelectEpisode = { choice ->
+                                when (choice) {
+                                    is EpisodeChoice.Resolved ->
+                                        navController.navigate(route.withContext(choice.context)) {
+                                            popUpTo<PlayerRoute> { inclusive = true }
+                                        }
+                                    is EpisodeChoice.NeedsSource ->
+                                        navController.navigate(route.episodeSources(choice)) {
+                                            popUpTo<PlayerRoute> { inclusive = true }
+                                        }
+                                }
+                            },
+                            onPickAnotherSource = if (route.recordsHistory) {
+                                {
+                                    navController.navigate(route.sourcesRoute()) {
                                         popUpTo<PlayerRoute> { inclusive = true }
                                     }
-                                is EpisodeChoice.NeedsSource ->
-                                    navController.navigate(route.episodeSources(choice)) {
-                                        popUpTo<PlayerRoute> { inclusive = true }
-                                    }
-                            }
-                        },
-                        onPickAnotherSource = {
-                            navController.navigate(route.sourcesRoute()) {
-                                popUpTo<PlayerRoute> { inclusive = true }
-                            }
-                        },
-                        onBack = { navController.popBackStack() },
-                    )
-                }
-                composable<DownloadsRoute> {
-                    DownloadsScreen(
-                        graph = graph,
-                        onPlay = { entry ->
-                            // Stacked rather than replacing: leaving playback
-                            // returns to the list it was started from, which is
-                            // the tab the viewer is standing in.
-                            graph.downloads.playbackFiles(entry)?.let { files ->
-                                navController.navigate(entry.playerRoute(files))
-                            }
-                        },
-                    )
-                }
-                composable<SettingsRoute> {
-                    SettingsScreen(
-                        graph = graph,
-                        onSignOut = onSignOut,
-                        onSignIn = onSignIn,
-                        onOpenDebugGate = onOpenDebugGate,
-                    )
+                                }
+                            } else {
+                                null
+                            },
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable<DownloadsRoute> {
+                        DownloadsScreen(
+                            graph = graph,
+                            onPlay = { entry ->
+                                // Stacked rather than replacing: leaving playback
+                                // returns to the list it was started from, which is
+                                // the tab the viewer is standing in.
+                                graph.downloads.playbackFiles(entry)?.let { files ->
+                                    navController.navigate(entry.playerRoute(files))
+                                }
+                            },
+                        )
+                    }
+                    composable<SettingsRoute> {
+                        SettingsScreen(
+                            graph = graph,
+                            onSignOut = onSignOut,
+                            onSignIn = onSignIn,
+                            onOpenDebugGate = onOpenDebugGate,
+                        )
+                    }
                 }
             }
             // Both are chrome over the same graph, and exactly one of them is

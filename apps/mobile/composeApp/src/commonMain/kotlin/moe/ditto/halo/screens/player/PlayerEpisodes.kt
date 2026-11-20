@@ -165,6 +165,8 @@ internal suspend fun reportProgress(
     state: PlayerState,
     meta: MetaDetail?,
 ) {
+    // A pasted link is no title: nothing about it is kept.
+    if (!context.recordsHistory) return
     // State still describing another video must never be written as this one's.
     if (state.current?.id != context.videoId) return
     val duration = state.durationSeconds ?: return

@@ -64,6 +64,8 @@ internal fun ScreenHeader(
     /** Back affordance above the title. Null on a tab, which has nowhere to go. */
     onBack: (() -> Unit)? = null,
     onOpenSearch: (() -> Unit)? = null,
+    /** The search button's modifier, for the glide into Search's field. */
+    searchModifier: Modifier = Modifier,
     /** Shown only when the screen has something to filter; null leaves it out. */
     filter: MediaTypeFilter? = null,
     onFilterChange: (MediaTypeFilter) -> Unit = {},
@@ -89,7 +91,7 @@ internal fun ScreenHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (onOpenSearch != null) {
-                SearchFieldButton(onClick = onOpenSearch, modifier = Modifier.weight(1f))
+                SearchFieldButton(onClick = onOpenSearch, modifier = Modifier.weight(1f).then(searchModifier))
             }
             if (filter != null) {
                 // Sized to its three labels rather than stretched: a segmented
@@ -194,7 +196,7 @@ internal fun ScreenHeader(
             // navigates rather than raising a keyboard over a browse surface.
             SearchFieldButton(
                 onClick = onOpenSearch,
-                modifier = Modifier.padding(top = ControlGap),
+                modifier = Modifier.padding(top = ControlGap).then(searchModifier),
             )
         }
         if (filter != null) {

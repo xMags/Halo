@@ -41,6 +41,14 @@ data object SettingsRoute
 data object SearchRoute
 
 /**
+ * A person page: who they are and their films and series, from TMDB. The
+ * name and photo are what the card that opened it already showed, so the
+ * page has a header before the person is fetched.
+ */
+@Serializable
+data class PersonRoute(val tmdbId: Long, val name: String, val photo: String? = null)
+
+/**
  * One title's own screen.
  *
  * Carries the pair that addresses a title rather than the whole record, because
@@ -181,6 +189,8 @@ data class PlayerRoute(
     val localSubtitlePath: String? = null,
     /** The language the download's subtitle was saved in, when the addon said. */
     val localSubtitleLang: String? = null,
+    /** False for a link pasted into Search; see [PlaybackContext.recordsHistory]. */
+    val recordsHistory: Boolean = true,
 )
 
 /**
@@ -211,6 +221,24 @@ internal fun PlayerRoute.playbackContext(): PlaybackContext = PlaybackContext(
     isDownload = isDownload,
     localSubtitlePath = localSubtitlePath,
     localSubtitleLang = localSubtitleLang,
+    recordsHistory = recordsHistory,
+)
+
+/**
+ * Playback of a link pasted into Search, exactly as given: no title, video id
+ * or addon, so nothing about it is kept and no addon is asked about it. It is
+ * opened bare, with no headers and no account token.
+ */
+internal fun linkPlayerRoute(url: String, title: String, filename: String? = null, videoSize: Long? = null): PlayerRoute = PlayerRoute(
+    url = url,
+    type = "movie",
+    metaId = "",
+    videoId = "",
+    showTitle = title,
+    addonId = "",
+    filename = filename,
+    videoSize = videoSize?.takeIf { it > 0 } ?: 0,
+    recordsHistory = false,
 )
 
 /**
@@ -308,7 +336,7 @@ internal fun StreamsRoute.downloadMedia(addon: AddonSource, stream: Stream, url:
  * the trailing edge and back out, where a tab switch cuts.
  */
 internal val PushedRoutes =
-    listOf(SearchRoute::class, DetailRoute::class, ShelfRoute::class, StreamsRoute::class, PlayerRoute::class)
+    listOf(SearchRoute::class, PersonRoute::class, DetailRoute::class, ShelfRoute::class, StreamsRoute::class, PlayerRoute::class)
 
 /**
  * Pushed destinations that also replace the shell's chrome instead of living
@@ -343,6 +371,7 @@ internal fun PlayerRoute.withContext(context: PlaybackContext): PlayerRoute = Pl
     streamName = context.streamName,
     streamTitle = context.streamTitle,
     requestHeaders = encodeRequestHeaders(context.requestHeaders),
+    recordsHistory = context.recordsHistory,
 )
 
 /** The source picker for another episode of the title already playing. */
