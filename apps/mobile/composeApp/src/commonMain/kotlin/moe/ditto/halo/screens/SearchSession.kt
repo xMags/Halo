@@ -16,6 +16,7 @@ import moe.ditto.halo.browse.libraryMatches
 import moe.ditto.halo.browse.searchFailureNote
 import moe.ditto.halo.browse.searchStillAskingNote
 import moe.ditto.halo.browse.titleIdentities
+import moe.ditto.halo.browse.titleKey
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.people.PersonSummary
 import moe.ditto.halo.browse.scriptTrim
@@ -122,8 +123,11 @@ internal fun rememberSearchView(graph: SessionGraph, query: String, active: Bool
     )
     val visible = if (session.revealed) session else shown
     val ofKind = { titles: List<MetaPreview> -> if (filter.type == null) titles else titles.filter { it.type == filter.type } }
-    val library = if (visible == null) emptyList() else ofKind(revealedLibrary)
+    // Every saved match keeps its copies out of the results, the top match included.
     val libraryIdentities = revealedLibrary.flatMap(::titleIdentities).toSet()
+    // The top match is shown once: its card says "In library", so the row leaves it out.
+    val topKey = visible?.topMatch?.let(::titleKey)
+    val library = if (visible == null) emptyList() else ofKind(revealedLibrary.filter { titleKey(it) != topKey })
     val results = if (visible == null) {
         emptyList()
     } else {
@@ -146,7 +150,7 @@ internal fun rememberSearchView(graph: SessionGraph, query: String, active: Bool
     } else {
         val settledEmpty = session.pending == 0 && library.isEmpty() && results.isEmpty()
         val failed = session.failedAddons
-        filteredEmpty = settledEmpty && filter != SearchFilter.All && session.answeredWithItems > 0
+        filteredEmpty = settledEmpty && topMatch == null && filter != SearchFilter.All && session.answeredWithItems > 0
         nothingFound = settledEmpty && topMatch == null && filter == SearchFilter.All && session.total > 0 &&
             failed.size < session.total && peopleForShown.isEmpty()
         val everyOneFailed = session.pending == 0 && session.total > 0 && failed.size >= session.total
