@@ -126,6 +126,16 @@ final class BackgroundDownloadService: NSObject, HaloIosBackgroundDownloadHost {
             self.stateQueue.async {
                 defer { completion() }
                 guard var request = self.read(jobId) else { return }
+                // A transfer that already ended keeps its outcome: a pause that
+                // lands after didFinishDownloadingTo must not turn a finished
+                // download back into a paused one.
+                guard Self.canPause(request.state) else { return }
+                if task == nil {
+                    // Between a failed attempt and its retry there is no task to
+                    // suspend; one the retry made meanwhile is suspended here,
+                    // and a retry still to come sees the paused record.
+                    self.suspendTasks(jobId: jobId)
+                }
                 request.state = .paused
                 request.downloadedBytes = task?.countOfBytesReceived ?? request.downloadedBytes
                 request.totalBytes = max(task?.countOfBytesExpectedToReceive ?? 0, request.totalBytes)
@@ -281,6 +291,19 @@ final class BackgroundDownloadService: NSObject, HaloIosBackgroundDownloadHost {
         task.resume()
     }
 
+    private func suspendTasks(jobId: String) {
+        session.getAllTasks { tasks in
+            tasks.filter { $0.taskDescription == jobId && $0.state == .running }.forEach { $0.suspend() }
+        }
+    }
+
+    private static func canPause(_ state: JobState) -> Bool {
+        switch state {
+        case .succeeded, .failed, .cancelled: return false
+        case .stored, .enqueued, .running, .paused: return true
+        }
+    }
+
     private func retry(_ request: StoredRequest, serverFailure: Bool) {
         guard request.attemptCount < BackgroundDownloadPolicy.maximumRetries else {
             fail(request, code: serverFailure ? "server_unavailable" : "network")
@@ -290,6 +313,13 @@ final class BackgroundDownloadService: NSObject, HaloIosBackgroundDownloadHost {
         retry.attemptCount += 1
         retry.state = .enqueued
         retry.failureCode = nil
+        // Paused while the attempt was failing: the record says paused, and
+        // resume() makes the task when the user asks for it.
+        if read(request.jobId)?.state == .paused {
+            retry.state = .paused
+            _ = write(retry)
+            return
+        }
         guard write(retry) else {
             fail(request, code: "protected_request_corrupt")
             return

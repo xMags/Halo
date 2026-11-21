@@ -373,7 +373,10 @@ internal class DeviceDownloadRuntime(
         mutex.withLock {
             jobs.forEach { job ->
                 val entry = currentJob(job.jobId) ?: return@forEach
-                if (entry.status == DownloadStatus.Paused) {
+                // A transfer that finished is finished, whatever the row says: a
+                // pause that landed as the last bytes arrived must not leave a
+                // complete file stuck behind a Paused row.
+                if (entry.status == DownloadStatus.Paused && job.state != BackgroundDownloadJobState.Succeeded) {
                     if (job.state == BackgroundDownloadJobState.Running ||
                         job.state == BackgroundDownloadJobState.Enqueued
                     ) {
@@ -449,7 +452,9 @@ internal class DeviceDownloadRuntime(
                     )
                 }
                 is BackgroundDownloadEvent.Completed -> {
-                    if (!entry.status.isActive) return
+                    // The row's own job finished, so its file is complete even
+                    // when a pause or a failure was recorded as it did.
+                    if (entry.status == DownloadStatus.Done) return
                     completeLocked(
                         entry,
                         event.downloadedBytes,

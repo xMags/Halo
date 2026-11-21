@@ -84,19 +84,40 @@ class DeviceDownloadRuntimeTest {
     }
 
     @Test
-    fun userPauseIsDurableAndLateCompletionCannotUndoIt() = runTest {
+    fun aCompletionThatLandsAfterAPauseFinishesTheDownload() = runTest {
         val world = world()
         testScheduler.advanceUntilIdle()
         world.runtime.start(media(videoId = "movie"))
         testScheduler.advanceUntilIdle()
 
+        // The pause reached the platform as the last bytes arrived: the file
+        // is complete, so the row must not stay paused over it.
         world.runtime.pause("movie")
         world.port.emit(BackgroundDownloadEvent.Completed("job-1", 100, 100))
         testScheduler.advanceUntilIdle()
 
-        assertEquals(DownloadStatus.Paused, world.status("movie"))
+        assertEquals(DownloadStatus.Done, world.status("movie"))
         assertEquals(listOf("job-1"), world.port.paused)
-        assertEquals(DownloadStatus.Paused, DownloadIndex(world.store, world.vault).read().entries.single().status)
+        assertEquals(DownloadStatus.Done, DownloadIndex(world.store, world.vault).read().entries.single().status)
+    }
+
+    @Test
+    fun aPausedRowWhoseTransferSucceededIsFinishedAtLaunch() = runTest {
+        val store = FakeStore()
+        val vault = FakeDownloadVault()
+        DownloadIndex(store, vault).write(
+            listOf(entry(videoId = "movie", status = DownloadStatus.Paused, jobId = "done-job")),
+        )
+        val port = FakeBackgroundDownloadPort().apply {
+            reconciled = listOf(
+                BackgroundDownloadJob("done-job", BackgroundDownloadJobState.Succeeded, downloadedBytes = 100, totalBytes = 100),
+            )
+        }
+        val world = world(store = store, vault = vault, port = port, files = listOf("movie.mkv"))
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(DownloadStatus.Done, world.status("movie"))
+        assertEquals(emptyList(), world.port.paused)
     }
 
     @Test
