@@ -101,9 +101,12 @@ internal class AndroidOidcSessionManager(
             refreshToken = issued.refreshToken ?: current.refreshToken,
             idToken = issued.idToken ?: current.idToken,
         )
-        // One encrypted JSON record makes rotating-token persistence atomic.
-        storage.write(AndroidOidcStorageKeys.Session, AndroidOidcProtocol.encodeSession(updated))
+        // The server has spent the old refresh token, so the new one is kept
+        // in memory first: a save that fails now leaves this run signed in
+        // instead of sending a spent token next time. One encrypted JSON
+        // record makes rotating-token persistence atomic.
         session = updated
+        runCatching { storage.write(AndroidOidcStorageKeys.Session, AndroidOidcProtocol.encodeSession(updated)) }
         updated.accessToken
     }
 
