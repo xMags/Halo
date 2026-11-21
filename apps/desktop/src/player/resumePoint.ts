@@ -26,6 +26,22 @@ export function newestWatchState(
   return newest?.removedAt ? null : newest
 }
 
+/**
+ * Where a video resumes. A fresh read that answered is the truth about the
+ * server: the history it returns has no removals (they are filtered out), so
+ * a video missing from it was removed elsewhere, and the cached row must not
+ * bring it back. Only progress this PC has not sent yet can be newer. When
+ * the read failed or timed out (`fresh` null), the cache stands in for it.
+ */
+export function resumeWatchState(
+  videoId: string,
+  fresh: readonly WatchState[] | null,
+  cached: readonly WatchState[] | null | undefined,
+  pending: readonly WatchState[],
+): WatchState | null {
+  return newestWatchState(videoId, [fresh ?? cached, pending])
+}
+
 /** `read`'s answer, or null once `timeoutMs` passes or it fails. */
 export function withinTimeout<T>(read: Promise<T>, timeoutMs: number = RESUME_READ_TIMEOUT_MS): Promise<T | null> {
   return new Promise((resolve) => {

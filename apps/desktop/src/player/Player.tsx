@@ -42,7 +42,7 @@ import {
 } from './playerLogic'
 import { headerLines, playbackHeaders } from './requestHeaders'
 import { closeScrubPreview, openScrubPreview } from './scrubPreview'
-import { newestWatchState, withinTimeout } from './resumePoint'
+import { resumeWatchState, withinTimeout } from './resumePoint'
 import { pendingWatchStates, stageWatchStates } from './watchOutbox'
 import { LoadingIndicator, useLoadingIndicator } from './LoadingIndicator'
 import { ScrubPreviewCard, useScrubPreview } from './ScrubPreviewCard'
@@ -542,18 +542,24 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
         if (disposed) return
       }
 
-      // Read fresh, so progress made on another device since the history
-      // was cached is where this resumes, but within a bound: an unreachable
-      // server must not block playback. Progress this PC has not sent yet
-      // counts too; whichever row is newest wins.
+      // Read fresh, so progress made (or a removal) on another device since
+      // the history was cached is where this resumes, but within a bound: an
+      // unreachable server must not block playback. 'always' lets an offline
+      // read fail at once instead of waiting out the bound paused. See
+      // resumeWatchState for how the answers combine.
       const cached = queryClient.getQueryData<WatchState[]>(['watchStates'])
       const fresh = recordsHistory
         ? await withinTimeout(
-            queryClient.fetchQuery({ queryKey: ['watchStates'], queryFn: () => getClient().getWatchStates(), staleTime: 0 }),
+            queryClient.fetchQuery({
+              queryKey: ['watchStates'],
+              queryFn: () => getClient().getWatchStates(),
+              staleTime: 0,
+              networkMode: 'always',
+            }),
           )
         : null
       priorStateRef.current = recordsHistory
-        ? newestWatchState(params.videoId, [fresh, cached, pendingWatchStates()])
+        ? resumeWatchState(params.videoId, fresh, cached, pendingWatchStates())
         : null
 
       if (disposed) return

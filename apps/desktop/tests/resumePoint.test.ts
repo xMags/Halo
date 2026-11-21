@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WatchState } from '@halo/core'
-import { newestWatchState, withinTimeout } from '../src/player/resumePoint.ts'
+import { newestWatchState, resumeWatchState, withinTimeout } from '../src/player/resumePoint.ts'
 
 function row(videoId: string, positionSec: number, updatedAt: number, removedAt?: number): WatchState {
   return {
@@ -31,6 +31,17 @@ test('a missing source, or one without the video, is skipped', () => {
 
 test('a newest row that removes the video starts it from the beginning', () => {
   assert.equal(newestWatchState('tt1', [[row('tt1', 80, 10)], [row('tt1', 80, 20, 20)]]), null)
+})
+
+test('a fresh read that answered outranks the cache, removals included', () => {
+  const cached = [row('tt1', 40, 10)]
+  // Removed on another device: the fresh history simply lacks it.
+  assert.equal(resumeWatchState('tt1', [], cached, []), null)
+  assert.equal(resumeWatchState('tt1', [row('tt1', 90, 20)], cached, [])?.positionSec, 90)
+  // Unsent progress made here is still newer than what the server has.
+  assert.equal(resumeWatchState('tt1', [row('tt1', 90, 20)], cached, [row('tt1', 95, 30)])?.positionSec, 95)
+  // The read failed or timed out: the cache stands in.
+  assert.equal(resumeWatchState('tt1', null, cached, [])?.positionSec, 40)
 })
 
 test('a read that answers in time is used, and one that fails or stalls is not', async () => {
