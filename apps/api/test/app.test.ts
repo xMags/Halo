@@ -581,6 +581,58 @@ describe('addons: diff-applied saves keep opaque ids stable', () => {
     expect(secondBody.find((e) => e.transportUrl === CINEMETA_URL)!.id).toBe(firstBody[0]!.id)
     expect(calls).toHaveLength(2)
   })
+
+  /**
+   * A fetch that, the first time it is asked for `trigger`, runs `meanwhile`
+   * before answering: a second save landing while the first awaits a manifest.
+   */
+  function racingSafeFetch(trigger: string, meanwhile: () => Promise<unknown>): typeof fetch {
+    const inner = mockSafeFetch({ 'https://cinemeta.test': CINEMETA, 'https://opensubs.test': OPENSUBS })
+    let raced = false
+    return (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (url === trigger && !raced) {
+        raced = true
+        await meanwhile()
+      }
+      return inner(input, init)
+    }) as typeof fetch
+  }
+
+  it('keeps an addon another save removed while this one fetched a manifest', async () => {
+    let app: App | undefined
+    let token = ''
+    const safeFetch = racingSafeFetch(OPENSUBS_URL, async () => {
+      const removed = await app!.request('/addons', authed(token, []))
+      expect(removed.status).toBe(200)
+    })
+    app = makeApp({ safeFetch }).app
+    token = await adminToken()
+    await putList(app, token, [CINEMETA_URL])
+
+    const saved = await putList(app, token, [CINEMETA_URL, OPENSUBS_URL])
+
+    expect(saved.map((e) => e.transportUrl)).toEqual([CINEMETA_URL, OPENSUBS_URL])
+    const view = (await (await app.request('/addons', authed(token))).json()) as { user: Entry[] }
+    expect(view.user.map((e) => e.transportUrl)).toEqual([CINEMETA_URL, OPENSUBS_URL])
+  })
+
+  it('keeps a global addon another save removed while this one fetched a manifest', async () => {
+    let app: App | undefined
+    let admin = ''
+    const safeFetch = racingSafeFetch(OPENSUBS_URL, async () => {
+      const removed = await app!.request('/addons/global', authed(admin, [], 'PUT'))
+      expect(removed.status).toBe(200)
+    })
+    app = makeApp({ safeFetch }).app
+    admin = await adminToken()
+    expect((await app.request('/addons/global', authed(admin, [CINEMETA_URL], 'PUT'))).status).toBe(200)
+
+    const saved = await app.request('/addons/global', authed(admin, [CINEMETA_URL, OPENSUBS_URL], 'PUT'))
+
+    expect(saved.status).toBe(200)
+    expect(((await saved.json()) as Entry[]).map((e) => e.transportUrl)).toEqual([CINEMETA_URL, OPENSUBS_URL])
+  })
 })
 
 describe('cross-user isolation', () => {

@@ -173,6 +173,12 @@ const addonPatchSchema = z.object({ hideCatalogs: z.boolean() })
  * allowance.) Timestamps in the past are left alone: a report queued offline
  * must lose to what happened since.
  */
+/** Tries of one addon-list save that keeps losing a race with another before it gives up. */
+const ADDON_SAVE_ATTEMPTS = 3
+
+/** Thrown inside an addon-list transaction to roll it back: a URL it kept was removed meanwhile. */
+class AddonListChanged extends Error {}
+
 function latestAcceptedTimestamp(): number {
   return Date.now()
 }
@@ -189,6 +195,34 @@ export function createApp(config: AppConfig) {
   // Bounded like every other addon request: without a budget, one URL that
   // accepts the connection and never answers holds the save open for good.
   const manifestFetch = { fetch: doSafeFetch, timeoutMs: RESOLVE_TIMEOUT_MS }
+
+  /**
+   * The shared half of both addon-list saves: fetches the manifests of the
+   * URLs not installed yet, then hands them to `commit`, one transaction.
+   * The fetch is awaited outside it, so another save may remove a URL read
+   * as installed meanwhile; `commit` throws AddonListChanged then, and the
+   * save starts over from a fresh read, so a list that keeps the URL
+   * installs it anew instead of dropping it. Saves that keep racing give up
+   * with a 409 and leave the list as the other save made it.
+   */
+  async function saveAddonList<Row>(
+    urls: readonly string[],
+    installed: () => ReadonlySet<string>,
+    commit: (fetched: ReadonlyMap<string, Manifest>, now: number) => Row[],
+  ): Promise<{ rows: Row[] } | { error: string; status: 400 | 409 }> {
+    for (let attempt = 0; attempt < ADDON_SAVE_ATTEMPTS; attempt++) {
+      const existing = installed()
+      const resolved = await fetchManifests(urls.filter((u) => !existing.has(u)), manifestFetch)
+      if ('error' in resolved) return { error: resolved.error, status: 400 }
+      const fetched = new Map(resolved.entries.map((e) => [e.transportUrl, e.manifest]))
+      try {
+        return { rows: commit(fetched, Date.now()) }
+      } catch (err) {
+        if (!(err instanceof AddonListChanged)) throw err
+      }
+    }
+    return { error: 'the addon list changed while it was being saved; try again', status: 409 }
+  }
   const tmdb = config.tmdbReadToken
     ? createTmdbClient({ credential: { kind: 'readToken', value: config.tmdbReadToken }, fetch: doSafeFetch })
     : null
@@ -357,40 +391,47 @@ export function createApp(config: AppConfig) {
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
     const user = c.get('user')
     const urls = body.data
-    const existing = new Set(
-      db.select({ transportUrl: userAddons.transportUrl }).from(userAddons).where(eq(userAddons.userId, user.id)).all().map((r) => r.transportUrl),
+    const ownUrls = () =>
+      new Set(
+        db.select({ transportUrl: userAddons.transportUrl }).from(userAddons).where(eq(userAddons.userId, user.id)).all().map((r) => r.transportUrl),
+      )
+    const saved = await saveAddonList(urls, ownUrls, (fetched, now) =>
+      db.transaction((tx) => {
+        // A URL read as installed may have been removed by another save while
+        // the manifests were fetched: this list keeps it, so the save starts
+        // over and fetches it anew rather than dropping it.
+        const present = new Set(
+          tx.select({ transportUrl: userAddons.transportUrl }).from(userAddons).where(eq(userAddons.userId, user.id)).all().map((r) => r.transportUrl),
+        )
+        if (urls.some((url) => !fetched.has(url) && !present.has(url))) throw new AddonListChanged()
+        // notInArray with an empty list is invalid SQL — clearing the list is a
+        // plain per-user delete.
+        if (urls.length === 0) tx.delete(userAddons).where(eq(userAddons.userId, user.id)).run()
+        else tx.delete(userAddons).where(and(eq(userAddons.userId, user.id), notInArray(userAddons.transportUrl, urls))).run()
+        urls.forEach((transportUrl, position) => {
+          const manifest = fetched.get(transportUrl)
+          if (manifest) {
+            // Upsert, not insert: a concurrent save may have installed the same
+            // URL between the read above and this transaction — its id wins.
+            tx.insert(userAddons)
+              .values({ userId: user.id, id: randomUUID(), transportUrl, manifest, position, addedAt: now })
+              .onConflictDoUpdate({ target: [userAddons.userId, userAddons.transportUrl], set: { manifest, position } })
+              .run()
+          } else {
+            tx.update(userAddons)
+              .set({ position })
+              .where(and(eq(userAddons.userId, user.id), eq(userAddons.transportUrl, transportUrl)))
+              .run()
+          }
+        })
+        return tx.select().from(userAddons).where(eq(userAddons.userId, user.id)).orderBy(userAddons.position).all()
+      }),
     )
-    const resolved = await fetchManifests(urls.filter((u) => !existing.has(u)), manifestFetch)
-    if ('error' in resolved) return c.json({ error: resolved.error }, 400)
-    const fetched = new Map(resolved.entries.map((e) => [e.transportUrl, e.manifest]))
-    const now = Date.now()
-    const rows = db.transaction((tx) => {
-      // notInArray with an empty list is invalid SQL — clearing the list is a
-      // plain per-user delete.
-      if (urls.length === 0) tx.delete(userAddons).where(eq(userAddons.userId, user.id)).run()
-      else tx.delete(userAddons).where(and(eq(userAddons.userId, user.id), notInArray(userAddons.transportUrl, urls))).run()
-      urls.forEach((transportUrl, position) => {
-        const manifest = fetched.get(transportUrl)
-        if (manifest) {
-          // Upsert, not insert: a concurrent save may have installed the same
-          // URL between the read above and this transaction — its id wins.
-          tx.insert(userAddons)
-            .values({ userId: user.id, id: randomUUID(), transportUrl, manifest, position, addedAt: now })
-            .onConflictDoUpdate({ target: [userAddons.userId, userAddons.transportUrl], set: { manifest, position } })
-            .run()
-        } else {
-          tx.update(userAddons)
-            .set({ position })
-            .where(and(eq(userAddons.userId, user.id), eq(userAddons.transportUrl, transportUrl)))
-            .run()
-        }
-      })
-      return tx.select().from(userAddons).where(eq(userAddons.userId, user.id)).orderBy(userAddons.position).all()
-    })
+    if ('error' in saved) return c.json({ error: saved.error }, saved.status)
     const globalUrls = new Set(
       db.select({ transportUrl: globalAddons.transportUrl }).from(globalAddons).all().map((r) => r.transportUrl),
     )
-    return c.json(rows.map(toAddonEntry).map((a) => markProvidedGlobally(a, globalUrls)).map(stripHiddenCatalogs))
+    return c.json(saved.rows.map(toAddonEntry).map((a) => markProvidedGlobally(a, globalUrls)).map(stripHiddenCatalogs))
   })
 
   // Per-addon knobs live outside the declarative URL-list PUT so the list
@@ -421,28 +462,29 @@ export function createApp(config: AppConfig) {
     const body = addonUrlsSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return c.json({ error: body.error.flatten() }, 400)
     const urls = body.data
-    const existing = new Set(db.select({ transportUrl: globalAddons.transportUrl }).from(globalAddons).all().map((r) => r.transportUrl))
-    const resolved = await fetchManifests(urls.filter((u) => !existing.has(u)), manifestFetch)
-    if ('error' in resolved) return c.json({ error: resolved.error }, 400)
-    const fetched = new Map(resolved.entries.map((e) => [e.transportUrl, e.manifest]))
-    const now = Date.now()
-    const rows = db.transaction((tx) => {
-      if (urls.length === 0) tx.delete(globalAddons).run()
-      else tx.delete(globalAddons).where(notInArray(globalAddons.transportUrl, urls)).run()
-      urls.forEach((transportUrl, position) => {
-        const manifest = fetched.get(transportUrl)
-        if (manifest) {
-          tx.insert(globalAddons)
-            .values({ id: randomUUID(), transportUrl, manifest, position, addedAt: now })
-            .onConflictDoUpdate({ target: globalAddons.transportUrl, set: { manifest, position } })
-            .run()
-        } else {
-          tx.update(globalAddons).set({ position }).where(eq(globalAddons.transportUrl, transportUrl)).run()
-        }
-      })
-      return tx.select().from(globalAddons).orderBy(globalAddons.position).all()
-    })
-    return c.json(rows.map(toAddonEntry).map(stripHiddenCatalogs))
+    const globalUrls = () => new Set(db.select({ transportUrl: globalAddons.transportUrl }).from(globalAddons).all().map((r) => r.transportUrl))
+    const saved = await saveAddonList(urls, globalUrls, (fetched, now) =>
+      db.transaction((tx) => {
+        const present = new Set(tx.select({ transportUrl: globalAddons.transportUrl }).from(globalAddons).all().map((r) => r.transportUrl))
+        if (urls.some((url) => !fetched.has(url) && !present.has(url))) throw new AddonListChanged()
+        if (urls.length === 0) tx.delete(globalAddons).run()
+        else tx.delete(globalAddons).where(notInArray(globalAddons.transportUrl, urls)).run()
+        urls.forEach((transportUrl, position) => {
+          const manifest = fetched.get(transportUrl)
+          if (manifest) {
+            tx.insert(globalAddons)
+              .values({ id: randomUUID(), transportUrl, manifest, position, addedAt: now })
+              .onConflictDoUpdate({ target: globalAddons.transportUrl, set: { manifest, position } })
+              .run()
+          } else {
+            tx.update(globalAddons).set({ position }).where(eq(globalAddons.transportUrl, transportUrl)).run()
+          }
+        })
+        return tx.select().from(globalAddons).orderBy(globalAddons.position).all()
+      }),
+    )
+    if ('error' in saved) return c.json({ error: saved.error }, saved.status)
+    return c.json(saved.rows.map(toAddonEntry).map(stripHiddenCatalogs))
   })
 
   authed.get('/library', (c) => {
