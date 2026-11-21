@@ -219,17 +219,34 @@ internal class DeviceDownloadRuntime(
 
     private suspend fun attachSubtitle(jobId: String, media: DownloadMedia) {
         val source = subtitleBinding.value?.source ?: return
-        val found = try {
-            source.fetch(media)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            return
-        } ?: return
-        mutex.withLock {
-            val entry = current(media.videoId) ?: return
-            if (entry.jobId != jobId || entry.subtitle != null) return
-            putLocked(entry.copy(subtitle = found, updatedAt = clock.nowMs()))
+        // A replacement asks for the same subtitle as the download it
+        // replaces, and the cache hands back that download's file. Finishing
+        // deletes the old download's files, so one deleted between the fetch
+        // and taking it here is fetched again.
+        repeat(SubtitleAttachAttempts) {
+            val found = try {
+                source.fetch(media)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return
+            } ?: return
+            mutex.withLock {
+                val entry = current(media.videoId) ?: return
+                if (entry.jobId != jobId || entry.subtitle != null) return
+                val root = directory ?: return
+                if (fileSystem.exists(root / found.fileName)) {
+                    putLocked(
+                        entry.copy(
+                            subtitle = found,
+                            // Now this download's own file, not the old one's to delete.
+                            retainedFileNames = entry.retainedFileNames - found.fileName,
+                            updatedAt = clock.nowMs(),
+                        ),
+                    )
+                    return
+                }
+            }
         }
     }
 
@@ -364,7 +381,7 @@ internal class DeviceDownloadRuntime(
                     BackgroundDownloadJobState.Paused ->
                         putLocked(entry.copy(status = DownloadStatus.Paused, bytesPerSecond = 0, connections = null))
                     BackgroundDownloadJobState.Succeeded -> {
-                        retainedToDelete += entry.retainedFileNames
+                        retainedToDelete += entry.retainedNotInUse()
                         completeLocked(entry, job.downloadedBytes, job.totalBytes)
                         completedJobs += job.jobId
                     }
@@ -406,7 +423,6 @@ internal class DeviceDownloadRuntime(
 
     private suspend fun handle(event: BackgroundDownloadEvent) {
         var completedJob: String? = null
-        var retained: List<String> = emptyList()
         mutex.withLock {
             val entry = currentJob(event.jobId) ?: return
             when (event) {
@@ -422,12 +438,14 @@ internal class DeviceDownloadRuntime(
                 }
                 is BackgroundDownloadEvent.Completed -> {
                     if (!entry.status.isActive) return
-                    retained = entry.retainedFileNames
                     completeLocked(
                         entry,
                         event.downloadedBytes,
                         event.totalBytes,
                     )
+                    // Under the lock, so a subtitle being attached sees its file
+                    // either kept (it is in use) or gone (and fetches it again).
+                    entry.retainedNotInUse().forEach { name -> directory?.let { deleteFile(it / name) } }
                     pendingRequests.remove(event.jobId)
                     completedJob = event.jobId
                 }
@@ -450,7 +468,6 @@ internal class DeviceDownloadRuntime(
                 }
             }
         }
-        retained.forEach { name -> directory?.let { deleteFile(it / name) } }
         completedJob?.let {
             vault.delete(it)
         }
@@ -598,6 +615,16 @@ internal class DeviceDownloadRuntime(
             addAll(retainedFileNames)
         }
 
+    /**
+     * The replaced download's files this one may delete once it finishes:
+     * never one it uses itself, since a replacement's subtitle can be the very
+     * file the replaced download had.
+     */
+    private fun DownloadEntry.retainedNotInUse(): List<String> {
+        val inUse = setOfNotNull(fileName, partFileName, subtitle?.fileName)
+        return retainedFileNames.filterNot(inUse::contains)
+    }
+
     private fun discardFiles(entry: DownloadEntry, root: Path) {
         entry.ownedFileNames().distinct().forEach { deleteFile(root / it) }
     }
@@ -613,6 +640,9 @@ internal class DeviceDownloadRuntime(
 
     private companion object {
         const val SpaceReserveBytes = 256L * 1024 * 1024
+
+        /** Fetches of a download's subtitle, the second only when the first's file was deleted meanwhile. */
+        const val SubtitleAttachAttempts = 2
     }
 }
 

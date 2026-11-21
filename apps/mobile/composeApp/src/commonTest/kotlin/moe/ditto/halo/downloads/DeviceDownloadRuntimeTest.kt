@@ -153,6 +153,80 @@ class DeviceDownloadRuntimeTest {
         assertEquals(DownloadStatus.Done, world.status("movie"))
     }
 
+    /** Like the real cache: the same subtitle for the same video is one file, fetched only when absent. */
+    private class CachedSubtitle(private val world: () -> World) : DownloadSubtitleSource {
+        var gate: CompletableDeferred<Unit>? = null
+        var downloads = 0
+
+        override suspend fun fetch(media: DownloadMedia): DownloadSubtitle? {
+            gate?.await()
+            val path = "/downloads/sub.srt".toPath()
+            if (!world().fileSystem.exists(path)) {
+                downloads++
+                world().fileSystem.write(path) { writeUtf8("sub") }
+            }
+            return DownloadSubtitle("sub.srt", "eng")
+        }
+    }
+
+    @Test
+    fun aReplacementKeepsTheSubtitleFileItSharesWithTheOldDownload() = runTest {
+        val store = FakeStore()
+        val vault = FakeDownloadVault()
+        DownloadIndex(store, vault).write(
+            listOf(entry(videoId = "movie", fileName = "old.mkv", subtitle = DownloadSubtitle("sub.srt", "eng"))),
+        )
+        lateinit var world: World
+        val source = CachedSubtitle { world }
+        world = world(store = store, vault = vault, files = listOf("old.mkv", "sub.srt"))
+        world.runtime.bindSubtitleSource(source)
+        testScheduler.advanceUntilIdle()
+
+        world.runtime.replace(media(videoId = "movie", sourceUrl = "https://source.test/new.mp4"))
+        testScheduler.advanceUntilIdle()
+        val replacement = world.entry("movie")
+        assertEquals("sub.srt", replacement.subtitle?.fileName)
+        world.fileSystem.write("/downloads/${replacement.fileName}".toPath()) { writeUtf8("new") }
+        world.port.emit(BackgroundDownloadEvent.Completed(replacement.jobId!!, 3, 3))
+        testScheduler.advanceUntilIdle()
+
+        assertFalse(world.fileSystem.exists("/downloads/old.mkv".toPath()))
+        assertTrue(world.fileSystem.exists("/downloads/sub.srt".toPath()))
+        assertEquals("sub.srt", world.entry("movie").subtitle?.fileName)
+        assertEquals(0, source.downloads)
+    }
+
+    @Test
+    fun aSubtitleDeletedWithTheOldDownloadBeforeItIsAttachedIsFetchedAgain() = runTest {
+        val store = FakeStore()
+        val vault = FakeDownloadVault()
+        DownloadIndex(store, vault).write(
+            listOf(entry(videoId = "movie", fileName = "old.mkv", subtitle = DownloadSubtitle("sub.srt", "eng"))),
+        )
+        lateinit var world: World
+        val source = CachedSubtitle { world }
+        world = world(store = store, vault = vault, files = listOf("old.mkv", "sub.srt"))
+        world.runtime.bindSubtitleSource(source)
+        testScheduler.advanceUntilIdle()
+
+        // The lookup hands back the old file, but only after the replacement finished and deleted it.
+        val gate = CompletableDeferred<Unit>()
+        source.gate = gate
+        world.runtime.replace(media(videoId = "movie", sourceUrl = "https://source.test/new.mp4"))
+        testScheduler.advanceUntilIdle()
+        val replacement = world.entry("movie")
+        world.fileSystem.write("/downloads/${replacement.fileName}".toPath()) { writeUtf8("new") }
+        world.port.emit(BackgroundDownloadEvent.Completed(replacement.jobId!!, 3, 3))
+        testScheduler.advanceUntilIdle()
+        assertFalse(world.fileSystem.exists("/downloads/sub.srt".toPath()))
+        gate.complete(Unit)
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(world.fileSystem.exists("/downloads/sub.srt".toPath()))
+        assertEquals("sub.srt", world.entry("movie").subtitle?.fileName)
+        assertEquals(1, source.downloads)
+    }
+
     @Test
     fun expiredSourceCannotBeResumedAndRequiresAReplacement() = runTest {
         val world = world()
@@ -192,6 +266,7 @@ class DeviceDownloadRuntimeTest {
 
         assertEquals(listOf("job-1"), world.port.enqueued.map { it.jobId })
         assertNull(world.entry("movie").subtitle)
+        world.fileSystem.write("/downloads/movie.srt".toPath()) { writeUtf8("sub") }
         gate.complete(DownloadSubtitle("movie.srt", "eng"))
         testScheduler.advanceUntilIdle()
         assertEquals("movie.srt", world.entry("movie").subtitle?.fileName)
