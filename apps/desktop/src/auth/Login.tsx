@@ -3,8 +3,10 @@ import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
+  activateDevice,
   activateSession,
   addonSessionKind,
+  deactivateSession,
   getAccountClient,
   getBuiltInServerUrl,
   getDeviceProfile,
@@ -211,7 +213,10 @@ export function Login() {
     }
     activateSession(kind)
     const me = await (getAccountClient()?.getMe() ?? Promise.resolve(null)).catch(() => null)
-    if (id !== attempt.current) return
+    if (id !== attempt.current) {
+      abandon(discard)
+      return
+    }
     // Moving needs the account's id (it names the downloads partition); when
     // it is not known yet, the signed-in shell does the move once it is.
     const moving = me !== null && getDeviceProfile() !== null
@@ -230,6 +235,20 @@ export function Login() {
     }
     await Promise.all([ready(), delay(SIGNED_IN_DWELL_MS)])
     if (id === attempt.current) signedIn(kind)
+    else abandon(discard)
+  }
+
+  /**
+   * Undoes a sign-in that was cancelled after its session was bound: the
+   * saved session is forgotten and the backend goes back to what this
+   * screen was opened from, so the screens behind it never write to an
+   * account the person backed out of.
+   */
+  function abandon(discard: () => void) {
+    discard()
+    deactivateSession()
+    const profile = getDeviceProfile()
+    if (state === 'device' && profile) activateDevice(profile)
   }
 
   /** The built-in server's own accounts. */
