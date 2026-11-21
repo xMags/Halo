@@ -43,6 +43,8 @@ const INDEX_READ_ATTEMPTS: u32 = 5;
 const INDEX_READ_RETRY: Duration = Duration::from_millis(150);
 const CONFIG_FILE: &str = "downloads-config.json";
 const DOWNLOAD_DIR: &str = "downloads";
+/// Where a move of the old default folder is going, kept until the index names it (default_folder.rs).
+const MOVE_MARKER_FILE: &str = "downloads-moved.json";
 const VAULT_DIR: &str = "download-requests";
 const TRANSFER_ATTEMPTS: u32 = 3;
 /// Progress reaches the UI this often.
@@ -645,18 +647,33 @@ impl DownloadManager {
             .directory
             .as_ref()
             .map(|directory| strip_verbatim(PathBuf::from(directory)));
-        // A folder the user chose is never moved, even when it is the old
-        // default. Before anything below reads the records or creates the new
-        // folder: the move is one rename into a place that does not exist yet.
-        let chose_legacy = configured
+        // A folder the user chose is never moved: not the old default itself,
+        // and not a folder inside it, which the setting would go on naming.
+        // Before anything below reads the records or creates the new folder:
+        // the move is one rename into a place that does not exist yet.
+        let move_marker = data_dir.join(MOVE_MARKER_FILE);
+        let chose_inside_legacy = configured
             .as_deref()
-            .is_some_and(|chosen| same_path(chosen, &legacy_default));
-        if !chose_legacy && default_folder::move_legacy(&legacy_default, &default_directory, &mut entries) {
+            .is_some_and(|chosen| is_within_approved_root(chosen, std::slice::from_ref(&legacy_default)));
+        let moved = if chose_inside_legacy {
+            default_folder::MoveOutcome::Stayed
+        } else {
+            default_folder::move_legacy(&legacy_default, &default_directory, &move_marker, &mut entries)
+        };
+        if let default_folder::MoveOutcome::Moved { to, changed: true } = &moved {
+            report(&format!("downloads moved from {} to {}", legacy_default.display(), to.display()));
+        }
+        // The default must never stop launch: when the new one cannot be
+        // made (a read-only Videos folder, a file in the way), this run uses
+        // the old one, which always worked.
+        let mut default_directory = default_directory;
+        if configured.is_none() && fs::create_dir_all(&default_directory).is_err() {
             report(&format!(
-                "downloads moved from {} to {}",
-                legacy_default.display(),
-                default_directory.display()
+                "the downloads folder {} could not be created; using {} for now",
+                default_directory.display(),
+                legacy_default.display()
             ));
+            default_directory = legacy_default.clone();
         }
         let directory = configured
             .clone()
@@ -713,8 +730,15 @@ impl DownloadManager {
         };
         // Not worth refusing to start over: the index on disk is still the
         // one just loaded, and the next change writes it again.
-        if let Err(error) = manager.persist_blocking() {
-            report(&format!("download index could not be saved at launch: {error}"));
+        match manager.persist_blocking() {
+            // The index now names the moved folder; until it did, every
+            // launch pointed the records there again.
+            Ok(()) => {
+                if matches!(moved, default_folder::MoveOutcome::Moved { .. }) {
+                    default_folder::finish_move(&move_marker);
+                }
+            }
+            Err(error) => report(&format!("download index could not be saved at launch: {error}")),
         }
         // The roots are re-seeded next launch if this write fails, so it does
         // not stop the app from starting. Settings that could not be read are
