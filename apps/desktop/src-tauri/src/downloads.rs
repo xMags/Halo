@@ -616,7 +616,7 @@ impl DownloadManager {
         fs::create_dir_all(&vault_dir).map_err(|e| format!("download vault unavailable: {e}"))?;
         let default_directory = data_dir.join(DOWNLOAD_DIR);
         let mut entries = load_index_for_launch(&index_path, report)?;
-        let config = load_config(&config_path).unwrap_or_default();
+        let (config, config_writable) = load_config_for_launch(&config_path, report);
         let configured = config
             .directory
             .as_ref()
@@ -675,11 +675,14 @@ impl DownloadManager {
             report(&format!("download index could not be saved at launch: {error}"));
         }
         // The roots are re-seeded next launch if this write fails, so it does
-        // not stop the app from starting.
-        let _ = write_json(
-            &manager.config_path,
-            &config_document(configured.as_deref(), &approved_roots),
-        );
+        // not stop the app from starting. Settings that could not be read are
+        // not saved over: the next launch reads them again.
+        if config_writable {
+            let _ = write_json(
+                &manager.config_path,
+                &config_document(configured.as_deref(), &approved_roots),
+            );
+        }
         Ok(manager)
     }
 
@@ -2540,9 +2543,58 @@ fn load_index(path: &Path) -> Result<HashMap<String, DownloadRecord>, IndexLoadE
         .map(|e| (e.job_id.clone(), e))
         .collect())
 }
+/// The download settings, or None when they are absent or cannot be read.
 fn load_config(path: &Path) -> Option<PersistedConfig> {
     let raw = fs::read(path).ok()?;
     serde_json::from_slice(&raw).ok()
+}
+
+/// The download settings as launch reads them, and whether launch may write
+/// them back. A missing file is a first run. One that cannot be opened is
+/// retried like the index, then used as defaults without being saved over,
+/// so a passing failure does not cost the chosen folder. One that cannot be
+/// parsed is set aside, like the index, and starts again from defaults.
+fn load_config_for_launch(path: &Path, report: &dyn Fn(&str)) -> (PersistedConfig, bool) {
+    let mut attempts_left = INDEX_READ_ATTEMPTS;
+    let raw = loop {
+        match fs::read(path) {
+            Ok(raw) => break raw,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return (PersistedConfig::default(), true);
+            }
+            Err(error) => {
+                attempts_left -= 1;
+                if attempts_left == 0 {
+                    report(&format!(
+                        "download settings are unavailable ({error}); defaults are used and the file is left as it is"
+                    ));
+                    return (PersistedConfig::default(), false);
+                }
+                std::thread::sleep(INDEX_READ_RETRY);
+            }
+        }
+    };
+    match serde_json::from_slice(&raw) {
+        Ok(config) => (config, true),
+        Err(error) => {
+            let aside = path.with_extension(format!("unreadable-{}.json", now_ms()));
+            match fs::rename(path, &aside) {
+                Ok(()) => {
+                    report(&format!(
+                        "download settings are unreadable ({error}); they were kept as {} and defaults are used",
+                        aside.display()
+                    ));
+                    (PersistedConfig::default(), true)
+                }
+                Err(rename_error) => {
+                    report(&format!(
+                        "download settings are unreadable ({error}) and could not be set aside ({rename_error}); defaults are used and the file is left as it is"
+                    ));
+                    (PersistedConfig::default(), false)
+                }
+            }
+        }
+    }
 }
 
 fn is_safe_record_path(entry: &DownloadRecord) -> bool {
@@ -3176,6 +3228,44 @@ mod tests {
             file_presence(&unplugged, &unplugged.join("movie.mkv")),
             FilePresence::FolderUnavailable
         );
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn download_settings_are_read_set_aside_or_left_alone_at_launch() {
+        let directory = scratch_dir("config-launch");
+        let path = directory.join(CONFIG_FILE);
+        let reports = std::cell::RefCell::new(Vec::<String>::new());
+        let report = |line: &str| reports.borrow_mut().push(line.to_string());
+
+        // A first run: defaults, saved, nothing to say.
+        let (config, writable) = load_config_for_launch(&path, &report);
+        assert!(config.directory.is_none() && writable && reports.borrow().is_empty());
+
+        // Saved settings are read as they are.
+        fs::write(&path, br#"{"directory":"D:\\Films","approved_roots":["D:\\Films"]}"#).unwrap();
+        let (config, writable) = load_config_for_launch(&path, &report);
+        assert_eq!(config.directory.as_deref(), Some("D:\\Films"));
+        assert!(writable);
+
+        // Torn bytes are set aside, then defaults may be saved.
+        fs::write(&path, vec![0u8; 64]).unwrap();
+        let (config, writable) = load_config_for_launch(&path, &report);
+        assert!(config.directory.is_none() && writable && !path.exists());
+        assert_eq!(reports.borrow().len(), 1);
+        let kept = fs::read_dir(&directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains(".unreadable-"))
+            .count();
+        assert_eq!(kept, 1);
+
+        // A file that cannot be opened (here a folder in its place) is not
+        // saved over.
+        fs::create_dir_all(&path).unwrap();
+        let (_, writable) = load_config_for_launch(&path, &report);
+        assert!(!writable);
+        assert_eq!(reports.borrow().len(), 2);
         let _ = fs::remove_dir_all(directory);
     }
 
