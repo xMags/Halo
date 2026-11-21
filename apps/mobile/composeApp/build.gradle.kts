@@ -261,8 +261,8 @@ android {
         applicationId = "moe.ditto.halo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.0"
+        versionCode = 4
+        versionName = "1.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["signInAddonCallbackPath"] = signInAddonCallbackPath
         // Emulator is x86_64; keep arm64 so an eventual device install works.
