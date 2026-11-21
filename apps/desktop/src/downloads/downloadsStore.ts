@@ -505,6 +505,9 @@ export function deleteReady(jobId: string): Promise<string | null> {
   return runAction(() => removeDownload(jobId))
 }
 
+/** How many times Delete all reads the list again for copies a removal brought back. */
+const DELETE_ALL_ROUNDS = 3
+
 /**
  * Removes every download this account has on the PC, finished or not: the
  * engine's remove cancels an unfinished transfer and deletes its partial file,
@@ -512,9 +515,18 @@ export function deleteReady(jobId: string): Promise<string | null> {
  * the first failure is reported.
  */
 export function deleteAllDownloads(): Promise<string | null> {
-  const ids = snapshot.downloads.map((item) => item.job_id)
-  if (ids.length === 0) return Promise.resolve(null)
-  return runAction(() => forEachJob(ids, removeDownload))
+  if (snapshot.downloads.length === 0) return Promise.resolve(null)
+  return runAction(async () => {
+    // Removing an unfinished replacement brings back the copy it was
+    // replacing, which the first list never named, so the list is read again
+    // until nothing is left. A few rounds at most: each one can only uncover
+    // the copies the one before brought back.
+    let ids = snapshot.downloads.map((item) => item.job_id)
+    for (let round = 0; round < DELETE_ALL_ROUNDS && ids.length > 0; round += 1) {
+      await forEachJob(ids, removeDownload)
+      ids = (await listDownloads()).map((item) => item.job_id)
+    }
+  })
 }
 
 /** This video's finished download on this device, if it has one (one entry per video). */
