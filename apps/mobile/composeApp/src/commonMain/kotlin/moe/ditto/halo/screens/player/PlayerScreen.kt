@@ -38,8 +38,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import moe.ditto.halo.sync.FreshProgress
+import kotlin.time.TimeSource
 import androidx.compose.ui.unit.dp
 import moe.ditto.halo.NativePlayerSurface
 import moe.ditto.halo.PlaybackHost
@@ -257,14 +260,27 @@ internal fun PlayerScreen(
         playback.play(item)
         openFollowUps = launch {
             // Back to where this video was left, once its file is open. Playback
-            // is not held for it: the history is normally cached already, and
-            // when it is not the wait for it is bounded. A stream of unknown
-            // length opens with no duration, which resumePosition accepts.
+            // is not held for it: the cached place is used at once, and the
+            // server is asked meanwhile, within a bound. Its answer moves the
+            // video only when it differs and the viewer has not moved it
+            // since. A stream of unknown length opens with no duration, which
+            // resumePosition accepts.
             if (context.recordsHistory) launch {
-                val saved = graph.watchStates.loadedProgressFor(context.videoId, ResumeHistoryWaitMillis)
-                    ?: return@launch
+                val cached = graph.watchStates.progressFor(context.videoId)
+                val fresh = async { graph.watchStates.freshProgressFor(context.videoId, ResumeHistoryWaitMillis) }
                 val opened = playback.state.first { it.current == item && it.opened }
-                resumePosition(saved, opened.durationSeconds)?.let { playback.seekTo(it) }
+                val placed = resumePosition(cached, opened.durationSeconds)
+                placed?.let { playback.seekTo(it) }
+                val placedAt = TimeSource.Monotonic.markNow()
+                val answer = fresh.await() as? FreshProgress.Answered ?: return@launch
+                val target = resumePosition(answer.state, opened.durationSeconds)
+                if (target == placed) return@launch
+                val now = playback.state.value
+                if (now.current != item) return@launch
+                if (!stillAtResumePoint(placed ?: 0.0, placedAt.elapsedNow().inWholeMilliseconds, now.positionSeconds, now.playbackRate)) {
+                    return@launch
+                }
+                playback.seekTo(target ?: 0.0)
             }
             // A downloaded video carries its subtitle beside it, added directly
             // rather than through the addon path: the file is already here, and

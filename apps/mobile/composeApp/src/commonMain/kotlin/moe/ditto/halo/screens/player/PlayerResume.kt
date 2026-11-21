@@ -24,3 +24,15 @@ internal fun resumePosition(saved: WatchState?, durationSeconds: Double?): Doubl
     if (durationSeconds != null && durationSeconds > 0.0 && position >= durationSeconds) return null
     return position
 }
+
+/**
+ * Whether the viewer is still where the resume put them: at [placedAt], or
+ * that plus the time played since [elapsedMs], with a little slack for
+ * seeking and buffering. A viewer who moved elsewhere keeps their place.
+ */
+internal fun stillAtResumePoint(placedAt: Double, elapsedMs: Long, positionSeconds: Double, playbackRate: Double): Boolean {
+    val played = elapsedMs / 1000.0 * playbackRate.coerceAtLeast(0.0)
+    return positionSeconds >= placedAt - ResumeSlackSeconds && positionSeconds <= placedAt + played + ResumeSlackSeconds
+}
+
+private const val ResumeSlackSeconds = 3.0

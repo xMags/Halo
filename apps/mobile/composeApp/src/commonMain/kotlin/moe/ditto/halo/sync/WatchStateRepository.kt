@@ -18,6 +18,13 @@ import kotlin.math.floor
  * continue-watching entries without joining against the library — a video may
  * be watched without ever being saved.
  */
+/** The server's answer about one video's progress, or [Unknown] when it gave none in time. */
+sealed interface FreshProgress {
+    data class Answered(val state: WatchState?) : FreshProgress
+
+    data object Unknown : FreshProgress
+}
+
 class WatchStateRepository(
     private val client: HaloBackend,
     private val cache: QueryCache,
@@ -31,15 +38,14 @@ class WatchStateRepository(
         cache.peek<List<WatchState>>(HaloKey.WatchStates)?.firstOrNull { it.videoId == videoId }
 
     /**
-     * Where one video resumes: a fresh read of the history, for up to
-     * [waitMillis], or the cached one when the server cannot answer in time
-     * (playback must not wait on it), whichever row is newer. The cached copy
-     * alone can predate progress made on another device, and resuming from it
-     * would report that old position as the newest. Null when there is none.
+     * What the server says about one video now, asked for up to [waitMillis].
+     * An answer is the truth, absence included: the history it returns leaves
+     * removals out, so a video missing from it was removed elsewhere. The
+     * cached copy can predate progress (or a removal) made on another device,
+     * and resuming from it would report that old position as the newest.
      */
-    suspend fun loadedProgressFor(videoId: String, waitMillis: Long): WatchState? {
-        val cached = cache.peek<List<WatchState>>(HaloKey.WatchStates)?.firstOrNull { it.videoId == videoId }
-        val fresh = withTimeoutOrNull(waitMillis) {
+    suspend fun freshProgressFor(videoId: String, waitMillis: Long): FreshProgress {
+        val rows = withTimeoutOrNull(waitMillis) {
             try {
                 client.getWatchStates()
             } catch (cancellation: CancellationException) {
@@ -47,8 +53,8 @@ class WatchStateRepository(
             } catch (_: Exception) {
                 null
             }
-        }?.firstOrNull { it.videoId == videoId }
-        return listOfNotNull(fresh, cached).maxByOrNull { it.updatedAt }
+        } ?: return FreshProgress.Unknown
+        return FreshProgress.Answered(rows.firstOrNull { it.videoId == videoId })
     }
 
     /**

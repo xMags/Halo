@@ -56,11 +56,12 @@ class WatchStateRepositoryTest {
         // Another device watched further since the history was cached.
         reply = """[{"videoId":"v","itemId":"i","positionSec":900.0,"durationSec":3600.0,"watched":false,"updatedAt":20}]"""
 
-        assertEquals(900.0, onRealTime { repo.loadedProgressFor("v", waitMillis = 5_000) }?.positionSec)
+        val answer = onRealTime { repo.freshProgressFor("v", waitMillis = 5_000) }
+        assertEquals(900.0, (answer as FreshProgress.Answered).state?.positionSec)
     }
 
     @Test
-    fun resumeFallsBackToTheCacheWhenTheServerFails() = runTest {
+    fun aServerThatFailsGivesNoAnswerSoTheCachedPlaceStands() = runTest {
         var fail = false
         val api = RecordingApi {
             if (fail) error("offline")
@@ -71,7 +72,16 @@ class WatchStateRepositoryTest {
         repo.observe().first { it.value != null }
         fail = true
 
-        assertEquals(100.0, onRealTime { repo.loadedProgressFor("v", waitMillis = 5_000) }?.positionSec)
+        assertEquals(FreshProgress.Unknown, onRealTime { repo.freshProgressFor("v", waitMillis = 5_000) })
+    }
+
+    @Test
+    fun aVideoMissingFromAFreshReadWasRemovedElsewhere() = runTest {
+        val api = RecordingApi { """[]""" }
+        val clock = FakeClock()
+        val repo = repository(api, clock, QueryCache(backgroundScope, clock))
+
+        assertEquals(FreshProgress.Answered(null), onRealTime { repo.freshProgressFor("v", waitMillis = 5_000) })
     }
 
     @Test

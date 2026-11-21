@@ -3,7 +3,9 @@ package moe.ditto.halo.screens.player
 import moe.ditto.halo.api.WatchState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Where a video opens, given where it was left and the length of the file opened. */
 class PlayerResumeTest {
@@ -54,5 +56,16 @@ class PlayerResumeTest {
     fun anUnknownLengthDoesNotStopTheResume() {
         assertEquals(1_669.0, resumePosition(saved(1_669.0), durationSeconds = null))
         assertEquals(1_669.0, resumePosition(saved(1_669.0), durationSeconds = 0.0))
+    }
+
+    @Test
+    fun aViewerStillWhereTheResumePutThemCanBeMovedOnByTheServersAnswer() {
+        // Put at 100 s, then 2 s of playing.
+        assertTrue(stillAtResumePoint(100.0, elapsedMs = 2_000, positionSeconds = 102.0, playbackRate = 1.0))
+        // Paused or buffering since: still there.
+        assertTrue(stillAtResumePoint(100.0, elapsedMs = 2_000, positionSeconds = 100.0, playbackRate = 1.0))
+        // Seeked ahead, or back to the start: their choice stands.
+        assertFalse(stillAtResumePoint(100.0, elapsedMs = 2_000, positionSeconds = 400.0, playbackRate = 1.0))
+        assertFalse(stillAtResumePoint(100.0, elapsedMs = 2_000, positionSeconds = 0.0, playbackRate = 1.0))
     }
 }
