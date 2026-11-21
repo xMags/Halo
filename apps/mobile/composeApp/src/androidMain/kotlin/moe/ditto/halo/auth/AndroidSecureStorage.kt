@@ -25,7 +25,11 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
     private val prefs = context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
     private val keyStore = KeyStore.getInstance(KeyStoreProvider).apply { load(null) }
 
-    override fun read(key: String): String? = synchronized(lock) {
+    override fun read(key: String): String? = read(key, strict = false)
+
+    override fun readStrict(key: String): String? = read(key, strict = true)
+
+    private fun read(key: String, strict: Boolean): String? = synchronized(lock) {
         val stored = prefs.all[key] ?: return@synchronized null
         if (stored !is String) {
             removeLocked(key)
@@ -36,7 +40,7 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
             return@synchronized migrateLegacyValueLocked(key, stored)
         }
 
-        decryptLocked(key, stored)
+        decryptLocked(key, stored, strict)
     }
 
     override fun write(key: String, value: String) {
@@ -71,14 +75,23 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
         }
     }
 
+    /**
+     * Encrypts with the current key. Only a key that is gone for good is
+     * replaced, which takes every value sealed with it. A plain
+     * InvalidKeyException, which some devices raise for a passing Keystore
+     * fault, is tried once more and then fails this write alone, keeping
+     * every stored value.
+     */
     private fun encryptWithRecoveryLocked(key: String, plaintext: String): String {
         return try {
             encryptLocked(key, plaintext, getOrCreateKeyLocked())
         } catch (error: Exception) {
-            if (!isKeyFailure(error)) throw error
-
-            resetKeyAndEncryptedStateLocked()
-            encryptLocked(key, plaintext, createKeyLocked())
+            if (isKeyGone(error)) {
+                resetKeyAndEncryptedStateLocked()
+                return encryptLocked(key, plaintext, createKeyLocked())
+            }
+            if (error !is InvalidKeyException) throw error
+            encryptLocked(key, plaintext, getOrCreateKeyLocked())
         }
     }
 
@@ -92,7 +105,7 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
         return "$EnvelopeVersion:$iv:$payload"
     }
 
-    private fun decryptLocked(key: String, envelope: String): String? {
+    private fun decryptLocked(key: String, envelope: String, strict: Boolean): String? {
         return try {
             val parts = envelope.split(':', limit = 3)
             require(parts.size == 3 && parts[0] == EnvelopeVersion)
@@ -117,6 +130,7 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
             when {
                 isKeyGone(error) -> resetKeyAndEncryptedStateLocked()
                 isDamagedValue(error) -> removeLocked(key)
+                strict -> throw SecureStorageUnavailableException("A stored value could not be read right now.")
             }
             null
         }
@@ -167,11 +181,6 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
     /** A value this key did not seal (a failed tag check) or one not in the envelope's shape. */
     private fun isDamagedValue(error: Exception): Boolean =
         error is AEADBadTagException || error is IllegalArgumentException
-
-    private fun isKeyFailure(error: Exception): Boolean =
-        error is InvalidKeyException ||
-            error is UnrecoverableKeyException ||
-            error is KeyPermanentlyInvalidatedException
 
     internal companion object {
         const val PreferencesName = "halo.auth"

@@ -4,9 +4,12 @@ import moe.ditto.halo.api.LibraryItem
 import moe.ditto.halo.api.UserSettings
 import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.auth.InMemorySecureStorage
+import moe.ditto.halo.auth.SecureStorage
+import moe.ditto.halo.auth.SecureStorageUnavailableException
 import moe.ditto.halo.sync.FakeStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -110,6 +113,19 @@ class DeviceDataMoveTest {
         val profile = RecordingProfile()
         clearMovedDeviceData(Fixture().backend, profile, emptyList())
         assertEquals(listOf("clear"), profile.calls)
+    }
+
+    @Test
+    fun anAddonListThatIsStoredButUnreadableIsNotReadAsEmpty() {
+        val secure = object : SecureStorage {
+            override fun read(key: String): String? = null
+            override fun readStrict(key: String): String? = throw SecureStorageUnavailableException("locked")
+            override fun write(key: String, value: String) = error("must not write over it")
+            override fun delete(key: String) = error("must not delete it")
+        }
+        val store = PlatformDeviceStore(secure, FakeStore())
+
+        assertFailsWith<SecureStorageUnavailableException> { store.read(DeviceCollection.Addons) }
     }
 
     @Test

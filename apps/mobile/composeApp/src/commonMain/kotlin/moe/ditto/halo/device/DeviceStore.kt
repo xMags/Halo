@@ -64,7 +64,10 @@ class PlatformDeviceStore(
     private val plain: KeyValueStore,
 ) : DeviceStore, DeviceProfileStore {
     override fun read(collection: DeviceCollection): String? = when (collection) {
-        DeviceCollection.Addons -> secure.read(AddonsKey)
+        // Strict: an addon list that is there but unreadable must stop the
+        // caller (seeding the built-ins, the move into an account) rather
+        // than read as empty and be written over.
+        DeviceCollection.Addons -> secure.readStrict(AddonsKey)
         else -> plain.read(collection.plainKey())
     }
 

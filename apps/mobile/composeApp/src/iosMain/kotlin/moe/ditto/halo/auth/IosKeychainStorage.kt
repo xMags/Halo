@@ -25,6 +25,7 @@ import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
 import platform.Security.SecItemUpdate
+import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
 import platform.Security.kSecAttrAccessible
 import platform.Security.kSecAttrAccessibleAfterFirstUnlock
@@ -47,12 +48,20 @@ class IosKeychainStorage(
     private val service: String = "moe.ditto.halo",
 ) : SecureStorage {
 
-    override fun read(key: String): String? = memScoped {
+    override fun read(key: String): String? = read(key, strict = false)
+
+    /** Only "no such item" reads as absent; any other failure (the device not unlocked since boot, say) throws. */
+    override fun readStrict(key: String): String? = read(key, strict = true)
+
+    private fun read(key: String, strict: Boolean): String? = memScoped {
         val result = alloc<CFTypeRefVar>()
         val status = withQuery(key, capacity = 6) { query ->
             CFDictionaryAddValue(query, kSecReturnData, kCFBooleanTrue)
             CFDictionaryAddValue(query, kSecMatchLimit, kSecMatchLimitOne)
             SecItemCopyMatching(query, result.ptr)
+        }
+        if (strict && status != errSecSuccess && status != errSecItemNotFound) {
+            throw SecureStorageUnavailableException("The Keychain could not be read right now (status $status).")
         }
         if (status != errSecSuccess) return null
         val data = CFBridgingRelease(result.value) as? NSData ?: return null
