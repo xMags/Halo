@@ -117,7 +117,7 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
 
     /**
      * Counts this launch once; true once [BrokenKeyLaunches] launches have
-     * failed with no read or write succeeding between, each within
+     * failed with no write succeeding between, each within
      * [BrokenKeyWindowMs] of the one before. Faults far apart start over.
      */
     private fun keyFailedOnEnoughLaunchesLocked(): Boolean {
@@ -164,10 +164,10 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
                 GCMParameterSpec(GcmTagLengthBits, iv),
             )
             cipher.updateAAD(aadFor(key))
-            String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8).also {
-                // A key that reads is not broken: earlier failures were passing ones.
-                keyWorkedLocked()
-            }
+            // A read does not clear the failure count: a key that reads but
+            // cannot seal would then never be replaced, and no sign-in could
+            // be saved. Faults far apart are kept from adding up by time.
+            String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
         } catch (error: Exception) {
             // Only a key that is gone for good takes every value with it, and
             // only a value that is itself damaged is dropped. Anything else
