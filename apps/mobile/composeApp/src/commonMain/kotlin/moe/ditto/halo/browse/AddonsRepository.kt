@@ -71,7 +71,10 @@ class AddonsRepository(
      * delete an addon another device added since it was read.
      */
     suspend fun editUserAddons(edit: (List<String>) -> List<String>) {
-        val current = client.getAddons().user.mapNotNull { it.transportUrl }
+        val entries = client.getAddons().user
+        val current = entries.mapNotNull { it.transportUrl }
+        // An entry without its URL would be dropped by the save: refuse instead.
+        check(current.size == entries.size) { "Your addon list could not be read in full." }
         val next = edit(current)
         if (next != current) client.putAddons(next)
         cache.invalidate(HaloKey.Addons)
