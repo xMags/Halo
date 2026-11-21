@@ -2,6 +2,7 @@ package moe.ditto.halo.people
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -25,6 +26,13 @@ class PeopleVectorsTest {
     private val vectors = HaloJson.parseToJsonElement(RuleVectors.people).jsonObject
 
     private fun JsonObject.list(name: String) = getValue(name).jsonArray.map { it.jsonObject }
+
+    /** A group of cases: an empty one fails, so a test cannot pass with no cases. */
+    private fun JsonObject.group(name: String): List<JsonObject> {
+        val rows = list(name)
+        assertTrue(rows.isNotEmpty(), "the vectors' $name group is empty")
+        return rows
+    }
     private fun JsonObject.text(name: String) = getValue(name).jsonPrimitive.content
     private fun JsonElement?.textOrNull() = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
     private fun strings(element: JsonElement?) = element?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
@@ -56,15 +64,15 @@ class PeopleVectorsTest {
 
     @Test
     fun thePeopleRow() {
-        for (row in vectors.list("peopleRow")) {
+        for (row in vectors.group("peopleRow")) {
             val tier = row.getValue("bestTitleTier").jsonPrimitive.intOrNull
             val chosen = choosePeopleRow(row.list("people").map(::person), row.text("query"), tier).map { it.tmdbId }
             assertEquals(row.getValue("ids").jsonArray.map { it.jsonPrimitive.long }, chosen, "${row.text("query")} / $tier")
         }
-        for (row in vectors.list("bestTitleTier")) {
+        for (row in vectors.group("bestTitleTier")) {
             assertEquals(row.getValue("tier").jsonPrimitive.intOrNull, bestTitleTier(strings(row["names"]), row.text("query"), 2026), row.text("query"))
         }
-        for (row in vectors.list("exactNamePerson")) {
+        for (row in vectors.group("exactNamePerson")) {
             val expected = (row.getValue("id") as? JsonPrimitive)?.takeUnless { it is JsonNull }?.long
             assertEquals(expected, exactNamePerson(row.list("people").map(::person), row.text("name"))?.tmdbId, row.text("name"))
         }
@@ -82,7 +90,7 @@ class PeopleVectorsTest {
             assertEquals(want["poster"].textOrNull(), got.poster)
             assertEquals(want["releaseInfo"].textOrNull(), got.releaseInfo)
         }
-        for (row in vectors.list("personRowLine")) {
+        for (row in vectors.group("personRowLine")) {
             val department = PersonDepartment.entries.firstOrNull { it.wire == row["knownFor"].textOrNull() }
             assertEquals(row.text("line"), personRowLine(department, strings(row["knownForTitles"])))
         }
@@ -98,13 +106,13 @@ class PeopleVectorsTest {
         assertEquals(strings(film["filters"]).map(::filter), filmographyFilters(credits))
         assertEquals(strings(film["directorOnlyFilters"]).map(::filter), filmographyFilters(listOf(credits[0])))
         assertEquals(listOf(FilmographyFilter.All), filmographyFilters(emptyList()))
-        for (row in film.list("creditLines")) assertEquals(row.text("line"), creditLine(credits[row.getValue("index").jsonPrimitive.int]))
-        for (row in film.list("roleLabels")) assertEquals(row.text("label"), creditRoleLabel(roles(row["roles"])))
+        for (row in film.group("creditLines")) assertEquals(row.text("line"), creditLine(credits[row.getValue("index").jsonPrimitive.int]))
+        for (row in film.group("roleLabels")) assertEquals(row.text("label"), creditRoleLabel(roles(row["roles"])))
     }
 
     @Test
     fun tmdbCredentialsByShape() {
-        for (row in vectors.list("credentials")) {
+        for (row in vectors.group("credentials")) {
             val parsed = parseTmdbCredential(row.text("pasted"))
             val kind = when (parsed) {
                 is TmdbCredential.ApiKey -> "apiKey"
@@ -118,20 +126,20 @@ class PeopleVectorsTest {
 
     @Test
     fun misspelledNames() = runTest {
-        for (row in vectors.list("closestWords")) assertEquals(strings(row["words"]), closestPeopleWords(row.text("query")), row.text("query"))
-        for (row in vectors.list("editDistance")) {
+        for (row in vectors.group("closestWords")) assertEquals(strings(row["words"]), closestPeopleWords(row.text("query")), row.text("query"))
+        for (row in vectors.group("editDistance")) {
             assertEquals(row.getValue("distance").jsonPrimitive.int, editDistance(row.text("a"), row.text("b"), row.getValue("limit").jsonPrimitive.int))
         }
-        for (row in vectors.list("allowedDistance")) {
+        for (row in vectors.group("allowedDistance")) {
             assertEquals(row.getValue("allowed").jsonPrimitive.int, allowedDistance(row.getValue("length").jsonPrimitive.int))
         }
-        for (row in vectors.list("closestPeople")) {
+        for (row in vectors.group("closestPeople")) {
             val answers = row.getValue("answers").jsonObject
             val closest = closestPeople({ word -> answers[word]?.jsonArray?.map { person(it.jsonObject) }.orEmpty() }, row.text("query"))
             assertEquals(row["corrected"].textOrNull(), closest?.corrected, row.text("query"))
             assertEquals(row.getValue("ids").jsonArray.map { it.jsonPrimitive.long }, closest?.people?.map { it.tmdbId }.orEmpty())
         }
-        for (row in vectors.list("endAtSentence")) {
+        for (row in vectors.group("endAtSentence")) {
             assertEquals(row.text("cut"), endAtSentence(row.text("text"), row.getValue("max").jsonPrimitive.int))
         }
     }

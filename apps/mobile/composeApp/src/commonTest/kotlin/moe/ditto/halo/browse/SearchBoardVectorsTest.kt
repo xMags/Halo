@@ -49,6 +49,13 @@ class SearchBoardVectorsTest {
     }
 
     private fun JsonObject.list(name: String): List<JsonElement> = this[name]?.jsonArray.orEmpty()
+
+    /** A top-level group of cases: a missing or empty one fails, so a renamed group cannot pass with no cases. */
+    private fun JsonObject.group(name: String): List<JsonObject> {
+        val rows = getValue(name).jsonArray.map { it.jsonObject }
+        assertTrue(rows.isNotEmpty(), "the vectors' $name group is empty")
+        return rows
+    }
     private fun JsonObject.string(name: String): String = getValue(name).jsonPrimitive.content
     private fun strings(element: JsonElement?): List<String> = element?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
     private fun ids(titles: List<MetaPreview>) = titles.map { it.id }
@@ -75,14 +82,14 @@ class SearchBoardVectorsTest {
 
     @Test
     fun nameRelevance() {
-        for (row in vectors.list("nameRelevance").map { it.jsonObject }) {
+        for (row in vectors.group("nameRelevance")) {
             assertEquals(row.getValue("tier").jsonPrimitive.int, nameRelevance(row.string("name"), row.string("query")), row.toString())
         }
     }
 
     @Test
     fun aTrailingYearIsReadApart() {
-        for (row in vectors.list("parseQuery").map { it.jsonObject }) {
+        for (row in vectors.group("parseQuery")) {
             val parsed = parts(row.string("query"))
             assertEquals(row.string("full"), parsed.full)
             assertEquals(row.string("name"), parsed.name)
@@ -92,7 +99,7 @@ class SearchBoardVectorsTest {
 
     @Test
     fun whatCountsAsNoPoster() {
-        for (row in vectors.list("hasNoPoster").map { it.jsonObject }) {
+        for (row in vectors.group("hasNoPoster")) {
             val meta = MetaPreview(id = row["id"]?.jsonPrimitive?.content ?: "x", type = "movie", name = "x", poster = row["poster"]?.jsonPrimitive?.content)
             assertEquals(row.getValue("none").jsonPrimitive.boolean, hasNoPoster(meta), row.toString())
         }
@@ -100,7 +107,7 @@ class SearchBoardVectorsTest {
 
     @Test
     fun rankingForAReveal() {
-        for (row in vectors.list("rank").map { it.jsonObject }) {
+        for (row in vectors.group("rank")) {
             val label = row.string("case")
             val answers = row.list("answers").map(::answer)
             val ranked = rankForReveal(answers, parts(row.string("query")))
@@ -124,7 +131,7 @@ class SearchBoardVectorsTest {
 
     @Test
     fun byRelevanceKeepsEachLevelInOrder() {
-        for (row in vectors.list("byRelevance").map { it.jsonObject }) {
+        for (row in vectors.group("byRelevance")) {
             val titles = row.list("titles").map(::title)
             val ordered = titles.withIndex().sortedWith(compareBy({ nameRelevance(it.value.name, row.string("query")) }, { it.index })).map { it.value.id }
             assertEquals(strings(row["ids"]), ordered)
@@ -133,7 +140,7 @@ class SearchBoardVectorsTest {
 
     @Test
     fun oneCatalogJudgedByTheCutoffs() {
-        for (row in vectors.list("refine").map { it.jsonObject }) {
+        for (row in vectors.group("refine")) {
             val label = row.string("case")
             val ranked = rankForReveal(listOf(SearchAnswer("t/movie", row.list("titles").map(::title), 0)), parts(row.string("query")))
             val cutoffs = computeCutoffs(ranked)
@@ -147,7 +154,7 @@ class SearchBoardVectorsTest {
 
     @Test
     fun theBoardRevealsOnceAndLateAnswersOnlyFillInOrAppend() {
-        for (row in vectors.list("board").map { it.jsonObject }) {
+        for (row in vectors.group("board")) {
             val label = row.string("case")
             val board = SearchBoard()
             val revealed = board.reveal(row.list("answers").map(::answer), parts(row.string("query")), meaning(row))
@@ -196,7 +203,7 @@ class SearchBoardVectorsTest {
 
     @Test
     fun posterLinksWorthCheckingBeforeTheReveal() {
-        for (row in vectors.list("posterLinks").map { it.jsonObject }) {
+        for (row in vectors.group("posterLinks")) {
             val answers = row.list("answers").map(::answer)
             assertEquals(strings(row["links"]), revealPosterLinks(answers, parts(row.string("query")), meaning(row), row.getValue("limit").jsonPrimitive.int))
             assertTrue(revealPosterLinks(answers, parts(row.string("query")), meaning(row), 2).size <= 2)
@@ -205,7 +212,7 @@ class SearchBoardVectorsTest {
 
     @Test
     fun mergingCopiesAndTheMissingPosterMark() {
-        for (row in vectors.list("mergeCopies").map { it.jsonObject }) {
+        for (row in vectors.group("mergeCopies")) {
             val merged = mergeCopies(title(row.getValue("kept")), title(row.getValue("other")))
             assertEquals(row.getValue("posterMissing").jsonPrimitive.boolean, merged.posterMissing, row.string("case"))
             row["poster"]?.let { assertEquals(it.jsonPrimitive.content, merged.poster, row.string("case")) }
@@ -214,7 +221,7 @@ class SearchBoardVectorsTest {
 
     @Test
     fun whenResultsAreRevealed() {
-        for (row in vectors.list("reveal").map { it.jsonObject }) {
+        for (row in vectors.group("reveal")) {
             val decision = decideReveal(
                 row.getValue("pending").jsonPrimitive.int,
                 row.getValue("total").jsonPrimitive.int,
@@ -227,13 +234,13 @@ class SearchBoardVectorsTest {
 
     @Test
     fun suggestionsAndNotes() {
-        for (row in vectors.list("suggestions").map { it.jsonObject }) {
+        for (row in vectors.group("suggestions")) {
             assertEquals(strings(row["expect"]), searchSuggestions(strings(row["history"]), row.string("typed"), strings(row["found"])), row.string("typed"))
         }
-        for (row in vectors.list("failureNote").map { it.jsonObject }) {
+        for (row in vectors.group("failureNote")) {
             assertEquals(row.string("note"), searchFailureNote(strings(row["failed"]), row.getValue("total").jsonPrimitive.int))
         }
-        for (row in vectors.list("stillAsking").map { it.jsonObject }) {
+        for (row in vectors.group("stillAsking")) {
             assertEquals(row.string("note"), searchStillAskingNote(row.getValue("pending").jsonPrimitive.int))
         }
     }

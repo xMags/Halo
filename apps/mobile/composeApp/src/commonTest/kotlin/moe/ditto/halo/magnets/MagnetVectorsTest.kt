@@ -20,6 +20,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import moe.ditto.halo.api.HaloJson
+import moe.ditto.halo.people.PeopleAnswerException
 import moe.ditto.halo.people.readCapabilities
 import moe.ditto.halo.vectors.RuleVectors
 
@@ -43,6 +44,13 @@ class MagnetVectorsTest {
     }
 
     private fun JsonElement?.textOrNull() = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+    /** A group of cases: a missing or empty one fails, so a test cannot pass with no cases. */
+    private fun JsonObject.group(name: String): JsonArray {
+        val rows = getValue(name).jsonArray
+        assertTrue(rows.isNotEmpty(), "the vectors' $name group is empty")
+        return rows
+    }
 
     private fun request(element: JsonElement): MagnetRequest {
         val obj = element.jsonObject
@@ -134,7 +142,7 @@ class MagnetVectorsTest {
 
     @Test
     fun capabilities() {
-        for (row in vectors.getValue("capabilities").jsonArray.map { it.jsonObject }) {
+        for (row in vectors.group("capabilities").map { it.jsonObject }) {
             val read = readCapabilities(row.getValue("body"))
             val expected = row.getValue("expect").jsonObject
             assertEquals(expected.getValue("people").jsonPrimitive.boolean, read.people)
@@ -142,25 +150,33 @@ class MagnetVectorsTest {
             assertEquals(expected.getValue("magnets").jsonPrimitive.boolean, read.magnets)
             assertEquals(expected.getValue("magnetsCachedOnly").jsonPrimitive.boolean, read.magnetsCachedOnly, row.toString())
         }
+        assertFailsWith<PeopleAnswerException> { readCapabilities(JsonArray(listOf(JsonPrimitive(true)))) }
+    }
+
+    @Test
+    fun aServerThatFetchesUncachedTorrentsWordsNotCachedOtherwise() {
+        val request = readMagnet(HaloJson.parseToJsonElement("""{"id":"mg_a","state":"not_cached","sizeBytes":0}"""), server)
+        val card = buildMagnetCard(MagnetPhase.Answered, "", request, cachedOnly = false, formatSize = ::formatSize)
+        assertEquals("The server's debrid account couldn't start it. Try another magnet for the same title.", card.secondary)
     }
 
     @Test
     fun playLinksAreRebuiltOnTheAppServerOrRefused() {
         val links = vectors.getValue("playLinks").jsonObject
-        for (row in links.getValue("rebuilt").jsonArray.map { it.jsonObject }) {
+        for (row in links.group("rebuilt").map { it.jsonObject }) {
             assertEquals(row.getValue("link").jsonPrimitive.content, magnetPlayLinkOn(row.getValue("url").jsonPrimitive.content, row.getValue("on").jsonPrimitive.content))
         }
-        for (url in links.getValue("refused").jsonArray.map { it.jsonPrimitive.content }) {
+        for (url in links.group("refused").map { it.jsonPrimitive.content }) {
             assertEquals(null, magnetPlayLinkOn(url, server), url.take(100))
         }
-        for (row in links.getValue("refusedServer").jsonArray.map { it.jsonObject }) {
+        for (row in links.group("refusedServer").map { it.jsonObject }) {
             assertEquals(null, magnetPlayLinkOn(row.getValue("url").jsonPrimitive.content, row.getValue("on").jsonPrimitive.content))
         }
     }
 
     @Test
     fun magnetAnswers() {
-        for (row in vectors.getValue("readerAccepted").jsonArray.map { it.jsonObject }) {
+        for (row in vectors.group("readerAccepted").map { it.jsonObject }) {
             val label = row.getValue("case").jsonPrimitive.content
             val read = readMagnet(row.getValue("body"), server)
             val expected = row.getValue("expect").jsonObject
@@ -172,14 +188,14 @@ class MagnetVectorsTest {
                 }
             }
         }
-        vectors.getValue("readerRefused").jsonArray.forEachIndexed { index, body ->
+        vectors.group("readerRefused").forEachIndexed { index, body ->
             assertFailsWith<MagnetAnswerException>("refused[$index]") { readMagnet(body, server) }
         }
     }
 
     @Test
     fun theFileATitlePageOffers() {
-        for (row in vectors.getValue("fileFor").jsonArray.map { it.jsonObject }) {
+        for (row in vectors.group("fileFor").map { it.jsonObject }) {
             val file = magnetFileFor(request(row.getValue("magnet")), row.getValue("type").jsonPrimitive.content, row.getValue("videoId").jsonPrimitive.content)
             assertEquals(row["file"].textOrNull(), file?.id, "${row["type"]} ${row["videoId"]}")
         }
@@ -187,7 +203,7 @@ class MagnetVectorsTest {
 
     @Test
     fun theActionCard() {
-        vectors.getValue("cards").jsonArray.map { it.jsonObject }.forEachIndexed { index, row ->
+        vectors.group("cards").map { it.jsonObject }.forEachIndexed { index, row ->
             val phase = MagnetPhase.entries.first { it.name.lowercase() == row.getValue("phase").jsonPrimitive.content }
             val card = buildMagnetCard(phase, "Dune.2021.2160p", row["request"]?.let(::request), cachedOnly = true, formatSize = ::formatSize)
             row["expect"]?.jsonObject?.forEach { (key, value) ->
