@@ -12,6 +12,7 @@ mod device_store;
 mod discord;
 mod downloads;
 mod injection_guard;
+mod instance_guard;
 mod mpv;
 mod oauth;
 mod scrub_preview;
@@ -579,6 +580,10 @@ fn app_ready(app: tauri::AppHandle) {
 fn main() {
     // Before any window exists, or an overlay's hook DLL is already in.
     injection_guard::refuse_extension_points();
+    // Claimed before any window or state exists; acted on in setup, after
+    // the single-instance plugin has had its chance to hand this launch over
+    // to the running Halo and focus it (instance_guard.rs).
+    let instance = instance_guard::claim();
     tauri::Builder::default()
         // First, so a second launch hands over to the running Halo before it
         // sets anything up: two processes would share the download index,
@@ -647,7 +652,12 @@ fn main() {
             scrub_preview_close,
             scrub_preview_request
         ])
-        .setup(|app| {
+        .setup(move |app| {
+            // Another Halo is running and the plugin could not hand this
+            // launch over: stop before touching the download state it owns.
+            if instance == instance_guard::Claim::HeldElsewhere {
+                std::process::exit(0);
+            }
             // Release builds have no console, so panics and WebView2 process
             // failures are written to the app's log folder (crash_log.rs).
             let crash_log = Arc::new(crash_log::CrashLog::new(&app.path().app_log_dir()?));
