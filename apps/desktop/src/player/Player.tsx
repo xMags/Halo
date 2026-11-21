@@ -544,20 +544,13 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
 
       // Read fresh, so progress made (or a removal) on another device since
       // the history was cached is where this resumes, but within a bound: an
-      // unreachable server must not block playback. 'always' lets an offline
-      // read fail at once instead of waiting out the bound paused. See
-      // resumeWatchState for how the answers combine.
+      // unreachable server must not block playback. A plain request, not a
+      // query fetch: offline it fails at once rather than waiting out the
+      // bound paused, and it leaves the shared query's own options alone.
+      // See resumeWatchState for how the answers combine.
       const cached = queryClient.getQueryData<WatchState[]>(['watchStates'])
-      const fresh = recordsHistory
-        ? await withinTimeout(
-            queryClient.fetchQuery({
-              queryKey: ['watchStates'],
-              queryFn: () => getClient().getWatchStates(),
-              staleTime: 0,
-              networkMode: 'always',
-            }),
-          )
-        : null
+      const fresh = recordsHistory ? await withinTimeout(getClient().getWatchStates()) : null
+      if (fresh) queryClient.setQueryData(['watchStates'], fresh)
       priorStateRef.current = recordsHistory
         ? resumeWatchState(params.videoId, fresh, cached, pendingWatchStates())
         : null
