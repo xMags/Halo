@@ -13,6 +13,13 @@ import okio.Path
 internal data class DownloadIndexSnapshot(
     val entries: List<DownloadEntry>,
     val complete: Boolean,
+    /**
+     * No index was stored at all: a first run, or storage that answered
+     * nothing (iOS app preferences before the first unlock, an Android
+     * preferences file that could not be parsed). Only the downloads folder
+     * can tell those apart.
+     */
+    val absent: Boolean = false,
 )
 
 @Serializable
@@ -89,11 +96,15 @@ internal class DownloadIndex(
         }
 
         val rawV1 = store.read(StorageKeys.Downloads)
-            ?: return DownloadIndexSnapshot(emptyList(), complete = true).also {
+            ?: return DownloadIndexSnapshot(emptyList(), complete = true, absent = true).also {
                 runCatching { store.delete(StorageKeys.DownloadsMigration) }
             }
         return migrateV1(rawV1, directory, resumeMigratedPartialFiles)
     }
+
+    /** Whether any index is stored now, read without migrating or cleaning anything. */
+    fun isStored(): Boolean =
+        store.read(StorageKeys.DownloadsV2) != null || store.read(StorageKeys.Downloads) != null
 
     fun write(entries: List<DownloadEntry>) {
         val document = DownloadIndexV2(version = 2, entries = entries.associateBy { it.videoId })

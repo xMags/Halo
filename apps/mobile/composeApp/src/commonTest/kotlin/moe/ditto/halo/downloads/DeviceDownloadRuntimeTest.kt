@@ -228,6 +228,38 @@ class DeviceDownloadRuntimeTest {
     }
 
     @Test
+    fun filesBesideAnIndexThatIsNotThereAreNeitherSweptNorWrittenOver() = runTest {
+        val store = FakeStore()
+        val world = world(store = store, files = listOf("kept.mkv", "kept.srt"))
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(world.fileSystem.exists("/downloads/kept.mkv".toPath()))
+        assertTrue(world.fileSystem.exists("/downloads/kept.srt".toPath()))
+        assertNull(store.read(StorageKeys.DownloadsV2))
+
+        // Still absent when someone downloads: the list starts from here.
+        assertIs<DownloadStartResult.Started>(world.runtime.start(media(videoId = "movie")))
+        testScheduler.advanceUntilIdle()
+        assertTrue(store.read(StorageKeys.DownloadsV2) != null)
+    }
+
+    @Test
+    fun anIndexThatTurnsUpAfterLaunchIsNotWrittenOver() = runTest {
+        val store = FakeStore()
+        val world = world(store = store, files = listOf("kept.mkv"))
+        testScheduler.advanceUntilIdle()
+
+        // Storage that answered nothing at launch answers now.
+        DownloadIndex(store).write(listOf(entry(videoId = "kept", fileName = "kept.mkv")))
+        val written = store.read(StorageKeys.DownloadsV2)
+
+        assertIs<DownloadStartResult.Failed>(world.runtime.start(media(videoId = "movie")))
+        testScheduler.advanceUntilIdle()
+        assertEquals(written, store.read(StorageKeys.DownloadsV2))
+        assertTrue(world.fileSystem.exists("/downloads/kept.mkv".toPath()))
+    }
+
+    @Test
     fun expiredSourceCannotBeResumedAndRequiresAReplacement() = runTest {
         val world = world()
         testScheduler.advanceUntilIdle()

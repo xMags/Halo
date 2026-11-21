@@ -58,6 +58,14 @@ internal class DeviceDownloadRuntime(
     private var indexWritable = true
     private var platformReady = true
 
+    /**
+     * No index was stored, yet the downloads folder holds files: the index
+     * may only have been unreadable at launch. Nothing is swept and the empty
+     * list is not written over it until someone starts a download, which
+     * first checks that the index has not turned up since.
+     */
+    private var indexUnverified = false
+
     private val _entries: MutableStateFlow<List<DownloadEntry>>
     val entries: StateFlow<List<DownloadEntry>>
 
@@ -71,7 +79,8 @@ internal class DeviceDownloadRuntime(
         _entries = MutableStateFlow(snapshot.entries)
         entries = _entries.asStateFlow()
         indexWritable = snapshot.complete
-        scope.launch { initialize(snapshot.complete) }
+        indexUnverified = snapshot.absent && directoryHoldsFiles()
+        scope.launch { initialize(sweep = snapshot.complete && !indexUnverified) }
     }
 
     fun entryFor(videoId: String): DownloadEntry? =
@@ -123,6 +132,9 @@ internal class DeviceDownloadRuntime(
         val root = directory ?: return DownloadStartResult.Unavailable
         if (!indexWritable) {
             return DownloadStartResult.Failed("The download index could not be read safely.")
+        }
+        if (!verifyIndex()) {
+            return DownloadStartResult.Failed("Halo could not read its downloads when it started. Close and reopen Halo to see them.")
         }
         if (!platformReady) {
             return DownloadStartResult.Failed("Background downloads are temporarily unavailable.")
@@ -603,7 +615,30 @@ internal class DeviceDownloadRuntime(
 
     private fun publishLocked(entries: List<DownloadEntry>) {
         _entries.value = entries
-        if (indexWritable) index.write(entries)
+        if (indexWritable && !indexUnverified) index.write(entries)
+    }
+
+    private fun directoryHoldsFiles(): Boolean {
+        val root = directory ?: return false
+        return try {
+            fileSystem.exists(root) && fileSystem.list(root).isNotEmpty()
+        } catch (_: okio.IOException) {
+            // Unknown counts as holding files: the safe side is not to sweep.
+            true
+        }
+    }
+
+    /**
+     * True once the index may be written. With an unverified one, it is read
+     * again: still absent, the files beside it belong to no index and the
+     * list starts from here; there now, launch read too early, and writing
+     * this empty list would lose it.
+     */
+    private suspend fun verifyIndex(): Boolean = mutex.withLock {
+        if (!indexUnverified) return@withLock true
+        if (index.isStored()) return@withLock false
+        indexUnverified = false
+        true
     }
 
     private fun DownloadEntry.ownedFileNames(): List<String> =
