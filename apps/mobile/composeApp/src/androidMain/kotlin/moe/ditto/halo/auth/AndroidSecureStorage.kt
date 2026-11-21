@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets
 import java.security.InvalidKeyException
 import java.security.KeyStore
 import java.security.UnrecoverableKeyException
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -108,10 +109,14 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
             cipher.updateAAD(aadFor(key))
             String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
         } catch (error: Exception) {
-            if (isKeyFailure(error)) {
-                resetKeyAndEncryptedStateLocked()
-            } else {
-                removeLocked(key)
+            // Only a key that is gone for good takes every value with it, and
+            // only a value that is itself damaged is dropped. Anything else
+            // (some devices report a passing Keystore fault as a plain
+            // InvalidKeyException) keeps the data for the next read; a key
+            // that stays broken is replaced by the next write instead.
+            when {
+                isKeyGone(error) -> resetKeyAndEncryptedStateLocked()
+                isDamagedValue(error) -> removeLocked(key)
             }
             null
         }
@@ -155,6 +160,13 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
 
     private fun aadFor(key: String): ByteArray =
         "$EnvelopeVersion:$key".toByteArray(StandardCharsets.UTF_8)
+
+    private fun isKeyGone(error: Exception): Boolean =
+        error is UnrecoverableKeyException || error is KeyPermanentlyInvalidatedException
+
+    /** A value this key did not seal (a failed tag check) or one not in the envelope's shape. */
+    private fun isDamagedValue(error: Exception): Boolean =
+        error is AEADBadTagException || error is IllegalArgumentException
 
     private fun isKeyFailure(error: Exception): Boolean =
         error is InvalidKeyException ||
