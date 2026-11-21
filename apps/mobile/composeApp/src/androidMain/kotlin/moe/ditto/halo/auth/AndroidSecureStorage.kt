@@ -23,6 +23,12 @@ import javax.crypto.spec.GCMParameterSpec
 class AndroidSecureStorage(context: Context) : SecureStorage {
     private val lock = Any()
     private val prefs = context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
+
+    /**
+     * Not secret, and apart from [prefs] so a reset cannot erase it: how many
+     * separate launches have seen a write fail on a plain InvalidKeyException.
+     */
+    private val health = context.getSharedPreferences(HealthPreferencesName, Context.MODE_PRIVATE)
     private val keyStore = KeyStore.getInstance(KeyStoreProvider).apply { load(null) }
 
     override fun read(key: String): String? = read(key, strict = false)
@@ -76,14 +82,18 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
     }
 
     /**
-     * Encrypts with the current key. Only a key that is gone for good is
-     * replaced, which takes every value sealed with it. A plain
-     * InvalidKeyException, which some devices raise for a passing Keystore
-     * fault, is tried once more and then fails this write alone, keeping
-     * every stored value.
+     * Encrypts with the current key. A key that is gone for good is replaced,
+     * which takes every value sealed with it. A plain InvalidKeyException,
+     * which some devices raise for a passing Keystore fault, is tried once
+     * more and then fails this write alone, keeping every stored value. Only
+     * when that keeps happening on [BrokenKeyLaunches] separate launches,
+     * with no success between, is the key taken as broken and replaced:
+     * otherwise a key that stays broken would block every sign-in for good,
+     * with clearing the app's data (downloads included) the only way out.
+     * The reset touches only this store, never the downloads.
      */
     private fun encryptWithRecoveryLocked(key: String, plaintext: String): String {
-        return try {
+        val envelope = try {
             encryptLocked(key, plaintext, getOrCreateKeyLocked())
         } catch (error: Exception) {
             if (isKeyGone(error)) {
@@ -91,8 +101,30 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
                 return encryptLocked(key, plaintext, createKeyLocked())
             }
             if (error !is InvalidKeyException) throw error
-            encryptLocked(key, plaintext, getOrCreateKeyLocked())
+            try {
+                encryptLocked(key, plaintext, getOrCreateKeyLocked())
+            } catch (again: InvalidKeyException) {
+                if (!keyFailedOnEnoughLaunchesLocked()) throw again
+                resetKeyAndEncryptedStateLocked()
+                encryptLocked(key, plaintext, createKeyLocked())
+            }
         }
+        keyWorkedLocked()
+        return envelope
+    }
+
+    /** Counts this launch once; true once enough launches in a row have failed. */
+    private fun keyFailedOnEnoughLaunchesLocked(): Boolean {
+        val counted = health.getString(LastFailedLaunchKey, null) == launchId
+        val failures = health.getInt(FailedLaunchesKey, 0) + if (counted) 0 else 1
+        if (!counted) {
+            health.edit().putInt(FailedLaunchesKey, failures).putString(LastFailedLaunchKey, launchId).commit()
+        }
+        return failures >= BrokenKeyLaunches
+    }
+
+    private fun keyWorkedLocked() {
+        if (health.contains(FailedLaunchesKey)) health.edit().clear().commit()
     }
 
     private fun encryptLocked(key: String, plaintext: String, secretKey: SecretKey): String {
@@ -126,7 +158,8 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
             // only a value that is itself damaged is dropped. Anything else
             // (some devices report a passing Keystore fault as a plain
             // InvalidKeyException) keeps the data for the next read; a key
-            // that stays broken is replaced by the next write instead.
+            // that stays broken is replaced by a write once it has failed on
+            // several launches (encryptWithRecoveryLocked).
             when {
                 isKeyGone(error) -> resetKeyAndEncryptedStateLocked()
                 isDamagedValue(error) -> removeLocked(key)
@@ -186,6 +219,15 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
         const val PreferencesName = "halo.auth"
         const val KeyAlias = "moe.ditto.halo.auth.aes"
         const val EnvelopeVersion = "v1"
+        const val HealthPreferencesName = "halo.auth.health"
+
+        /** Separate launches with a failing key before it is replaced. */
+        const val BrokenKeyLaunches = 3
+        private const val FailedLaunchesKey = "failedLaunches"
+        private const val LastFailedLaunchKey = "lastFailedLaunch"
+
+        /** One per process, so a burst of failures within one run counts once. */
+        private val launchId: String = java.util.UUID.randomUUID().toString()
 
         private const val KeyStoreProvider = "AndroidKeyStore"
         private const val Transformation = "AES/GCM/NoPadding"
