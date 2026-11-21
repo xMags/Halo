@@ -693,6 +693,11 @@ impl DownloadManager {
         if legacy_default.exists() {
             remember_root(&mut approved_roots, &legacy_default);
         }
+        // Where the old folder went, which need not be this launch's default:
+        // the records pointed there must stay playable and removable.
+        if let default_folder::MoveOutcome::Moved { to, .. } = &moved {
+            remember_root(&mut approved_roots, to);
+        }
         remember_root(&mut approved_roots, &default_directory);
         remember_root(&mut approved_roots, &directory);
 

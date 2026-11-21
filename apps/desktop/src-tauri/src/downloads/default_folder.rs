@@ -80,17 +80,16 @@ struct MoveMarker {
 ///
 /// The destination is written to `marker` (durably) before the rename, and
 /// an interrupted move is finished only toward that recorded place, never
-/// toward whatever the default happens to be on a later launch. A record is
-/// pointed at the new place only when its file (or its part file) is there,
-/// so no record can come to name a file of the user's that it never owned.
+/// toward whatever the default happens to be on a later launch, and never
+/// into a folder this code did not move the old one into.
 pub fn move_legacy(
     legacy: &Path,
     new: &Path,
     marker: &Path,
     entries: &mut HashMap<String, DownloadRecord>,
 ) -> MoveOutcome {
-    let destination = match read_marker(marker) {
-        Some(recorded) => recorded,
+    let (destination, recorded) = match read_marker(marker) {
+        Some(recorded) => (recorded, true),
         None => {
             if !legacy.is_dir()
                 || same_path(legacy, new)
@@ -104,26 +103,45 @@ pub fn move_legacy(
             if write_json(marker, &document).is_err() {
                 return MoveOutcome::Stayed;
             }
-            new.to_path_buf()
+            (new.to_path_buf(), false)
         }
     };
-    // Also covers a marker written just before a rename that never happened.
+    // Whether a record moves only when its file is at the destination. After
+    // a clean rename the destination is the folder renamed here, which did
+    // not exist or was empty before, so every record inside the old folder
+    // moves, a queued one with no bytes yet included (left behind, it would
+    // recreate the old folder in app data and download there).
+    let mut only_with_files = false;
     if legacy.is_dir() && !move_folder(legacy, &destination) {
+        // A marker written just now before a refused rename: nothing moved.
+        if !recorded || !destination.is_dir() {
+            let _ = fs::remove_file(marker);
+            return MoveOutcome::Stayed;
+        }
+        // An earlier launch moved the folder, its index was never saved, and
+        // the old folder has come back since. Both now hold files, so only a
+        // record whose file is at the destination is pointed there; the rest
+        // stay in the old folder, which stays approved while it exists.
+        only_with_files = true;
+    } else if legacy.exists() || !destination.is_dir() {
         let _ = fs::remove_file(marker);
         return MoveOutcome::Stayed;
     }
-    if legacy.exists() || !destination.is_dir() {
-        let _ = fs::remove_file(marker);
-        return MoveOutcome::Stayed;
-    }
+    let rebase = |root: &str, file_name: &str| {
+        if only_with_files {
+            rebased_if_present(root, file_name, legacy, &destination)
+        } else {
+            rebased(Path::new(root), legacy, &destination).map(|moved| moved.to_string_lossy().into_owned())
+        }
+    };
     let mut changed = false;
     for entry in entries.values_mut() {
-        if let Some(root) = rebased_if_present(&entry.root_path, &entry.file_name, legacy, &destination) {
+        if let Some(root) = rebase(&entry.root_path, &entry.file_name) {
             entry.root_path = root;
             changed = true;
         }
         if let Some(backup) = entry.replacement.as_mut() {
-            if let Some(root) = rebased_if_present(&backup.root_path, &backup.file_name, legacy, &destination) {
+            if let Some(root) = rebase(&backup.root_path, &backup.file_name) {
                 backup.root_path = root;
                 changed = true;
             }
@@ -265,15 +283,43 @@ mod tests {
     }
 
     #[test]
-    fn a_record_whose_file_did_not_go_with_the_folder_is_left_alone() {
-        let at = layout("absent");
+    fn a_queued_record_with_no_bytes_yet_moves_with_the_folder() {
+        let at = layout("queued");
         fs::create_dir_all(&at.legacy).unwrap();
-        let mut entries = entries_in(&at.legacy, "gone.mkv");
+        let mut entries = entries_in(&at.legacy, "queued.mkv");
 
         let outcome = move_legacy(&at.legacy, &at.new, &at.marker, &mut entries);
 
-        assert_eq!(outcome, MoveOutcome::Moved { to: at.new.clone(), changed: false });
-        assert!(same_path(&root_of(&entries), &at.legacy));
+        assert_eq!(outcome, MoveOutcome::Moved { to: at.new.clone(), changed: true });
+        assert!(same_path(&root_of(&entries), &at.new));
+        let _ = fs::remove_dir_all(at.base);
+    }
+
+    #[test]
+    fn an_old_folder_that_came_back_moves_only_records_whose_files_went() {
+        let at = layout("returned");
+        fs::create_dir_all(&at.legacy).unwrap();
+        fs::write(at.legacy.join("moved.mkv"), b"video").unwrap();
+        let mut first = entries_in(&at.legacy, "moved.mkv");
+        move_legacy(&at.legacy, &at.new, &at.marker, &mut first);
+        // That run's index saves all failed, and the old folder was made again.
+        fs::create_dir_all(&at.legacy).unwrap();
+        fs::write(at.legacy.join("stayed.mkv"), b"video").unwrap();
+        let mut moved = record(at.legacy.to_string_lossy().into_owned());
+        moved.job_id = "moved".into();
+        moved.file_name = "moved.mkv".into();
+        let mut stayed = record(at.legacy.to_string_lossy().into_owned());
+        stayed.job_id = "stayed".into();
+        stayed.file_name = "stayed.mkv".into();
+        let mut entries: HashMap<String, DownloadRecord> =
+            [("moved".to_string(), moved), ("stayed".to_string(), stayed)].into();
+
+        let outcome = move_legacy(&at.legacy, &at.new, &at.marker, &mut entries);
+
+        assert_eq!(outcome, MoveOutcome::Moved { to: at.new.clone(), changed: true });
+        assert!(same_path(Path::new(&entries["moved"].root_path), &at.new));
+        assert!(same_path(Path::new(&entries["stayed"].root_path), &at.legacy));
+        assert!(at.marker.is_file(), "kept until the index is saved");
         let _ = fs::remove_dir_all(at.base);
     }
 
@@ -305,7 +351,8 @@ mod tests {
         fs::write(chosen.join("movie.mkv"), b"video").unwrap();
         let mut entries = entries_in(&chosen, "movie.mkv");
 
-        move_legacy(&at.legacy, &at.new, &at.marker, &mut entries);
+        let outcome = move_legacy(&at.legacy, &at.new, &at.marker, &mut entries);
+        assert_eq!(outcome, MoveOutcome::Moved { to: at.new.clone(), changed: false });
         assert!(same_path(&root_of(&entries), &chosen));
         let _ = fs::remove_dir_all(at.base);
     }
