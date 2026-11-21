@@ -59,7 +59,10 @@ class SessionCapabilities(
         scope.launch {
             lock.withLock {
                 asking?.cancel()
-                _state.value = _state.value.copy(settled = false, failed = false)
+                // Everything reads as off until the new answer is in, so a removed
+                // or refused key turns the features off at once, even for readers
+                // that do not wait for [CapabilitiesState.settled].
+                _state.value = CapabilitiesState()
                 asking = scope.launch {
                     val next = try {
                         CapabilitiesState(load(), settled = true)
