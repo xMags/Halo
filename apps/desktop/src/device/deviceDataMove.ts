@@ -38,13 +38,19 @@ async function run(accountUserId: string): Promise<boolean> {
   const account = getAccountClient()
   if (!account) return false
   try {
+    // The account the move started for: if someone signs out (or another
+    // person signs in) meanwhile, the rest must not go to the next account,
+    // so the move stops and the PC keeps its data.
+    const stillCurrent = () => getAccountClient() === account
     const device = new DeviceBackend({ fetch: nativeFetch, store: nativeDeviceStore })
     const { failedAddons } = await moveRecordsIntoAccount(device, account)
+    if (!stillCurrent()) return false
     await adoptDownloads(
       await deviceDownloadOwner(profile),
       await opaqueDownloadOwner(getServerUrl(), accountUserId),
     )
     // Only after every part has moved: until then the PC keeps the only copy.
+    if (!stillCurrent()) return false
     if (failedAddons.length === 0) {
       await clearDeviceData()
       forgetDeviceProfile()
