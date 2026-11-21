@@ -132,7 +132,8 @@ test('everything moves, a dead addon is skipped and named, and the rest still go
     }),
     account as unknown as HaloClient,
   )
-  assert.deepEqual(result.failedAddons, ['Dead'])
+  // Its URL comes back whole, so the PC can keep the addon for a later move.
+  assert.deepEqual(result.failedAddons, [{ transportUrl: 'https://dead.test/manifest.json', name: 'Dead', hideCatalogs: false }])
   assert.deepEqual(account.calls, [
     'library:500',
     'library:500',

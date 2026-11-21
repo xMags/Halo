@@ -27,8 +27,12 @@ export interface AddonMove {
 }
 
 export interface MoveResult {
-  /** Addons the account refused because their manifest did not load; named to the user. */
-  failedAddons: string[]
+  /**
+   * Addons the account refused because their manifest did not load. The PC
+   * keeps them (their URL can carry a configuration or a debrid key, and the
+   * PC holds the only copy), so a later move can try them again.
+   */
+  failedAddons: AddonMove[]
 }
 
 /**
@@ -86,7 +90,7 @@ export async function moveRecordsIntoAccount(device: MovableDevice, account: Hal
 
   const [deviceAddons, accountAddons] = await Promise.all([device.getAddons(), account.getAddons()])
   let own = accountAddons.user.flatMap((addon) => (addon.transportUrl ? [addon.transportUrl] : []))
-  const failedAddons: string[] = []
+  const failedAddons: AddonMove[] = []
   // One at a time: the account installs a list all-or-nothing, so adding
   // them together would let one dead addon refuse every other.
   for (const move of addonsToMove(deviceAddons.user, accountAddons.user)) {
@@ -95,7 +99,7 @@ export async function moveRecordsIntoAccount(device: MovableDevice, account: Hal
       installed = await account.putAddons([...own, move.transportUrl])
     } catch (err) {
       if (err instanceof HaloApiError && err.status === 400) {
-        failedAddons.push(move.name)
+        failedAddons.push(move)
         continue
       }
       throw err

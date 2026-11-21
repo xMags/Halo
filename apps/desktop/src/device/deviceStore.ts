@@ -54,6 +54,17 @@ export function clearDeviceData(): Promise<void> {
   return invoke<void>('device_store_clear')
 }
 
+/**
+ * Removes the library, watch history and settings, once they live in an
+ * account, but keeps the profile and the addon list: some addons did not
+ * move, and this PC holds the only copy of them.
+ */
+export async function clearMovedRecords(): Promise<void> {
+  for (const collection of ['library', 'watchStates', 'settings'] as const) {
+    await invoke<void>('device_store_remove', { collection })
+  }
+}
+
 function isDeviceProfile(value: unknown): value is DeviceProfile {
   if (typeof value !== 'object' || value === null) return false
   const candidate = value as Record<string, unknown>
