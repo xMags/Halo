@@ -10,8 +10,11 @@ import io.ktor.http.isSuccess
 import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -27,7 +30,9 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
-import moe.ditto.halo.api.HaloJson
+import moe.ditto.halo.api.StrictJson
+import moe.ditto.halo.browse.scriptTrim
+import moe.ditto.halo.browse.ScriptSpaceClass
 
 /*
  * A small TMDB (themoviedb.org) client for people search, person pages and
@@ -60,11 +65,11 @@ const val CreditMappingBudgetMs = 8_000L
 /** TMDB TV genres that are not shows a person acted in: News, Reality, Talk. */
 private val ExcludedTvGenres = setOf(10763.0, 10764.0, 10767.0)
 /** "Self", "Himself", "Herself", alone or followed by " - Host", " (archive footage)" and the like. */
-private val SelfCharacter = Regex("""^(?:self|himself|herself)(?:\s*[-(:].*)?$""", RegexOption.IGNORE_CASE)
+private val SelfCharacter = Regex("""^(?:self|himself|herself)(?:${ScriptSpaceClass}*[-(:].*)?$""", RegexOption.IGNORE_CASE)
 /** TMDB image paths look like "/abc123XYZ.jpg". */
 private val ImagePathShape = Regex("""^/[A-Za-z0-9_-]{1,100}\.(?:jpg|jpeg|png|webp)$""")
-private val ImdbTitleShape = Regex("""^tt\d{1,10}$""")
-private val YearPrefix = Regex("""^(\d{4})-\d{2}-\d{2}$""")
+private val ImdbTitleShape = Regex("""^tt[0-9]{1,10}$""")
+private val YearPrefix = Regex("""^([0-9]{4})-[0-9]{2}-[0-9]{2}$""")
 private val ApiKeyShape = Regex("""^[0-9a-fA-F]{32}$""")
 private val ReadTokenShape = Regex("""^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$""")
 private val FindIdShape = Regex("""^[A-Za-z0-9]{1,32}$""")
@@ -192,12 +197,21 @@ class TtlCache<V>(private val maxEntries: Int, private val ttlMs: Long, private 
     }
 }
 
+private val ByteOrderMark = Char(0xFEFF).toString()
+
 class TmdbClient(
     private val http: HttpClient,
     private val credential: TmdbCredential,
     private val now: () -> Long,
     /** Told when TMDB refuses the credential (401), so the features turn off until it is replaced. */
     private val onRefused: () -> Unit = {},
+    /**
+     * Where IMDb id lookups run. A caller that stops waiting (a person page's
+     * deadline) leaves its lookup to finish and fill the cache, as the
+     * desktop's does, so the page is complete on a later visit instead of
+     * partial again. Each lookup ends within the TMDB request timeout.
+     */
+    private val lookups: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     private val searchPeopleCache = TtlCache<List<PersonSummary>>(1_000, Hour, now)
     private val personCache = TtlCache<TmdbPersonDetails?>(500, 6 * Hour, now)
@@ -225,20 +239,21 @@ class TmdbClient(
                 if (declared != null && declared > MaxTmdbResponseBytes) throw TmdbResponseTooLargeException()
                 val bytes = response.bodyAsChannel().readRemaining(MaxTmdbResponseBytes + 1).readByteArray()
                 if (bytes.size > MaxTmdbResponseBytes) throw TmdbResponseTooLargeException()
-                bytes.decodeToString()
+                // A leading byte order mark is dropped, as the desktop's TextDecoder drops it.
+                bytes.decodeToString().removePrefix(ByteOrderMark)
             }
         } catch (_: TimeoutCancellationException) {
             throw TmdbRequestException(504)
         }
         return try {
-            HaloJson.parseToJsonElement(text)
+            StrictJson.parseToJsonElement(text)
         } catch (_: SerializationException) {
             throw TmdbRequestException(502)
         }
     }
 
     suspend fun searchPeople(query: String): List<PersonSummary> {
-        val q = query.trim()
+        val q = query.scriptTrim()
         return searchPeopleCache.getOrLoad(q.lowercase()) {
             parsePeopleSearch(getJson("/3/search/person?query=${q.encodeURLParameter()}&include_adult=false"))
         }
@@ -260,14 +275,18 @@ class TmdbClient(
     /** Null when TMDB knows no IMDb id for the title (that answer is cached too). */
     suspend fun imdbIdFor(kind: String, tmdbId: Long): String? {
         require(tmdbId > 0) { "TMDB ids are positive whole numbers" }
-        return imdbIdCache.getOrLoad("$kind:$tmdbId") {
-            try {
-                getJson("/3/$kind/$tmdbId/external_ids").objectOrNull()?.get("imdb_id").stringOrNull()?.takeIf(ImdbTitleShape::matches)
-            } catch (_: TmdbNotFoundException) {
-                // TMDB no longer knowing the title is an answer ("none"), not a failure.
-                null
+        val lookup = lookups.async {
+            imdbIdCache.getOrLoad("$kind:$tmdbId") {
+                try {
+                    getJson("/3/$kind/$tmdbId/external_ids").objectOrNull()?.get("imdb_id").stringOrNull()?.takeIf(ImdbTitleShape::matches)
+                } catch (_: TmdbNotFoundException) {
+                    // TMDB no longer knowing the title is an answer ("none"), not a failure.
+                    null
+                }
             }
         }
+        // Cancelling this wait leaves the lookup running (see [lookups]).
+        return lookup.await()
     }
 
     suspend fun find(source: String, id: String): TmdbFindResult {
@@ -283,7 +302,7 @@ class TmdbClient(
     }
 
     suspend fun searchTitle(kind: String, name: String, year: Int? = null): List<TmdbTitleHit> {
-        val q = name.trim()
+        val q = name.scriptTrim()
         require(q.isNotEmpty() && q.length <= MaxTitleQuery) { "title query must be 1 to $MaxTitleQuery characters" }
         val yearParam = year?.let { "&${if (kind == "movie") "year" else "first_air_date_year"}=$it" }.orEmpty()
         return searchTitleCache.getOrLoad("$kind:${year ?: ""}:${q.lowercase()}") {
@@ -364,7 +383,7 @@ fun endAtSentence(text: String, max: Int): String {
     if (text.length <= max) return text
     val cut = text.substring(0, max)
     var end = -1
-    Regex("""[.!?]["')\]]?(?=\s)""").findAll(cut).forEach { end = it.range.last + 1 }
+    Regex("""[.!?]["')\]]?(?=${ScriptSpaceClass})""").findAll(cut).forEach { end = it.range.last + 1 }
     return if (end >= max / 2.0) cut.substring(0, end) else cut
 }
 
@@ -410,14 +429,16 @@ private fun creditTitle(entry: JsonElement): TmdbTitleHit? {
     return when (obj["media_type"].stringOrNull()) {
         "tv" -> {
             val genres = (obj["genre_ids"] as? JsonArray).orEmpty()
-            if (genres.any { (it as? JsonPrimitive)?.doubleOrNull in ExcludedTvGenres }) null else titleHit(entry, "series")
+            // Numbers only, as the desktop compares them: a quoted "10767" is not the genre.
+            val excluded = genres.any { (it as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.doubleOrNull in ExcludedTvGenres }
+            if (excluded) null else titleHit(entry, "series")
         }
         "movie" -> titleHit(entry, "movie")
         else -> null
     }
 }
 
-private fun tmdbText(value: JsonElement?): String? = value.stringOrNull()?.trim()?.takeIf { it.isNotEmpty() && it.length <= MaxText }
+private fun tmdbText(value: JsonElement?): String? = value.stringOrNull()?.scriptTrim()?.takeIf { it.isNotEmpty() && it.length <= MaxText }
 
 private fun tmdbPopularity(value: JsonElement?): Double {
     val primitive = value as? JsonPrimitive ?: return 0.0
@@ -474,7 +495,7 @@ private fun parsePersonDetails(body: JsonElement): TmdbPersonDetails? {
     val obj = body.objectOrNull() ?: return null
     val tmdbId = safePositiveInteger(obj["id"]) ?: return null
     val name = tmdbText(obj["name"]) ?: return null
-    val biography = obj["biography"].stringOrNull()?.trim()?.let { endAtSentence(it, MaxBiographyText) }.orEmpty()
+    val biography = obj["biography"].stringOrNull()?.scriptTrim()?.let { endAtSentence(it, MaxBiographyText) }.orEmpty()
     return TmdbPersonDetails(
         tmdbId = tmdbId,
         name = name,
