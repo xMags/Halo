@@ -117,7 +117,7 @@ fn copy_vault(from: &Path, to: &Path) -> Result<Vec<std::ffi::OsString>, String>
 
 /// Renames `from` to `to` and says whether it did. An empty folder at `to`,
 /// which a fresh launch creates, is replaced; anything else there is kept.
-fn move_folder(from: &Path, to: &Path) -> bool {
+pub(super) fn move_folder(from: &Path, to: &Path) -> bool {
     if !from.is_dir() {
         return false;
     }
@@ -172,7 +172,7 @@ fn rebase_paths(
 /// `path` moved from inside `from` to the same place inside `to`, or None
 /// when it is not inside `from`. A path written with `.` or `..` is left
 /// alone rather than guessed at; the engine never stores one.
-fn rebased(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
+pub(super) fn rebased(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
     let plain = |value: &Path| {
         value.components().all(|component| {
             matches!(

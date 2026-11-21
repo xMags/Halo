@@ -5,6 +5,7 @@
 //! live DPAPI-encrypted in a per-job request vault rather than in the index.
 
 mod containment;
+mod default_folder;
 mod naming;
 mod rate;
 mod redirect;
@@ -629,13 +630,34 @@ impl DownloadManager {
         let config_path = data_dir.join(CONFIG_FILE);
         let vault_dir = data_dir.join(VAULT_DIR);
         fs::create_dir_all(&vault_dir).map_err(|e| format!("download vault unavailable: {e}"))?;
-        let default_directory = data_dir.join(DOWNLOAD_DIR);
+        // Where earlier builds put downloads by default: inside app data,
+        // which the uninstaller can delete whole (default_folder.rs).
+        let legacy_default = data_dir.join(DOWNLOAD_DIR);
+        let default_directory = default_folder::choose(
+            app.path().video_dir().ok(),
+            app.path().home_dir().ok(),
+            &default_folder::cloud_roots_from_env(),
+        )
+        .unwrap_or_else(|| legacy_default.clone());
         let mut entries = load_index_for_launch(&index_path, report)?;
         let (config, config_writable) = load_config_for_launch(&config_path, report);
         let configured = config
             .directory
             .as_ref()
             .map(|directory| strip_verbatim(PathBuf::from(directory)));
+        // A folder the user chose is never moved, even when it is the old
+        // default. Before anything below reads the records or creates the new
+        // folder: the move is one rename into a place that does not exist yet.
+        let chose_legacy = configured
+            .as_deref()
+            .is_some_and(|chosen| same_path(chosen, &legacy_default));
+        if !chose_legacy && default_folder::move_legacy(&legacy_default, &default_directory, &mut entries) {
+            report(&format!(
+                "downloads moved from {} to {}",
+                legacy_default.display(),
+                default_directory.display()
+            ));
+        }
         let directory = configured
             .clone()
             .unwrap_or_else(|| default_directory.clone());
@@ -647,6 +669,11 @@ impl DownloadManager {
             Some(saved) => saved.iter().map(PathBuf::from).collect(),
             None => seed_roots(&entries),
         };
+        // Still approved while it holds anything: a move that could not
+        // happen leaves the old downloads working where they are.
+        if legacy_default.exists() {
+            remember_root(&mut approved_roots, &legacy_default);
+        }
         remember_root(&mut approved_roots, &default_directory);
         remember_root(&mut approved_roots, &directory);
 
