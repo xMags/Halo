@@ -9,22 +9,27 @@ import { getAccountClient } from '../api'
  * sign-in (another client) sees none. Its files are never listed anywhere.
  */
 
-let resolved: { client: HaloClient; request: MagnetRequest } | null = null
+let resolved: { client: HaloClient; hash: string; request: MagnetRequest } | null = null
 const listeners = new Set<() => void>()
 
 function publish(): void {
   for (const listener of listeners) listener()
 }
 
-export function rememberReadyMagnet(client: HaloClient, request: MagnetRequest): void {
+/** `hash` is the info hash the request was made for. */
+export function rememberReadyMagnet(client: HaloClient, hash: string, request: MagnetRequest): void {
   if (request.state !== 'ready') return
-  resolved = { client, request }
+  resolved = { client, hash, request }
   publish()
 }
 
-/** Another magnet was pasted: the previous one is no longer offered. */
-export function forgetReadyMagnet(): void {
-  if (!resolved) return
+/**
+ * A magnet was pasted: a different one is no longer offered. The same one is
+ * kept, so asking about it again (back to Search from its title) cannot lose
+ * the ready source if that ask fails.
+ */
+export function forgetReadyMagnetOtherThan(hash: string): void {
+  if (!resolved || resolved.hash === hash) return
   resolved = null
   publish()
 }

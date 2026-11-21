@@ -2,7 +2,7 @@ import { HaloApiError, type MagnetPhase, type MagnetRequest } from '@halo/core'
 import { useEffect, useRef, useState } from 'react'
 import { getAccountClient } from '../api'
 import { useCapabilities } from '../capabilities'
-import { forgetReadyMagnet, rememberReadyMagnet } from '../magnets/magnetStore'
+import { forgetReadyMagnetOtherThan, rememberReadyMagnet } from '../magnets/magnetStore'
 
 /*
  * A pasted magnet, asked about on the account's server. Only its info hash
@@ -49,7 +49,7 @@ export function useMagnet(hash: string | null, name: string): MagnetTracking {
       setPhase('unavailable')
       return
     }
-    forgetReadyMagnet()
+    forgetReadyMagnetOtherThan(hash)
     setPhase('checking')
     const controller = new AbortController()
     const trackedAt = Date.now()
@@ -58,7 +58,7 @@ export function useMagnet(hash: string | null, name: string): MagnetTracking {
       if (controller.signal.aborted) return
       setRequest(next)
       setPhase('answered')
-      if (next.state === 'ready') rememberReadyMagnet(client, next)
+      if (next.state === 'ready') rememberReadyMagnet(client, hash, next)
       // Long enough: the card keeps its last answer.
       if (next.state === 'downloading' && Date.now() - trackedAt < POLL_LIMIT_MS) {
         timer = window.setTimeout(() => void poll(next.id), POLL_MS)
