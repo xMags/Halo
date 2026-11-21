@@ -42,7 +42,9 @@ reached from Settings and is absent from a build that is not debuggable.
   or HTTP validator.
 - One active download at a time, oldest first. Ordinary process death and
   restart reconcile with OS-owned work automatically. Explicit Pause, Cancel,
-  or sign-out wins over late callbacks. Android force-stop and iOS user
+  or sign-out wins over late progress and failure callbacks, but a transfer
+  that already finished stays finished: its completion is kept, and a Cancel
+  that arrives after it is ignored. Android force-stop and iOS user
   force-quit remain platform exceptions.
 - Compose Multiplatform UI layer: design-system components (poster card and
   grid, catalog row, hero scrim, segmented control, search fields, select
