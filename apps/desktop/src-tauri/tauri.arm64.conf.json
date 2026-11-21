@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "resources": {
+      "../vendor/mpv/libmpv-2.dll": null,
+      "../vendor/mpv-arm64/libmpv-2.dll": "libmpv-2.dll",
+      "../vendor/mpv-arm64/vulkan-1.dll": "vulkan-1.dll"
+    }
+  }
+}

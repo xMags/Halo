@@ -1,4 +1,5 @@
 dist/
 vendor/mpv/
+vendor/mpv-arm64/
 src-tauri/target*/
 src-tauri/gen/
