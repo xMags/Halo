@@ -7,6 +7,7 @@ import {
   foldedText,
   HaloApiError,
   isEmptyDiff,
+  metaKey,
   parseSearchQuery,
   revealPosterLinks,
   SearchBoard,
@@ -277,9 +278,13 @@ export function useSearchSession(query: string, enabled: boolean, filter: Search
       session.board.reveal(collect(false), parts, meaning)
       session.revealed = true
       session.personAdmitted = meaning === 'person'
-      session.library = libraryMatches(library, query)
-      session.libraryIdentities = new Set(session.library.flatMap(titleIdentities))
+      const saved = libraryMatches(library, query)
+      // Every saved match keeps its copies out of the results, the top match included.
+      session.libraryIdentities = new Set(saved.flatMap(titleIdentities))
       const top = session.board.topMatch
+      // The top match is shown once: its card says "In library", so the row leaves it out.
+      const topKey = top ? metaKey(top) : null
+      session.library = saved.filter((title) => metaKey(title) !== topKey)
       session.bestTier = bestTitleTier(top ? [...session.board.titles, top] : session.board.titles, query)
       shownRef.current = null
       rerender()
@@ -365,7 +370,7 @@ export function useSearchSession(query: string, enabled: boolean, filter: Search
     status = { text: SEARCHING_NOTE, spinner: true, failed: false }
   } else {
     const settledEmpty = pending === 0 && libraryShown.length === 0 && results.length === 0
-    filteredEmpty = settledEmpty && filter !== null && answeredWithItems > 0
+    filteredEmpty = settledEmpty && !topMatch && filter !== null && answeredWithItems > 0
     nothingFound =
       settledEmpty && !topMatch && filter === null && total > 0 && failedTargets.length < total && peopleForShown.length === 0
     const everyOneFailed = pending === 0 && total > 0 && failedTargets.length >= total
