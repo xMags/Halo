@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.runTest
+import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.cache.QueryCache
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -99,6 +100,25 @@ class WatchStateRepositoryTest {
         server = "[]"
         val absent = onRealTime { repo.freshProgressFor("v", waitMillis = 5_000) } as FreshProgress.Answered
         assertEquals(900.0, absent.state?.positionSec)
+    }
+
+    @Test
+    fun aRemovalThatGoesThroughForgetsAnOlderUnsentPosition() = runTest {
+        var offline = false
+        val api = RecordingApi { request ->
+            if (offline) error("offline")
+            if (request.method == io.ktor.http.HttpMethod.Put) "[]" else "[]"
+        }
+        val clock = FakeClock()
+        val repo = repository(api, clock, QueryCache(backgroundScope, clock))
+        repo.observe().first { it.value != null }
+        offline = true
+        assertFailsWith<IllegalStateException> { repo.report("v", "i", positionSec = 900.0, durationSec = 3600.0) }
+        offline = false
+
+        repo.remove(listOf(WatchState(videoId = "v", itemId = "i", positionSec = 900.0, durationSec = 3600.0, watched = false, updatedAt = 1)))
+
+        assertEquals(FreshProgress.Answered(null), onRealTime { repo.freshProgressFor("v", waitMillis = 5_000) })
     }
 
     @Test

@@ -163,6 +163,10 @@ class WatchStateRepository(
                 },
                 put = { client.putWatchStates(batch) },
             )
+            // Sent and newer than any position this run failed to send: an
+            // older unsent row must not bring a removed or marked video back.
+            val sent = batch.mapTo(HashSet()) { it.videoId }
+            unsent.update { it - sent }
         }
         return echo
     }
