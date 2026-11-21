@@ -55,10 +55,8 @@ export function History() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   // One build serves every tab: the counts are of what each would show under the same search.
-  const matching = useMemo(
-    () => searchHistory(buildHistory(watchStates, library, 'all'), query),
-    [watchStates, library, query],
-  )
+  const built = useMemo(() => buildHistory(watchStates, library, 'all'), [watchStates, library])
+  const matching = useMemo(() => searchHistory(built, query), [built, query])
   const counts = countHistoryViews(matching)
   const groups = useMemo(() => groupHistory(filterHistoryView(matching, view)), [matching, view])
   const hasAny = (watchStates?.length ?? 0) > 0
@@ -67,7 +65,10 @@ export function History() {
   const note = historyNote({
     loading: isLoading,
     failed: Boolean(error),
-    hasAny,
+    // What can be shown, not the raw rows: a row nothing names is left out,
+    // and a history of only such rows reads as empty rather than as a tab
+    // with nothing in it.
+    hasAny: built.length > 0,
     groupsEmpty: groups.length === 0,
     query,
     view,
