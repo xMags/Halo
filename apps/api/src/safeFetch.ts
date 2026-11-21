@@ -69,15 +69,22 @@ export function routesThroughEgress(url: URL, egress: AddonEgress | undefined): 
  * With `egress`, hops to its listed hosts go through the proxy instead, which
  * resolves and re-checks the address itself; the route is chosen per hop, so
  * a redirect off a listed host dials directly under the connect-time check.
+ *
+ * Request `headers` are sent on the first hop and on redirects that stay on
+ * its origin, never to another origin, because they can carry a credential
+ * (the TMDB read token travels as `Authorization`). Requests are always GET.
  */
 export function createSafeFetch(egress?: AddonEgress): typeof fetch {
   const egressAgent: Dispatcher | undefined = egress ? new ProxyAgent({ uri: egress.proxyUrl }) : undefined
   return async (input, init) => {
     const target = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    const requestHeaders = init?.headers ? new Headers(init.headers) : undefined
     let url = await assertSafeProxyTarget(target)
+    const origin = url.origin
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       const dispatcher = routesThroughEgress(url, egress) ? egressAgent : pinnedAgent
-      const upstream = await fetch(url, { redirect: 'manual', signal: init?.signal ?? undefined, dispatcher })
+      const hopHeaders = requestHeaders && url.origin === origin ? requestHeaders : undefined
+      const upstream = await fetch(url, { redirect: 'manual', signal: init?.signal ?? undefined, headers: hopHeaders, dispatcher })
       if (upstream.status >= 300 && upstream.status < 400) {
         const location = upstream.headers.get('location')
         await upstream.body?.cancel()

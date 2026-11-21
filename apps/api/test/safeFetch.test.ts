@@ -93,3 +93,43 @@ describe('addon egress env', () => {
     expect(envWith('http://100.64.0.2:8790', '104.21.0.1')).toThrow(/hostnames only/)
   })
 })
+
+describe('safeFetch request headers', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  // Public IP literals pass the pre-check without DNS; the stubbed global fetch
+  // stands in for the network so the real redirect loop runs.
+  function stubHops(responses: Record<string, Response>) {
+    const seen: Array<{ url: string; authorization: string | null }> = []
+    vi.stubGlobal('fetch', async (input: URL, init: RequestInit) => {
+      seen.push({ url: input.href, authorization: new Headers(init.headers).get('authorization') })
+      const response = responses[input.href]
+      if (!response) throw new Error(`unexpected hop ${input.href}`)
+      return response
+    })
+    return seen
+  }
+
+  it('sends the caller headers to the target', async () => {
+    const seen = stubHops({ 'https://1.1.1.1/x': new Response('ok') })
+    const res = await safeFetch('https://1.1.1.1/x', { headers: { authorization: 'Bearer secret' } })
+    expect(await res.text()).toBe('ok')
+    expect(seen).toEqual([{ url: 'https://1.1.1.1/x', authorization: 'Bearer secret' }])
+  })
+
+  it('keeps the headers on a same-origin redirect and drops them on a cross-origin one', async () => {
+    const seen = stubHops({
+      'https://1.1.1.1/a': new Response(null, { status: 302, headers: { location: '/b' } }),
+      'https://1.1.1.1/b': new Response(null, { status: 302, headers: { location: 'https://8.8.8.8/c' } }),
+      'https://8.8.8.8/c': new Response('ok'),
+    })
+    await safeFetch('https://1.1.1.1/a', { headers: { authorization: 'Bearer secret' } })
+    expect(seen).toEqual([
+      { url: 'https://1.1.1.1/a', authorization: 'Bearer secret' },
+      { url: 'https://1.1.1.1/b', authorization: 'Bearer secret' },
+      { url: 'https://8.8.8.8/c', authorization: null },
+    ])
+  })
+})
