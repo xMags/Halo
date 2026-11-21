@@ -137,8 +137,12 @@ const BACKDROPS = ['tt15239678', 'tt2543164', 'tt1877830']
 const posterUrl = (imdbId: string) => `https://images.metahub.space/poster/medium/${imdbId}/img`
 const backdropUrl = (imdbId: string) => `https://images.metahub.space/background/medium/${imdbId}/img`
 
-/** The newest sign-in to save a session, across mounts of the sign-in screen. */
-let latestSave: object | null = null
+/**
+ * The newest sign-in to save a session, per kind, across mounts of the
+ * sign-in screen. Each kind is stored apart, so only a newer save of the
+ * same kind owns what a stale attempt saved.
+ */
+const latestSave = new Map<SessionKind, object>()
 
 /**
  * The sign-in screen: a frosted card over a fan of posters on the halo ring,
@@ -211,10 +215,10 @@ export function Login() {
    */
   async function finish(kind: SessionKind, id: number, discard: () => void) {
     // Runs straight after the session was saved, so this marks the newest
-    // save. A sign-in started later and saved under the same key owns the
-    // stored session from then on, and this one must not clear it.
+    // save of its kind. A sign-in started later and saved under the same key
+    // owns the stored session from then on, and this one must not clear it.
     const save = {}
-    latestSave = save
+    latestSave.set(kind, save)
     if (id !== attempt.current) {
       discard()
       return
@@ -223,7 +227,7 @@ export function Login() {
     const activated = getAccountClient()
     const me = await (activated?.getMe() ?? Promise.resolve(null)).catch(() => null)
     if (id !== attempt.current) {
-      abandon(discard, save, activated)
+      abandon(kind, discard, save, activated)
       return
     }
     // Moving needs the account's id (it names the downloads partition); when
@@ -244,7 +248,7 @@ export function Login() {
     }
     await Promise.all([ready(), delay(SIGNED_IN_DWELL_MS)])
     if (id === attempt.current) signedIn(kind)
-    else abandon(discard, save, activated)
+    else abandon(kind, discard, save, activated)
   }
 
   /**
@@ -253,10 +257,12 @@ export function Login() {
    * screen was opened from, so the screens behind it never write to an
    * account the person backed out of.
    */
-  function abandon(discard: () => void, save: object, activated: HaloClient | null) {
-    // Only what this attempt still owns: a newer sign-in may have saved its
-    // own session, or bound its own client, since.
-    if (latestSave === save) discard()
+  function abandon(kind: SessionKind, discard: () => void, save: object, activated: HaloClient | null) {
+    // Only what this attempt still owns: a newer sign-in of the same kind may
+    // have saved over its session, or any sign-in bound its own client, since.
+    // A newer sign-in of another kind leaves this one's saved session behind,
+    // which the next launch would restore, so it is still cleared.
+    if (latestSave.get(kind) === save) discard()
     if (activated === null || getAccountClient() !== activated) return
     deactivateSession()
     const profile = getDeviceProfile()
