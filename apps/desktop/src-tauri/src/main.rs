@@ -656,6 +656,15 @@ fn main() {
             // Another Halo is running and the plugin could not hand this
             // launch over: stop before touching the download state it owns.
             if instance == instance_guard::Claim::HeldElsewhere {
+                // A recovery restart whose predecessor did not end in time
+                // leaves a trace instead of vanishing without one.
+                if webview_recovery::is_recovery_restart() {
+                    if let Ok(dir) = app.path().app_log_dir() {
+                        crash_log::CrashLog::new(&dir).record(
+                            "recovery restart gave up: the Halo it replaces was still running after 10 seconds",
+                        );
+                    }
+                }
                 std::process::exit(0);
             }
             // Release builds have no console, so panics and WebView2 process
