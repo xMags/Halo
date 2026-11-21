@@ -98,7 +98,9 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
         } catch (error: Exception) {
             if (isKeyGone(error)) {
                 resetKeyAndEncryptedStateLocked()
-                return encryptLocked(key, plaintext, createKeyLocked())
+                val sealed = encryptLocked(key, plaintext, createKeyLocked())
+                keyWorkedLocked()
+                return sealed
             }
             if (error !is InvalidKeyException) throw error
             try {
@@ -113,13 +115,23 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
         return envelope
     }
 
-    /** Counts this launch once; true once enough launches in a row have failed. */
+    /**
+     * Counts this launch once; true once [BrokenKeyLaunches] launches have
+     * failed with no read or write succeeding between, each within
+     * [BrokenKeyWindowMs] of the one before. Faults far apart start over.
+     */
     private fun keyFailedOnEnoughLaunchesLocked(): Boolean {
         val counted = health.getString(LastFailedLaunchKey, null) == launchId
-        val failures = health.getInt(FailedLaunchesKey, 0) + if (counted) 0 else 1
-        if (!counted) {
-            health.edit().putInt(FailedLaunchesKey, failures).putString(LastFailedLaunchKey, launchId).commit()
-        }
+        if (counted) return health.getInt(FailedLaunchesKey, 0) >= BrokenKeyLaunches
+        val now = System.currentTimeMillis()
+        val previousAt = health.getLong(LastFailedAtKey, 0L)
+        val recent = previousAt > 0L && now - previousAt in 0..BrokenKeyWindowMs
+        val failures = (if (recent) health.getInt(FailedLaunchesKey, 0) else 0) + 1
+        health.edit()
+            .putInt(FailedLaunchesKey, failures)
+            .putString(LastFailedLaunchKey, launchId)
+            .putLong(LastFailedAtKey, now)
+            .commit()
         return failures >= BrokenKeyLaunches
     }
 
@@ -152,7 +164,10 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
                 GCMParameterSpec(GcmTagLengthBits, iv),
             )
             cipher.updateAAD(aadFor(key))
-            String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
+            String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8).also {
+                // A key that reads is not broken: earlier failures were passing ones.
+                keyWorkedLocked()
+            }
         } catch (error: Exception) {
             // Only a key that is gone for good takes every value with it, and
             // only a value that is itself damaged is dropped. Anything else
@@ -225,6 +240,10 @@ class AndroidSecureStorage(context: Context) : SecureStorage {
         const val BrokenKeyLaunches = 3
         private const val FailedLaunchesKey = "failedLaunches"
         private const val LastFailedLaunchKey = "lastFailedLaunch"
+        private const val LastFailedAtKey = "lastFailedAt"
+
+        /** Failing launches further apart than this do not add up. */
+        private const val BrokenKeyWindowMs = 7L * 24 * 60 * 60 * 1000
 
         /** One per process, so a burst of failures within one run counts once. */
         private val launchId: String = java.util.UUID.randomUUID().toString()
