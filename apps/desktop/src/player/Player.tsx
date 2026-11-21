@@ -42,7 +42,8 @@ import {
 } from './playerLogic'
 import { headerLines, playbackHeaders } from './requestHeaders'
 import { closeScrubPreview, openScrubPreview } from './scrubPreview'
-import { stageWatchStates } from './watchOutbox'
+import { newestWatchState, withinTimeout } from './resumePoint'
+import { pendingWatchStates, stageWatchStates } from './watchOutbox'
 import { LoadingIndicator, useLoadingIndicator } from './LoadingIndicator'
 import { ScrubPreviewCard, useScrubPreview } from './ScrubPreviewCard'
 import { SubtitlePreview } from './SubtitlePreview'
@@ -535,11 +536,19 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
         if (disposed) return
       }
 
-      // Best-effort: an unreachable server must not block playback.
-      const states = await queryClient
-        .ensureQueryData({ queryKey: ['watchStates'], queryFn: () => getClient().getWatchStates() })
-        .catch(() => null)
-      priorStateRef.current = recordsHistory ? (states?.find((s) => s.videoId === params.videoId) ?? null) : null
+      // Read fresh, so progress made on another device since the history
+      // was cached is where this resumes, but within a bound: an unreachable
+      // server must not block playback. Progress this PC has not sent yet
+      // counts too; whichever row is newest wins.
+      const cached = queryClient.getQueryData<WatchState[]>(['watchStates'])
+      const fresh = recordsHistory
+        ? await withinTimeout(
+            queryClient.fetchQuery({ queryKey: ['watchStates'], queryFn: () => getClient().getWatchStates(), staleTime: 0 }),
+          )
+        : null
+      priorStateRef.current = recordsHistory
+        ? newestWatchState(params.videoId, [fresh, cached, pendingWatchStates()])
+        : null
 
       if (disposed) return
       // Leftover external sub tracks can survive on the shared mpv handle (a
