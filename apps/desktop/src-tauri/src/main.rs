@@ -583,7 +583,7 @@ fn main() {
     // Claimed before any window or state exists; acted on in setup, after
     // the single-instance plugin has had its chance to hand this launch over
     // to the running Halo and focus it (instance_guard.rs).
-    let instance = instance_guard::claim();
+    let instance = instance_guard::claim(webview_recovery::is_recovery_restart());
     tauri::Builder::default()
         // First, so a second launch hands over to the running Halo before it
         // sets anything up: two processes would share the download index,

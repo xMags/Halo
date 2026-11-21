@@ -136,6 +136,12 @@ fn describe(kind: COREWEBVIEW2_PROCESS_FAILED_KIND, args: &ICoreWebView2ProcessF
     line
 }
 
+/// Whether this process was started by a recovery restart, while the
+/// process it replaces may still be ending (instance_guard.rs waits for it).
+pub fn is_recovery_restart() -> bool {
+    restarted_at().is_some()
+}
+
 /// When this process was started by a recovery restart, if it was.
 fn restarted_at() -> Option<SystemTime> {
     let seconds = std::env::var(RESTARTED_AT_VAR).ok()?.parse::<u64>().ok()?;
