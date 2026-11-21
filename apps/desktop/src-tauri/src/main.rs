@@ -580,6 +580,20 @@ fn main() {
     // Before any window exists, or an overlay's hook DLL is already in.
     injection_guard::refuse_extension_points();
     tauri::Builder::default()
+        // First, so a second launch hands over to the running Halo before it
+        // sets anything up: two processes would share the download index,
+        // request vault and part files, each overwriting the other's state.
+        // A window not shown yet is left to reveal_main_window, which waits
+        // for the page's first render.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let Some(window) = app.get_webview_window("main") else {
+                return;
+            };
+            if window.is_visible().unwrap_or(false) {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

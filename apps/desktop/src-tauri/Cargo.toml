@@ -37,6 +37,9 @@ windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Media_Audio
 # WebView2's ProcessFailed event (webview_recovery.rs); the version wry already
 # depends on, so it adds no new crate to the build.
 webview2-com = "0.38"
+# One Halo at a time: two processes would share the download index, request
+# vault and part files, each overwriting the other's state.
+tauri-plugin-single-instance = "2"
 
 [profile.dev]
 opt-level = 1
