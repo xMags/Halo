@@ -10,16 +10,17 @@ import moe.ditto.halo.api.MetaPreview
  * keep the two in step, down to the numbers, so both apps answer a query alike.
  */
 
-/** Latin letters with their accents, each followed by the plain letter it folds to. */
-private const val AccentFolds =
-    "àaáaâaãaäaåaāaăaąaçcćcčcďdèeéeêeëeēeėeęeěeğgìiíiîiïiīiįiıiłlñnńnňnòoóoôoõoöoøoōoőoŕrřrśsšsşsťtùuúuûuüuūuůuűuųuýyÿyźzżzžz"
+/** The categories a decomposed accent falls in: what JavaScript's `\p{M}` matches. */
+private val MarkCategories = setOf(CharCategory.NON_SPACING_MARK, CharCategory.COMBINING_SPACING_MARK, CharCategory.ENCLOSING_MARK)
 
-private val FoldedLetters: Map<Char, Char> =
-    AccentFolds.chunked(2).associate { pair -> pair[0] to pair[1] }
-
-/** Lower case without accents, so "Amélie" is found by "amelie". */
+/**
+ * Lower case without accents, so "Amélie" is found by "amelie": Unicode's
+ * canonical decomposition (NFD), its marks dropped, then lower case, as
+ * `@halo/core`'s `foldedText` does. Letters that do not decompose (ø, ł, ı,
+ * đ) stay as they are on both.
+ */
 fun foldedText(text: String): String =
-    buildString(text.length) { text.lowercase().forEach { append(FoldedLetters[it] ?: it) } }
+    canonicalDecomposition(text).filterNot { it.category in MarkCategories }.lowercase()
 
 /** Short forms titles and people use for the same word; "Dr. Strange" is "Doctor Strange". */
 private val ShortForms = mapOf("dr" to "doctor", "mr" to "mister", "vs" to "versus")

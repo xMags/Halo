@@ -1,6 +1,60 @@
 {
   "about": "Search ranking and board rules, shared by the TypeScript tests (packages/core) and the Kotlin commonTest (apps/mobile). Titles default to type movie. \"refine\" reveals one catalog (addon rank 0) and lists what passes the cutoffs, top match included, in rank order. Years are judged against currentYear.",
   "currentYear": 2026,
+  "foldedText": [
+    {
+      "text": "Amélie",
+      "folded": "amelie"
+    },
+    {
+      "text": "Amélie",
+      "folded": "amelie"
+    },
+    {
+      "text": "Ștefan Țepeș",
+      "folded": "stefan tepes"
+    },
+    {
+      "text": "Ёлки",
+      "folded": "елки"
+    },
+    {
+      "text": "Άλφα",
+      "folded": "αλφα"
+    },
+    {
+      "text": "Hạ Long",
+      "folded": "ha long"
+    },
+    {
+      "text": "Ngày Mai Em Đi",
+      "folded": "ngay mai em đi"
+    },
+    {
+      "text": "Phở",
+      "folded": "pho"
+    },
+    {
+      "text": "Ľudovít",
+      "folded": "ludovit"
+    },
+    {
+      "text": "Ødegaard",
+      "folded": "ødegaard"
+    },
+    {
+      "text": "Łódź",
+      "folded": "łodz"
+    },
+    {
+      "text": "Kırmızı",
+      "folded": "kırmızı"
+    },
+    {
+      "text": "Mötley Crüe",
+      "folded": "motley crue"
+    }
+  ],
   "nameRelevance": [
     {
       "name": "Amélie",

@@ -20,7 +20,7 @@ import {
   type SearchQueryMeaning,
   type SearchTitle,
 } from '../src/search/board'
-import { byRelevance, hasNoPoster, mergeCopies, metaKey, nameRelevance } from '../src/search/results'
+import { byRelevance, foldedText, hasNoPoster, mergeCopies, metaKey, nameRelevance } from '../src/search/results'
 
 /*
  * The shared vectors (test/vectors/search-board.json) hold the rules both
@@ -36,6 +36,7 @@ interface VectorAnswer {
 
 const vectors = JSON.parse(readFileSync(new URL('./vectors/search-board.json', import.meta.url), 'utf8')) as {
   currentYear: number
+  foldedText: Array<{ text: string; folded: string }>
   nameRelevance: Array<{ name: string; query: string; tier: number }>
   parseQuery: Array<{ query: string; full: string; name: string; year: number | null }>
   hasNoPoster: Array<{ poster?: string; id?: string; none: boolean }>
@@ -87,6 +88,11 @@ const toAnswer = (answer: VectorAnswer): SearchAnswer => ({
   addonRank: answer.addonRank,
 })
 const ids = (titles: readonly SearchTitle[]) => titles.map((title) => title.id)
+
+test('vectors: accents fold away as Unicode decomposes them', () => {
+  assert.ok(vectors.foldedText.length > 0)
+  for (const row of vectors.foldedText) assert.equal(foldedText(row.text), row.folded, row.text)
+})
 
 test('vectors: name relevance', () => {
   for (const row of vectors.nameRelevance) assert.equal(nameRelevance(row.name, row.query), row.tier, `${row.name} / ${row.query}`)

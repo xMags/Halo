@@ -81,6 +81,13 @@ class SearchBoardVectorsTest {
     }
 
     @Test
+    fun foldedText() {
+        for (row in vectors.group("foldedText")) {
+            assertEquals(row.string("folded"), foldedText(row.string("text")), row.string("text"))
+        }
+    }
+
+    @Test
     fun nameRelevance() {
         for (row in vectors.group("nameRelevance")) {
             assertEquals(row.getValue("tier").jsonPrimitive.int, nameRelevance(row.string("name"), row.string("query")), row.toString())
