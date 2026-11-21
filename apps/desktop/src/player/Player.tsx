@@ -276,8 +276,10 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   // Discord Rich Presence, as the native player drives it: the media is set
   // when this file starts and cleared when the player goes (it is keyed per
   // video, so an autoplay replace clears and sets again). Declared before the
-  // update effect so the media is always there first.
+  // update effect so the media is always there first. A pasted link is never
+  // shown: its file name is all it has, and it is kept out of history too.
   useEffect(() => {
+    if (!recordsHistory) return
     presenceSetMedia({
       title: params.title,
       showName: params.showName ?? '',
@@ -286,13 +288,14 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       posterUrl: params.poster ?? '',
     })
     return () => presenceClear()
-  }, [params.title, params.showName, params.episodeLabel, params.type, params.poster])
+  }, [recordsHistory, params.title, params.showName, params.episodeLabel, params.type, params.poster])
 
   // Every playback change is reported; Rust drops the ones Discord would not
   // show differently. While playing, a report every 15s keeps Discord's timer
   // on the real position, the native service's refresh interval.
   const presenceEnded = fileEnded || playerError !== null
   useEffect(() => {
+    if (!recordsHistory) return
     const report = () =>
       presenceUpdate({
         fileSerial,
@@ -308,7 +311,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     if (fileSerial === 0 || presenceEnded || paused || buffering) return
     const timer = window.setInterval(report, 15_000)
     return () => window.clearInterval(timer)
-  }, [fileSerial, seekSerial, presenceEnded, buffering, paused, duration, speed])
+  }, [recordsHistory, fileSerial, seekSerial, presenceEnded, buffering, paused, duration, speed])
   const videoClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Where playback is now, as a history row; null while there is nothing worth one. */
   const currentWatchState = useCallback((): WatchState | null => {
