@@ -97,6 +97,8 @@ internal fun rememberSearchView(graph: SessionGraph, query: String, active: Bool
     LaunchedEffect(graph, query, active, attempt) {
         if (!active) {
             current = null
+            // Back to the empty page: the next query starts without dimmed leftovers.
+            shown = null
             return@LaunchedEffect
         }
         current = null
