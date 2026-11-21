@@ -387,17 +387,17 @@ function SearchHints({
       <div className="srch-hints-title">You can search anything…</div>
       <div className="srch-hints-grid">
         <div className="srch-hint">
-          <FluentIcon glyph="film" size={30} />
+          <FluentIcon glyph="film" size={24} />
           <span>Movies &amp; Series</span>
         </div>
         {people && (
           <div className="srch-hint">
-            <FluentIcon glyph="person" size={30} />
+            <FluentIcon glyph="person" size={24} />
             <span>Actors, Directors &amp; Writers</span>
           </div>
         )}
         <div className="srch-hint">
-          <FluentIcon glyph="link" size={30} />
+          <FluentIcon glyph="link" size={24} />
           <span>{magnets ? 'HTTP & Magnet Links' : 'HTTP Links'}</span>
         </div>
         <div className="srch-hint">
