@@ -72,6 +72,8 @@ const SPACE_RESERVE: u64 = 64 * 1024 * 1024;
 const SPACE_CHECK_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_SUBTITLE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_APPROVED_ROOTS: usize = 32;
+/// `Title`, then `Title (2)` up to this, when a file already has the title's name.
+const MAX_TITLE_FOLDER_ATTEMPTS: u32 = 9;
 static JOB_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 const SIGN_IN_FIRST: &str = "Sign in before downloading.";
@@ -972,7 +974,7 @@ impl DownloadManager {
                 .map(|entry| {
                     (
                         entry.job_id.clone(),
-                        PathBuf::from(&entry.root_path),
+                        presence_folder(Path::new(&entry.root_path), &inner.approved_roots),
                         entry.target(),
                     )
                 })
@@ -1063,11 +1065,16 @@ impl DownloadManager {
         // Each title gets its own folder in the download folder, which holds
         // its video, subtitle and pictures (one per show for episodes). One
         // made here and left empty by a start that then fails is taken away.
-        let title_folder = TitleFolder::prepare(
-            &directory,
-            request.media.show_name.as_deref().filter(|name| !name.trim().is_empty()).unwrap_or(&request.media.title),
-            &resolve_roots(&self.inner.lock().await.approved_roots),
-        )?;
+        // The roots are read under the lock and resolved off it: resolving and
+        // making the folder touch the disk, which must never hold the engine up.
+        let roots = { self.inner.lock().await.approved_roots.clone() };
+        let title = request
+            .media
+            .show_name
+            .as_deref()
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or(&request.media.title);
+        let title_folder = TitleFolder::prepare(&directory, title, &resolve_roots(&roots))?;
         let file_name = {
             let inner = self.inner.lock().await;
             choose_file_name(
@@ -1503,48 +1510,77 @@ impl DownloadManager {
     /// The pictures to fetch: one already on disk is only recorded, a missing
     /// one is queued, and each is claimed so a second call skips it.
     async fn sidecars_to_fetch(&self) -> Vec<(String, String, SidecarKind, String)> {
-        let mut found = Vec::new();
-        let mut work = Vec::new();
-        {
-            let mut inner = self.inner.lock().await;
+        struct Candidate {
+            job_id: String,
+            kind: SidecarKind,
+            key: String,
+            path: PathBuf,
+            flagged: bool,
+            url: Option<String>,
+        }
+        // What to look at is read under the lock; the disk is read off it, so
+        // a folder on an unreachable drive never holds the engine up.
+        let (account, candidates) = {
+            let inner = self.inner.lock().await;
             let Some(account) = inner.active_account.clone() else {
-                return work;
+                return Vec::new();
             };
-            let candidates: Vec<DownloadRecord> = inner
-                .entries
-                .values()
-                .filter(|entry| {
-                    entry.account_key == account && entry.status == DownloadStatus::Done && !entry.pending_deletion
-                })
-                .cloned()
-                .collect();
-            for entry in candidates {
+            let mut candidates = Vec::new();
+            for entry in inner.entries.values().filter(|entry| {
+                entry.account_key == account && entry.status == DownloadStatus::Done && !entry.pending_deletion
+            }) {
                 for kind in SidecarKind::ALL {
-                    let key = format!("{}|{}", entry.job_id, if kind == SidecarKind::Logo { "logo" } else { "art" });
+                    let key = sidecar_key(&entry.job_id, kind);
                     if inner.sidecars_tried.contains(&key) {
                         continue;
                     }
                     let Some(path) = entry.sidecar(kind) else {
                         continue;
                     };
-                    if path.is_file() {
-                        inner.sidecars_tried.insert(key);
-                        if !entry.has_sidecar_flag(kind) {
-                            found.push((entry.job_id.clone(), kind));
-                        }
-                        continue;
-                    }
                     let url = match kind {
                         SidecarKind::Logo => entry.media.meta_id.as_deref().and_then(sidecar::metahub_logo_url),
                         SidecarKind::Art => entry.media.landscape_artwork.clone(),
                     };
-                    // No address yet (the art arrives later): untried, so the
-                    // call that brings it can take it.
-                    let Some(url) = url.filter(|url| sidecar::is_sidecar_source_url(url)) else {
-                        continue;
-                    };
-                    inner.sidecars_tried.insert(key);
-                    work.push((entry.job_id.clone(), account.clone(), kind, url));
+                    candidates.push(Candidate {
+                        job_id: entry.job_id.clone(),
+                        kind,
+                        key,
+                        path,
+                        flagged: entry.has_sidecar_flag(kind),
+                        url: url.filter(|url| sidecar::is_sidecar_source_url(url)),
+                    });
+                }
+            }
+            (account, candidates)
+        };
+        let paths: Vec<PathBuf> = candidates.iter().map(|candidate| candidate.path.clone()).collect();
+        let on_disk = tokio::task::spawn_blocking(move || paths.iter().map(|path| path.is_file()).collect::<Vec<_>>())
+            .await
+            .unwrap_or_default();
+
+        let mut found = Vec::new();
+        let mut work = Vec::new();
+        {
+            let mut inner = self.inner.lock().await;
+            if inner.active_account.as_deref() != Some(account.as_str()) {
+                return Vec::new();
+            }
+            for (candidate, present) in candidates.into_iter().zip(on_disk) {
+                // No address yet (the art arrives later) and nothing on disk:
+                // left untried, so the call that brings the address can take it.
+                if !present && candidate.url.is_none() {
+                    continue;
+                }
+                // Claimed here, so a second call running alongside skips it.
+                if !inner.sidecars_tried.insert(candidate.key) {
+                    continue;
+                }
+                if present {
+                    if !candidate.flagged {
+                        found.push((candidate.job_id, candidate.kind));
+                    }
+                } else if let Some(url) = candidate.url {
+                    work.push((candidate.job_id, account.clone(), candidate.kind, url));
                 }
             }
         }
@@ -1555,20 +1591,19 @@ impl DownloadManager {
     }
 
     /// Writes a finished download's logo or art beside its video, through a
-    /// temporary file renamed over it. The write happens under the engine's
-    /// lock: a removal tombstones the record under the same lock, so either
-    /// the picture is written first and the removal deletes it with the rest,
-    /// or the removal comes first and nothing is written.
+    /// temporary file renamed over it. The write runs off the engine's lock, so
+    /// a slow disk holds nothing else up; the record is checked again once it
+    /// is done, and a picture written for a download removed in the meantime
+    /// is deleted again (with its title folder, if that is now empty).
     async fn save_sidecar(&self, job_id: &str, account: &str, kind: SidecarKind, bytes: Vec<u8>) -> bool {
         if bytes.is_empty() || bytes.len() > sidecar::MAX_SIDECAR_BYTES {
             return false;
         }
-        let view = {
-            let mut inner = self.inner.lock().await;
+        let (target, folder, roots) = {
+            let inner = self.inner.lock().await;
             if inner.active_account.as_deref() != Some(account) {
                 return false;
             }
-            let roots = resolve_roots(&inner.approved_roots);
             let Some(entry) = inner.entries.get(job_id) else {
                 return false;
             };
@@ -1578,20 +1613,57 @@ impl DownloadManager {
             let Some(target) = entry.sidecar(kind) else {
                 return false;
             };
-            let folder = PathBuf::from(&entry.root_path);
-            // Off the async threads, with the lock still held (see above).
-            let written = tokio::task::spawn_blocking(move || write_sidecar(&folder, &target, &bytes, &roots))
+            (target, PathBuf::from(&entry.root_path), inner.approved_roots.clone())
+        };
+        let written = {
+            let (target, folder, roots) = (target.clone(), folder.clone(), roots.clone());
+            tokio::task::spawn_blocking(move || write_sidecar(&folder, &target, &bytes, &resolve_roots(&roots)))
                 .await
-                .unwrap_or(false);
-            if !written {
-                return false;
+                .unwrap_or(false)
+        };
+        if !written {
+            return false;
+        }
+        let (view, gone) = {
+            let mut inner = self.inner.lock().await;
+            let gone = inner
+                .entries
+                .get(job_id)
+                .is_none_or(|entry| entry.pending_deletion);
+            let still_wanted = inner.active_account.as_deref() == Some(account)
+                && inner.entries.get(job_id).is_some_and(|entry| {
+                    entry.account_key == account
+                        && !entry.pending_deletion
+                        && entry.status == DownloadStatus::Done
+                        && entry.sidecar(kind).is_some_and(|path| same_path(&path, &target))
+                });
+            if still_wanted {
+                if let Some(entry) = inner.entries.get_mut(job_id) {
+                    entry.set_sidecar_flag(kind, true);
+                    entry.updated_at = now_ms();
+                }
+                (Some(inner.visible_view(job_id)), false)
+            } else {
+                (None, gone)
             }
-            let Some(entry) = inner.entries.get_mut(job_id) else {
-                return false;
-            };
-            entry.set_sidecar_flag(kind, true);
-            entry.updated_at = now_ms();
-            inner.visible_view(job_id)
+        };
+        if !gone && view.is_none() {
+            // Still a download, only not one to mark now (the account changed):
+            // the picture stays, and the next look finds it on disk.
+            return false;
+        }
+        let Some(view) = view else {
+            // Removed (or changed) while the picture was written: nothing may
+            // be left behind for a download that is gone.
+            let _ = tokio::task::spawn_blocking(move || {
+                let roots = resolve_roots(&roots);
+                if containment::ensure_within_roots(&target, &roots).is_ok() {
+                    let _ = fs::remove_file(&target);
+                }
+                remove_folder_if_left_empty(&folder, &roots);
+            })
+            .await;
+            return false;
         };
         let _ = self.persist().await;
         if let Some(view) = view {
@@ -1644,11 +1716,16 @@ impl DownloadManager {
             .await
             .map_err(|error| error.to_string())?;
         match read {
-            Some(bytes) => Ok(Some(bytes)),
-            None => {
+            Ok(bytes) => Ok(Some(bytes)),
+            // Deleted by hand: unmarked, and free to be fetched again.
+            Err(SidecarReadError::Missing) => {
+                self.inner.lock().await.sidecars_tried.remove(&sidecar_key(job_id, kind));
                 self.mark_sidecar(job_id, kind, false).await;
                 Ok(None)
             }
+            // Locked for a moment (a scanner) or refused: the mark stays, so
+            // the next look tries the file again.
+            Err(SidecarReadError::Unreadable) => Ok(None),
         }
     }
 
@@ -2003,6 +2080,30 @@ impl DownloadManager {
         let part = record.part();
         let target = record.target();
         let root = PathBuf::from(&record.root_path);
+        // A title folder can be gone by now (its last other download was
+        // removed and took it along). The transfer makes it again, so it is
+        // checked as the start checked it: a link planted in its place must
+        // not lead the download outside the download folders.
+        let roots = { self.inner.lock().await.approved_roots.clone() };
+        let contained = {
+            let root = root.clone();
+            tokio::task::spawn_blocking(move || {
+                // Only a title folder (inside a root without being one) is
+                // checked; a download saved straight in a folder goes on as
+                // before, and the transfer makes that folder itself.
+                let title_folder = !same_path(&presence_folder(&root, &roots), &root);
+                if !title_folder {
+                    return true;
+                }
+                let roots = resolve_roots(&roots);
+                fs::create_dir_all(&root).is_ok() && containment::ensure_within_roots(&root, &roots).is_ok()
+            })
+            .await
+            .unwrap_or(false)
+        };
+        if !contained {
+            return Err(TransferError::Permanent(DownloadFailureCode::StorageFull));
+        }
         let job = segmented::TransferJob {
             client: &self.client,
             url: &request.url,
@@ -2510,21 +2611,28 @@ struct TitleFolder {
 
 impl TitleFolder {
     fn prepare(directory: &Path, title: &str, resolved_roots: &[PathBuf]) -> Result<Self, String> {
-        let path = directory.join(download_folder_name(title));
-        let created = match fs::create_dir(&path) {
-            Ok(()) => true,
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
-            Err(_) => return Err(TITLE_FOLDER_FAILED.into()),
-        };
-        let folder = Self { path, created };
-        if !folder.path.is_dir() {
-            return Err(TITLE_FOLDER_FAILED.into());
+        let base = download_folder_name(title);
+        // A file that already has the title's name (not a folder) cannot hold
+        // the download, so the next free `Title (2)` takes its place.
+        for attempt in 1..=MAX_TITLE_FOLDER_ATTEMPTS {
+            let name = if attempt == 1 { base.clone() } else { format!("{base} ({attempt})") };
+            let path = directory.join(name);
+            let created = match fs::create_dir(&path) {
+                Ok(()) => true,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
+                Err(_) => return Err(TITLE_FOLDER_FAILED.into()),
+            };
+            let folder = Self { path, created };
+            if !folder.path.is_dir() {
+                continue;
+            }
+            // A link planted under the download folder must not lead the download elsewhere.
+            if containment::ensure_within_roots(&folder.path, resolved_roots).is_err() {
+                return Err(TITLE_FOLDER_OUTSIDE.into());
+            }
+            return Ok(folder);
         }
-        // A link planted under the download folder must not lead the download elsewhere.
-        if containment::ensure_within_roots(&folder.path, resolved_roots).is_err() {
-            return Err(TITLE_FOLDER_OUTSIDE.into());
-        }
-        Ok(folder)
+        Err(TITLE_FOLDER_FAILED.into())
     }
     fn path(&self) -> &Path {
         &self.path
@@ -2567,16 +2675,42 @@ fn write_sidecar(folder: &Path, target: &Path, bytes: &[u8], resolved_roots: &[P
     true
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum SidecarReadError {
+    /// Not on disk: deleted by hand.
+    Missing,
+    /// There, but not readable now, or not something to hand out.
+    Unreadable,
+}
+
+/// `<job id>|logo` or `<job id>|art`, the key a picture is tried under.
+fn sidecar_key(job_id: &str, kind: SidecarKind) -> String {
+    format!("{job_id}|{}", if kind == SidecarKind::Logo { "logo" } else { "art" })
+}
+
 /// Reads a saved picture, refusing a path outside the download folders, a
 /// link, anything but a file, and anything over the size a picture may be.
-fn read_sidecar(path: &Path, resolved_roots: &[PathBuf]) -> Option<Vec<u8>> {
-    containment::ensure_within_roots(path, resolved_roots).ok()?;
-    let metadata = fs::symlink_metadata(path).ok()?;
+fn read_sidecar(path: &Path, resolved_roots: &[PathBuf]) -> Result<Vec<u8>, SidecarReadError> {
+    containment::ensure_within_roots(path, resolved_roots).map_err(|_| SidecarReadError::Unreadable)?;
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(SidecarReadError::Missing),
+        Err(_) => return Err(SidecarReadError::Unreadable),
+    };
     if !metadata.is_file() || metadata.len() == 0 || metadata.len() > sidecar::MAX_SIDECAR_BYTES as u64 {
-        return None;
+        return Err(SidecarReadError::Unreadable);
     }
-    let bytes = fs::read(path).ok()?;
-    (bytes.len() <= sidecar::MAX_SIDECAR_BYTES).then_some(bytes)
+    let bytes = fs::read(path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            SidecarReadError::Missing
+        } else {
+            SidecarReadError::Unreadable
+        }
+    })?;
+    if bytes.len() > sidecar::MAX_SIDECAR_BYTES {
+        return Err(SidecarReadError::Unreadable);
+    }
+    Ok(bytes)
 }
 
 /// A title's own folder goes once its last file has: only when it is empty,
@@ -2595,7 +2729,16 @@ fn remove_folder_if_left_empty(folder: &Path, resolved_roots: &[PathBuf]) {
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return;
     }
-    if containment::real_path(folder).is_none_or(|real| !same_path(&real, folder)) {
+    // The folder itself must not be a link: it resolves to where its parent
+    // resolves, plus its own name. Compared that way, a download folder that
+    // is itself a junction to another drive still gets its title folders
+    // cleaned up.
+    let (Some(parent), Some(name)) = (folder.parent(), folder.file_name()) else {
+        return;
+    };
+    let expected = containment::real_path(parent).map(|real_parent| real_parent.join(name));
+    let actual = containment::real_path(folder);
+    if !matches!((expected, actual), (Some(expected), Some(actual)) if same_path(&expected, &actual)) {
         return;
     }
     // Refused by the file system unless the folder is empty.
@@ -2608,11 +2751,14 @@ fn remove_folder_if_left_empty(folder: &Path, resolved_roots: &[PathBuf]) {
 /// an unplugged drive takes the root with it. A download saved at a root, or
 /// outside them all, is judged by its own folder.
 fn presence_folder(root_path: &Path, approved_roots: &[PathBuf]) -> PathBuf {
+    if approved_roots.iter().any(|root| same_path(root, root_path)) {
+        return root_path.to_path_buf();
+    }
+    // The deepest root that holds it: with nested roots, the one it was saved under.
     approved_roots
         .iter()
-        .find(|root| {
-            is_within_approved_root(root_path, std::slice::from_ref(root)) && !same_path(root, root_path)
-        })
+        .filter(|root| is_within_approved_root(root_path, std::slice::from_ref(root)))
+        .max_by_key(|root| root.components().count())
         .cloned()
         .unwrap_or_else(|| root_path.to_path_buf())
 }
@@ -3714,14 +3860,81 @@ mod tests {
         let target = root.join("film-fanart.jpg");
         assert!(write_sidecar(&root, &target, b"jpeg", &roots));
         assert!(!sidecar_temp_path(&target).exists());
-        assert_eq!(read_sidecar(&target, &roots).as_deref(), Some(&b"jpeg"[..]));
+        assert_eq!(read_sidecar(&target, &roots).as_deref(), Ok(&b"jpeg"[..]));
         let stray = outside.join("film-fanart.jpg");
         assert!(!write_sidecar(&outside, &stray, b"jpeg", &roots));
         assert!(!stray.exists());
         fs::write(&stray, b"jpeg").unwrap();
-        assert_eq!(read_sidecar(&stray, &roots), None);
+        assert_eq!(read_sidecar(&stray, &roots), Err(SidecarReadError::Unreadable));
         let _ = fs::remove_dir_all(root);
         let _ = fs::remove_dir_all(outside);
+    }
+
+    #[test]
+    fn only_a_picture_that_is_gone_reads_as_missing() {
+        let root = scratch_dir("sidecar-missing");
+        let roots = resolve_roots(std::slice::from_ref(&root));
+        assert_eq!(read_sidecar(&root.join("gone-fanart.jpg"), &roots), Err(SidecarReadError::Missing));
+        // An empty file is a broken write, not a deleted picture: unreadable.
+        fs::write(root.join("empty-fanart.jpg"), b"").unwrap();
+        assert_eq!(read_sidecar(&root.join("empty-fanart.jpg"), &roots), Err(SidecarReadError::Unreadable));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_file_with_the_titles_name_moves_the_download_to_the_next_free_name() {
+        let root = scratch_dir("title-taken");
+        let roots = resolve_roots(std::slice::from_ref(&root));
+        fs::write(root.join("Severance"), b"not a folder").unwrap();
+        let folder = TitleFolder::prepare(&root, "Severance", &roots).unwrap();
+        assert_eq!(folder.path(), root.join("Severance (2)"));
+        assert!(folder.path().is_dir());
+        folder.keep();
+        // The next episode finds the same folder: the file is still in the way.
+        let again = TitleFolder::prepare(&root, "Severance", &roots).unwrap();
+        assert_eq!(again.path(), root.join("Severance (2)"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn with_nested_roots_a_download_is_judged_by_the_root_it_was_saved_under() {
+        let roots = vec![PathBuf::from(r"D:\Videos"), PathBuf::from(r"D:\Videos\Halo")];
+        // Saved straight in a root: judged by its own folder.
+        assert_eq!(presence_folder(Path::new(r"D:\Videos\Halo"), &roots), PathBuf::from(r"D:\Videos\Halo"));
+        // In a title folder: judged by the deepest root holding it.
+        assert_eq!(
+            presence_folder(Path::new(r"D:\Videos\Halo\Severance"), &roots),
+            PathBuf::from(r"D:\Videos\Halo")
+        );
+        assert_eq!(presence_folder(Path::new(r"D:\Videos\Film"), &roots), PathBuf::from(r"D:\Videos"));
+    }
+
+    #[test]
+    fn an_empty_title_folder_is_cleaned_up_under_a_download_folder_that_is_a_junction() {
+        let target = scratch_dir("junction-target");
+        let parent = scratch_dir("junction-parent");
+        let link = parent.join("Downloads");
+        let made = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&link)
+            .arg(&target)
+            .output()
+            .is_ok_and(|output| output.status.success());
+        if !made {
+            // No junctions on this file system; nothing to check.
+            let _ = fs::remove_dir_all(target);
+            let _ = fs::remove_dir_all(parent);
+            return;
+        }
+        let folder = link.join("Severance");
+        fs::create_dir(&folder).unwrap();
+        remove_folder_if_left_empty(&folder, &resolve_roots(std::slice::from_ref(&link)));
+        assert!(!target.join("Severance").exists());
+        // The junction itself, being the root, is never removed.
+        assert!(link.exists());
+        let _ = fs::remove_dir(&link);
+        let _ = fs::remove_dir_all(target);
+        let _ = fs::remove_dir_all(parent);
     }
 
     #[test]
