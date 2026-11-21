@@ -10,15 +10,15 @@ import { useSyncExternalStore } from 'react'
  * whether Settings is already open or is opening because of it. Session
  * state, so it is deliberately not persisted.
  */
-export type SettingsSection = 'appearance' | 'addons' | 'playback' | 'subtitles' | 'account'
+export type SettingsSection = 'account' | 'appearance' | 'playback' | 'subtitles' | 'addons'
 
 /** Document order, which is also the rail's order. */
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
+  'account',
   'appearance',
-  'addons',
   'playback',
   'subtitles',
-  'account',
+  'addons',
 ]
 
 let pending: SettingsSection | null = null

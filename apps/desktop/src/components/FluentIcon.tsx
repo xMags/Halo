@@ -54,6 +54,17 @@ const GLYPHS = {
   filter: '',
   plugin: '',
   networkOff: '',
+  add: '',
+  theme: '',
+  captions: '',
+  signOut: '',
+  sync: '',
+  audio: '',
+  autoplay: '',
+  resume: '',
+  chat: '',
+  decoding: '',
+  font: '',
 } as const
 
 export type FluentGlyph = keyof typeof GLYPHS

@@ -190,7 +190,7 @@
 /* Settings' font and outline pickers, at the native chips' size. */
 .tray-compact .tray-btn {
   padding: 4px 12px;
-  font-size: 14px;
+  font-size: 13px;
 }
 /* HaloFilterPillStyle: 30px pills, 13px in, never bold. Selection is the
    accent wash inside an info stroke, with the label in accent. */

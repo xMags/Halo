@@ -52,12 +52,12 @@ export function TmdbKeyCard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div className="card tmdb-card">
+      <div className="set-card tmdb-card">
         <span className="tmdb-card-glyph">
           <FluentIcon glyph="person" size={20} />
         </span>
         <div className="tmdb-card-text">
-          <span className="opt-label">People search</span>
+          <span className="set-label">People search</span>
           <span className="tmdb-card-hint">
             Find actors, directors and writers, and open IMDb and TVDB links, with your own TMDB key.{' '}
             <button type="button" className="tmdb-card-link" onClick={() => void openUrl(GET_KEY_URL).catch(() => undefined)}>

@@ -36,46 +36,43 @@
   letter-spacing: -0.3px;
   color: var(--t1);
 }
-.set-rail-btn {
+.set-rail-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 9px 12px;
-  border-radius: 6px;
+  gap: 3px;
+}
+/* A rail entry: glyph and label, with a short accent pill at the left edge
+   marking the section being read. */
+.set-rail-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
   width: 100%;
-}
-.set-rail-btn:hover {
-  background: var(--sb);
-}
-.set-rail-btn-active,
-.set-rail-btn-active:hover {
-  background: var(--ns);
-}
-.set-rail-label {
-  font-size: 15px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 5px;
   color: var(--t1);
 }
-.set-rail-btn-active .set-rail-label {
-  color: var(--ac);
+.set-rail-btn:hover,
+.set-rail-btn-active {
+  background: var(--sb);
 }
-.set-rail-hint {
-  font-size: 13px;
-  color: var(--t3);
+.set-rail-pill {
+  position: absolute;
+  left: 0;
+  top: 11px;
+  width: 3px;
+  height: 16px;
+  border-radius: 1.5px;
+  background: var(--ac);
+  opacity: 0;
 }
-.about-card {
-  margin-top: 18px;
-  padding: 14px;
-  background: var(--cd);
-  border: 1px solid var(--cs);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+.set-rail-btn-active .set-rail-pill {
+  opacity: 1;
 }
-.about-rule {
-  height: 1px;
-  margin: 0 -14px;
-  background: var(--dv);
+.set-rail-label {
+  font-size: 14px;
 }
 .set-form {
   container: set-form / inline-size;
@@ -85,32 +82,142 @@
   gap: var(--set-form-gap);
   padding: 0 8px 48px 0;
 }
-/* Each section sets its own gap, as the native sections differ. */
+
+/* A section reads as a column of setting cards, each 4px from the next. */
 .set-section {
   display: flex;
   flex-direction: column;
+  gap: 4px;
 }
+.set-section-title {
+  margin: 0 0 8px;
+  font-family: var(--display);
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.set-list-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.set-card {
+  background: var(--cd);
+  border: 1px solid var(--cs);
+  border-radius: 6px;
+}
+/* The page draws its text boxes and combo boxes at the label size. */
+.set-form .field,
+.set-form .combo-box {
+  font-size: 14px;
+}
+.set-label {
+  font-size: 14px;
+  color: var(--t1);
+}
+.set-hint {
+  font-size: 13px;
+  color: var(--t3);
+}
+
+/* One setting: glyph, label over hint, the control at the row's end. */
 .set-row {
   display: flex;
   align-items: center;
-  gap: 16px;
-  min-height: 36px;
-  padding: 14px;
+  min-height: 42px;
+  padding: 12px 16px;
+}
+.set-row-glyph {
+  display: flex;
+  flex: none;
+  margin-right: 16px;
+  color: var(--t1);
+}
+.set-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.set-row-control {
+  flex: none;
+  display: flex;
+  align-items: center;
+  margin-left: 16px;
+}
+/* A row inside a grouped card: indented to the header's label, a hairline over it. */
+.set-group-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
+  align-items: center;
+  min-height: 58px;
+  padding: 10px 16px 10px 52px;
   border-top: 1px solid var(--dv);
 }
-.set-row:first-child {
-  border-top: 0;
+.set-group-row .set-row-control {
+  margin-left: 0;
+  justify-content: flex-end;
 }
-.set-row-hint {
+/* Font and Outline share one control column, so both trays are as wide as
+   the wider of the two and their cells split that width evenly. */
+.set-tray-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  column-gap: 16px;
+}
+.set-tray-pair > .set-group-row {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+.set-tray-pair .set-row-control,
+.set-tray-pair .tray {
+  justify-self: stretch;
+}
+.set-tray-pair .tray {
+  flex: 1;
+}
+.set-tray-pair .tray-btn {
+  flex: 1;
+}
+.set-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.set-onoff {
+  min-width: 24px;
+  text-align: right;
   font-size: 14px;
-  color: var(--t3);
+  color: var(--t1);
+}
+.set-slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.set-slider .slider {
+  width: 240px;
+}
+.set-slider-value {
+  width: 44px;
+  text-align: right;
+  font: 400 13px/1.4 var(--mono);
+  color: var(--t2);
+}
+.set-message {
+  margin: 4px 0 0 2px;
+  font-size: 14px;
 }
 .set-state {
+  margin-top: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  font-size: 15px;
+  font-size: 14px;
   color: var(--t1);
 }
 .set-state-quiet {
@@ -121,23 +228,39 @@
   height: 32px;
   border-width: 3px;
 }
+
+/* ── Account ── */
+.set-account {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  column-gap: 18px;
+  align-items: center;
+  padding: 16px;
+}
 .set-avatar {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
-  border-radius: 20px;
+  width: 64px;
+  height: 64px;
+  border-radius: 32px;
   object-fit: cover;
 }
-.set-h {
-  font-size: 22px;
+.set-account-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.set-account-name {
+  font-size: 18px;
   font-weight: 600;
   color: var(--t1);
 }
-.set-sub {
-  font-size: 15px;
-  color: var(--t2);
-}
 
+/* ── Appearance ── */
+.theme-cards {
+  display: flex;
+  gap: 12px;
+  margin: 0 16px 16px 52px;
+}
 .theme-card {
   padding: 10px;
   border-radius: 8px;
@@ -148,7 +271,11 @@
   gap: 9px;
   align-items: center;
 }
-.theme-card-active {
+.theme-card:hover {
+  background: var(--sb);
+}
+.theme-card-active,
+.theme-card-active:hover {
   background: var(--at);
   border: 2px solid var(--ac);
   padding: 9px;
@@ -192,25 +319,76 @@
   background: #fff;
 }
 
+/* ── Subtitles ── */
+/* The native stage: the dark stripe asset in both themes, darkened toward the
+   caption, with a fixed hairline rather than the themed card stroke. */
+.sub-preview {
+  position: relative;
+  height: 200px;
+  margin-bottom: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.122);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #232428 url('../assets/stripe-dark.png') center / cover;
+}
+.sub-preview-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 40%, rgba(0, 0, 0, 0.451));
+}
+.sub-preview-caption {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 22px;
+  max-width: 560px;
+  margin: 0 auto;
+  text-align: center;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* ── Addons ── */
+.addon-add {
+  display: grid;
+  grid-template-columns: auto fit-content(250px) minmax(0, 1fr) auto;
+  column-gap: 16px;
+  align-items: center;
+  min-height: 42px;
+  padding: 12px 16px;
+}
+.addon-add .set-row-glyph {
+  margin-right: 0;
+}
+.addon-add .field {
+  width: 100%;
+  min-width: 0;
+}
+.addon-add-btn {
+  padding: 0 18px;
+}
+.addon-list-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 16px 2px 8px;
+}
+.set-home-title {
+  margin: 12px 2px 4px;
+}
+/* Each addon is its own card: grip, initials tile, name with version over
+   the provides line, then the catalog switch and the row's actions. */
 .addon-row {
   display: grid;
-  grid-template-columns: 12px 34px minmax(0, 1fr) auto auto;
-  gap: 13px;
+  grid-template-columns: 12px 32px minmax(0, 1fr) auto;
+  column-gap: 14px;
   align-items: center;
-  padding: 13px 14px;
-  border-top: 1px solid var(--dv);
-}
-/* One button's width even when a row has none (built-in and global addons
-   cannot be removed), so the catalog switches still line up down the list. */
-.addon-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 2px;
-  min-width: 28px;
-}
-.addon-row:first-child {
-  border-top: 0;
+  min-height: 62px;
+  margin-bottom: 4px;
+  padding: 10px 16px 10px 14px;
+  background: var(--cd);
+  border: 1px solid var(--cs);
+  border-radius: 6px;
 }
 .addon-row-dragging {
   opacity: 0.4;
@@ -232,119 +410,61 @@
   display: flex;
   cursor: grab;
 }
-.addon-text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
 .addon-tile {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 5px;
   background: var(--sb);
-  font: 700 13px/1 var(--mono);
+  font: 700 12px/1 var(--mono);
   color: var(--t2);
 }
+.addon-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.addon-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
 .addon-name {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
   color: var(--t1);
-}
-.addon-badge {
-  padding: 2px 7px;
-  border-radius: 3px;
-  background: var(--sb);
-  font: 700 12px/1.3 var(--mono);
-  color: var(--t3);
-}
-.addon-badge-yours {
-  background: var(--at);
-  color: var(--ac);
 }
 .addon-provides {
-  font-size: 14px;
-  color: var(--t3);
-}
-.opt-label {
-  font-size: 15px;
-  color: var(--t1);
-}
-.opt-hint {
   font-size: 13px;
   color: var(--t3);
 }
-
-.sub-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
+.addon-end {
+  display: flex;
+  align-items: center;
   gap: 12px;
-  align-items: stretch;
-  min-height: 220px;
 }
-.sub-row {
-  display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
-  gap: 16px;
+/* As wide as the widest row's buttons (set inline), so the switches line up. */
+.addon-actions {
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
 }
-.sub-row-value {
-  grid-template-columns: 76px minmax(0, 1fr) 44px;
-}
-.sub-trays {
+
+/* ── About ── */
+.set-about {
   display: grid;
-  grid-template-columns: 76px max-content;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   column-gap: 16px;
-  row-gap: 10px;
   align-items: center;
-  margin-top: 16px;
+  min-height: 42px;
+  padding: 12px 16px;
 }
-/* Too narrow for the controls (a 364px card: padding, the 76px label column
-   and the Font tray) plus the 12px gap and the 260px preview. The native page
-   clips the pickers at its card edge here; the preview moving under the
-   controls keeps every choice visible instead. */
-@container set-form (max-width: 635px) {
-  .sub-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .sub-preview {
-    min-height: 160px;
-  }
-}
-/* The native stage: the dark stripe asset in both themes, darkened toward the
-   caption, with a fixed hairline rather than the themed card stroke. */
-.sub-preview {
-  position: relative;
-  max-height: 300px;
-  border: 1px solid rgba(255, 255, 255, 0.122);
-  border-radius: 8px;
-  overflow: hidden;
-  background: #232428 url('../assets/stripe-dark.png') center / cover;
-}
-.sub-preview-scrim {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom, transparent 40%, rgba(0, 0, 0, 0.451));
-}
-.sub-preview-kicker {
-  position: absolute;
-  left: 12px;
-  top: 10px;
-  font: 700 12px/1.2 var(--mono);
-  letter-spacing: 1.92px;
-  color: rgba(255, 255, 255, 0.4);
-}
-.sub-preview-caption {
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 16px;
-  text-align: center;
-  font-weight: 600;
-  color: #fff;
+.set-about-btn {
+  padding: 0 14px;
 }
 
 /* The TMDB key card (Halo without an account): what it is above, the key box

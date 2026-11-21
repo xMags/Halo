@@ -7,7 +7,7 @@ import { addAddon, moveAddon, removeAddon, type AddonListEdit } from './addonLis
 import { RELEASES_URL, useBuildInfo } from './about'
 import { ComboBox } from '../components/ComboBox'
 import { showDialog } from '../components/Dialog'
-import { FluentIcon } from '../components/FluentIcon'
+import { FluentIcon, type FluentGlyph } from '../components/FluentIcon'
 import { HaloMark } from '../components/HaloMark'
 import { Segmented } from '../components/Segmented'
 import { Slider } from '../components/Slider'
@@ -47,12 +47,13 @@ import {
 import type { ThemeChoice } from '../theme'
 import { subtitleCaptionShadow } from '../player/SubtitlePreview'
 
-const RAIL: Array<{ key: SettingsSection; label: string; hint: string }> = [
-  { key: 'appearance', label: 'Appearance', hint: 'Theme' },
-  { key: 'addons', label: 'Addons', hint: 'Catalogs, streams, subtitles' },
-  { key: 'playback', label: 'Playback', hint: 'Decoding, autoplay, resume' },
-  { key: 'subtitles', label: 'Subtitles', hint: 'Size, font, appearance' },
-  { key: 'account', label: 'Server & account', hint: 'Sync, identity, version' },
+/** The rail, in the form's order: a glyph and a label per section. */
+const RAIL: Array<{ key: SettingsSection; label: string; glyph: FluentGlyph }> = [
+  { key: 'account', label: 'Account', glyph: 'person' },
+  { key: 'appearance', label: 'Appearance', glyph: 'theme' },
+  { key: 'playback', label: 'Playback', glyph: 'play' },
+  { key: 'subtitles', label: 'Subtitles', glyph: 'captions' },
+  { key: 'addons', label: 'Addons', glyph: 'plugin' },
 ]
 
 function sectionElement(form: HTMLElement | null, key: SettingsSection): HTMLElement | null {
@@ -73,7 +74,7 @@ export function Settings() {
    * is still arriving, until the reader scrolls for themselves.
    */
   const pinned = useRef<SettingsSection | null>(null)
-  const [active, setActive] = useState<SettingsSection>('appearance')
+  const [active, setActive] = useState<SettingsSection>(SETTINGS_SECTIONS[0] ?? 'account')
 
   const updateActive = useCallback(() => {
     const view = scroller.current
@@ -85,7 +86,7 @@ export function Settings() {
     })
     const atEnd = isScrolledToEnd(view.scrollTop, view.scrollHeight, view.clientHeight)
     const index = activeSettingsSection(tops, view.clientHeight * RAIL_ANCHOR_FRACTION, atEnd)
-    setActive(SETTINGS_SECTIONS[index] ?? 'appearance')
+    setActive(SETTINGS_SECTIONS[index] ?? 'account')
   }, [])
 
   const jumpTo = useCallback(
@@ -135,7 +136,7 @@ export function Settings() {
       <div className="set-page">
         <div className="set-rail">
           <div className="set-rail-title">Settings</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div className="set-rail-list">
             {RAIL.map((item) => (
               <button
                 key={item.key}
@@ -144,31 +145,11 @@ export function Settings() {
                 aria-current={active === item.key ? 'location' : undefined}
                 onClick={() => jumpTo(item.key)}
               >
+                <span className="set-rail-pill" />
+                <FluentIcon glyph={item.glyph} size={16} />
                 <span className="set-rail-label">{item.label}</span>
-                <span className="set-rail-hint">{item.hint}</span>
               </button>
             ))}
-          </div>
-
-          <div className="about-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <HaloMark size={20} />
-              <span style={{ fontSize: 14, fontWeight: 600 }}>Halo Desktop</span>
-            </div>
-            <button
-              type="button"
-              className="btn-link"
-              style={{ alignSelf: 'flex-start', paddingInline: 0 }}
-              title="Opens the Halo releases page on GitHub"
-              onClick={() => void openUrl(RELEASES_URL).catch(() => {})}
-            >
-              Check for updates
-            </button>
-            <div className="about-rule" />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span className="mono">© 2026 Last Projects &amp; Shy</span>
-              <span className="mono">GPL-3.0 license</span>
-            </div>
           </div>
         </div>
 
@@ -181,11 +162,12 @@ export function Settings() {
           onKeyDown={releasePin}
         >
           <div ref={form} className="set-form">
+            <AccountSection />
             <AppearanceSection />
-            <AddonsSection />
             <PlaybackSection />
             <SubtitlesSection />
-            <AccountSection />
+            <AddonsSection />
+            <AboutCard />
           </div>
         </div>
       </div>
@@ -193,41 +175,175 @@ export function Settings() {
   )
 }
 
-/** A section of the form: its heading, then its controls at the native spacing. */
-function Section({
-  id,
-  gap,
-  title,
-  sub,
-  children,
-}: {
-  id: SettingsSection
-  gap: number
-  title: string
-  sub: string
-  children: ReactNode
-}) {
+/** A section of the form: its title, then a column of setting cards 4px apart. */
+function Section({ id, title, children }: { id: SettingsSection; title: string; children: ReactNode }) {
   return (
-    <section className="set-section" data-settings-section={id} style={{ gap }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <div className="set-h">{title}</div>
-        <div className="set-sub">{sub}</div>
-      </div>
+    <section className="set-section" data-settings-section={id}>
+      <h2 className="set-section-title">{title}</h2>
       {children}
     </section>
   )
 }
 
-/** A labelled row in a settings card, with its control at the far end. (Native: SettingRow.) */
-function SettingRow({ label, hint, children }: { label: ReactNode; hint: string; children: ReactNode }) {
+/** One setting's card. A grouped card holds a header row and further rows. */
+function SettingCard({ children }: { children: ReactNode }) {
+  return <div className="set-card">{children}</div>
+}
+
+/**
+ * One setting: an optional glyph, the label over its hint, and the control at
+ * the row's end. (Native: SettingRow.)
+ */
+function SettingRow({
+  glyph,
+  label,
+  hint,
+  children,
+}: {
+  glyph?: FluentGlyph
+  label: ReactNode
+  hint?: ReactNode
+  children?: ReactNode
+}) {
   return (
     <div className="set-row">
-      <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span className="opt-label">{label}</span>
-        <span className="set-row-hint">{hint}</span>
+      {glyph && (
+        <span className="set-row-glyph">
+          <FluentIcon glyph={glyph} size={20} />
+        </span>
+      )}
+      <span className="set-row-text">
+        <span className="set-label">{label}</span>
+        {hint && <span className="set-hint">{hint}</span>}
       </span>
-      {children}
+      {children !== undefined && <span className="set-row-control">{children}</span>}
     </div>
+  )
+}
+
+/** A row inside a grouped card: indented to the header's label, a hairline over it. */
+function SettingGroupRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="set-group-row">
+      <span className="set-row-text">
+        <span className="set-label">{label}</span>
+        {hint && <span className="set-hint">{hint}</span>}
+      </span>
+      <span className="set-row-control">{children}</span>
+    </div>
+  )
+}
+
+/** A switch with the On/Off word before it, which always says what the switch shows. */
+function OnOffSwitch({
+  label,
+  on,
+  onChange,
+}: {
+  label: string
+  on: boolean
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <span className="set-switch">
+      <span className="set-onoff">{on ? 'On' : 'Off'}</span>
+      <Toggle label={label} on={on} onChange={onChange} />
+    </span>
+  )
+}
+
+/* ── Account ─────────────────────────────────────────────────────────────── */
+
+function AccountSection() {
+  const { state } = useSession()
+  return (
+    <Section id="account" title="Account">
+      {state === 'device' ? <DeviceAccount /> : <SignedInAccount />}
+    </Section>
+  )
+}
+
+/** The account card: picture, name over the role line, and (signed in) the server status. */
+function AccountCard({ picture, name, role, status }: { picture: string; name: string; role: string; status?: ReactNode }) {
+  return (
+    <SettingCard>
+      <div className="set-account">
+        <img className="set-avatar" src={picture} alt="" draggable={false} />
+        <span className="set-account-text">
+          <span className="set-account-name ellipsis">{name}</span>
+          <span className="mono">{role}</span>
+        </span>
+        {status}
+      </div>
+    </SettingCard>
+  )
+}
+
+/** Halo used without an account: nothing to sign out of, and signing in is the way to sync. */
+function DeviceAccount() {
+  const { startSignIn } = useSession()
+
+  return (
+    <>
+      <AccountCard picture={avatar} name={DEVICE_ACCOUNT_NAME} role={DEVICE_ACCOUNT_LABEL} />
+      <SettingCard>
+        <SettingRow
+          glyph="sync"
+          label="Sign in to sync"
+          hint="Your library, watch progress and addons are kept on this PC. Sign in to sync them across your devices."
+        >
+          <button type="button" className="btn-accent" onClick={startSignIn}>
+            Sign in
+          </button>
+        </SettingRow>
+      </SettingCard>
+      <TmdbKeyCard />
+    </>
+  )
+}
+
+function SignedInAccount() {
+  const { data: me } = useMe()
+  const { signOut } = useSession()
+  const status = useServerStatus()
+
+  // The account's own picture when it has one; the stock avatar otherwise.
+  const picture = useAccountPicture()
+  const statusTone =
+    status.state === 'connected' ? 'connected' : status.state === 'probing' ? 'checking' : 'down'
+
+  const confirmSignOut = () => {
+    void showDialog({
+      title: 'Sign out?',
+      body: 'You will need to sign in again to use this server.',
+      primary: 'Sign out',
+      close: 'Cancel',
+      destructive: true,
+    }).then((confirmed) => {
+      if (confirmed) signOut()
+    })
+  }
+
+  return (
+    <>
+      <AccountCard
+        picture={picture ?? avatar}
+        name={me ? accountDisplayName(me.username) : '…'}
+        role={accountLabel(me)}
+        status={<span className={`status-pill status-pill-${statusTone}`}>{describeStatus(status)}</span>}
+      />
+      <SettingCard>
+        <SettingRow
+          glyph="signOut"
+          label="Sign out"
+          hint="Library, watch progress and addon order sync through this server"
+        >
+          <button type="button" className="btn-danger" onClick={confirmSignOut}>
+            Sign out
+          </button>
+        </SettingRow>
+      </SettingCard>
+    </>
   )
 }
 
@@ -282,37 +398,246 @@ function AppearanceSection() {
   const prefs = useLocalPrefs()
 
   return (
-    <Section
-      id="appearance"
-      gap={14}
-      title="Appearance"
-      sub="Choose how Halo looks. System follows your Windows setting."
-    >
-      <div style={{ display: 'flex', gap: 12 }}>
-        {THEME_CARDS.map((card) => (
-          <button
-            key={card.key}
-            type="button"
-            className={`theme-card ${prefs.theme === card.key ? 'theme-card-active' : ''}`}
-            aria-pressed={prefs.theme === card.key}
-            onClick={() => setLocalPrefs({ theme: card.key })}
-          >
-            <span
-              className="theme-mini"
-              style={{ background: card.bg, border: `1px solid ${card.frame}` }}
+    <Section id="appearance" title="Appearance">
+      <SettingCard>
+        <SettingRow glyph="theme" label="Theme" hint="System follows your Windows setting" />
+        <div className="theme-cards" role="radiogroup" aria-label="Theme">
+          {THEME_CARDS.map((card) => (
+            <button
+              key={card.key}
+              type="button"
+              role="radio"
+              className={`theme-card ${prefs.theme === card.key ? 'theme-card-active' : ''}`}
+              aria-checked={prefs.theme === card.key}
+              onClick={() => setLocalPrefs({ theme: card.key })}
             >
-              {card.split && <span className="theme-mini-split" />}
-              <span className="theme-mini-tile" style={{ background: card.tile }} />
-              <span className="theme-mini-lines">
-                <span style={{ background: card.line }} />
-                <span style={{ background: card.line, width: 46 }} />
-                <span style={{ background: card.accent, width: 34 }} />
+              <span className="theme-mini" style={{ background: card.bg, border: `1px solid ${card.frame}` }}>
+                {card.split && <span className="theme-mini-split" />}
+                <span className="theme-mini-tile" style={{ background: card.tile }} />
+                <span className="theme-mini-lines">
+                  <span style={{ background: card.line }} />
+                  <span style={{ background: card.line, width: 46 }} />
+                  <span style={{ background: card.accent, width: 34 }} />
+                </span>
               </span>
-            </span>
-            <span style={{ fontSize: 15 }}>{card.label}</span>
-          </button>
-        ))}
+              <span className="set-label">{card.label}</span>
+            </button>
+          ))}
+        </div>
+      </SettingCard>
+    </Section>
+  )
+}
+
+/* ── Playback ────────────────────────────────────────────────────────────── */
+
+function LanguageSelect({
+  value,
+  noneLabel,
+  ariaLabel,
+  onChange,
+}: {
+  value: string | undefined
+  noneLabel: string
+  ariaLabel: string
+  onChange: (value: string | undefined) => void
+}) {
+  const options = [
+    { value: 'none', label: noneLabel },
+    ...LANGUAGE_OPTIONS.map((lang) => ({ value: lang.code, label: lang.label })),
+  ]
+  return (
+    <ComboBox
+      options={options}
+      value={value ?? 'none'}
+      width={168}
+      ariaLabel={ariaLabel}
+      onChange={(val) => onChange(val === 'none' ? undefined : val)}
+    />
+  )
+}
+
+function PlaybackSection() {
+  const settings = useSettings()
+  const updateSettings = useUpdateSettings()
+  const prefs = useLocalPrefs()
+
+  return (
+    <Section id="playback" title="Playback">
+      <SettingCard>
+        <SettingRow glyph="audio" label="Audio language" hint="Picked when the file offers a match">
+          <LanguageSelect
+            value={settings.preferredAudioLang}
+            noneLabel="First track"
+            ariaLabel="Audio language"
+            onChange={(value) => updateSettings.mutate({ preferredAudioLang: value })}
+          />
+        </SettingRow>
+      </SettingCard>
+      <SettingCard>
+        <SettingRow glyph="captions" label="Subtitle language" hint="Falls back to addon results">
+          <LanguageSelect
+            value={settings.preferredSubtitleLang}
+            noneLabel="Off"
+            ariaLabel="Subtitle language"
+            onChange={(value) => updateSettings.mutate({ preferredSubtitleLang: value })}
+          />
+        </SettingRow>
+      </SettingCard>
+      <SettingCard>
+        <SettingRow glyph="autoplay" label="Autoplay next episode" hint="8 second countdown, cancellable">
+          <OnOffSwitch
+            label="Autoplay next episode"
+            on={settings.autoplayNextEpisode ?? true}
+            onChange={(next) => updateSettings.mutate({ autoplayNextEpisode: next })}
+          />
+        </SettingRow>
+      </SettingCard>
+      <SettingCard>
+        <SettingRow glyph="resume" label="Resume where I left off" hint="Ignored under 30 seconds watched">
+          <OnOffSwitch
+            label="Resume where I left off"
+            on={prefs.resumePlayback}
+            onChange={(next) => setLocalPrefs({ resumePlayback: next })}
+          />
+        </SettingRow>
+      </SettingCard>
+      <SettingCard>
+        <SettingRow
+          glyph="chat"
+          label="Discord Rich Presence"
+          hint="Shares the title and episode you are watching with Discord"
+        >
+          <OnOffSwitch
+            label="Discord Rich Presence"
+            on={prefs.discordPresence}
+            onChange={(next) => setLocalPrefs({ discordPresence: next })}
+          />
+        </SettingRow>
+      </SettingCard>
+      <SettingCard>
+        <SettingRow
+          glyph="decoding"
+          label="Hardware decoding"
+          hint="mpv hwdec=auto-safe. Changes take effect on the next file."
+        >
+          <OnOffSwitch
+            label="Hardware decoding"
+            on={prefs.hardwareDecoding}
+            onChange={(next) => setLocalPrefs({ hardwareDecoding: next })}
+          />
+        </SettingRow>
+      </SettingCard>
+    </Section>
+  )
+}
+
+/* ── Subtitles ───────────────────────────────────────────────────────────── */
+
+/**
+ * The bundled libass families have no webview equivalent, so the preview maps
+ * each onto the closest face the WebView can actually draw. It is an
+ * approximation on purpose: the real render is mpv, and these controls apply
+ * there live.
+ */
+function previewFamily(family: string | undefined): string {
+  if (family === 'Source Serif 4') return 'Georgia, "Times New Roman", serif'
+  if (family === 'JetBrains Mono') return 'var(--mono)'
+  return 'var(--sans)'
+}
+
+function SubtitlesSection() {
+  const settings = useSettings()
+  const updateSettings = useUpdateSettings()
+  const prefs = useLocalPrefs()
+
+  const scale = settings.subtitleScalePercent ?? SUBTITLE_SCALE_DEFAULT
+  const outline = settings.subtitleOutline ?? 'normal'
+  const shadow = settings.subtitleShadow ?? true
+  // The same arithmetic the player panel's preview uses, so both agree.
+  const metrics = subtitlePreviewMetrics(scale, outline)
+
+  return (
+    <Section id="subtitles" title="Subtitles">
+      {/* A stand-in for a video frame rather than a themed surface, because
+          a video frame is what subtitles are drawn over. It stays dark in
+          both themes so the caption keeps the contrast playback gives it. */}
+      <div className="sub-preview">
+        <div className="sub-preview-scrim" />
+        <div
+          className="sub-preview-caption"
+          style={{
+            fontFamily: previewFamily(settings.subtitleFontFamily),
+            fontSize: metrics.fontSize,
+            textShadow: subtitleCaptionShadow(metrics, shadow),
+          }}
+        >
+          Subtitle preview text
+        </div>
       </div>
+
+      {/* One grouped card: a header row, then each style choice on its own
+          hairline row. Font and Outline share a control column, so the
+          Outline tray takes the Font tray's width as the native page binds it. */}
+      <SettingCard>
+        <SettingRow glyph="font" label="Caption style" hint="Applies live during playback" />
+        <div className="set-group">
+          <SettingGroupRow label="Size">
+            <span className="set-slider">
+              <Slider
+                min={SUBTITLE_SCALE_MIN}
+                max={SUBTITLE_SCALE_MAX}
+                step={SUBTITLE_SCALE_STEP}
+                value={scale}
+                ariaLabel="Subtitle size"
+                onChange={(value) => updateSettings.mutate({ subtitleScalePercent: value })}
+              />
+              <span className="set-slider-value">{scale}%</span>
+            </span>
+          </SettingGroupRow>
+          <div className="set-tray-pair">
+            <SettingGroupRow label="Font">
+              <Segmented
+                compact
+                options={SUBTITLE_FONTS.map((font) => ({
+                  value: font.family ?? '',
+                  label: font.label,
+                }))}
+                value={settings.subtitleFontFamily ?? ''}
+                onChange={(value) => updateSettings.mutate({ subtitleFontFamily: value || undefined })}
+              />
+            </SettingGroupRow>
+            <SettingGroupRow label="Outline">
+              <Segmented
+                compact
+                options={SUBTITLE_OUTLINES.map((o) => ({ value: o.key, label: o.label }))}
+                value={outline}
+                onChange={(value) => updateSettings.mutate({ subtitleOutline: value })}
+              />
+            </SettingGroupRow>
+          </div>
+          <SettingGroupRow label="Shadow">
+            <OnOffSwitch
+              label="Subtitle shadow"
+              on={shadow}
+              onChange={(next) => updateSettings.mutate({ subtitleShadow: next })}
+            />
+          </SettingGroupRow>
+          {/* The size and font choices above always reach a plain text track.
+              This row decides whether they also override a track that ships
+              its own styling, the only case where the two can disagree. */}
+          <SettingGroupRow
+            label="Keep a track's own styling"
+            hint="On, a styled track keeps its look. Off, these settings win."
+          >
+            <OnOffSwitch
+              label="Keep a track's own styling"
+              on={prefs.subtitleTrackStyling}
+              onChange={(next) => setLocalPrefs({ subtitleTrackStyling: next })}
+            />
+          </SettingGroupRow>
+        </div>
+      </SettingCard>
     </Section>
   )
 }
@@ -342,6 +667,29 @@ function isBuiltInAddon(item: AddonEntry, scope: 'yours' | 'global'): boolean {
   return (DEFAULT_ADDON_URLS as readonly string[]).includes(item.transportUrl)
 }
 
+/** What a row offers at its end, decided once so the slot width can be measured from it. */
+interface AddonRowActions {
+  installForEveryone: boolean
+  remove: boolean
+}
+
+function addonRowActions(item: AddonEntry, scope: 'yours' | 'global', isAdmin: boolean): AddonRowActions {
+  const shadowed = scope === 'yours' && item.providedGlobally === true
+  return {
+    installForEveryone: scope === 'yours' && isAdmin && !shadowed,
+    // Only your own additions can be removed here. The built-in addons are
+    // what Halo needs to browse at all, and global ones are managed on the
+    // server, so neither offers the button rather than a disabled one.
+    remove: scope === 'yours' && !isBuiltInAddon(item, scope),
+  }
+}
+
+/** 28px buttons 2px apart; no buttons, no slot. (Native: AddonActionsWidth.) */
+function actionsWidth(actions: AddonRowActions): number {
+  const buttons = (actions.installForEveryone ? 1 : 0) + (actions.remove ? 1 : 0)
+  return buttons === 0 ? 0 : buttons * 28 + (buttons - 1) * 2
+}
+
 function AddonsSection() {
   const { data: addons, isPending, isError, refetch } = useAddons()
   const { data: me } = useMe()
@@ -364,6 +712,15 @@ function AddonsSection() {
   // One list save at a time: each sends the whole list as this render saw it,
   // so a second one started before the first is refetched would undo it.
   const listBusy = setAddons.isPending || setGlobalAddons.isPending
+
+  // Both lists share one slot width, as wide as the widest row's buttons, so
+  // the catalog switches line up down the page; with no buttons anywhere the
+  // slot (and its gap) is gone and the switches sit at the card's edge.
+  const slotWidth = Math.max(
+    0,
+    ...globalAddons.map((item) => actionsWidth(addonRowActions(item, 'global', isAdmin))),
+    ...userAddons.map((item) => actionsWidth(addonRowActions(item, 'yours', isAdmin))),
+  )
 
   const saveList = async (scope: 'yours' | 'global', edit: AddonListEdit, failure: string) => {
     if (listBusy) return
@@ -472,16 +829,11 @@ function AddonsSection() {
     // the global entry is removed; until then its order and catalogs mean
     // nothing.
     const shadowed = scope === 'yours' && item.providedGlobally === true
-    const builtIn = isBuiltInAddon(item, scope)
     const movable = editable && !shadowed && !listBusy
     // A hidden addon comes back with a stripped manifest, so the flag is the
     // only way to know the switch should still be drawn.
     const hasCatalogs = !shadowed && (item.manifest.catalogs.length > 0 || item.hideCatalogs)
-
-    // Only your own additions can be removed here. The built-in addons are
-    // what Halo needs to browse at all, and global ones are managed on the
-    // server, so neither offers the button rather than a disabled one.
-    const removable = scope === 'yours' && !builtIn
+    const actions = addonRowActions(item, scope, isAdmin)
 
     return (
       <div
@@ -521,60 +873,69 @@ function AddonsSection() {
         </span>
         <span className="addon-tile">{initials(item.manifest.name)}</span>
         <span className="addon-text">
-          <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+          <span className="addon-title">
             <span className="addon-name ellipsis">{item.manifest.name}</span>
             <span className="mono">{item.manifest.version}</span>
-            <span className={`addon-badge ${scope === 'yours' ? 'addon-badge-yours' : ''}`}>
-              {scope === 'yours' ? 'YOURS' : 'GLOBAL'}
-            </span>
           </span>
           <span className="addon-provides ellipsis">
             {shadowed ? 'Provided globally, so this copy is not used' : providesLine(item)}
           </span>
         </span>
-        {hasCatalogs ? (
-          <Toggle
-            label={`Show ${item.manifest.name} catalogs on Home`}
-            on={!item.hideCatalogs}
-            disabled={!editable}
-            onChange={(next) => {
-              setListError(null)
-              patch.mutate(
-                { addonId: item.id, hideCatalogs: !next },
-                { onError: () => setListError(`“${item.manifest.name}” catalogs could not be changed. Try again.`) },
-              )
-            }}
-          />
-        ) : (
-          <span />
-        )}
-        <span className="addon-actions">
-          {scope === 'yours' && isAdmin && !shadowed && (
-            <button
-              type="button"
-              className="icon-btn icon-btn-bare icon-btn-28"
-              title="Install for every user"
-              disabled={listBusy}
-              onClick={() => void makeGlobal(item)}
-            >
-              <FluentIcon glyph="globe" size={14} />
-            </button>
+        <span className="addon-end">
+          {hasCatalogs && (
+            <Toggle
+              label={`Show ${item.manifest.name} catalogs on Home`}
+              on={!item.hideCatalogs}
+              disabled={!editable}
+              onChange={(next) => {
+                setListError(null)
+                patch.mutate(
+                  { addonId: item.id, hideCatalogs: !next },
+                  { onError: () => setListError(`“${item.manifest.name}” catalogs could not be changed. Try again.`) },
+                )
+              }}
+            />
           )}
-          {removable && (
-            <button
-              type="button"
-              className="icon-btn icon-btn-bare icon-btn-28 icon-btn-danger"
-              title="Remove addon"
-              disabled={listBusy}
-              onClick={() => void remove(item, scope)}
-            >
-              <FluentIcon glyph="delete" size={14} />
-            </button>
+          {slotWidth > 0 && (
+            <span className="addon-actions" style={{ minWidth: slotWidth }}>
+              {actions.installForEveryone && (
+                <button
+                  type="button"
+                  className="icon-btn icon-btn-bare icon-btn-28"
+                  title="Install for every user"
+                  aria-label="Install for every user"
+                  disabled={listBusy}
+                  onClick={() => void makeGlobal(item)}
+                >
+                  <FluentIcon glyph="globe" size={14} />
+                </button>
+              )}
+              {actions.remove && (
+                <button
+                  type="button"
+                  className="icon-btn icon-btn-bare icon-btn-28 icon-btn-danger"
+                  title="Remove addon"
+                  aria-label="Remove addon"
+                  disabled={listBusy}
+                  onClick={() => void remove(item, scope)}
+                >
+                  <FluentIcon glyph="delete" size={14} />
+                </button>
+              )}
+            </span>
           )}
         </span>
       </div>
     )
   }
+
+  /** A list's heading names the list; "Catalogs on Home" names the switch column. */
+  const listHeader = (title: string) => (
+    <div className="addon-list-header">
+      <span className="set-list-title">{title}</span>
+      <span className="set-hint">Catalogs on Home</span>
+    </div>
+  )
 
   // A failed refresh keeps showing the list it already had; only a first
   // load with nothing to show is an error.
@@ -599,48 +960,62 @@ function AddonsSection() {
     body = <div className="set-state set-state-quiet">No addons are installed for this account.</div>
   } else {
     body = (
-      <div className="list-card">
-        {globalAddons.map((item) => row(item, 'global'))}
-        {userAddons.map((item) => row(item, 'yours'))}
+      <div className="addon-lists">
+        {globalAddons.length > 0 && (
+          <>
+            {listHeader('For everyone')}
+            <div className="addon-list">{globalAddons.map((item) => row(item, 'global'))}</div>
+          </>
+        )}
+        {userAddons.length > 0 && (
+          <>
+            {listHeader('Yours')}
+            <div className="addon-list">{userAddons.map((item) => row(item, 'yours'))}</div>
+          </>
+        )}
       </div>
     )
   }
 
   return (
-    <Section
-      id="addons"
-      gap={14}
-      title="Addons"
-      sub="Catalogs, streams and subtitles come from these. Order sets priority."
-    >
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input
-          className="field spacer"
-          placeholder="https://addon.example.com/manifest.json"
-          value={url}
-          spellCheck={false}
-          onChange={(e) => {
-            setUrl(e.target.value)
-            // The message was about the URL that was there; editing it moves on.
-            setAddError(null)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void add()
-          }}
-        />
-        <button
-          type="button"
-          className="btn-accent btn-body"
-          style={{ paddingInline: 18 }}
-          disabled={adding || listBusy || !addons || !url.trim()}
-          onClick={() => void add()}
-        >
-          {adding ? 'Adding…' : 'Add'}
-        </button>
-      </div>
-      {addError && <div className="error-text">{addError}</div>}
+    <Section id="addons" title="Addons">
+      <SettingCard>
+        <div className="addon-add">
+          <span className="set-row-glyph">
+            <FluentIcon glyph="add" size={20} />
+          </span>
+          <span className="set-row-text addon-add-text">
+            <span className="set-label">Add an addon</span>
+            <span className="set-hint">Catalogs, streams and subtitles come from these. Order sets priority.</span>
+          </span>
+          <input
+            className="field"
+            aria-label="Addon manifest URL"
+            placeholder="https://addon.example.com/manifest.json"
+            value={url}
+            spellCheck={false}
+            onChange={(e) => {
+              setUrl(e.target.value)
+              // The message was about the URL that was there; editing it moves on.
+              setAddError(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void add()
+            }}
+          />
+          <button
+            type="button"
+            className="btn-accent addon-add-btn"
+            disabled={adding || listBusy || !addons || !url.trim()}
+            onClick={() => void add()}
+          >
+            {adding ? 'Adding…' : 'Add'}
+          </button>
+        </div>
+      </SettingCard>
+      {addError && <div className="set-message error-text">{addError}</div>}
       {listError && (
-        <div className="error-text" role="alert">
+        <div className="set-message error-text" role="alert">
           {listError}
         </div>
       )}
@@ -668,346 +1043,52 @@ function CatalogLanguageRow({ addons }: { addons: AddonEntry[] }) {
     .find((list): list is string[] => list !== null && list.length > 0)
   if (!choices) return null
   return (
-    <div className="list-card">
-      <SettingRow label="Language rows on Home" hint="Rows such as TMDB's Language row show titles in this language">
-        <ComboBox
-          options={[
-            { value: ADDON_DEFAULT, label: 'Addon default' },
-            ...choices.map((language) => ({ value: language, label: language })),
-          ]}
-          value={settings.catalogLanguage ?? ADDON_DEFAULT}
-          width="auto"
-          minWidth={148}
-          ariaLabel="Language rows on Home"
-          onChange={(value) =>
-            updateSettings.mutate({ catalogLanguage: value === ADDON_DEFAULT ? undefined : String(value) })
-          }
-        />
-      </SettingRow>
-    </div>
+    <>
+      <div className="set-list-title set-home-title">Home</div>
+      <SettingCard>
+        <SettingRow glyph="globe" label="Language rows" hint="Rows such as TMDB's Language row show titles in this language">
+          <ComboBox
+            options={[
+              { value: ADDON_DEFAULT, label: 'Addon default' },
+              ...choices.map((language) => ({ value: language, label: language })),
+            ]}
+            value={settings.catalogLanguage ?? ADDON_DEFAULT}
+            width="auto"
+            minWidth={168}
+            ariaLabel="Language rows on Home"
+            onChange={(value) =>
+              updateSettings.mutate({ catalogLanguage: value === ADDON_DEFAULT ? undefined : String(value) })
+            }
+          />
+        </SettingRow>
+      </SettingCard>
+    </>
   )
 }
 
-/* ── Playback ────────────────────────────────────────────────────────────── */
+/* ── About ───────────────────────────────────────────────────────────────── */
 
-function LanguageSelect({
-  value,
-  noneLabel,
-  onChange,
-}: {
-  value: string | undefined
-  noneLabel: string
-  onChange: (value: string | undefined) => void
-}) {
-  const options = [
-    { value: 'none', label: noneLabel },
-    ...LANGUAGE_OPTIONS.map((lang) => ({ value: lang.code, label: lang.label })),
-  ]
-  return (
-    <ComboBox
-      options={options}
-      value={value ?? 'none'}
-      width={148}
-      onChange={(val) => onChange(val === 'none' ? undefined : val)}
-    />
-  )
-}
-
-function PlaybackSection() {
-  const settings = useSettings()
-  const updateSettings = useUpdateSettings()
-  const prefs = useLocalPrefs()
-
-  return (
-    <Section
-      id="playback"
-      gap={10}
-      title="Playback"
-      sub="Applied to every stream mpv opens. Changes take effect on the next file."
-    >
-      <div className="list-card">
-        <SettingRow label="Default audio language" hint="Picked when the file offers a match">
-          <LanguageSelect
-            value={settings.preferredAudioLang}
-            noneLabel="First track"
-            onChange={(value) => updateSettings.mutate({ preferredAudioLang: value })}
-          />
-        </SettingRow>
-        <SettingRow label="Default subtitles" hint="Falls back to addon results">
-          <LanguageSelect
-            value={settings.preferredSubtitleLang}
-            noneLabel="Off"
-            onChange={(value) => updateSettings.mutate({ preferredSubtitleLang: value })}
-          />
-        </SettingRow>
-        <SettingRow label="Autoplay next episode" hint="8 second countdown, cancellable">
-          <Toggle
-            label="Autoplay next episode"
-            on={settings.autoplayNextEpisode ?? true}
-            onChange={(next) => updateSettings.mutate({ autoplayNextEpisode: next })}
-          />
-        </SettingRow>
-        <SettingRow label="Resume where I left off" hint="Ignored under 30 seconds watched">
-          <Toggle
-            label="Resume where I left off"
-            on={prefs.resumePlayback}
-            onChange={(next) => setLocalPrefs({ resumePlayback: next })}
-          />
-        </SettingRow>
-        <SettingRow label="Hardware decoding" hint="mpv hwdec=auto-safe">
-          <Toggle
-            label="Hardware decoding"
-            on={prefs.hardwareDecoding}
-            onChange={(next) => setLocalPrefs({ hardwareDecoding: next })}
-          />
-        </SettingRow>
-        <SettingRow
-          label="Discord Rich Presence"
-          hint="Shares the title and episode you are watching with Discord"
-        >
-          <Toggle
-            label="Discord Rich Presence"
-            on={prefs.discordPresence}
-            onChange={(next) => setLocalPrefs({ discordPresence: next })}
-          />
-        </SettingRow>
-      </div>
-    </Section>
-  )
-}
-
-/* ── Subtitles ───────────────────────────────────────────────────────────── */
-
-/**
- * The bundled libass families have no webview equivalent, so the preview maps
- * each onto the closest face the WebView can actually draw. It is an
- * approximation on purpose: the real render is mpv, and these controls apply
- * there live.
- */
-function previewFamily(family: string | undefined): string {
-  if (family === 'Source Serif 4') return 'Georgia, "Times New Roman", serif'
-  if (family === 'JetBrains Mono') return 'var(--mono)'
-  return 'var(--sans)'
-}
-
-function SubtitlesSection() {
-  const settings = useSettings()
-  const updateSettings = useUpdateSettings()
-  const prefs = useLocalPrefs()
-
-  const scale = settings.subtitleScalePercent ?? SUBTITLE_SCALE_DEFAULT
-  const outline = settings.subtitleOutline ?? 'normal'
-  const shadow = settings.subtitleShadow ?? true
-  // The same arithmetic the player panel's preview uses, so both agree.
-  const metrics = subtitlePreviewMetrics(scale, outline)
-
-  return (
-    <Section id="subtitles" gap={12} title="Subtitles" sub="Appearance applies live during playback.">
-      <div className="sub-grid">
-        <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-          <div className="sub-row sub-row-value">
-            <span className="opt-label">Size</span>
-            <Slider
-              min={SUBTITLE_SCALE_MIN}
-              max={SUBTITLE_SCALE_MAX}
-              step={SUBTITLE_SCALE_STEP}
-              value={scale}
-              ariaLabel="Subtitle size"
-              onChange={(value) => updateSettings.mutate({ subtitleScalePercent: value })}
-            />
-            <span className="mono" style={{ color: 'var(--t2)', textAlign: 'right' }}>
-              {scale}%
-            </span>
-          </div>
-          <div className="ticks" style={{ margin: '-4px 44px 0 92px' }}>
-            <span>{SUBTITLE_SCALE_MIN}</span>
-            <span>100</span>
-            <span>{SUBTITLE_SCALE_MAX}</span>
-          </div>
-
-          {/* One grid for both pickers, so the Outline tray takes the Font
-              tray's width as the native page binds it to. */}
-          <div className="sub-trays">
-            <span className="opt-label">Font</span>
-            <Segmented
-              compact
-              options={SUBTITLE_FONTS.map((font) => ({
-                value: font.family ?? '',
-                label: font.label,
-              }))}
-              value={settings.subtitleFontFamily ?? ''}
-              onChange={(value) =>
-                updateSettings.mutate({ subtitleFontFamily: value || undefined })
-              }
-            />
-            <span className="opt-label">Outline</span>
-            <Segmented
-              compact
-              options={SUBTITLE_OUTLINES.map((o) => ({ value: o.key, label: o.label }))}
-              value={outline}
-              onChange={(value) => updateSettings.mutate({ subtitleOutline: value })}
-            />
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 10 }}>
-            <span className="spacer opt-label">Shadow</span>
-            <Toggle
-              label="Subtitle shadow"
-              on={shadow}
-              onChange={(next) => updateSettings.mutate({ subtitleShadow: next })}
-            />
-          </div>
-
-          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <span className="spacer opt-label">Track styling</span>
-              <Toggle
-                label="Keep a styled track's own look"
-                on={prefs.subtitleTrackStyling}
-                onChange={(next) => setLocalPrefs({ subtitleTrackStyling: next })}
-              />
-            </div>
-            <div className="opt-hint">
-              On, a styled track keeps its own look. Off, these settings win.
-            </div>
-          </div>
-        </div>
-
-        {/* A stand-in for a video frame rather than a themed surface, because
-            a video frame is what subtitles are drawn over. It stays dark in
-            both themes so the caption keeps the contrast playback gives it. */}
-        <div className="sub-preview">
-          <div className="sub-preview-scrim" />
-          <div className="sub-preview-kicker">PREVIEW</div>
-          <div
-            className="sub-preview-caption"
-            style={{
-              fontFamily: previewFamily(settings.subtitleFontFamily),
-              fontSize: metrics.fontSize,
-              textShadow: subtitleCaptionShadow(metrics, shadow),
-            }}
-          >
-            Subtitle preview text
-          </div>
-        </div>
-      </div>
-    </Section>
-  )
-}
-
-/* ── Server & account ────────────────────────────────────────────────────── */
-
-function AccountSection() {
-  const { state } = useSession()
-  return state === 'device' ? <DeviceAccountSection /> : <SignedInAccountSection />
-}
-
-/** Halo used without an account: nothing to sign out of, and signing in is the way to sync. */
-function DeviceAccountSection() {
-  const { startSignIn } = useSession()
+/** Closes the page: the app, its version and licence, and the way to newer builds. */
+function AboutCard() {
   const { data: build } = useBuildInfo()
-
   return (
-    <Section
-      id="account"
-      gap={12}
-      title="Server & account"
-      sub="Your library, watch progress and addons are kept on this PC. Sign in to sync them across your devices."
-    >
-      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 13, padding: 14 }}>
-        <img className="set-avatar" src={avatar} alt="" draggable={false} />
-        <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>{DEVICE_ACCOUNT_NAME}</span>
-          <span className="mono">{DEVICE_ACCOUNT_LABEL}</span>
+    <SettingCard>
+      <div className="set-about">
+        <HaloMark size={20} />
+        <span className="set-row-text">
+          <span className="set-label">Halo Desktop</span>
+          <span className="mono">{`v${build?.app ?? '…'} · mpv ${build?.mpv ?? '…'}`}</span>
+          <span className="set-hint">© 2026 Last Projects &amp; Shy · GPL-3.0 license</span>
         </span>
-      </div>
-
-      <div className="list-card">
-        <div className="list-row">
-          <span className="spacer opt-label">Version</span>
-          <span className="mono" style={{ fontSize: 13, color: 'var(--t2)' }}>
-            {`v${build?.app ?? '…'} · mpv ${build?.mpv ?? '…'}`}
-          </span>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10 }}>
-        <button type="button" className="btn-accent btn-body" onClick={startSignIn}>
-          Sign in to sync
-        </button>
-      </div>
-
-      <TmdbKeyCard />
-    </Section>
-  )
-}
-
-function SignedInAccountSection() {
-  const { data: me } = useMe()
-  const { signOut } = useSession()
-  const { data: build } = useBuildInfo()
-  const status = useServerStatus()
-
-  // The account's own picture when it has one; the stock avatar otherwise.
-  const picture = useAccountPicture()
-  const statusLine = describeStatus(status)
-  const statusTone =
-    status.state === 'connected' ? 'connected' : status.state === 'probing' ? 'checking' : 'down'
-  const statusColor =
-    statusTone === 'connected' ? 'var(--su)' : statusTone === 'checking' ? 'var(--t3)' : 'var(--cr)'
-
-  const rows: Array<{ label: string; value: string; color?: string }> = [
-    { label: 'Signed in as', value: me?.username ?? '…' },
-    { label: 'Status', value: statusLine, color: statusColor },
-    { label: 'Version', value: `v${build?.app ?? '…'} · mpv ${build?.mpv ?? '…'}` },
-  ]
-
-  return (
-    <Section
-      id="account"
-      gap={12}
-      title="Server & account"
-      sub="Library, watch progress and addon order sync through this server."
-    >
-      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 13, padding: 14 }}>
-        <img className="set-avatar" src={picture ?? avatar} alt="" draggable={false} />
-        <span className="spacer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>{me ? accountDisplayName(me.username) : '…'}</span>
-          <span className="mono">{accountLabel(me)}</span>
-        </span>
-        <span className={`status-pill status-pill-${statusTone}`}>{statusLine}</span>
-      </div>
-
-      <div className="list-card">
-        {rows.map((row) => (
-          <div key={row.label} className="list-row">
-            <span className="spacer opt-label">{row.label}</span>
-            <span className="mono" style={{ fontSize: 13, color: row.color ?? 'var(--t2)' }}>
-              {row.value}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', gap: 10 }}>
         <button
           type="button"
-          className="btn-danger btn-body"
-          onClick={() => {
-            void showDialog({
-              title: 'Sign out?',
-              body: 'You will need to sign in again to use this server.',
-              primary: 'Sign out',
-              close: 'Cancel',
-              destructive: true,
-            }).then((confirmed) => {
-              if (confirmed) signOut()
-            })
-          }}
+          className="btn set-about-btn"
+          title="Opens the releases page on GitHub"
+          onClick={() => void openUrl(RELEASES_URL).catch(() => {})}
         >
-          Sign out
+          Check for updates
         </button>
       </div>
-    </Section>
+    </SettingCard>
   )
 }
