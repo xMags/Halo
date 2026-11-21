@@ -11,12 +11,14 @@ import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.readByteArray
@@ -122,49 +124,71 @@ private class TmdbNotFoundException : Exception("TMDB has no such entry")
  * An in-memory cache with a time to live and a size cap. Expiry is checked on
  * read; over the cap the least recently used entry goes first; concurrent
  * callers of one key share one load, and a failed load is not kept.
+ *
+ * The caller whose load runs may be cancelled (a newer keystroke, a deadline)
+ * while others wait on it. Its cancellation is not theirs, so they are told
+ * the load was abandoned and each tries again, one of them loading anew. The
+ * bookkeeping runs under [NonCancellable]: a cancelled loader that skipped it
+ * would leave the key marked as loading, and every later caller would wait on
+ * a load that never ends.
  */
 class TtlCache<V>(private val maxEntries: Int, private val ttlMs: Long, private val now: () -> Long) {
     private class Entry<V>(val value: V, val expiresAt: Long)
+
+    /** What waiters see when the caller loading for them was cancelled. */
+    private class LoadAbandonedException : Exception("the shared load was cancelled")
 
     private val entries = LinkedHashMap<String, Entry<V>>()
     private val loading = mutableMapOf<String, Deferred<V>>()
     private val lock = Mutex()
 
     suspend fun getOrLoad(key: String, loader: suspend () -> V): V {
-        val waiting: Deferred<V>
-        val mine: CompletableDeferred<V>?
-        lock.withLock {
-            val entry = entries.remove(key)
-            if (entry != null && now() < entry.expiresAt) {
-                entries[key] = entry
-                return entry.value
+        while (true) {
+            val waiting: Deferred<V>
+            val mine: CompletableDeferred<V>?
+            lock.withLock {
+                val entry = entries.remove(key)
+                if (entry != null && now() < entry.expiresAt) {
+                    entries[key] = entry
+                    return entry.value
+                }
+                val pending = loading[key]
+                if (pending != null) {
+                    waiting = pending
+                    mine = null
+                } else {
+                    mine = CompletableDeferred()
+                    loading[key] = mine
+                    waiting = mine
+                }
             }
-            val pending = loading[key]
-            if (pending != null) {
-                waiting = pending
-                mine = null
-            } else {
-                mine = CompletableDeferred()
-                loading[key] = mine
-                waiting = mine
+            if (mine != null) return load(key, mine, loader)
+            try {
+                return waiting.await()
+            } catch (_: LoadAbandonedException) {
+                // The loader was cancelled, not this caller: try again.
             }
         }
-        if (mine == null) return waiting.await()
-        try {
-            val value = loader()
+    }
+
+    private suspend fun load(key: String, mine: CompletableDeferred<V>, loader: suspend () -> V): V {
+        val value = try {
+            loader()
+        } catch (failure: Throwable) {
+            withContext(NonCancellable) { lock.withLock { loading.remove(key) } }
+            mine.completeExceptionally(if (failure is CancellationException) LoadAbandonedException() else failure)
+            throw failure
+        }
+        withContext(NonCancellable) {
             lock.withLock {
                 entries.remove(key)
                 entries[key] = Entry(value, now() + ttlMs)
                 while (entries.size > maxEntries) entries.remove(entries.keys.first())
                 loading.remove(key)
             }
-            mine.complete(value)
-            return value
-        } catch (failure: Throwable) {
-            lock.withLock { loading.remove(key) }
-            mine.completeExceptionally(failure)
-            throw failure
         }
+        mine.complete(value)
+        return value
     }
 }
 
