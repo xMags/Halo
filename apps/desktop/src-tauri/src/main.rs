@@ -490,6 +490,20 @@ async fn downloads_playback_files(
     state.playback_files(&job_id).await
 }
 
+/// A finished download's saved logo (`kind` "logo") or art ("art"), as raw
+/// bytes the card turns into a picture; empty when none is saved. The
+/// webview gets no file access of its own: the engine reads only the
+/// download's own picture, inside the download folders.
+#[tauri::command]
+async fn downloads_sidecar(
+    state: State<'_, Arc<downloads::DownloadManager>>,
+    job_id: String,
+    kind: String,
+) -> Result<tauri::ipc::Response, String> {
+    let bytes = state.sidecar(&job_id, &kind).await?.unwrap_or_default();
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// Halo's level in the Windows Volume Mixer; None until mpv has opened audio.
 #[tauri::command]
 async fn audio_session_read() -> Result<Option<audio_session::SessionVolume>, String> {
@@ -646,6 +660,7 @@ fn main() {
             downloads_open_folder,
             downloads_playback_path,
             downloads_playback_files,
+            downloads_sidecar,
             audio_session_read,
             audio_session_set_volume,
             scrub_preview_open,

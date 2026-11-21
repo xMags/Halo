@@ -31,10 +31,12 @@ tauri-plugin-dialog = "2"
 # COM access to this process's Windows audio session (audio_session.rs), the
 # window's icons (window_icon.rs), its placement around fullscreen
 # (window_placement.rs) and the process mitigation that keeps overlay
-# hook DLLs out (injection_guard.rs) and the one-Halo mutex (instance_guard.rs,
-# which needs Security for CreateMutexW); the version Tauri already depends on, so
-# it adds no new crate to the build.
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Media_Audio", "Win32_Security", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
+# hook DLLs out (injection_guard.rs), the one-Halo mutex (instance_guard.rs,
+# which needs Security for CreateMutexW) and the Windows Imaging Component that
+# re-encodes a download's saved logo and art (downloads/sidecar.rs, with
+# Com_StructuredStorage, Ole and Variant for its encoder options); the version
+# Tauri already depends on, so it adds no new crate to the build.
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Imaging", "Win32_Media_Audio", "Win32_Security", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_LibraryLoader", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
 # WebView2's ProcessFailed event (webview_recovery.rs); the version wry already
 # depends on, so it adds no new crate to the build.
 webview2-com = "0.38"

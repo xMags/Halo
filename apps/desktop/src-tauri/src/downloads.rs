@@ -12,11 +12,13 @@ mod redirect;
 mod relocate;
 mod segmented;
 mod segments;
+mod sidecar;
 
 use crate::secure_fs::{atomic_replace, os_error_code, protect, unprotect, write_durably};
 use containment::{is_within_approved_root, resolve_roots, same_path, strip_verbatim};
 use futures_util::StreamExt;
-use naming::{download_file_name, is_safe_file_name, safe_language, subtitle_extension};
+use naming::{download_file_name, download_folder_name, is_safe_file_name, safe_language, subtitle_extension};
+use sidecar::{sidecar_path, sidecar_temp_path, SidecarKind};
 use redirect::{is_redirect_status, next_redirect_target};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, IF_RANGE, LOCATION, RANGE};
 use reqwest::Url;
@@ -82,6 +84,9 @@ const OTHER_ACCOUNT: &str = "This download belongs to another account.";
 const RETAINED_FOR_REPLACEMENT: &str =
     "The previous file is retained until its replacement finishes.";
 const OUTSIDE_FOLDERS: &str = "This download is saved outside Halo's download folders. It was removed from the list and its files were left in place.";
+const TITLE_FOLDER_FAILED: &str = "A folder for this title could not be made in the download folder.";
+const TITLE_FOLDER_OUTSIDE: &str =
+    "This title's folder leads outside the download folder. Remove it and try again.";
 const DELETE_FAILED: &str = "Halo could not delete every file for this download. It will try again the next time Halo starts.";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -206,6 +211,12 @@ pub struct DownloadView {
     pub explicit_pause: bool,
     pub created_at: u64,
     pub updated_at: u64,
+    /// The title's logo is saved beside the video (`<stem>-clearlogo.png`).
+    #[serde(default)]
+    pub has_saved_logo: bool,
+    /// The landscape art is saved beside the video (`<stem>-fanart.jpg`).
+    #[serde(default)]
+    pub has_saved_artwork: bool,
 }
 
 /// What asking for a download did. Swapping the saved source of a video is
@@ -276,6 +287,12 @@ struct DownloadRecord {
     /// crash in this state finishes its removal on the next launch.
     #[serde(default)]
     pending_deletion: bool,
+    /// Set once the logo or art has been written beside the video. The file
+    /// is still checked before it is read, since the viewer can delete it.
+    #[serde(default)]
+    saved_logo: bool,
+    #[serde(default)]
+    saved_artwork: bool,
 }
 
 impl DownloadRecord {
@@ -302,6 +319,8 @@ impl DownloadRecord {
             explicit_pause: self.explicit_pause,
             created_at: self.created_at,
             updated_at: self.updated_at,
+            has_saved_logo: self.saved_logo,
+            has_saved_artwork: self.saved_artwork,
         }
     }
     fn target(&self) -> PathBuf {
@@ -323,6 +342,24 @@ impl DownloadRecord {
             self.subtitle_file_name.as_deref(),
         )
     }
+    fn sidecar(&self, kind: SidecarKind) -> Option<PathBuf> {
+        if !is_safe_record_path(self) {
+            return None;
+        }
+        sidecar_path(Path::new(&self.root_path), &self.file_name, kind)
+    }
+    fn has_sidecar_flag(&self, kind: SidecarKind) -> bool {
+        match kind {
+            SidecarKind::Logo => self.saved_logo,
+            SidecarKind::Art => self.saved_artwork,
+        }
+    }
+    fn set_sidecar_flag(&mut self, kind: SidecarKind, saved: bool) {
+        match kind {
+            SidecarKind::Logo => self.saved_logo = saved,
+            SidecarKind::Art => self.saved_artwork = saved,
+        }
+    }
 }
 
 /// Every file one download may own on disk.
@@ -332,33 +369,46 @@ struct FileSet {
     table: PathBuf,
     table_temp: PathBuf,
     subtitle: Option<PathBuf>,
+    /// The saved logo and art, and the copies written before they replace them.
+    sidecars: Vec<PathBuf>,
     target: PathBuf,
+    /// The folder holding them all; a title's own folder goes once it is empty.
+    folder: PathBuf,
 }
 
 impl FileSet {
     fn new(root: &str, file_name: &str, subtitle: Option<&str>) -> Self {
-        let target = PathBuf::from(root).join(file_name);
+        let folder = PathBuf::from(root);
+        let target = folder.join(file_name);
         let part = part_path(&target);
         let table = segments::table_path(&part);
+        let sidecars = SidecarKind::ALL
+            .into_iter()
+            .filter_map(|kind| sidecar_path(&folder, file_name, kind))
+            .flat_map(|path| [sidecar_temp_path(&path), path])
+            .collect();
         Self {
             table_temp: segments::table_temp_path(&table),
             table,
             part,
             subtitle: subtitle
                 .filter(|name| is_safe_file_name(name))
-                .map(|name| PathBuf::from(root).join(name)),
+                .map(|name| folder.join(name)),
+            sidecars,
             target,
+            folder,
         }
     }
+    /// Every path, the playable one last.
+    fn paths(&self) -> impl Iterator<Item = &PathBuf> {
+        [&self.part, &self.table, &self.table_temp]
+            .into_iter()
+            .chain(self.subtitle.as_ref())
+            .chain(self.sidecars.iter())
+            .chain(std::iter::once(&self.target))
+    }
     fn contains(&self, path: &Path) -> bool {
-        same_path(&self.target, path)
-            || same_path(&self.part, path)
-            || same_path(&self.table, path)
-            || same_path(&self.table_temp, path)
-            || self
-                .subtitle
-                .as_deref()
-                .is_some_and(|subtitle| same_path(subtitle, path))
+        self.paths().any(|owned| same_path(owned, path))
     }
 }
 
@@ -433,6 +483,9 @@ struct Inner {
     cancel: HashMap<String, Arc<AtomicBool>>,
     directory: PathBuf,
     approved_roots: Vec<PathBuf>,
+    /// `<job id>|logo` and `<job id>|art` already tried this session: a
+    /// picture that cannot be fetched waits for the next launch.
+    sidecars_tried: HashSet<String>,
 }
 
 impl Inner {
@@ -613,6 +666,8 @@ pub struct DownloadManager {
     config_path: PathBuf,
     vault_dir: PathBuf,
     client: reqwest::Client,
+    /// Fetches the logo and art saved beside finished downloads (sidecar.rs).
+    sidecar_client: reqwest::Client,
     inner: Mutex<Inner>,
     /// Serialises snapshot-and-write so an older snapshot of the index can
     /// never land on disk after a newer one. Always taken before `inner`.
@@ -723,6 +778,7 @@ impl DownloadManager {
                 .connect_timeout(Duration::from_secs(30))
                 .build()
                 .map_err(|e| format!("HTTP client unavailable: {e}"))?,
+            sidecar_client: sidecar::sidecar_client()?,
             inner: Mutex::new(Inner {
                 entries,
                 active_account: None,
@@ -730,6 +786,7 @@ impl DownloadManager {
                 cancel: HashMap::new(),
                 directory,
                 approved_roots: approved_roots.clone(),
+                sidecars_tried: HashSet::new(),
             }),
             persist_gate: Mutex::new(()),
             job_released: Notify::new(),
@@ -786,10 +843,12 @@ impl DownloadManager {
                 }
             }
             inner.active_account = Some(account_key);
+            inner.sidecars_tried.clear();
             inner.visible_views()
         };
         self.persist().await?;
         self.kick();
+        self.enrich_sidecars();
         Ok(views)
     }
 
@@ -1001,6 +1060,14 @@ impl DownloadManager {
         }
 
         let job_id = new_job_id();
+        // Each title gets its own folder in the download folder, which holds
+        // its video, subtitle and pictures (one per show for episodes). One
+        // made here and left empty by a start that then fails is taken away.
+        let title_folder = TitleFolder::prepare(
+            &directory,
+            request.media.show_name.as_deref().filter(|name| !name.trim().is_empty()).unwrap_or(&request.media.title),
+            &resolve_roots(&self.inner.lock().await.approved_roots),
+        )?;
         let file_name = {
             let inner = self.inner.lock().await;
             choose_file_name(
@@ -1008,7 +1075,7 @@ impl DownloadManager {
                 &request.media,
                 &fingerprint,
                 &account,
-                &directory,
+                title_folder.path(),
             )?
         };
         let protected = ProtectedRequest {
@@ -1042,7 +1109,7 @@ impl DownloadManager {
             file_name,
             subtitle_file_name: None,
             subtitle_lang: None,
-            root_path: directory.to_string_lossy().into_owned(),
+            root_path: title_folder.path().to_string_lossy().into_owned(),
             status: DownloadStatus::Queued,
             total_bytes: 0,
             downloaded_bytes: 0,
@@ -1056,6 +1123,8 @@ impl DownloadManager {
             active_connections: 0,
             replacement: backup,
             pending_deletion: false,
+            saved_logo: false,
+            saved_artwork: false,
         };
         {
             let mut inner = self.inner.lock().await;
@@ -1071,6 +1140,7 @@ impl DownloadManager {
             self.delete_request(&job_id);
             return Err(error);
         }
+        title_folder.keep();
         // The superseded download is hidden now; the replacement stands in.
         for id in &superseded {
             self.emit_removed(id);
@@ -1379,7 +1449,7 @@ impl DownloadManager {
 
     /// Stores the landscape artwork the app looked up for a download's row.
     /// A stale answer (another account, a removed download) is ignored.
-    pub async fn set_landscape_artwork(&self, job_id: &str, artwork: String) -> Result<(), String> {
+    pub async fn set_landscape_artwork(self: &Arc<Self>, job_id: &str, artwork: String) -> Result<(), String> {
         validate_artwork_url(&artwork)?;
         let view = {
             let mut inner = self.inner.lock().await;
@@ -1405,7 +1475,181 @@ impl DownloadManager {
         };
         self.persist().await?;
         self.emit_changed(view);
+        self.enrich_sidecars();
         Ok(())
+    }
+
+    /// Saves the logo and landscape art beside each finished download of the
+    /// active account that lacks them, so its card works offline. Each job and
+    /// picture is tried once per session; the work runs in the background, one
+    /// picture at a time, and writes only through [`Self::save_sidecar`].
+    fn enrich_sidecars(self: &Arc<Self>) {
+        let manager = Arc::clone(self);
+        tauri::async_runtime::spawn(async move {
+            let work = manager.sidecars_to_fetch().await;
+            for (job_id, account, kind, url) in work {
+                match sidecar::fetch_sidecar(&manager.sidecar_client, &url, kind).await {
+                    Ok(bytes) => {
+                        manager.save_sidecar(&job_id, &account, kind, bytes).await;
+                    }
+                    // Offline, a missing picture or a refused one: the card keeps
+                    // showing the network's copy, and the next launch tries again.
+                    Err(_) => {}
+                }
+            }
+        });
+    }
+
+    /// The pictures to fetch: one already on disk is only recorded, a missing
+    /// one is queued, and each is claimed so a second call skips it.
+    async fn sidecars_to_fetch(&self) -> Vec<(String, String, SidecarKind, String)> {
+        let mut found = Vec::new();
+        let mut work = Vec::new();
+        {
+            let mut inner = self.inner.lock().await;
+            let Some(account) = inner.active_account.clone() else {
+                return work;
+            };
+            let candidates: Vec<DownloadRecord> = inner
+                .entries
+                .values()
+                .filter(|entry| {
+                    entry.account_key == account && entry.status == DownloadStatus::Done && !entry.pending_deletion
+                })
+                .cloned()
+                .collect();
+            for entry in candidates {
+                for kind in SidecarKind::ALL {
+                    let key = format!("{}|{}", entry.job_id, if kind == SidecarKind::Logo { "logo" } else { "art" });
+                    if inner.sidecars_tried.contains(&key) {
+                        continue;
+                    }
+                    let Some(path) = entry.sidecar(kind) else {
+                        continue;
+                    };
+                    if path.is_file() {
+                        inner.sidecars_tried.insert(key);
+                        if !entry.has_sidecar_flag(kind) {
+                            found.push((entry.job_id.clone(), kind));
+                        }
+                        continue;
+                    }
+                    let url = match kind {
+                        SidecarKind::Logo => entry.media.meta_id.as_deref().and_then(sidecar::metahub_logo_url),
+                        SidecarKind::Art => entry.media.landscape_artwork.clone(),
+                    };
+                    // No address yet (the art arrives later): untried, so the
+                    // call that brings it can take it.
+                    let Some(url) = url.filter(|url| sidecar::is_sidecar_source_url(url)) else {
+                        continue;
+                    };
+                    inner.sidecars_tried.insert(key);
+                    work.push((entry.job_id.clone(), account.clone(), kind, url));
+                }
+            }
+        }
+        for (job_id, kind) in found {
+            self.mark_sidecar(&job_id, kind, true).await;
+        }
+        work
+    }
+
+    /// Writes a finished download's logo or art beside its video, through a
+    /// temporary file renamed over it. The write happens under the engine's
+    /// lock: a removal tombstones the record under the same lock, so either
+    /// the picture is written first and the removal deletes it with the rest,
+    /// or the removal comes first and nothing is written.
+    async fn save_sidecar(&self, job_id: &str, account: &str, kind: SidecarKind, bytes: Vec<u8>) -> bool {
+        if bytes.is_empty() || bytes.len() > sidecar::MAX_SIDECAR_BYTES {
+            return false;
+        }
+        let view = {
+            let mut inner = self.inner.lock().await;
+            if inner.active_account.as_deref() != Some(account) {
+                return false;
+            }
+            let roots = resolve_roots(&inner.approved_roots);
+            let Some(entry) = inner.entries.get(job_id) else {
+                return false;
+            };
+            if entry.account_key != account || entry.pending_deletion || entry.status != DownloadStatus::Done {
+                return false;
+            }
+            let Some(target) = entry.sidecar(kind) else {
+                return false;
+            };
+            let folder = PathBuf::from(&entry.root_path);
+            // Off the async threads, with the lock still held (see above).
+            let written = tokio::task::spawn_blocking(move || write_sidecar(&folder, &target, &bytes, &roots))
+                .await
+                .unwrap_or(false);
+            if !written {
+                return false;
+            }
+            let Some(entry) = inner.entries.get_mut(job_id) else {
+                return false;
+            };
+            entry.set_sidecar_flag(kind, true);
+            entry.updated_at = now_ms();
+            inner.visible_view(job_id)
+        };
+        let _ = self.persist().await;
+        if let Some(view) = view {
+            self.emit_changed(view);
+        }
+        true
+    }
+
+    async fn mark_sidecar(&self, job_id: &str, kind: SidecarKind, saved: bool) {
+        let view = {
+            let mut inner = self.inner.lock().await;
+            let Some(entry) = inner.entries.get_mut(job_id) else {
+                return;
+            };
+            if entry.has_sidecar_flag(kind) == saved {
+                return;
+            }
+            entry.set_sidecar_flag(kind, saved);
+            entry.updated_at = now_ms();
+            inner.visible_view(job_id)
+        };
+        let _ = self.persist().await;
+        if let Some(view) = view {
+            self.emit_changed(view);
+        }
+    }
+
+    /// A finished download's saved logo or art, for its card. None when it is
+    /// not saved (or was deleted by hand, which clears the record's mark), or
+    /// when the record's path leads outside the download folders.
+    pub async fn sidecar(&self, job_id: &str, kind: &str) -> Result<Option<Vec<u8>>, String> {
+        let kind = SidecarKind::parse(kind).ok_or_else(|| "Unknown picture.".to_string())?;
+        let (path, roots) = {
+            let inner = self.inner.lock().await;
+            let Some(account) = inner.active_account.as_deref() else {
+                return Ok(None);
+            };
+            let Some(entry) = inner.entries.get(job_id).filter(|entry| inner.is_visible(entry, account)) else {
+                return Ok(None);
+            };
+            if !entry.has_sidecar_flag(kind) {
+                return Ok(None);
+            }
+            let Some(path) = entry.sidecar(kind) else {
+                return Ok(None);
+            };
+            (path, resolve_roots(&inner.approved_roots))
+        };
+        let read = tokio::task::spawn_blocking(move || read_sidecar(&path, &roots))
+            .await
+            .map_err(|error| error.to_string())?;
+        match read {
+            Some(bytes) => Ok(Some(bytes)),
+            None => {
+                self.mark_sidecar(job_id, kind, false).await;
+                Ok(None)
+            }
+        }
     }
 
     pub async fn playback_path(&self, job_id: &str) -> Result<String, String> {
@@ -1471,7 +1715,7 @@ impl DownloadManager {
                     let marked_missing = is_marked_missing(entry);
                     (entry.status == DownloadStatus::Done || marked_missing).then(|| Candidate {
                         job_id: entry.job_id.clone(),
-                        root: PathBuf::from(&entry.root_path),
+                        root: presence_folder(Path::new(&entry.root_path), &inner.approved_roots),
                         target: entry.target(),
                         total_bytes: entry.total_bytes,
                         marked_missing,
@@ -1689,6 +1933,9 @@ impl DownloadManager {
         }
         self.job_released.notify_waiters();
         self.kick();
+        if result.is_ok() {
+            self.enrich_sidecars();
+        }
     }
 
     /// A subtitle can be attached after the transfer has read its request for
@@ -2237,11 +2484,7 @@ fn remove_files(
 ) -> Result<(), RemoveError> {
     // The part goes before its table: a full-length part must never be left
     // without the table that says which of its bytes arrived.
-    let paths = [&files.part, &files.table, &files.table_temp]
-        .into_iter()
-        .chain(files.subtitle.as_ref())
-        .chain(std::iter::once(&files.target));
-    for path in paths {
+    for path in files.paths() {
         if preserve.is_some_and(|owner| owner.contains(path)) {
             continue;
         }
@@ -2253,7 +2496,125 @@ fn remove_files(
             Err(_) => return Err(RemoveError::Io),
         }
     }
+    remove_folder_if_left_empty(&files.folder, resolved_roots);
     Ok(())
+}
+
+/// The folder a new download is saved in, made for it if need be. Dropped
+/// without [`TitleFolder::keep`], a folder this start made is taken away
+/// again while it is still empty.
+struct TitleFolder {
+    path: PathBuf,
+    created: bool,
+}
+
+impl TitleFolder {
+    fn prepare(directory: &Path, title: &str, resolved_roots: &[PathBuf]) -> Result<Self, String> {
+        let path = directory.join(download_folder_name(title));
+        let created = match fs::create_dir(&path) {
+            Ok(()) => true,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
+            Err(_) => return Err(TITLE_FOLDER_FAILED.into()),
+        };
+        let folder = Self { path, created };
+        if !folder.path.is_dir() {
+            return Err(TITLE_FOLDER_FAILED.into());
+        }
+        // A link planted under the download folder must not lead the download elsewhere.
+        if containment::ensure_within_roots(&folder.path, resolved_roots).is_err() {
+            return Err(TITLE_FOLDER_OUTSIDE.into());
+        }
+        Ok(folder)
+    }
+    fn path(&self) -> &Path {
+        &self.path
+    }
+    fn keep(mut self) {
+        self.created = false;
+    }
+}
+
+impl Drop for TitleFolder {
+    fn drop(&mut self) {
+        if self.created {
+            // Refused by the file system unless the folder is still empty.
+            let _ = fs::remove_dir(&self.path);
+        }
+    }
+}
+
+/// Writes a picture through a temporary file renamed over `target`. False,
+/// writing nothing, when the folder is gone or either path leads outside the
+/// download folders.
+fn write_sidecar(folder: &Path, target: &Path, bytes: &[u8], resolved_roots: &[PathBuf]) -> bool {
+    let temporary = sidecar_temp_path(target);
+    if containment::ensure_within_roots(target, resolved_roots).is_err()
+        || containment::ensure_within_roots(&temporary, resolved_roots).is_err()
+        || !folder.is_dir()
+    {
+        return false;
+    }
+    let written = fs::File::create(&temporary)
+        .and_then(|mut file| {
+            file.write_all(bytes)?;
+            file.sync_all()
+        })
+        .and_then(|()| fs::rename(&temporary, target));
+    if written.is_err() {
+        let _ = fs::remove_file(&temporary);
+        return false;
+    }
+    true
+}
+
+/// Reads a saved picture, refusing a path outside the download folders, a
+/// link, anything but a file, and anything over the size a picture may be.
+fn read_sidecar(path: &Path, resolved_roots: &[PathBuf]) -> Option<Vec<u8>> {
+    containment::ensure_within_roots(path, resolved_roots).ok()?;
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > sidecar::MAX_SIDECAR_BYTES as u64 {
+        return None;
+    }
+    let bytes = fs::read(path).ok()?;
+    (bytes.len() <= sidecar::MAX_SIDECAR_BYTES).then_some(bytes)
+}
+
+/// A title's own folder goes once its last file has: only when it is empty,
+/// is inside a root without being one, and is a real folder rather than a
+/// link (removing a link would act on wherever it points). Best effort: a
+/// folder the viewer has put something else in is simply kept.
+fn remove_folder_if_left_empty(folder: &Path, resolved_roots: &[PathBuf]) {
+    if !is_within_approved_root(folder, resolved_roots)
+        || resolved_roots.iter().any(|root| same_path(root, folder))
+    {
+        return;
+    }
+    let Ok(metadata) = fs::symlink_metadata(folder) else {
+        return;
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return;
+    }
+    if containment::real_path(folder).is_none_or(|real| !same_path(&real, folder)) {
+        return;
+    }
+    // Refused by the file system unless the folder is empty.
+    let _ = fs::remove_dir(folder);
+}
+
+/// The folder whose presence tells a deleted file from an unreachable one. A
+/// download saved in its own folder under an approved root is judged by that
+/// root: the viewer deleting the title's folder means the file is gone, while
+/// an unplugged drive takes the root with it. A download saved at a root, or
+/// outside them all, is judged by its own folder.
+fn presence_folder(root_path: &Path, approved_roots: &[PathBuf]) -> PathBuf {
+    approved_roots
+        .iter()
+        .find(|root| {
+            is_within_approved_root(root_path, std::slice::from_ref(root)) && !same_path(root, root_path)
+        })
+        .cloned()
+        .unwrap_or_else(|| root_path.to_path_buf())
 }
 
 /// Awaits `work` until it finishes, the flag is raised, or `limit` passes. A
@@ -2296,12 +2657,7 @@ fn orphaned_files(
         .values()
         .filter(|entry| entry.job_id != job_id)
         .map(DownloadRecord::files)
-        .any(|other| {
-            [&files.part, &files.table, &files.table_temp, &files.target]
-                .into_iter()
-                .chain(files.subtitle.as_ref())
-                .any(|path| other.contains(path))
-        });
+        .any(|other| files.paths().any(|path| other.contains(path)));
     if shared {
         return None;
     }
@@ -2737,6 +3093,8 @@ mod tests {
             active_connections: 0,
             replacement: None,
             pending_deletion: false,
+            saved_logo: false,
+            saved_artwork: false,
         }
     }
 
@@ -3172,6 +3530,7 @@ mod tests {
             cancel: HashMap::new(),
             directory: PathBuf::from(r"C:\Halo"),
             approved_roots: vec![PathBuf::from(r"C:\Halo")],
+            sidecars_tried: HashSet::new(),
         };
         assert_eq!(next_queued_job(&inner.entries, &account), None);
         let listed: Vec<_> = inner
@@ -3269,6 +3628,100 @@ mod tests {
         assert_ne!(first, second);
         assert!(second.ends_with("-2.mkv"));
         let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn a_title_folder_is_made_and_taken_away_again_when_a_start_fails() {
+        let root = scratch_dir("title-folder");
+        let roots = resolve_roots(std::slice::from_ref(&root));
+        {
+            let folder = TitleFolder::prepare(&root, "Spider-Man: No Way Home", &roots).unwrap();
+            assert_eq!(folder.path(), root.join("Spider-Man - No Way Home"));
+            assert!(folder.path().is_dir());
+        }
+        assert!(!root.join("Spider-Man - No Way Home").exists());
+        let kept = TitleFolder::prepare(&root, "Severance", &roots).unwrap();
+        let path = kept.path().to_path_buf();
+        kept.keep();
+        assert!(path.is_dir());
+        // A folder that was already there is never taken away.
+        drop(TitleFolder::prepare(&root, "Severance", &roots).unwrap());
+        assert!(path.is_dir());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn removing_a_download_takes_its_pictures_and_then_its_empty_title_folder() {
+        let root = scratch_dir("title-removal");
+        let folder = root.join("Severance");
+        fs::create_dir(&folder).unwrap();
+        let mut first = record(folder.to_string_lossy().into_owned());
+        first.file_name = "e1.mkv".into();
+        let mut second = record(folder.to_string_lossy().into_owned());
+        second.file_name = "e2.mkv".into();
+        for name in ["e1.mkv", "e1-clearlogo.png", "e1-fanart.jpg", "e2.mkv"] {
+            fs::write(folder.join(name), b"x").unwrap();
+        }
+        let roots = resolve_roots(std::slice::from_ref(&root));
+        assert_eq!(remove_files(&first.files(), &roots, None), Ok(()));
+        assert!(!folder.join("e1-clearlogo.png").exists());
+        assert!(!folder.join("e1-fanart.jpg").exists());
+        // Another episode still lives there, so the folder stays.
+        assert!(folder.join("e2.mkv").is_file());
+        assert_eq!(remove_files(&second.files(), &roots, None), Ok(()));
+        assert!(!folder.exists());
+        // The download folder itself is never removed, even when empty.
+        assert!(root.is_dir());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_title_folder_with_something_else_in_it_is_kept() {
+        let root = scratch_dir("title-kept");
+        let folder = root.join("Film");
+        fs::create_dir(&folder).unwrap();
+        fs::write(folder.join("film.mkv"), b"x").unwrap();
+        fs::write(folder.join("notes.txt"), b"mine").unwrap();
+        let mut entry = record(folder.to_string_lossy().into_owned());
+        entry.file_name = "film.mkv".into();
+        let roots = resolve_roots(std::slice::from_ref(&root));
+        assert_eq!(remove_files(&entry.files(), &roots, None), Ok(()));
+        assert!(folder.join("notes.txt").is_file());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_title_folders_download_is_judged_by_its_root() {
+        let roots = vec![PathBuf::from(r"D:\Halo")];
+        assert_eq!(presence_folder(Path::new(r"D:\Halo\Severance"), &roots), PathBuf::from(r"D:\Halo"));
+        assert_eq!(presence_folder(Path::new(r"D:\Halo"), &roots), PathBuf::from(r"D:\Halo"));
+        assert_eq!(presence_folder(Path::new(r"E:\Elsewhere"), &roots), PathBuf::from(r"E:\Elsewhere"));
+        // Deleting the title's folder reads as a deleted file, not an unplugged drive.
+        let root = scratch_dir("presence");
+        let gone = root.join("Gone");
+        assert!(matches!(
+            file_presence(&presence_folder(&gone, std::slice::from_ref(&root)), &gone.join("a.mkv")),
+            FilePresence::Missing
+        ));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn pictures_are_written_and_read_only_inside_the_download_folders() {
+        let root = scratch_dir("sidecar-io");
+        let outside = scratch_dir("sidecar-outside");
+        let roots = resolve_roots(std::slice::from_ref(&root));
+        let target = root.join("film-fanart.jpg");
+        assert!(write_sidecar(&root, &target, b"jpeg", &roots));
+        assert!(!sidecar_temp_path(&target).exists());
+        assert_eq!(read_sidecar(&target, &roots).as_deref(), Some(&b"jpeg"[..]));
+        let stray = outside.join("film-fanart.jpg");
+        assert!(!write_sidecar(&outside, &stray, b"jpeg", &roots));
+        assert!(!stray.exists());
+        fs::write(&stray, b"jpeg").unwrap();
+        assert_eq!(read_sidecar(&stray, &roots), None);
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(outside);
     }
 
     #[test]

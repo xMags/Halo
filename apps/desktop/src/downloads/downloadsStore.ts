@@ -80,6 +80,10 @@ export interface DownloadView {
   explicit_pause: boolean
   created_at: number
   updated_at: number
+  /** The title's logo is saved beside the video, so its card needs no network. */
+  has_saved_logo?: boolean
+  /** The landscape art is saved beside the video. */
+  has_saved_artwork?: boolean
 }
 
 /** What asking for a download did; swapping a video's saved source is never implicit. */
@@ -153,6 +157,17 @@ export function setDownloadDirectory(directory: string): Promise<string> {
 
 export async function chooseDownloadDirectory(): Promise<string | null> {
   return invoke<string | null>('downloads_choose_directory')
+}
+
+/**
+ * A finished download's logo or art saved beside its video, or null when none
+ * is saved. The engine reads only that download's own picture; the webview
+ * has no file access of its own.
+ */
+export async function readDownloadSidecar(jobId: string, kind: 'logo' | 'art'): Promise<Blob | null> {
+  const bytes = await invoke<ArrayBuffer | null>('downloads_sidecar', { jobId, kind })
+  if (!bytes || bytes.byteLength === 0) return null
+  return new Blob([bytes], { type: kind === 'logo' ? 'image/png' : 'image/jpeg' })
 }
 
 /** Reveals a saved file in Explorer, or the download folder when no job is given. */
