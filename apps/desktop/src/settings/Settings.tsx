@@ -3,6 +3,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import avatar from '../assets/user-avatar.png'
 import { TmdbKeyCard } from './TmdbKeyCard'
+import { addAddon, moveAddon, removeAddon, type AddonListEdit } from './addonListEdits'
 import { RELEASES_URL, useBuildInfo } from './about'
 import { ComboBox } from '../components/ComboBox'
 import { showDialog } from '../components/Dialog'
@@ -364,11 +365,11 @@ function AddonsSection() {
   // so a second one started before the first is refetched would undo it.
   const listBusy = setAddons.isPending || setGlobalAddons.isPending
 
-  const saveList = async (scope: 'yours' | 'global', urls: string[], failure: string) => {
+  const saveList = async (scope: 'yours' | 'global', edit: AddonListEdit, failure: string) => {
     if (listBusy) return
     setListError(null)
     try {
-      await (scope === 'global' ? setGlobalAddons : setAddons).mutateAsync(urls)
+      await (scope === 'global' ? setGlobalAddons : setAddons).mutateAsync(edit)
     } catch {
       setListError(failure)
     }
@@ -376,9 +377,8 @@ function AddonsSection() {
 
   const add = async () => {
     const transportUrl = url.trim()
-    // The save sends the whole list, so it must start from the list the
-    // account really has: saving before it has loaded would leave only the
-    // new addon.
+    // The save reads the account's list afresh and adds to that; the loaded
+    // list here only answers "already installed".
     if (!transportUrl || adding || listBusy || !addons) return
     if (all.some((a) => a.transportUrl === transportUrl)) {
       setAddError('Already installed.')
@@ -387,9 +387,7 @@ function AddonsSection() {
     setAdding(true)
     setAddError(null)
     try {
-      // Own entries always carry their URL (the caller sent it); only global
-      // entries are redacted, and only for non-admins, who never get here.
-      await setAddons.mutateAsync([...userAddons.map((a) => a.transportUrl!), transportUrl])
+      await setAddons.mutateAsync(addAddon(transportUrl))
       setUrl('')
     } catch (err) {
       setAddError(err instanceof Error ? err.message : 'Invalid manifest URL')
@@ -410,10 +408,8 @@ function AddonsSection() {
       close: 'Cancel',
       destructive: true,
     })
-    if (!confirmed) return
-    const list = scope === 'global' ? globalAddons : userAddons
-    const urls = list.filter((a) => a.transportUrl !== item.transportUrl).map((a) => a.transportUrl!)
-    void saveList(scope, urls, `“${item.manifest.name}” could not be removed. Try again.`)
+    if (!confirmed || !item.transportUrl) return
+    void saveList(scope, removeAddon(item.transportUrl), `“${item.manifest.name}” could not be removed. Try again.`)
   }
 
   /**
@@ -441,16 +437,14 @@ function AddonsSection() {
     if (!confirmed) return
     setListError(null)
     try {
-      await setGlobalAddons.mutateAsync([...(globalUrls as string[]), transportUrl])
+      await setGlobalAddons.mutateAsync(addAddon(transportUrl))
     } catch {
       setListError(`“${item.manifest.name}” could not be installed for every user. Try again.`)
       return
     }
     if (isBuiltInAddon(item, 'yours')) return
     try {
-      await setAddons.mutateAsync(
-        userAddons.filter((a) => a.transportUrl !== transportUrl).map((a) => a.transportUrl!),
-      )
+      await setAddons.mutateAsync(removeAddon(transportUrl))
     } catch {
       setListError(`“${item.manifest.name}” is now global, but your own copy could not be removed. Remove it below.`)
     }
@@ -464,13 +458,10 @@ function AddonsSection() {
    */
   const reorder = (scope: 'yours' | 'global', fromId: string, toId: string) => {
     const list = scope === 'global' ? globalAddons : userAddons
-    const from = list.findIndex((a) => a.id === fromId)
-    const to = list.findIndex((a) => a.id === toId)
-    if (from < 0 || to < 0 || from === to) return
-    const next = [...list]
-    next.splice(to, 0, ...next.splice(from, 1))
-    const urls = next.map((a) => a.transportUrl!)
-    void saveList(scope, urls, 'The new addon order could not be saved. Try again.')
+    const from = list.find((a) => a.id === fromId)?.transportUrl
+    const to = list.find((a) => a.id === toId)?.transportUrl
+    if (!from || !to || from === to) return
+    void saveList(scope, moveAddon(from, to), 'The new addon order could not be saved. Try again.')
   }
 
   const row = (item: AddonEntry, scope: 'yours' | 'global') => {

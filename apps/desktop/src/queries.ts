@@ -18,6 +18,7 @@ import { useEffect } from 'react'
 import { getAccountClient, getClient } from './api'
 import { useSession } from './auth/session'
 import { removedRows } from './browse/watchMarks'
+import { sameList, type AddonListEdit } from './settings/addonListEdits'
 import { chunked } from './device/mergeIntoAccount'
 import { isHomeCatalogType } from './home/homeRows'
 
@@ -61,12 +62,24 @@ export function useEffectiveAddons() {
   })
 }
 
-/** Declares the caller's own addons as transport URLs in priority order (server diffs + fetches new manifests). */
+/**
+ * Changes the caller's own addons (transport URLs in priority order; the
+ * server diffs them and fetches new manifests). The edit is applied to the
+ * list read just now, not the cached one: the save replaces the whole list,
+ * and a stale copy would delete an addon another device added meanwhile.
+ */
 export function useSetAddons() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (transportUrls: string[]) => getClient().putAddons(transportUrls),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['addons'] }),
+    mutationFn: async (edit: AddonListEdit) => {
+      const fresh = await getClient().getAddons()
+      // Own entries always carry their URL: the caller sent it.
+      const current = fresh.user.flatMap((addon) => (addon.transportUrl ? [addon.transportUrl] : []))
+      const next = edit(current)
+      if (sameList(current, next)) return fresh.user
+      return getClient().putAddons(next)
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['addons'] }),
   })
 }
 
@@ -78,8 +91,17 @@ export function useSetAddons() {
 export function useSetGlobalAddons() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (transportUrls: string[]) => accountClient().putGlobalAddons(transportUrls),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['addons'] }),
+    mutationFn: async (edit: AddonListEdit) => {
+      const fresh = await accountClient().getAddons()
+      const current = fresh.global.map((addon) => addon.transportUrl)
+      // Admins are sent every global URL; without them the list cannot be re-sent whole.
+      if (current.some((url) => !url)) throw new Error('The global addon list could not be read in full.')
+      const urls = current as string[]
+      const next = edit(urls)
+      if (sameList(urls, next)) return fresh.global
+      return accountClient().putGlobalAddons(next)
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['addons'] }),
   })
 }
 
