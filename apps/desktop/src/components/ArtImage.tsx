@@ -46,7 +46,12 @@ export function ArtImage({
   placeholder?: PlaceholderKind
 }) {
   const sources = [src, fallback].filter((url): url is string => Boolean(url))
-  const [failures, setFailures] = useState(0)
+  // Failures count against the sources they happened to: one component often
+  // shows several titles in turn (Search's top match, a rail card), and a new
+  // title starts from its own poster, not from where the last one gave up.
+  const sourcesKey = sources.join('\n')
+  const [failed, setFailed] = useState({ sourcesKey, count: 0 })
+  const failures = failed.sourcesKey === sourcesKey ? failed.count : 0
   const current = sources[failures]
 
   if (!current) {
@@ -62,7 +67,9 @@ export function ArtImage({
       alt=""
       draggable={false}
       loading={lazy ? 'lazy' : undefined}
-      onError={() => setFailures((count) => count + 1)}
+      onError={() =>
+        setFailed((prev) => ({ sourcesKey, count: (prev.sourcesKey === sourcesKey ? prev.count : 0) + 1 }))
+      }
     />
   )
   // Under the image, so a slow one never shows the striped fill first.
