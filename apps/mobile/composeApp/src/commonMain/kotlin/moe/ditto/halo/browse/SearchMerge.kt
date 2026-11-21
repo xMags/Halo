@@ -6,7 +6,9 @@ import moe.ditto.halo.api.MetaCard
 fun titleKey(meta: MetaCard): String = "${meta.type}:${meta.id}"
 
 /** The first four-digit year of a release line: `2021`, `2016–2025` and `2024-` all give their start. */
-private val ReleaseYear = Regex("""\d{4}""")
+private val ReleaseYear = Regex("""[0-9]{4}""")
+
+private val NonLetterOrNumber = Regex("""[^\p{L}\p{N}]+""")
 
 /**
  * Every identity a title can be recognised by. Addons name the same title by
@@ -17,7 +19,8 @@ private val ReleaseYear = Regex("""\d{4}""")
  */
 fun titleIdentities(meta: MetaCard): List<String> {
     val year = meta.releaseInfo?.let { ReleaseYear.find(it)?.value }
-    val name = foldedText(meta.name).filter { it.isLetterOrDigit() }
+    // Every Unicode number counts, as in the desktop's `\p{N}`: "Alien³" and "Rocky Ⅱ" keep their numbers.
+    val name = foldedText(meta.name).replace(NonLetterOrNumber, "")
     // The surest identity when it is there: Cinemeta's id is the IMDb id, and
     // the TMDB addon sends it beside its own.
     val imdbId = meta.id.takeIf(ImdbId::matches) ?: meta.imdbId?.takeIf(ImdbId::matches)
@@ -28,4 +31,4 @@ fun titleIdentities(meta: MetaCard): List<String> {
     )
 }
 
-private val ImdbId = Regex("""^tt\d+$""")
+private val ImdbId = Regex("""^tt[0-9]+$""")

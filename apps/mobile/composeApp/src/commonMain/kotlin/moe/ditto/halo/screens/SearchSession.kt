@@ -18,6 +18,7 @@ import moe.ditto.halo.browse.searchStillAskingNote
 import moe.ditto.halo.browse.titleIdentities
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.people.PersonSummary
+import moe.ditto.halo.browse.scriptTrim
 
 /*
  * What Search shows for one query, from the engine's snapshots
@@ -62,7 +63,7 @@ internal data class SearchView(
      */
     fun foundNames(typed: String): List<String> {
         val snapshot = current ?: return emptyList()
-        val typedKey = foldedText(typed.trim())
+        val typedKey = foldedText(typed.scriptTrim())
         val revealedKey = foldedText(snapshot.query)
         if (!snapshot.revealed || revealedKey.isEmpty() || !typedKey.startsWith(revealedKey)) return emptyList()
         val names = snapshot.people.map { it.name }.toMutableList()

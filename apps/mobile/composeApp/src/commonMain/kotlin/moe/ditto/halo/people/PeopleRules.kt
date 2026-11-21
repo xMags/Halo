@@ -5,6 +5,7 @@ import moe.ditto.halo.browse.isImdbId
 import moe.ditto.halo.browse.isSearchedCatalogType
 import moe.ditto.halo.browse.nameRelevance
 import moe.ditto.halo.browse.parseSearchQuery
+import moe.ditto.halo.browse.scriptTrim
 
 /*
  * Which people Search shows beside a query's titles, how a person and their
@@ -25,7 +26,7 @@ private const val ExactNameTier = 0
  * namesake without one is nobody the typist meant.
  */
 fun choosePeopleRow(people: List<PersonSummary>, query: String, bestTitleTier: Int?): List<PersonSummary> {
-    val trimmed = query.trim()
+    val trimmed = query.scriptTrim()
     val candidates = people
         .map { it to nameRelevance(it.name, trimmed) }
         .filter { (_, tier) -> tier <= LoosestPersonTier }
@@ -37,13 +38,13 @@ fun choosePeopleRow(people: List<PersonSummary>, query: String, bestTitleTier: I
 
 /** The best name relevance among [names], read as the ranking reads it (the full query or its name without a year); null for none. */
 fun bestTitleTier(names: List<String>, query: String, currentYear: Int): Int? {
-    val parts = parseSearchQuery(query.trim(), currentYear)
+    val parts = parseSearchQuery(query.scriptTrim(), currentYear)
     return names.minOfOrNull { minOf(nameRelevance(it, parts.full), nameRelevance(it, parts.name)) }
 }
 
 /** The one person a name stands for: the exact name, the most popular of several. Null when nobody has exactly that name. */
 fun exactNamePerson(people: List<PersonSummary>, name: String): PersonSummary? {
-    val trimmed = name.trim()
+    val trimmed = name.scriptTrim()
     if (trimmed.isEmpty()) return null
     var chosen: PersonSummary? = null
     for (person in people) {

@@ -177,7 +177,7 @@ private fun episodeOf(videoId: String, metaId: String): Pair<Int, Int>? {
     val rest = videoId.substring(metaId.length + 1)
     val colon = rest.indexOf(':')
     if (colon < 0) return null
-    val whole = Regex("""^\d{1,9}$""")
+    val whole = Regex("""^[0-9]{1,9}$""")
     val season = rest.substring(0, colon).takeIf(whole::matches)?.toInt() ?: return null
     val episode = rest.substring(colon + 1).takeIf(whole::matches)?.toInt() ?: return null
     return season to episode

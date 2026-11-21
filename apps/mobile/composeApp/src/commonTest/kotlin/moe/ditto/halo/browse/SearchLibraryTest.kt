@@ -48,4 +48,12 @@ class SearchLibraryTest {
         assertTrue(titleIdentities(remake).none { it in shared }, "another year is another film")
         assertEquals(listOf("movie:tmdb:1"), titleIdentities(undated), "a name alone is not trusted")
     }
+
+    @Test
+    fun identityNamesKeepEveryKindOfNumber() {
+        val alien3 = MetaPreview(id = "tmdb:8077", type = "movie", name = "Alien³", releaseInfo = "1992")
+        val rocky2 = MetaPreview(id = "tmdb:1367", type = "movie", name = "Rocky Ⅱ", releaseInfo = "1979")
+        assertTrue("movie|alien³|1992" in titleIdentities(alien3))
+        assertTrue("movie|rockyⅱ|1979" in titleIdentities(rocky2))
+    }
 }

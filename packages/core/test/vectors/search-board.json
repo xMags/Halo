@@ -3,7 +3,7 @@
   "currentYear": 2026,
   "foldedText": [
     {
-      "text": "Amélie",
+      "text": "Ame\u0301lie",
       "folded": "amelie"
     },
     {
@@ -109,6 +109,18 @@
   ],
   "parseQuery": [
     {
+      "query": "dune\u00A02021",
+      "full": "dune\u00A02021",
+      "name": "dune",
+      "year": 2021
+    },
+    {
+      "query": "\uFEFFdune 2021\uFEFF",
+      "full": "dune 2021",
+      "name": "dune",
+      "year": 2021
+    },
+    {
       "query": "  dune   2021 ",
       "full": "dune   2021",
       "name": "dune",
@@ -152,6 +164,10 @@
     }
   ],
   "hasNoPoster": [
+    {
+      "poster": " ",
+      "none": false
+    },
     {
       "poster": "https://image.tmdb.org/t/p/w500null",
       "none": true

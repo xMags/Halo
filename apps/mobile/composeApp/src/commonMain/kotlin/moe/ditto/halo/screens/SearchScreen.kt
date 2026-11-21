@@ -79,6 +79,7 @@ import moe.ditto.halo.ui.PosterCard
 import moe.ditto.halo.ui.PosterItem
 import moe.ditto.halo.ui.SearchField
 import moe.ditto.halo.ui.rememberResponsive
+import moe.ditto.halo.browse.scriptTrim
 
 /*
  * Search: a field with Cancel, quiet kind chips under it and one status line.
@@ -132,10 +133,10 @@ internal fun SearchScreen(
     // What the server offers is asked again on arrival when it could not be had.
     LaunchedEffect(graph) { graph.capabilities.refreshIfFailed() }
 
-    val input = remember(term) { classifySearchInput(term.trim()) }
+    val input = remember(term) { classifySearchInput(term.scriptTrim()) }
     val textMode = input is SearchInput.Text
     // No catalog is asked about a link; what an earlier query asked is dropped.
-    val query = if (textMode) activeQuery.trim() else ""
+    val query = if (textMode) activeQuery.scriptTrim() else ""
     val active = textMode && isSearchableQuery(query)
     val view = rememberSearchView(graph, query, active, filter, attempt)
     val action = rememberLinkAction(
@@ -159,7 +160,7 @@ internal fun SearchScreen(
 
     /** Only words are remembered, never a pasted link. */
     val record = { value: String ->
-        if (classifySearchInput(value.trim()) is SearchInput.Text && isSearchableQuery(value)) graph.searchHistory.add(value.trim())
+        if (classifySearchInput(value.scriptTrim()) is SearchInput.Text && isSearchableQuery(value)) graph.searchHistory.add(value.scriptTrim())
         Unit
     }
     val recordQuery = { record(query) }

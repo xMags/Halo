@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
+import moe.ditto.halo.browse.scriptTrim
 
 /*
  * The people, credits, lookups and capabilities a Halo server answers, read on
@@ -98,8 +99,8 @@ private const val MaxCredits = 60
 private const val TmdbImagePrefix = "https://image.tmdb.org/t/p/"
 private const val MaxSafeInteger = 9_007_199_254_740_991.0
 private val ImagePath = Regex("""^[A-Za-z0-9/_.-]+$""")
-private val ImdbTitleId = Regex("""^tt\d{1,10}$""")
-private val FourDigits = Regex("""^\d{4}$""")
+private val ImdbTitleId = Regex("""^tt[0-9]{1,10}$""")
+private val FourDigits = Regex("""^[0-9]{4}$""")
 
 private fun isControl(c: Char): Boolean = c.code < 0x20 || c.code in 0x7F..0x9F
 
@@ -111,17 +112,17 @@ private fun requireObject(value: JsonElement?, message: String): JsonObject = va
 
 /** Trimmed, control characters as spaces, refused rather than cut when longer than the bound: a clipped name names someone else. */
 internal fun boundedText(value: JsonElement?, maximum: Int = MaxName): String? {
-    val text = value.stringOrNull()?.trim() ?: return null
+    val text = value.stringOrNull()?.scriptTrim() ?: return null
     if (text.isEmpty() || text.length > maximum) return null
     return text.map { if (isControl(it)) ' ' else it }.joinToString("")
 }
 
 /** Prose: line breaks kept, other control characters as spaces, cut (not refused) at the bound. */
 private fun prose(value: JsonElement?, maximum: Int): String? {
-    val raw = value.stringOrNull()?.trim()?.replace("\r\n", "\n")?.replace('\r', '\n') ?: return null
+    val raw = value.stringOrNull()?.scriptTrim()?.replace("\r\n", "\n")?.replace('\r', '\n') ?: return null
     var text = raw.take(maximum).map { if (it != '\n' && isControl(it)) ' ' else it }.joinToString("")
     if (text.isNotEmpty() && text.last().isHighSurrogate()) text = text.dropLast(1)
-    return text.trim().ifEmpty { null }
+    return text.scriptTrim().ifEmpty { null }
 }
 
 /** A positive whole number JavaScript can hold exactly, as JSON numbers carry them. */

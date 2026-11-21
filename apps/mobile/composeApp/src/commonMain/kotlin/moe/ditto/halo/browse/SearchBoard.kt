@@ -49,7 +49,7 @@ data class SearchQueryParts(val full: String, val name: String, val year: Int?)
 /** The first film was shot in 1888; a year beyond the next two is part of a name. */
 private const val EarliestYear = 1888
 private const val YearsAhead = 2
-private val WhitespaceRun = Regex("""\s+""")
+private val WhitespaceRun = Regex("""${ScriptSpaceClass}+""")
 private val FourDigits = Regex("""^[0-9]{4}$""")
 
 /**
@@ -58,7 +58,7 @@ private val FourDigits = Regex("""^[0-9]{4}$""")
  * is only a year ("1917") keeps it as the name.
  */
 fun parseSearchQuery(query: String, currentYear: Int): SearchQueryParts {
-    val full = query.trim()
+    val full = query.scriptTrim()
     val plain = SearchQueryParts(full, full, null)
     val words = full.split(WhitespaceRun).filter { it.isNotEmpty() }
     if (words.size < 2) return plain
@@ -66,7 +66,7 @@ fun parseSearchQuery(query: String, currentYear: Int): SearchQueryParts {
     if (!FourDigits.matches(last)) return plain
     val year = last.toInt()
     if (year < EarliestYear || year > currentYear + YearsAhead) return plain
-    val name = full.substring(0, full.length - last.length).trim()
+    val name = full.substring(0, full.length - last.length).scriptTrim()
     if (name.isEmpty()) return plain
     return SearchQueryParts(full, name, year)
 }
@@ -86,7 +86,7 @@ fun cappedQuery(text: String): String {
 const val MinSearchTermLength = 2
 
 /** Whether a query, trimmed, is long enough to search. */
-fun isSearchableQuery(query: String): Boolean = query.trim().length >= MinSearchTermLength
+fun isSearchableQuery(query: String): Boolean = query.scriptTrim().length >= MinSearchTermLength
 
 /** Whether a catalog of this kind is searched: films and series, never TV channels or debrid file lists. */
 fun isSearchedCatalogType(type: String): Boolean = type == "movie" || type == "series"
@@ -154,9 +154,10 @@ private const val EnoughNamedTitles = 8
 /** Titles with a year and artwork that make the ones without artwork not worth showing. */
 private const val EnoughCompleteTitles = 8
 
-private val ImdbTitle = Regex("""^tt\d+$""")
-private val YearDigits = Regex("""\d{4}""")
-private val ProductCode = Regex("""^[A-Z]{2,6}-\d{3,5}\b""")
+private val ImdbTitle = Regex("""^tt[0-9]+$""")
+private val YearDigits = Regex("""[0-9]{4}""")
+// JavaScript's `\b` after the digits: its word characters are ASCII only.
+private val ProductCode = Regex("""^[A-Z]{2,6}-[0-9]{3,5}(?![A-Za-z0-9_])""")
 private val MetahubPoster = Regex("""^https://[a-z0-9-]+\.metahub\.space/""")
 
 fun isImdbId(id: String): Boolean = ImdbTitle.matches(id)
@@ -474,7 +475,7 @@ class SearchBoard {
  * text itself. [history] is newest first.
  */
 fun searchSuggestions(history: List<String>, typed: String, found: List<String> = emptyList(), limit: Int = SearchSuggestionLimit): List<String> {
-    val needle = foldedText(typed.trim())
+    val needle = foldedText(typed.scriptTrim())
     if (needle.isEmpty()) return emptyList()
     val suggestions = mutableListOf<String>()
     for (term in history) {
@@ -485,7 +486,7 @@ fun searchSuggestions(history: List<String>, typed: String, found: List<String> 
     val offered = suggestions.map(::foldedText).toMutableList()
     for (name in found) {
         if (suggestions.size >= limit) break
-        val trimmed = name.trim()
+        val trimmed = name.scriptTrim()
         val key = foldedText(trimmed)
         if (key.isEmpty() || key == needle || key in offered) continue
         offered += key

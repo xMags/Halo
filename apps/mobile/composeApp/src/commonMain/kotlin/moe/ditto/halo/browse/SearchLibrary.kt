@@ -9,7 +9,7 @@ import moe.ditto.halo.api.MetaPreview
  * `search/searchResults.ts`.
  */
 
-private val Whitespace = Regex("""\s+""")
+private val Whitespace = Regex("""${ScriptSpaceClass}+""")
 
 /**
  * The library entries the query names (a title matches when its folded name

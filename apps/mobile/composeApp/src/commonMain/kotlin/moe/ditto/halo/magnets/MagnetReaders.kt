@@ -6,6 +6,8 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
+import moe.ditto.halo.browse.scriptTrimEnd
+import moe.ditto.halo.browse.scriptTrim
 
 /*
  * A pasted magnet's request as a server answers it (`POST /magnets`,
@@ -64,8 +66,8 @@ private const val MaxSafeInteger = 9_007_199_254_740_991.0
 private const val TmdbImagePrefix = "https://image.tmdb.org/t/p/"
 private val PlainId = Regex("""^[A-Za-z0-9_-]+$""")
 private val ReasonShape = Regex("""^[a-z_]+$""")
-private val ImdbTitleId = Regex("""^tt\d{1,10}$""")
-private val FourDigits = Regex("""^\d{4}$""")
+private val ImdbTitleId = Regex("""^tt[0-9]{1,10}$""")
+private val FourDigits = Regex("""^[0-9]{4}$""")
 private val MagnetToken = Regex("""^m1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$""")
 private val ImagePath = Regex("""^[A-Za-z0-9/_.-]+$""")
 
@@ -94,9 +96,9 @@ private fun JsonElement.number(): Double = (this as JsonPrimitive).doubleOrNull 
 
 /** Trimmed, control characters as spaces, cut at [maximum] (never on half of a surrogate pair). */
 private fun displayText(raw: String, maximum: Int): String {
-    var text = raw.trim().take(maximum)
+    var text = raw.scriptTrim().take(maximum)
     if (text.isNotEmpty() && text.last().isHighSurrogate()) text = text.dropLast(1)
-    return text.map { if (it.code < 0x20 || it.code in 0x7F..0x9F) ' ' else it }.joinToString("").trimEnd()
+    return text.map { if (it.code < 0x20 || it.code in 0x7F..0x9F) ' ' else it }.joinToString("").scriptTrimEnd()
 }
 
 private fun JsonObject.wholeSize(key: String, why: String): Long {

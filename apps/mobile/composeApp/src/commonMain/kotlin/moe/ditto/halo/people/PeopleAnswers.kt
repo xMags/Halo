@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import moe.ditto.halo.browse.foldedText
+import moe.ditto.halo.browse.scriptTrim
 
 /*
  * A misspelled name, and the answers of the people and lookup routes
@@ -27,7 +28,7 @@ private const val MaxWordsSearched = 3
 private const val MaxClosestPeople = 3
 
 /** A name as compared: lower case, accents off, anything but letters and digits a space. */
-fun nameKey(text: String): String = foldedText(text).replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim()
+fun nameKey(text: String): String = foldedText(text).replace(Regex("""[^\p{L}\p{N}]+"""), " ").scriptTrim()
 
 /** How many letters may differ for a name of this length to still be the one meant. */
 fun allowedDistance(length: Int): Int = maxOf(1, length / 4)
@@ -120,7 +121,7 @@ private const val LookupFailed = "lookup failed"
 
 /** `GET /people/search?q=`: the people named so, or the ones a misspelling most likely means with the name they were found under. */
 suspend fun peopleSearchAnswer(client: TmdbClient, rawQuery: String?): RouteAnswer {
-    val q = rawQuery.orEmpty().trim()
+    val q = rawQuery.orEmpty().scriptTrim()
     if (q.length < 2 || q.length > 120) return refusal(400, "q must be 2 to 120 characters")
     return try {
         val people = client.searchPeople(q)
@@ -146,7 +147,7 @@ suspend fun peopleSearchAnswer(client: TmdbClient, rawQuery: String?): RouteAnsw
     }
 }
 
-private val TmdbIdText = Regex("""^\d{1,16}$""")
+private val TmdbIdText = Regex("""^[0-9]{1,16}$""")
 
 /** `GET /people/:tmdbId`: the person, their credits with IMDb ids, and whether some could not be mapped in time. */
 suspend fun personAnswer(client: TmdbClient, raw: String, now: () -> Long): RouteAnswer {
@@ -187,8 +188,8 @@ suspend fun personAnswer(client: TmdbClient, raw: String, now: () -> Long): Rout
     }
 }
 
-private val TvdbId = Regex("""^\d{1,10}$""")
-private val ImdbId = Regex("""^(?:tt|nm)\d{1,10}$""")
+private val TvdbId = Regex("""^[0-9]{1,10}$""")
+private val ImdbId = Regex("""^(?:tt|nm)[0-9]{1,10}$""")
 
 /**
  * `GET /lookup?source=&id=`: a pasted IMDb or TVDB link, as the title or

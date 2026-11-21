@@ -71,10 +71,10 @@ private val TmdbMissingImage = Regex("/t/p/[a-z0-9]+null$", RegexOption.IGNORE_C
  * card it draws with the entry's name on it, since it has no picture for a
  * title it only knows from a file name.
  */
-private val GeneratedPoster = Regex("/poster/[a-z]+/mf\\d+\\.[a-z]+(\\?.*)?$", RegexOption.IGNORE_CASE)
+private val GeneratedPoster = Regex("/poster/[a-z]+/mf[0-9]+\\.[a-z]+(\\?.*)?$", RegexOption.IGNORE_CASE)
 
 /** MediaFusion's id for an entry it made from a file name, which is all it has to draw that card from. */
-private val FileNameEntry = Regex("""^mf\d+$""")
+private val FileNameEntry = Regex("""^mf[0-9]+$""")
 
 /**
  * Whether an addon's answer already says the title has no poster: none sent,
@@ -85,12 +85,13 @@ private val FileNameEntry = Regex("""^mf\d+$""")
 fun hasNoPoster(meta: MetaCard): Boolean {
     if (FileNameEntry.matches(meta.id)) return true
     val poster = meta.poster
-    return poster.isNullOrBlank() || TmdbMissingImage.containsMatchIn(poster) || GeneratedPoster.containsMatchIn(poster)
+    // Only an empty link is none: one of spaces is still a link, however poor.
+    return poster.isNullOrEmpty() || TmdbMissingImage.containsMatchIn(poster) || GeneratedPoster.containsMatchIn(poster)
 }
 
-private val ReleaseYearDigits = Regex("""\d{4}""")
+private val ReleaseYearDigits = Regex("""[0-9]{4}""")
 
-private val YearInName = Regex("""^(.*\S)\s*\((\d{4})\)$""")
+private val YearInName = Regex("""^(.*${ScriptNonSpaceClass})${ScriptSpaceClass}*\(([0-9]{4})\)$""")
 
 /**
  * A title whose name carries its year, as "Doctor Strange (2016)" does on
@@ -110,7 +111,7 @@ fun MetaPreview.withYearOutOfName(): MetaPreview {
  * a verdict on a film that simply has none.
  */
 fun ratedValue(imdbRating: String?): String? {
-    val value = imdbRating?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val value = imdbRating?.scriptTrim()?.takeIf { it.isNotEmpty() } ?: return null
     val rating = value.toDoubleOrNull() ?: return null
     return value.takeIf { rating.isFinite() && rating > 0.0 }
 }
