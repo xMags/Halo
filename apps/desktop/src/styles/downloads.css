@@ -100,271 +100,244 @@
   color: var(--dl-dim);
 }
 
-.dl-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
+.dl-screen {
   flex-direction: column;
-  /* The column's own width drives the queue panel's layout. */
-  container: dl-main / inline-size;
+  overflow: hidden;
 }
+/* The art's frame brightens under the pointer instead of casting a shadow. */
+.dl-screen {
+  --dl-card-hover-stroke: rgba(244, 246, 251, 0.45);
+}
+:root[data-theme='light'] .dl-screen {
+  --dl-card-hover-stroke: rgba(14, 18, 32, 0.35);
+}
+
+/* ── Header: the title; under it the filters and the bulk actions ── */
 .dl-head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 14px;
-  padding: 28px 32px 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 28px 32px 4px;
 }
 .dl-title {
   margin: 0;
-  font: 600 30px/1.2 var(--display);
-  color: var(--dl-text);
+  font: 600 28px/36px var(--display);
+  color: var(--t1);
 }
-.dl-summary {
-  padding-top: 6px;
-  font-size: 14px;
-  color: var(--dl-dim);
+.dl-head-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 .dl-head-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
 }
+/* WinUI's SelectorBar: text items, the chosen one marked by a short accent
+   pill under it that grows from 4px to 16px. */
+.dl-selector {
+  display: flex;
+  padding: 4px 0;
+}
+.dl-selector-item {
+  position: relative;
+  padding: 10px 12px 7px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--t1);
+}
+.dl-selector-item:hover {
+  color: var(--t2);
+}
+.dl-selector-item:active {
+  color: var(--t3);
+}
+.dl-selector-item::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 16px;
+  height: 3px;
+  margin-left: -8px;
+  border-radius: 1.5px;
+  background: var(--ac);
+  opacity: 0;
+  transform: scaleX(0.25);
+  transition:
+    opacity 120ms ease-out,
+    transform 300ms cubic-bezier(0, 0, 0, 1);
+}
+.dl-selector-item-active,
+.dl-selector-item-active:hover {
+  color: var(--t1);
+}
+.dl-selector-item-active::after {
+  opacity: 1;
+  transform: none;
+}
+/* A command bar button: glyph and label, no plate at rest. */
+.dl-subtle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--t1);
+  white-space: nowrap;
+}
+.dl-subtle-btn:hover {
+  background: var(--sb);
+}
+.dl-subtle-icon {
+  width: 36px;
+  padding: 0;
+}
+.dl-subtle-btn.dl-danger-text {
+  color: var(--cr);
+}
+.dl-subtle-btn.dl-danger-text:hover {
+  background: var(--crt);
+}
+
+/* ── Body ── */
 .dl-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: none;
-  padding: 20px 32px 32px;
+}
+.dl-body {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 4px;
+  padding: 12px 32px 40px;
 }
-
-/* The filter tray, restyled from the shared segmented control. */
-.dl-screen .tray {
-  gap: 2px;
-  padding: 4px;
-  border-radius: 12px;
-  background: var(--dl-surface);
-  border: 1px solid var(--dl-border);
+.dl-gap-after {
+  margin-bottom: 8px;
 }
-.dl-screen .tray-pills .tray-btn {
-  height: auto;
-  align-items: baseline;
-  gap: 6px;
-  padding: 7px 14px;
-  border: 0;
-  border-radius: 9px;
-  font-size: 14px;
-  color: var(--dl-meta);
+.dl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.dl-screen .tray-pills .tray-btn:hover {
-  background: var(--dl-hover);
-}
-.dl-screen .tray-pills .tray-btn-active,
-.dl-screen .tray-pills .tray-btn-active:hover {
-  background: var(--dl-selected);
-  color: var(--dl-accent-ink);
-}
-.dl-screen .tray-count {
-  font: 400 12px/1 var(--mono);
-  color: var(--dl-dim);
-}
-.dl-screen .tray-btn-active .tray-count {
-  color: inherit;
-}
-
-/* ── Buttons ── */
-.dl-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 16px;
-  border-radius: 10px;
-  border: 1px solid var(--dl-border);
-  background: var(--dl-surface-high);
-  color: var(--dl-text);
-  font-size: 14px;
-  font-weight: 600;
+.dl-caption {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--t2);
   white-space: nowrap;
 }
-.dl-btn:hover {
-  background: var(--dl-surface-hover);
+.dl-strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--t1);
 }
-.dl-btn-block {
-  width: 100%;
-  height: 44px;
-  border-radius: 12px;
-  font-size: 15px;
+.dl-split {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
 }
-.dl-btn-play {
-  width: 100%;
-  height: 46px;
-  border: 0;
-  border-radius: 12px;
-  background: var(--dl-solid);
-  color: var(--dl-on-solid);
-  font-size: 15px;
+.dl-section-title {
+  margin: 8px 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--t1);
 }
-.dl-btn-play:hover {
-  background: var(--dl-solid);
-  filter: brightness(0.92);
+/* A settings-style card: the card fill and hairline, radius 8. */
+.dl-card-box {
+  background: var(--cd);
+  border: 1px solid var(--cs);
+  border-radius: 8px;
 }
-.dl-btn-accent {
-  border-color: transparent;
-  background: var(--dl-accent);
-  color: #ffffff;
-}
-.dl-btn-accent:hover {
-  background: var(--dl-accent);
-  filter: brightness(1.08);
-}
-/* Destructive, so red, and pinned to the foot of the pane. */
-.dl-btn-delete {
-  width: 100%;
-  height: 44px;
-  margin-top: auto;
-  border-radius: 12px;
-  border-color: var(--dl-danger-border);
-  background: var(--dl-danger-bg);
-  color: var(--dl-danger);
-  font-size: 15px;
-}
-.dl-btn-delete:hover {
-  background: var(--dl-danger-hover);
-}
-.dl-icon-btn {
+/* The clickable header of a card: no plate at rest, the hover wash. */
+.dl-card-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  border: 1px solid var(--dl-border);
-  background: var(--dl-surface-high);
-  color: var(--dl-text);
+  gap: 16px;
+  width: 100%;
+  padding: 10px 12px 10px 16px;
+  border-radius: 7px;
+  text-align: left;
+  color: var(--t1);
 }
-.dl-icon-btn:hover {
-  background: var(--dl-surface-hover);
+.dl-card-header:hover {
+  background: var(--sb);
 }
-.dl-icon-btn.dl-icon-btn-danger {
-  color: var(--dl-danger);
+.dl-chevron {
+  display: flex;
+  color: var(--t2);
+  transition: transform 200ms ease-out;
 }
-.dl-icon-btn.dl-icon-btn-danger:hover {
-  background: var(--dl-danger-tint);
+.dl-chevron-open {
+  transform: rotate(180deg);
+}
+/* An opened section settles in. */
+.dl-enter {
+  animation: dlEnter 250ms cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+@keyframes dlEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dl-enter {
+    animation: none;
+  }
+  .dl-chevron,
+  .dl-selector-item::after {
+    transition: none;
+  }
 }
 
-/* ── The queue panel: rate, throughput and storage over the transfers ── */
-.dl-queue-panel {
-  padding: 20px 22px 4px;
-  background: var(--dl-panel);
-  border: 1px solid var(--dl-border);
-  border-radius: 16px;
+/* ── Status card ── */
+.dl-status-header {
+  min-height: 68px;
 }
-/* With no rows under it, the panel closes below the instrument. */
-.dl-queue-panel:not(:has(.dl-queue)) {
-  padding-bottom: 20px;
-}
-.dl-instrument {
+.dl-status-glyph {
   display: flex;
-  gap: 28px;
+  color: var(--ac);
 }
-.dl-throughput {
+.dl-status-text {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
-.dl-instrument-rule {
-  flex: 0 0 1px;
-  background: var(--dl-border);
+.dl-status-summary {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--t1);
 }
-.dl-storage {
-  flex: 0 0 240px;
-  min-width: 0;
+.dl-status-details {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  column-gap: 32px;
+  padding: 14px 16px 16px 52px;
+  border-top: 1px solid var(--cs);
+}
+.dl-speed {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 10px;
+  gap: 8px;
 }
-/* Too narrow for the chart beside the storage: storage goes under it. */
-@container dl-main (max-width: 840px) {
-  .dl-instrument {
-    flex-direction: column;
-    gap: 18px;
-  }
-  .dl-storage {
-    flex: 0 0 auto;
-  }
-}
-.dl-rate {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 6px 10px;
-}
-.dl-rate-value {
-  font: 600 40px/1 var(--mono);
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  color: var(--dl-text);
-}
-.dl-rate-value.rate-idle {
-  color: var(--dl-meta);
-}
-.dl-rate-value.rate-paused {
-  color: var(--dl-caution);
-}
-.dl-rate-unit {
-  padding-bottom: 3px;
-  font: 400 16px/1 var(--mono);
-  color: var(--dl-meta);
-}
-.dl-conn-pill {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 2px 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--dl-success-bg);
-  color: var(--dl-success);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.dl-conn-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--dl-success);
-}
-.dl-rate-note {
-  margin: 0 0 3px 6px;
-  font-size: 13px;
-  color: var(--dl-dim);
-  white-space: nowrap;
-}
-.dl-screen .kicker.dl-peak {
-  padding-bottom: 3px;
-  white-space: nowrap;
-}
-
-/* The phone's chart: 28 bars, 4px apart, each against the window's peak.
-   Heights ease the way the phone's `animateFloatAsState` does (500 ms,
-   FastOutSlowIn); the strip has a fixed height, so a bar's change never
-   lays out anything outside it. */
+/* 28 bars, 2px apart, each against the window's peak. Heights ease over
+   500 ms; the strip has a fixed height, so a bar's change never lays out
+   anything outside it. */
 .dl-chart {
   display: flex;
   align-items: flex-end;
-  gap: 4px;
-  height: 76px;
+  gap: 2px;
+  height: 56px;
   contain: layout paint;
 }
 .dl-chart-bar {
@@ -379,229 +352,196 @@
     transition: none;
   }
 }
-.dl-chart-foot {
+.dl-storage {
   display: flex;
-  justify-content: space-between;
-}
-.dl-screen .dl-chart-foot .kicker {
-  color: var(--dl-faint);
-}
-
-.dl-storage-figure {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-.dl-storage-value {
-  font: 600 26px/1.1 var(--mono);
-  color: var(--dl-text);
-}
-.dl-storage-unit {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font: 400 13px/1.2 var(--mono);
-  color: var(--dl-meta);
+  flex-direction: column;
+  gap: 10px;
 }
 .dl-storage-track {
   display: flex;
-  gap: 2px;
-  height: 8px;
-  border-radius: 4px;
-  background: var(--dl-track);
+  height: 6px;
+  border-radius: 3px;
   overflow: hidden;
+  background: var(--dl-track);
 }
 .dl-storage-stored {
-  border-radius: 4px 0 0 4px;
-  background: linear-gradient(90deg, var(--dl-accent), var(--dl-accent-light));
+  background: var(--t2);
 }
 .dl-storage-flight {
-  background: var(--dl-gold);
+  background: var(--ac);
 }
 .dl-legend {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  font-size: 13px;
+  gap: 4px;
 }
 .dl-legend-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  color: var(--dl-meta);
-}
-.dl-legend-flight {
-  color: var(--dl-dim);
-}
-.dl-legend-value {
-  font: 400 13px/1.2 var(--mono);
+  column-gap: 8px;
 }
 .dl-swatch {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: 2px;
 }
 .dl-swatch-stored {
-  background: var(--dl-accent);
+  background: var(--t2);
 }
 .dl-swatch-flight {
-  background: var(--dl-gold);
+  background: var(--ac);
+}
+/* Too narrow for the chart beside the storage: storage goes under it. */
+@container (max-width: 760px) {
+  .dl-status-details {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 20px;
+  }
 }
 
-/* ── Queue rows ── */
-.dl-queue {
-  display: flex;
-  flex-direction: column;
-  margin-top: 18px;
-  border-top: 1px solid var(--dl-border);
-}
-.dl-row {
+/* ── Running transfers ── */
+.dl-run-head {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin: 0 -10px;
-  padding: 12px 10px;
-  border-top: 1px solid var(--dl-rule);
-  border-radius: 12px;
-  cursor: default;
+  gap: 4px;
+  padding-right: 8px;
 }
-.dl-row:first-child,
-.dl-row-sel,
-.dl-row-sel + .dl-row {
-  border-top-color: transparent;
+.dl-run-header {
+  flex: 1;
+  min-width: 0;
 }
-.dl-row:hover {
-  background: var(--dl-hover);
+.dl-run-thumb {
+  flex: none;
+  width: 96px;
+  height: 54px;
+  border-radius: 4px;
+  overflow: hidden;
 }
-.dl-row.dl-row-sel {
-  background: var(--dl-selected);
-}
-.dl-thumb {
-  flex: 0 0 128px;
-  width: 128px;
-  aspect-ratio: 16 / 9;
-  border-radius: 8px;
-}
-.dl-screen .dl-skeleton-row .dl-thumb {
-  height: auto;
-  border-radius: 8px;
-}
-.dl-row-waiting .dl-thumb {
-  opacity: 0.55;
-}
-.dl-row-body {
+.dl-run-text {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-.dl-row-waiting .dl-row-body {
   gap: 6px;
 }
-/* The episode title gives way first, then the name. */
-.dl-title-line {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-}
-.dl-tag {
-  flex: 0 0 auto;
-  font: 400 13px/1.3 var(--mono);
-  color: var(--dl-dim);
-  white-space: nowrap;
-}
-.dl-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--dl-text);
-}
-.dl-row-waiting .dl-name {
-  color: var(--dl-meta);
-}
-.dl-sub {
-  flex: 0 1000 auto;
+.dl-row-title {
   font-size: 14px;
-  color: var(--dl-dim);
+  line-height: 20px;
+  white-space: pre;
 }
-.dl-screen .kicker.dl-up-next {
-  color: var(--dl-faint);
+.dl-row-name {
+  color: var(--t1);
 }
-.dl-bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--dl-border);
-  overflow: hidden;
+.dl-row-episode {
+  color: var(--t2);
 }
-.dl-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 400ms ease-out;
-}
-.dl-fill-normal {
-  background: linear-gradient(90deg, var(--dl-accent), var(--dl-accent-light));
-}
-.dl-fill-caution {
-  background: var(--dl-gold);
-}
-.dl-fill-critical {
-  background: var(--dl-danger);
-}
-/* One line that clips rather than wraps. */
-.dl-meta {
-  display: flex;
-  gap: 14px;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  font: 400 12px/1.4 var(--mono);
-  color: var(--dl-dim);
-}
-.dl-meta-lead {
-  color: var(--dl-meta);
-}
-.dl-meta-caution > :last-child {
+.dl-meta-caution .dl-meta-last {
   color: var(--dl-caution);
 }
-.dl-meta-critical,
-.dl-meta-critical .dl-meta-lead {
-  color: var(--dl-danger);
+.dl-meta-critical {
+  color: var(--cr);
 }
-.dl-row-actions {
+/* WinUI's ProgressBar: a 1px track under a 3px rounded indicator. */
+.dl-progress {
+  position: relative;
+  height: 3px;
   display: flex;
   align-items: center;
-  flex: 0 0 auto;
-  gap: 8px;
+}
+.dl-progress::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--t4);
+  opacity: 0.6;
+}
+.dl-progress-fill {
+  position: relative;
+  height: 3px;
+  border-radius: 1.5px;
+  background: var(--ac);
+  transition: width 300ms ease-out;
+}
+.dl-progress-paused .dl-progress-fill {
+  background: var(--dl-caution);
+}
+/* A square icon button beside a row: the standard plate. */
+.btn.dl-row-icon-btn {
+  width: 36px;
+  padding: 0;
+}
+/* One fact under an opened row: the label, its value on the right, lined up under the text. */
+.dl-facts {
+  margin: 0;
+}
+.dl-fact {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 16px;
+  min-height: 40px;
+  padding: 0 16px 0 128px;
+  border-top: 1px solid var(--cs);
+  font-size: 14px;
+}
+.dl-fact dt {
+  color: var(--t1);
+}
+.dl-fact dd {
+  margin: 0;
+  text-align: right;
+  color: var(--t2);
+}
+
+/* ── Up next ── */
+.dl-waiting {
+  margin-top: 4px;
+}
+.dl-waiting-header {
+  min-height: 52px;
+}
+.dl-waiting-title {
+  flex: 1;
+  font-size: 14px;
+}
+.dl-waiting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 12px;
+  min-height: 44px;
+  padding: 0 8px 0 48px;
+  border-top: 1px solid var(--cs);
 }
 
 /* ── Ready to watch ── */
 .dl-ready {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  margin-top: 12px;
 }
-.dl-ready-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
+.dl-ready-title {
+  margin: 0 0 4px;
+  white-space: pre;
 }
-.dl-screen .kicker.dl-ready-count {
-  color: var(--dl-faint);
+.dl-ready-headline {
+  font-weight: 400;
+  color: var(--t2);
 }
-/* Cards stretch across the row rather than leaving an empty band. */
+.dl-ready-headline::before {
+  content: '  ';
+}
+/* 320 at the least, so cards stay about 320 to 360 wide at every window
+   size: a smaller minimum let a wide window fit so many columns that a
+   short shelf shrank to small cards. */
 .dl-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
 }
 .dl-card {
   position: relative;
@@ -613,14 +553,14 @@
   gap: 10px;
   width: 100%;
   border-radius: 12px;
+  text-align: left;
 }
 .dl-card-art {
   width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 0 0 1px var(--dl-border);
-  transition: box-shadow 200ms ease-out;
+  background: var(--dl-surface-high);
 }
 /* The art leans in under the pointer; the frame stays put so the grid never shifts. */
 .dl-card-art img {
@@ -632,29 +572,11 @@
   transform: scale(1.04);
   filter: brightness(1.08);
 }
-.dl-card:hover .dl-card-art {
-  box-shadow:
-    0 0 0 1px var(--dl-border),
-    0 12px 28px rgba(0, 0, 0, 0.45);
-}
 .dl-card-hit:focus-visible {
   outline: none;
 }
 .dl-card-hit:focus-visible .dl-card-art {
   outline: 2px solid var(--dl-accent-light);
-  outline-offset: 2px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .dl-card-art,
-  .dl-card-art img {
-    transition: none;
-  }
-  .dl-card:hover .dl-card-art img {
-    transform: none;
-  }
-}
-.dl-card-sel .dl-card-art {
-  outline: 2px solid var(--dl-accent);
   outline-offset: 2px;
 }
 .dl-badge {
@@ -699,7 +621,7 @@
   font: 400 12px/1.4 var(--mono);
   color: var(--dl-dim);
 }
-/* A layer the size of the art, so the play button sits on its corner. */
+/* A layer the size of the art: its 1px frame, and the play button on its corner. */
 .dl-card-overlay {
   position: absolute;
   top: 0;
@@ -708,10 +630,20 @@
   aspect-ratio: 16 / 9;
   pointer-events: none;
 }
+.dl-card-frame {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--dl-border);
+  border-radius: 12px;
+  transition: border-color 150ms ease-out;
+}
+.dl-card:hover .dl-card-frame {
+  border-color: var(--dl-card-hover-stroke);
+}
 .dl-card-play {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
+  right: 10px;
+  bottom: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -721,245 +653,103 @@
   background: rgba(244, 246, 251, 0.92);
   color: #0a0c11;
   opacity: 0;
-  transform: scale(0.9);
-  transition:
-    opacity 150ms ease-out,
-    transform 150ms ease-out;
+  transition: opacity 150ms ease-out;
 }
-.dl-card-sel .dl-card-play,
 .dl-card:hover .dl-card-play,
 .dl-card-play:focus-visible {
   opacity: 1;
-  transform: none;
   pointer-events: auto;
 }
 .dl-card-play:hover {
   background: #ffffff;
 }
+@media (prefers-reduced-motion: reduce) {
+  .dl-card-art img,
+  .dl-card-frame,
+  .dl-card-play {
+    transition: none;
+  }
+  .dl-card:hover .dl-card-art img {
+    transform: none;
+  }
+}
 
-/* ── Empty and no-match states ── */
-.dl-empty-card {
-  padding: 44px 40px;
-  display: grid;
-  grid-template-columns: 170px minmax(0, 1fr);
-  column-gap: 36px;
-  background: var(--dl-surface);
-  border: 1px solid var(--dl-border);
-  border-radius: 16px;
-}
-.dl-empty-art {
-  width: 170px;
-  height: 110px;
-  border-radius: 12px;
-}
-.dl-empty-copy {
-  max-width: 520px;
-}
-.dl-empty-title {
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--dl-text);
-}
-.dl-empty-steps {
+/* ── First run ── */
+.dl-empty {
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  margin-top: 18px;
+  align-items: stretch;
+  gap: 20px;
+  width: 100%;
+  max-width: 560px;
+  margin: 48px auto 0;
+}
+.dl-empty-tile {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: var(--at);
+  color: var(--ac);
+}
+.dl-empty-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: center;
+}
+.dl-empty-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.dl-empty-body {
+  margin: 0;
+  font-size: 14px;
+  color: var(--t2);
 }
 .dl-empty-step {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  column-gap: 10px;
-  align-items: baseline;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 52px;
+  padding: 0 16px;
   font-size: 14px;
-  color: var(--dl-meta);
+  color: var(--t1);
 }
-.dl-screen .kicker.dl-step-number {
-  letter-spacing: 0;
-  color: var(--dl-accent-ink);
+.dl-step-number {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--ac);
+  border-radius: 11px;
+  font-size: 12px;
+  color: var(--ac);
 }
 .dl-empty-actions {
   display: flex;
+  justify-content: center;
   gap: 8px;
-  margin-top: 22px;
-}
-.dl-nomatch-card {
-  padding: 34px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  background: var(--dl-surface);
-  border: 1px solid var(--dl-border);
-  border-radius: 16px;
-}
-.dl-nomatch-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--dl-text);
-}
-.dl-nomatch-body {
-  font-size: 15px;
-  color: var(--dl-dim);
 }
 
-/* ── The detail pane ── */
-.dl-pane {
+/* ── A filter with nothing in it ── */
+.dl-nomatch {
   display: flex;
   flex-direction: column;
-  flex: 0 0 380px;
-  width: 380px;
-  background: var(--dl-bg);
-  border-left: 1px solid var(--dl-surface);
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: none;
-}
-/* Measured on the content surface: a narrow one keeps more for the column. */
-@container (max-width: 1199px) {
-  .dl-pane {
-    flex-basis: 320px;
-    width: 320px;
-  }
-}
-/* At least the pane's height, so the delete button sits at its foot. */
-.dl-pane-inner {
-  flex: 1 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 28px 24px 24px;
-}
-.dl-pane-art {
-  flex: 0 0 auto;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  border-radius: 16px;
-}
-.dl-pane-head {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.dl-pane-title {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 24px;
+  text-align: center;
 }
-.dl-pane-name {
-  margin: 0;
-  font: 600 24px/1.25 var(--display);
-  color: var(--dl-text);
-  overflow-wrap: anywhere;
-}
-.dl-pane-meta {
-  font: 400 12px/1.4 var(--mono);
-  color: var(--dl-dim);
-  text-transform: uppercase;
-  overflow-wrap: anywhere;
-}
-.dl-state-pill {
-  padding: 2px 8px;
-  border-radius: 6px;
-  font: 600 11px/1.4 var(--mono);
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  background: var(--dl-surface-high);
-  color: var(--dl-dim);
-}
-.dl-state-downloading {
-  background: var(--dl-accent-tint);
-  color: var(--dl-accent-ink);
-}
-.dl-state-paused {
-  background: var(--dl-caution-tint);
-  color: var(--dl-caution);
-}
-.dl-state-failed {
-  background: var(--dl-danger-tint);
-  color: var(--dl-danger);
-}
-.dl-pane-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.dl-pane-transfer {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-/* A failure's sentence wraps here: the pane is where it is read whole. */
-.dl-pane-lead {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font: 400 12px/1.4 var(--mono);
-  color: var(--dl-meta);
-}
-.dl-lead-caution {
-  color: var(--dl-caution);
-}
-.dl-lead-critical {
-  color: var(--dl-danger);
-}
-.dl-pane-controls {
-  display: flex;
-  gap: 8px;
-}
-.dl-pane-controls > .dl-btn-block {
-  flex: 1;
-  width: auto;
-}
-.dl-icon-btn.dl-pane-cancel {
-  width: 44px;
-  height: 44px;
-  margin-left: auto;
-  border-radius: 12px;
-}
-.dl-facts {
-  margin: 0;
-  background: var(--dl-surface);
-  border: 1px solid var(--dl-border);
-  border-radius: 16px;
-  overflow: hidden;
+.dl-nomatch-body {
   font-size: 14px;
-}
-.dl-fact {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding: 12px 14px;
-  border-top: 1px solid var(--dl-border);
-}
-.dl-fact:first-child {
-  border-top: 0;
-}
-.dl-fact dt {
-  flex: 0 0 auto;
-  color: var(--dl-dim);
-}
-.dl-fact dd {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  text-align: right;
-  font: 400 13px/1.4 var(--mono);
-  color: var(--dl-text);
-  overflow-wrap: anywhere;
-}
-.dl-pane-note {
-  font: 400 12px/18px var(--mono);
-  color: var(--dl-faint);
-}
-.dl-folder-card {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin: 28px 24px;
-  padding: 20px;
-  background: var(--dl-surface);
-  border: 1px solid var(--dl-border);
-  border-radius: 16px;
+  color: var(--t2);
 }

@@ -45,6 +45,14 @@
 .infobar-message {
   overflow-wrap: anywhere;
 }
+/* The bar's own buttons, on a row of their own under the text. */
+.infobar-actions {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
 .infobar-close {
   display: flex;
   align-items: center;

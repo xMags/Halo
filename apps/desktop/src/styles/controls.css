@@ -604,6 +604,7 @@ input[type='range'] {
   border-radius: 4px;
   font-size: 15px;
   color: var(--t1);
+  white-space: nowrap;
 }
 .menu-item:hover {
   background: var(--sb);
@@ -611,6 +612,10 @@ input[type='range'] {
 /* A destructive menu entry: label and glyph in the critical colour. */
 .menu-item.menu-item-danger {
   color: var(--cr);
+}
+.menu-item:disabled {
+  color: var(--t4);
+  background: none;
 }
 .menu-check {
   width: 14px;

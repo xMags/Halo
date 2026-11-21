@@ -1,14 +1,15 @@
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ArtImage } from '../components/ArtImage'
+import { openContextMenu } from '../components/ContextMenu'
 import { showDialog } from '../components/Dialog'
-import { FluentIcon, type FluentGlyph } from '../components/FluentIcon'
+import { FluentIcon } from '../components/FluentIcon'
 import { InfoBar } from '../components/InfoBar'
-import { Menu, MenuAnchor, MenuItem } from '../components/Menu'
-import { Segmented } from '../components/Segmented'
+import { Menu, MenuAnchor, MenuItem, MenuSeparator } from '../components/Menu'
 import { DownloadRowSkeleton } from '../components/Skeleton'
 import {
   cancelTransfer,
   changeDownloadFolder,
+  deleteAllDownloads,
   deleteReady,
   dismissActionError,
   formatDownloadBytes,
@@ -33,19 +34,14 @@ import {
   matchesFilter,
   noMatchesLine,
   peakText,
-  percentText,
   rateFigure,
-  rateNote,
-  rateTone,
   readyHeadline,
-  resolveSelection,
   rowOf,
   splitBytes,
   storageFigures,
   summaryLine,
   type DownloadFilter,
   type DownloadRow,
-  type RowTone,
   type StorageFigures,
 } from './downloadsPresentation'
 import { useNav } from '../nav'
@@ -53,27 +49,24 @@ import { playDownload, sheetParamsForDownload } from '../sources/SourcesSheet'
 import { confirmDeleteFromDevice } from './downloadPrompts'
 
 /**
- * The Downloads page, on the phone's palette rather than the rest of the
- * app's grey one: one queue panel (rate, the minute of throughput, storage
- * and every unfinished transfer), the finished downloads as a grid of
- * artwork cards, and the 380px detail pane beside them running the full
- * height to the window edge. Everything worded or gated here comes from
+ * The Downloads page, in Windows' own (Fluent) shapes: filters and the bulk
+ * actions under the title, a status card that opens on the speed and storage,
+ * failed transfers as error bars, the running transfers as cards whose file
+ * facts open on demand, the queue folded into one card, and the finished
+ * files as a grid. What is not needed all the time (the speed graph, storage,
+ * file facts, the queue, cancel and the rarer folder actions) stays behind a
+ * click or a menu. Everything worded or gated here comes from
  * `downloadsPresentation`.
  */
 
-const STATE_PILLS: Record<DownloadRow['state'], string> = {
-  downloading: 'DOWNLOADING',
-  queued: 'QUEUED',
-  paused: 'PAUSED',
-  failed: 'FAILED',
-  ondisk: 'ON DISK',
-}
-
 const EMPTY_STEPS = [
-  'Open a movie or episode from Library or Search.',
+  'Open a movie or an episode from Library or Search.',
   'Pick a source, then choose Save for offline instead of Play.',
   'Keep Halo open until the transfer finishes. It resumes if you close it.',
 ]
+
+/** The gap between the parts of a row's meta line. */
+const META_GAP = '    '
 
 function confirmCancel(): Promise<boolean> {
   return showDialog({
@@ -94,13 +87,28 @@ async function manageFolder(): Promise<void> {
   })
 }
 
+/** Everything this account has on the PC goes, so it is asked first, with the count, and Cancel is the default. */
+function confirmDeleteAll(count: number): Promise<boolean> {
+  return showDialog({
+    title: 'Delete all downloads?',
+    body: `All ${count} ${count === 1 ? 'download goes' : 'downloads go'} from this PC, including any still downloading. The files are deleted and cannot be recovered.`,
+    primary: 'Delete all',
+    close: 'Cancel',
+    destructive: true,
+    defaultButton: 'close',
+  })
+}
+
 export function Downloads() {
   const { push, openSheet, setRoot } = useNav()
   const { downloads, loading, error, actionError, throughput, pausedAll, directory } =
     useDownloadsSnapshot()
   const [filter, setFilter] = useState<DownloadFilter>('all')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [statusOpen, setStatusOpen] = useState(false)
+  const [waitingOpen, setWaitingOpen] = useState(false)
+  /** The running row whose file facts are open; one at a time, none at first. */
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   // Opening the page re-reads the list, which is also when the engine checks
   // that finished files are still on disk.
@@ -115,14 +123,14 @@ export function Downloads() {
   const shownReady = ready.filter((row) => matchesFilter(row, filter))
   const counts = filterCounts(transfers, ready)
 
-  // The pane follows a download the filter still shows, or the first one it
-  // does, and keeps that as the selection, as the native view model does.
-  const selected = resolveSelection(selectedId, shownReady, shownTransfers)
-  useEffect(() => {
-    if (selected && selected.id !== selectedId) setSelectedId(selected.id)
-  }, [selected, selectedId])
-  const itemFor = (id: string): DownloadView | undefined =>
-    downloads.find((item) => item.job_id === id)
+  // Where an unfinished transfer sits: moving (or paused by the viewer) in
+  // the main list, waiting its turn in the folded "Up next" card, or stopped
+  // and needing the viewer, as an error bar above both.
+  const running = shownTransfers.filter((row) => row.state === 'downloading' || row.state === 'paused')
+  const waiting = shownTransfers.filter((row) => row.state === 'queued')
+  const attention = shownTransfers.filter((row) => row.state === 'failed')
+
+  const itemFor = (id: string): DownloadView | undefined => downloads.find((item) => item.job_id === id)
 
   const rate = aggregateRate(downloads)
   const active = activeCount(downloads)
@@ -157,240 +165,350 @@ export function Downloads() {
     if (item) playDownload(push, item)
   }
 
-  const deleteSelected = async (id: string) => {
+  // The page the download came from: a film's own, an episode's show. A
+  // download without the title's id (an addon that gave none) has no page.
+  const detailsFor = (id: string): (() => void) | null => {
+    const media = itemFor(id)?.media
+    if (!media?.meta_id || !media.media_type) return null
+    const metaId = media.meta_id
+    const type = media.media_type
+    return () => push({ name: 'detail', type, id: metaId })
+  }
+
+  const deleteOne = async (id: string) => {
     if (await confirmDeleteFromDevice()) void deleteReady(id)
+  }
+
+  const deleteAll = async () => {
+    if (counts.all === 0) return
+    if (await confirmDeleteAll(counts.all)) void deleteAllDownloads()
   }
 
   const empty = rows.length === 0 && !loading
   const noMatches = rows.length > 0 && shownTransfers.length === 0 && shownReady.length === 0
-  const summary = summaryLine(rows)
+  const figure = rateFigure(rate, false)
+  const statusLine = `${pausedAll ? 'All paused' : figure.unit ? `${figure.value} ${figure.unit}` : figure.value} · ${freeLine(storage.freeBytes)}`
 
   return (
     <div className="view dl-screen">
-      <div className="dl-main">
-        <header className="dl-head">
-          <h1 className="dl-title">Downloads</h1>
-          {summary && <span className="dl-summary ellipsis">{summary}</span>}
-          <span className="spacer" />
+      <header className="dl-head">
+        <h1 className="dl-title">Downloads</h1>
+        <div className="dl-head-bar">
+          <div className="dl-selector" role="tablist" aria-label="Filter downloads">
+            {FILTERS.map((entry) => (
+              <button
+                key={entry.value}
+                type="button"
+                role="tab"
+                aria-selected={filter === entry.value}
+                className={`dl-selector-item ${filter === entry.value ? 'dl-selector-item-active' : ''}`}
+                onClick={() => setFilter(entry.value)}
+              >
+                {`${entry.label} (${counts[entry.value]})`}
+              </button>
+            ))}
+          </div>
           <div className="dl-head-actions">
-            <Segmented
-              pills
-              options={FILTERS.map((entry) => ({ ...entry, count: counts[entry.value] }))}
-              value={filter}
-              onChange={setFilter}
-            />
             {(active > 0 || pausedAll) && (
-              <button type="button" className="dl-btn dl-head-btn" onClick={() => void togglePauseAll()}>
-                <FluentIcon glyph={pausedAll ? 'play' : 'pause'} size={13} />
+              <button type="button" className="dl-subtle-btn" onClick={() => void togglePauseAll()}>
+                <FluentIcon glyph={pausedAll ? 'play' : 'pause'} size={14} />
                 <span>{pausedAll ? 'Resume all' : 'Pause all'}</span>
               </button>
             )}
+            <button type="button" className="dl-subtle-btn" onClick={() => void showInExplorer()}>
+              <FluentIcon glyph="folder" size={14} />
+              <span>Open folder</span>
+            </button>
             <MenuAnchor>
               <button
                 type="button"
-                className="dl-icon-btn"
+                className="dl-subtle-btn dl-subtle-icon"
                 aria-label="More download actions"
+                title="More download actions"
                 onClick={() => setMenuOpen((open) => !open)}
               >
-                <FluentIcon glyph="more" size={13} />
+                <FluentIcon glyph="more" size={14} />
               </button>
-              <Menu open={menuOpen} onClose={() => setMenuOpen(false)} minWidth={236}>
+              <Menu open={menuOpen} onClose={() => setMenuOpen(false)} minWidth={220}>
                 <MenuItem
-                  label="Manage download folder"
+                  glyph="changeFolder"
+                  label="Change download folder…"
                   onClick={() => {
                     setMenuOpen(false)
                     void manageFolder()
                   }}
                 />
                 <MenuItem
-                  label="Open folder in Explorer"
-                  onClick={() => {
-                    setMenuOpen(false)
-                    void showInExplorer()
-                  }}
-                />
-                <MenuItem
-                  label="Retry all failed transfers"
+                  glyph="retry"
+                  label="Retry all failed"
                   onClick={() => {
                     setMenuOpen(false)
                     retryFailedTransfers()
                   }}
                 />
+                <MenuSeparator />
+                <MenuItem
+                  glyph="delete"
+                  label="Delete all downloads…"
+                  danger
+                  disabled={counts.all === 0}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    void deleteAll()
+                  }}
+                />
               </Menu>
             </MenuAnchor>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <div className="dl-scroll">
+      <div className="dl-scroll">
+        <div className="dl-body">
           {actionError && (
-            <InfoBar title="Download action failed" message={actionError} onClose={dismissActionError} />
-          )}
-          {error && !actionError && <InfoBar title="Downloads could not be read" message={error} />}
-
-          <section className="dl-queue-panel" aria-label="Queue">
-            <div className="dl-instrument">
-              <div className="dl-throughput">
-                <RateLine rate={rate} pausedAll={pausedAll} downloads={downloads} throughput={throughput} />
-                <ThroughputChart throughput={throughput} />
-                <div className="dl-chart-foot">
-                  <span className="kicker">60 s ago</span>
-                  <span className="kicker">Now</span>
-                </div>
-              </div>
-              <div className="dl-instrument-rule" />
-              <StorageBlock storage={storage} />
+            <div className="dl-gap-after">
+              <InfoBar title="Download action failed" message={actionError} onClose={dismissActionError} />
             </div>
+          )}
+          {error && !actionError && (
+            <div className="dl-gap-after">
+              <InfoBar title="Downloads could not be read" message={error} />
+            </div>
+          )}
 
-            {shownTransfers.length > 0 && (
-              <div className="dl-queue">
-                {shownTransfers.map((row) => (
-                  <QueueRow
+          {rows.length > 0 && (
+            <div className="dl-card-box dl-gap-after">
+              <button
+                type="button"
+                className="dl-card-header dl-status-header"
+                aria-label="Transfer details"
+                aria-expanded={statusOpen}
+                onClick={() => setStatusOpen((open) => !open)}
+              >
+                <span className="dl-status-glyph">
+                  <FluentIcon glyph="cloudDownload" size={20} />
+                </span>
+                <span className="dl-status-text">
+                  <span className="dl-status-summary ellipsis">{summaryLine(rows)}</span>
+                  <span className="dl-caption ellipsis">{statusLine}</span>
+                </span>
+                <span className="dl-caption">{statusOpen ? 'Hide details' : 'Details'}</span>
+                <Chevron open={statusOpen} />
+              </button>
+              {statusOpen && (
+                <div className="dl-status-details dl-enter">
+                  <div className="dl-speed">
+                    <div className="dl-split">
+                      <span className="dl-strong">Speed, last minute</span>
+                      <span className="dl-caption">{peakText(throughput)}</span>
+                    </div>
+                    <ThroughputChart throughput={throughput} />
+                    <div className="dl-split">
+                      <span className="dl-caption">1 min ago</span>
+                      <span className="dl-caption">Now</span>
+                    </div>
+                  </div>
+                  <StorageBlock storage={storage} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {attention.length > 0 && (
+            <div className="dl-list dl-gap-after">
+              {attention.map((row) => (
+                <InfoBar key={row.id} title={row.cardTitle} message={row.lead}>
+                  {row.requiresNewSource && (
+                    <button type="button" className="btn" onClick={() => chooseSource(row.id)}>
+                      Choose another source
+                    </button>
+                  )}
+                  {row.canRetry && (
+                    <button type="button" className="btn" onClick={() => resumeTransfer(row.id)}>
+                      Try again
+                    </button>
+                  )}
+                  <button type="button" className="dl-subtle-btn dl-danger-text" onClick={() => void cancel(row.id)}>
+                    Remove
+                  </button>
+                </InfoBar>
+              ))}
+            </div>
+          )}
+
+          {running.length > 0 && (
+            <>
+              <h2 className="dl-section-title">Downloading</h2>
+              <div className="dl-list">
+                {running.map((row) => (
+                  <RunningCard
                     key={row.id}
                     row={row}
-                    selected={row.id === selected?.id}
-                    onSelect={() => setSelectedId(row.id)}
+                    open={expandedId === row.id}
+                    onToggle={() => setExpandedId((current) => (current === row.id ? null : row.id))}
                     onChooseSource={() => chooseSource(row.id)}
                     onCancel={() => void cancel(row.id)}
                   />
                 ))}
               </div>
-            )}
+            </>
+          )}
 
-            {loading && rows.length === 0 && (
-              <div className="dl-queue">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <DownloadRowSkeleton key={`skeleton-${index}`} />
-                ))}
-              </div>
-            )}
-          </section>
+          {loading && rows.length === 0 && (
+            <div className="dl-list">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <DownloadRowSkeleton key={`skeleton-${index}`} />
+              ))}
+            </div>
+          )}
+
+          {waiting.length > 0 && (
+            <div className="dl-card-box dl-waiting">
+              <button
+                type="button"
+                className="dl-card-header dl-waiting-header"
+                aria-label="Up next"
+                aria-expanded={waitingOpen}
+                onClick={() => setWaitingOpen((open) => !open)}
+              >
+                <FluentIcon glyph="queue" size={16} />
+                <span className="dl-waiting-title">Up next</span>
+                <span className="dl-caption">{`${waiting.length} waiting`}</span>
+                <Chevron open={waitingOpen} />
+              </button>
+              {waitingOpen && (
+                <div className="dl-enter">
+                  {waiting.map((row) => (
+                    <div key={row.id} className="dl-waiting-row">
+                      <RowTitle row={row} />
+                      <span className="dl-caption">{row.downloadedLine}</span>
+                      <button
+                        type="button"
+                        className="dl-subtle-btn dl-subtle-icon dl-danger-text"
+                        aria-label="Remove from the queue"
+                        title="Remove from the queue"
+                        onClick={() => void cancel(row.id)}
+                      >
+                        <FluentIcon glyph="delete" size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {shownReady.length > 0 && (
             <section className="dl-ready" aria-label="Ready to watch">
-              <div className="dl-ready-head">
-                <span className="kicker">Ready to watch</span>
-                <span className="kicker dl-ready-count">{readyHeadline(ready.length, storage.storedBytes)}</span>
-              </div>
+              <h2 className="dl-section-title dl-ready-title">
+                Ready to watch
+                <span className="dl-ready-headline">{readyHeadline(ready.length, storage.storedBytes)}</span>
+              </h2>
               <div className="dl-grid">
-                {shownReady.map((row) => (
-                  <ReadyCard
-                    key={row.id}
-                    row={row}
-                    selected={row.id === selected?.id}
-                    onSelect={() => setSelectedId(row.id)}
-                    onPlay={() => {
-                      setSelectedId(row.id)
-                      play(row.id)
-                    }}
-                  />
-                ))}
+                {shownReady.map((row) => {
+                  const openDetails = detailsFor(row.id)
+                  return (
+                    <ReadyCard
+                      key={row.id}
+                      row={row}
+                      onPlay={() => play(row.id)}
+                      onMenu={(event) =>
+                        openContextMenu(event, [
+                          { kind: 'item', label: 'Play offline', glyph: 'play', onSelect: () => play(row.id) },
+                          ...(openDetails
+                            ? [{ kind: 'item' as const, label: 'View details', glyph: 'info' as const, onSelect: openDetails }]
+                            : []),
+                          {
+                            kind: 'item',
+                            label: 'Show in folder',
+                            glyph: 'folder',
+                            onSelect: () => void showInExplorer(row.id),
+                          },
+                          { kind: 'separator' },
+                          {
+                            kind: 'item',
+                            label: 'Delete from this PC',
+                            glyph: 'delete',
+                            danger: true,
+                            onSelect: () => void deleteOne(row.id),
+                          },
+                        ])
+                      }
+                    />
+                  )
+                })}
               </div>
             </section>
           )}
 
           {empty && (
-            <div className="dl-empty-card">
-              <div className="art dl-empty-art">
-                <div className="art-label">
-                  NOTHING
-                  <br />
-                  ON DISK
-                </div>
-              </div>
+            <div className="dl-empty">
+              <span className="dl-empty-tile">
+                <FluentIcon glyph="cloudDownload" size={30} />
+              </span>
               <div className="dl-empty-copy">
-                <div className="dl-empty-title">Nothing downloaded yet</div>
-                <div className="dl-empty-steps">
-                  {EMPTY_STEPS.map((step, index) => (
-                    <div key={step} className="dl-empty-step">
-                      <span className="kicker dl-step-number">{`0${index + 1}`}</span>
-                      <span>{step}</span>
-                    </div>
-                  ))}
-                </div>
-                {/* The folder card in the pane beside this one shows whenever
-                    this card does, so the folder action is not repeated here. */}
-                <div className="dl-empty-actions">
-                  <button type="button" className="dl-btn dl-btn-accent" onClick={() => setRoot('library')}>
-                    Browse library
-                  </button>
-                </div>
+                <h2 className="dl-empty-title">Watch without a connection</h2>
+                <p className="dl-empty-body">
+                  Save a movie or an episode to this PC and it plays here even when you are offline.
+                </p>
+              </div>
+              <div className="dl-list">
+                {EMPTY_STEPS.map((step, index) => (
+                  <div key={step} className="dl-card-box dl-empty-step">
+                    <span className="dl-step-number">{index + 1}</span>
+                    <span>{step}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="dl-empty-actions">
+                <button type="button" className="btn-accent" onClick={() => setRoot('library')}>
+                  Browse your library
+                </button>
+                <button type="button" className="btn" onClick={() => void manageFolder()}>
+                  Choose download folder
+                </button>
               </div>
             </div>
           )}
 
           {noMatches && (
-            <div className="dl-nomatch-card">
-              <div className="dl-nomatch-title">Nothing in this filter</div>
-              <div className="dl-nomatch-body">{noMatchesLine(filter)}</div>
+            <div className="dl-card-box dl-nomatch">
+              <span className="dl-strong">Nothing in this filter</span>
+              <span className="dl-nomatch-body">{noMatchesLine(filter)}</span>
             </div>
           )}
         </div>
       </div>
-
-      <aside className="dl-pane" aria-label="Details">
-        {selected ? (
-          <DetailPane
-            row={selected}
-            onPlay={() => play(selected.id)}
-            onOpenFolder={() => void showInExplorer(selected.id)}
-            onPause={() => pauseTransfer(selected.id)}
-            onResume={() => resumeTransfer(selected.id)}
-            onCancel={() => void cancel(selected.id)}
-            onChooseSource={() => chooseSource(selected.id)}
-            onDelete={() => void deleteSelected(selected.id)}
-          />
-        ) : (
-          <div className="dl-folder-card">
-            <div className="kicker">Download folder</div>
-            <button type="button" className="dl-btn dl-btn-block" onClick={() => void manageFolder()}>
-              <FluentIcon glyph="folder" size={15} />
-              <span>Manage folder</span>
-            </button>
-          </div>
-        )}
-      </aside>
     </div>
   )
 }
 
-/** The big rate, what is carrying it, and the minute's peak. */
-function RateLine({
-  rate,
-  pausedAll,
-  downloads,
-  throughput,
-}: {
-  rate: number
-  pausedAll: boolean
-  downloads: readonly DownloadView[]
-  throughput: readonly number[]
-}) {
-  const figure = rateFigure(rate, pausedAll)
-  const note = rateNote(downloads)
+/** The fold chevron, turned to point up while its section is open. */
+function Chevron({ open }: { open: boolean }) {
   return (
-    <div className="dl-rate">
-      <span className={`dl-rate-value rate-${rateTone(rate, pausedAll)}`}>{figure.value}</span>
-      {figure.unit && <span className="dl-rate-unit">{figure.unit}</span>}
-      {note.kind === 'connections' ? (
-        <span className="dl-conn-pill">
-          <span className="dl-conn-dot" />
-          {note.text}
-        </span>
-      ) : (
-        <span className="dl-rate-note">{note.text}</span>
-      )}
-      <span className="spacer" />
-      <span className="kicker dl-peak">{peakText(throughput)}</span>
-    </div>
+    <span className={`dl-chevron ${open ? 'dl-chevron-open' : ''}`}>
+      <FluentIcon glyph="chevronDown" size={12} />
+    </span>
+  )
+}
+
+/** The name, then the episode's label in the quieter ink. */
+function RowTitle({ row }: { row: DownloadRow }) {
+  return (
+    <span className="dl-row-title ellipsis">
+      <span className="dl-row-name">{row.name}</span>
+      {row.episodeLabel && <span className="dl-row-episode">{`  ${row.episodeLabel}`}</span>}
+    </span>
   )
 }
 
 /**
- * The phone's chart. Each bar is keyed by its slot, never by its sample, so a
- * new sample changes the heights of bars that stay mounted and every one of
- * them eases to its new height (a CSS transition on height), which is what
- * makes the row flow instead of jump. Memoised on the history array, which
- * changes only when a sample is taken, so progress ticks never touch it.
+ * The minute of throughput. Each bar is keyed by its slot, never by its
+ * sample, so a new sample changes the heights of bars that stay mounted and
+ * every one of them eases to its new height (a CSS transition on height),
+ * which is what makes the row flow instead of jump. Memoised on the history
+ * array, which changes only when a sample is taken, so progress ticks never
+ * touch it.
  */
 const ThroughputChart = memo(function ThroughputChart({ throughput }: { throughput: readonly number[] }) {
   const bars = chartBars(throughput)
@@ -412,208 +530,186 @@ function StorageBlock({ storage }: { storage: StorageFigures }) {
   const flightFraction = Math.max(0, storage.usedFraction - storage.storedFraction)
   return (
     <div className="dl-storage">
-      <span className="kicker">Storage</span>
-      <div className="dl-storage-figure">
-        <span className="dl-storage-value">{used.value}</span>
-        <span className="dl-storage-unit">
-          {used.unit} · {freeLine(storage.freeBytes)}
-        </span>
-      </div>
+      <span className="dl-strong">Storage</span>
       <div className="dl-storage-track">
         {storage.storedFraction > 0 && (
           <span className="dl-storage-stored" style={{ width: `${storage.storedFraction * 100}%` }} />
         )}
-        {flightFraction > 0 && (
-          <span className="dl-storage-flight" style={{ width: `${flightFraction * 100}%` }} />
-        )}
+        {flightFraction > 0 && <span className="dl-storage-flight" style={{ width: `${flightFraction * 100}%` }} />}
       </div>
       <div className="dl-legend">
         <div className="dl-legend-item">
           <span className="dl-swatch dl-swatch-stored" />
-          <span className="spacer">Stored</span>
-          <span className="dl-legend-value">{formatDownloadBytes(storage.storedBytes)}</span>
+          <span className="dl-caption">Downloaded</span>
+          <span className="dl-caption">{formatDownloadBytes(storage.storedBytes)}</span>
         </div>
-        <div className="dl-legend-item dl-legend-flight">
+        <div className="dl-legend-item">
           <span className="dl-swatch dl-swatch-flight" />
-          <span className="spacer">In flight</span>
-          <span className="dl-legend-value">{formatDownloadBytes(storage.inFlightBytes)}</span>
+          <span className="dl-caption">Arriving</span>
+          <span className="dl-caption">{formatDownloadBytes(storage.inFlightBytes)}</span>
         </div>
+        <span className="dl-caption">{`${used.unit} · ${freeLine(storage.freeBytes)}`}</span>
       </div>
     </div>
   )
 }
 
-/** The pane's state label sits on its tint alone. */
-function StatePill({ state }: { state: DownloadRow['state'] }) {
-  return <span className={`dl-state-pill dl-state-${state}`}>{STATE_PILLS[state]}</span>
-}
-
-function ProgressTrack({ progress, tone }: { progress: number; tone: RowTone }) {
-  return (
-    <div className="dl-bar">
-      <div className={`dl-bar-fill dl-fill-${tone}`} style={{ width: `${progress * 100}%` }} />
-    </div>
-  )
-}
-
-/**
- * The row is a div with the button role rather than a `<button>`: its own
- * pause and cancel controls sit inside it, and a button inside a button is
- * invalid HTML, so the row carries the keyboard behaviour itself.
- */
-function RowFrame({
-  selected,
-  waiting,
-  onSelect,
-  children,
-}: {
-  selected: boolean
-  waiting: boolean
-  onSelect: () => void
-  children: ReactNode
-}) {
+/** WinUI's ProgressBar: a 1px track under a 3px rounded indicator, caution-coloured while paused. */
+function ProgressBar({ progress, paused }: { progress: number; paused: boolean }) {
   return (
     <div
-      className={`dl-row ${selected ? 'dl-row-sel' : ''} ${waiting ? 'dl-row-waiting' : ''}`}
-      role="button"
-      tabIndex={0}
-      aria-pressed={selected}
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget) return
-        if (event.key !== 'Enter' && event.key !== ' ') return
-        event.preventDefault()
-        onSelect()
-      }}
+      className={`dl-progress ${paused ? 'dl-progress-paused' : ''}`}
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(progress * 100)}
     >
-      {children}
+      <span className="dl-progress-fill" style={{ width: `${progress * 100}%` }} />
     </div>
   )
 }
 
-function RowIconButton({
-  glyph,
-  label,
-  danger,
-  onClick,
-}: {
-  glyph: FluentGlyph
-  label: string
-  danger?: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      className={`dl-icon-btn ${danger ? 'dl-icon-btn-danger' : ''}`}
-      aria-label={label}
-      title={label}
-      onClick={(event) => {
-        event.stopPropagation()
-        onClick()
-      }}
-    >
-      <FluentIcon glyph={glyph} size={13} />
-    </button>
-  )
-}
-
-/** One unfinished download in the queue panel. */
-function QueueRow({
+/** A running transfer: progress and pause always there; the file's facts open on a click. */
+function RunningCard({
   row,
-  selected,
-  onSelect,
+  open,
+  onToggle,
   onChooseSource,
   onCancel,
 }: {
   row: DownloadRow
-  selected: boolean
-  onSelect: () => void
+  open: boolean
+  onToggle: () => void
   onChooseSource: () => void
   onCancel: () => void
 }) {
-  const waiting = row.state === 'queued'
+  const [menuOpen, setMenuOpen] = useState(false)
+  const paused = row.state === 'paused'
+  const [lead, ...rest] = row.transferMeta
+  const last = rest.length > 0 ? rest[rest.length - 1] : undefined
+  const middle = rest.slice(0, -1)
+  const facts: Array<{ label: string; value: string; title?: string }> = [
+    { label: 'Quality', value: row.qualityLine },
+    { label: 'Downloaded', value: row.downloadedLine },
+    { label: 'Subtitle', value: row.subs },
+    { label: 'Added', value: addedFact(row.addedLabel) },
+    // Release names run far longer than the row; the tooltip carries the whole name.
+    { label: 'File', value: row.fileName, title: row.fileName },
+  ]
   return (
-    <RowFrame selected={selected} waiting={waiting} onSelect={onSelect}>
-      <div className="art dl-thumb">
-        <ArtImage src={row.rowArtwork} />
-      </div>
-      <div className="dl-row-body">
-        <div className="dl-title-line">
-          {row.episodeLabel && <span className="dl-tag">{row.episodeLabel}</span>}
-          <span className="dl-name">{row.name}</span>
-          <span className="dl-sub ellipsis">{row.sub}</span>
-        </div>
-        {waiting ? (
-          <span className="kicker dl-up-next">Up next</span>
-        ) : (
-          <>
-            <ProgressTrack progress={row.progress} tone={row.tone} />
-            <div className={`dl-meta dl-meta-${row.tone}`}>
-              {row.transferMeta.map((part, index) => (
-                <span key={index} className={index === 0 ? 'dl-meta-lead ellipsis' : 'ellipsis'}>
-                  {part}
-                </span>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-      <div className="dl-row-actions">
-        {row.requiresNewSource && (
+    <div className="dl-card-box">
+      <div className="dl-run-head">
+        <button
+          type="button"
+          className="dl-card-header dl-run-header"
+          aria-label={row.sub ? `${row.name} · ${row.sub}` : row.name}
+          aria-expanded={open}
+          title="Details"
+          onClick={onToggle}
+        >
+          <span className="art dl-run-thumb">
+            <ArtImage src={row.rowArtwork} />
+          </span>
+          <span className="dl-run-text">
+            <RowTitle row={row} />
+            <ProgressBar progress={row.progress} paused={paused} />
+            <span className={`dl-caption ellipsis dl-meta-${row.tone}`}>
+              {lead}
+              {middle.map((part) => `${META_GAP}${part}`).join('')}
+              {last !== undefined && <span className="dl-meta-last">{`${META_GAP}${last}`}</span>}
+            </span>
+          </span>
+          <Chevron open={open} />
+        </button>
+        {row.canPause && (
           <button
             type="button"
-            className="dl-btn dl-row-btn"
-            onClick={(event) => {
-              event.stopPropagation()
-              onChooseSource()
-            }}
+            className="btn dl-row-icon-btn"
+            aria-label="Pause transfer"
+            title="Pause"
+            onClick={() => pauseTransfer(row.id)}
           >
-            <FluentIcon glyph="switchSource" size={14} />
-            <span>Choose source again</span>
+            <FluentIcon glyph="pause" size={14} />
           </button>
         )}
-        {row.canPause && (
-          <RowIconButton glyph="pause" label="Pause transfer" onClick={() => pauseTransfer(row.id)} />
+        {paused && (
+          <button
+            type="button"
+            className="btn dl-row-icon-btn"
+            aria-label="Resume transfer"
+            title="Resume"
+            onClick={() => resumeTransfer(row.id)}
+          >
+            <FluentIcon glyph="play" size={14} />
+          </button>
         )}
-        {row.state === 'paused' && (
-          <RowIconButton glyph="play" label="Resume transfer" onClick={() => resumeTransfer(row.id)} />
-        )}
-        {row.canRetry && (
-          <RowIconButton glyph="retry" label="Retry this source" onClick={() => resumeTransfer(row.id)} />
-        )}
-        <RowIconButton glyph="delete" label="Cancel transfer" danger onClick={onCancel} />
+        <MenuAnchor>
+          <button
+            type="button"
+            className="dl-subtle-btn dl-subtle-icon"
+            aria-label="More actions"
+            title="More actions"
+            onClick={() => setMenuOpen((value) => !value)}
+          >
+            <FluentIcon glyph="more" size={14} />
+          </button>
+          <Menu open={menuOpen} onClose={() => setMenuOpen(false)} minWidth={200}>
+            <MenuItem
+              glyph="switchSource"
+              label="Choose another source"
+              onClick={() => {
+                setMenuOpen(false)
+                onChooseSource()
+              }}
+            />
+            <MenuSeparator />
+            <MenuItem
+              glyph="delete"
+              label="Cancel download"
+              danger
+              onClick={() => {
+                setMenuOpen(false)
+                onCancel()
+              }}
+            />
+          </Menu>
+        </MenuAnchor>
       </div>
-    </RowFrame>
+      {open && (
+        <dl className="dl-facts dl-enter">
+          {facts.map((fact) => (
+            <div key={fact.label} className="dl-fact">
+              <dt>{fact.label}</dt>
+              <dd className="ellipsis" title={fact.title}>
+                {fact.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
   )
 }
 
 /**
- * A finished download as an artwork card. The card and its play button are
- * siblings, not nested, since a button inside a button is invalid HTML; the
- * play button sits in a layer the size of the art, over its corner.
+ * A finished download as an artwork card: clicking it plays, and the rest is
+ * on right-click. The card and its play button are siblings, not nested,
+ * since a button inside a button is invalid HTML; the play button sits in a
+ * layer the size of the art, over its corner.
  */
 function ReadyCard({
   row,
-  selected,
-  onSelect,
   onPlay,
+  onMenu,
 }: {
   row: DownloadRow
-  selected: boolean
-  onSelect: () => void
   onPlay: () => void
-}) {
+  onMenu: (event: React.MouseEvent<HTMLElement>) => void
+}): ReactNode {
+  const name = row.cardSub ? `${row.cardTitle} · ${row.cardSub}` : row.cardTitle
   return (
-    <div className={`dl-card ${selected ? 'dl-card-sel' : ''}`}>
-      <button
-        type="button"
-        className="dl-card-hit"
-        aria-pressed={selected}
-        title={row.cardSub ? `${row.cardTitle} · ${row.cardSub}` : row.cardTitle}
-        onClick={onSelect}
-        onDoubleClick={onPlay}
-      >
+    <div className="dl-card" onContextMenu={onMenu}>
+      <button type="button" className="dl-card-hit" aria-label={name} title={name} onClick={onPlay}>
         <div className="art dl-card-art">
           <ArtImage src={row.rowArtwork} lazy />
           {row.qualityBadge && (
@@ -630,140 +726,17 @@ function ReadyCard({
         </div>
       </button>
       <div className="dl-card-overlay">
+        <span className="dl-card-frame" />
         <button
           type="button"
           className="dl-card-play"
-          aria-label={`Play ${row.cardSub ? `${row.cardTitle} · ${row.cardSub}` : row.cardTitle} offline`}
+          aria-label={`Play ${name} offline`}
           title="Play offline"
           onClick={onPlay}
         >
           <FluentIcon glyph="play" size={13} />
         </button>
       </div>
-    </div>
-  )
-}
-
-/** The 380px pane: everything about one download, including what is too long for a card. */
-function DetailPane({
-  row,
-  onPlay,
-  onOpenFolder,
-  onPause,
-  onResume,
-  onCancel,
-  onChooseSource,
-  onDelete,
-}: {
-  row: DownloadRow
-  onPlay: () => void
-  onOpenFolder: () => void
-  onPause: () => void
-  onResume: () => void
-  onCancel: () => void
-  onChooseSource: () => void
-  onDelete: () => void
-}) {
-  const ready = row.state === 'ondisk'
-  const facts = [
-    { label: 'Quality', value: row.qualityLine },
-    { label: ready ? 'Size' : 'Downloaded', value: row.downloadedLine },
-    { label: 'Subtitle', value: row.subs },
-    { label: 'Added', value: addedFact(row.addedLabel) },
-  ]
-  return (
-    <div className="dl-pane-inner">
-      <div className="art dl-pane-art">
-        <ArtImage src={row.rowArtwork} />
-      </div>
-      <div className="dl-pane-head">
-        <div className="dl-pane-title">
-          <h2 className="dl-pane-name">{row.name}</h2>
-          {!ready && <StatePill state={row.state} />}
-        </div>
-        <span className="dl-pane-meta">{row.paneMeta}</span>
-      </div>
-
-      {ready && (
-        <div className="dl-pane-actions">
-          <button type="button" className="dl-btn dl-btn-play" onClick={onPlay}>
-            <FluentIcon glyph="play" size={14} />
-            <span>Play offline</span>
-          </button>
-          <button type="button" className="dl-btn dl-btn-block" onClick={onOpenFolder}>
-            <FluentIcon glyph="folder" size={15} />
-            <span>Open folder</span>
-          </button>
-        </div>
-      )}
-
-      {!ready && (
-        <div className="dl-pane-transfer">
-          <ProgressTrack progress={row.progress} tone={row.tone} />
-          <div className="dl-pane-lead">
-            <span className={`spacer dl-lead-${row.tone}`}>{row.lead}</span>
-            <span>{percentText(row.progress)}</span>
-          </div>
-          <div className="dl-pane-controls">
-            {row.state === 'downloading' && (
-              <button type="button" className="dl-btn dl-btn-block" onClick={onPause}>
-                <FluentIcon glyph="pause" size={13} />
-                <span>Pause transfer</span>
-              </button>
-            )}
-            {row.canResume && (
-              <button type="button" className="dl-btn dl-btn-block" onClick={onResume}>
-                <FluentIcon glyph="play" size={13} />
-                <span>Resume transfer</span>
-              </button>
-            )}
-            <button
-              type="button"
-              className="dl-icon-btn dl-icon-btn-danger dl-pane-cancel"
-              aria-label="Cancel transfer"
-              title="Cancel transfer"
-              onClick={onCancel}
-            >
-              <FluentIcon glyph="delete" size={13} />
-            </button>
-          </div>
-          {row.requiresNewSource && (
-            <button type="button" className="dl-btn dl-btn-block" onClick={onChooseSource}>
-              <FluentIcon glyph="switchSource" size={14} />
-              <span>Choose source again</span>
-            </button>
-          )}
-        </div>
-      )}
-
-      <dl className="dl-facts">
-        {facts.map((fact) => (
-          <div key={fact.label} className="dl-fact">
-            <dt>{fact.label}</dt>
-            <dd>{fact.value}</dd>
-          </div>
-        ))}
-        {/* Release names run far longer than the pane is wide; the tooltip carries the whole name. */}
-        <div className="dl-fact">
-          <dt>File</dt>
-          <dd className="ellipsis" title={row.fileName}>
-            {row.fileName}
-          </dd>
-        </div>
-      </dl>
-
-      {/* The failure sentence is already on the lead line; this says what
-          happens to the bytes on disk, which is the part a viewer acts on. */}
-      {row.state === 'failed' && (
-        <div className="dl-pane-note">THE PARTIAL FILE IS KEPT UNTIL A NEW SOURCE FINISHES.</div>
-      )}
-
-      {ready && (
-        <button type="button" className="dl-btn dl-btn-delete" onClick={onDelete}>
-          <FluentIcon glyph="delete" size={15} />
-          <span>Delete download</span>
-        </button>
-      )}
     </div>
   )
 }

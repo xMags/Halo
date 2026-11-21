@@ -160,21 +160,17 @@ export function DetailSkeleton() {
   )
 }
 
-/** Download row placeholder matching `.dl-row`. */
+/** Download card placeholder matching a running transfer's header. */
 export function DownloadRowSkeleton() {
   return (
-    <div className="dl-row dl-skeleton-row" aria-hidden>
-      <div className="art dl-thumb skeleton" />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-          <div className="skeleton skeleton-text" style={{ width: 180, height: 16 }} />
-          <div
-            className="skeleton skeleton-badge"
-            style={{ position: 'static', width: 60, height: 18, borderRadius: 3 }}
-          />
+    <div className="dl-card-box dl-skeleton-row" aria-hidden>
+      <div className="dl-run-header">
+        <div className="art dl-run-thumb skeleton" />
+        <div className="dl-run-text">
+          <div className="skeleton skeleton-text" style={{ width: 180, height: 14 }} />
+          <div className="skeleton" style={{ width: '100%', height: 3, borderRadius: 2 }} />
+          <div className="skeleton skeleton-text" style={{ width: 220, height: 12 }} />
         </div>
-        <div className="skeleton" style={{ width: '100%', height: 3, borderRadius: 2 }} />
-        <div className="skeleton skeleton-text" style={{ width: 220, height: 12 }} />
       </div>
     </div>
   )

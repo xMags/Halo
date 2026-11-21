@@ -490,6 +490,18 @@ export function deleteReady(jobId: string): Promise<string | null> {
   return runAction(() => removeDownload(jobId))
 }
 
+/**
+ * Removes every download this account has on the PC, finished or not: the
+ * engine's remove cancels an unfinished transfer and deletes its partial file,
+ * and deletes a finished one with its subtitle. Every one is attempted, then
+ * the first failure is reported.
+ */
+export function deleteAllDownloads(): Promise<string | null> {
+  const ids = snapshot.downloads.map((item) => item.job_id)
+  if (ids.length === 0) return Promise.resolve(null)
+  return runAction(() => forEachJob(ids, removeDownload))
+}
+
 /** This video's finished download on this device, if it has one (one entry per video). */
 export function readyDownloadFor(videoId: string): DownloadView | undefined {
   return snapshot.downloads.find((item) => item.media.video_id === videoId && item.status === 'done')

@@ -65,6 +65,9 @@ const GLYPHS = {
   chat: '',
   decoding: '',
   font: '',
+  cloudDownload: '',
+  queue: '',
+  changeFolder: '',
 } as const
 
 export type FluentGlyph = keyof typeof GLYPHS

@@ -80,9 +80,8 @@
 .dl-skeleton-row {
   pointer-events: none;
 }
-.dl-skeleton-row .dl-thumb {
+.dl-skeleton-row .dl-run-thumb {
   border: 1px solid var(--cs);
-  border-radius: 4px;
   background: var(--cd);
 }
 

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { FluentIcon } from './FluentIcon'
 
 /**
@@ -9,11 +10,14 @@ export function InfoBar({
   title,
   message,
   onClose,
+  children,
 }: {
   title: string
   message: string
   /** Omitted for a condition the viewer cannot dismiss. */
   onClose?: () => void
+  /** The bar's buttons, under the title and message (WinUI: InfoBar.Content). */
+  children?: ReactNode
 }) {
   return (
     <div className="infobar infobar-error" role="alert">
@@ -24,6 +28,7 @@ export function InfoBar({
       <div className="infobar-text">
         <span className="infobar-title">{title}</span>
         <span className="infobar-message">{message}</span>
+        {children && <div className="infobar-actions">{children}</div>}
       </div>
       {onClose && (
         <button type="button" className="infobar-close" aria-label="Close" title="Close" onClick={onClose}>

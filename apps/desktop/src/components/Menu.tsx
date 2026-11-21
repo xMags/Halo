@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
-import { FluentIcon } from './FluentIcon'
+import { FluentIcon, type FluentGlyph } from './FluentIcon'
 
 /**
  * The flyout the library sort, the downloads overflow and the sheet's sort
@@ -67,6 +67,9 @@ export function MenuItem({
   label,
   checked,
   radio = false,
+  glyph,
+  danger = false,
+  disabled = false,
   onClick,
 }: {
   label: string
@@ -74,14 +77,20 @@ export function MenuItem({
   checked?: boolean
   /** WinUI's RadioMenuFlyoutItem: the choice is marked with a bullet, not a tick. */
   radio?: boolean
+  /** A MenuFlyoutItem's 16px icon before the label. */
+  glyph?: FluentGlyph
+  /** A destructive entry: label and glyph in the critical colour. */
+  danger?: boolean
+  disabled?: boolean
   onClick: () => void
 }) {
   return (
     <button
       type="button"
-      className="menu-item"
+      className={danger ? 'menu-item menu-item-danger' : 'menu-item'}
       role={radio ? 'menuitemradio' : 'menuitem'}
       aria-checked={radio ? Boolean(checked) : undefined}
+      disabled={disabled}
       onClick={onClick}
     >
       {checked !== undefined && (
@@ -89,7 +98,13 @@ export function MenuItem({
           {checked && (radio ? <FluentIcon glyph="radioBullet" size={16} /> : <FluentIcon glyph="check" size={12} />)}
         </span>
       )}
+      {glyph && <FluentIcon glyph={glyph} />}
       <span>{label}</span>
     </button>
   )
+}
+
+/** MenuFlyoutSeparator. */
+export function MenuSeparator() {
+  return <div className="menu-separator" role="separator" />
 }
