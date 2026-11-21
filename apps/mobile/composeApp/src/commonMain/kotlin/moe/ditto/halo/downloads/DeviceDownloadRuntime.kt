@@ -345,8 +345,15 @@ internal class DeviceDownloadRuntime(
         pumpNext()
     }
 
+    /**
+     * The notification's Cancel. A tap that lands after the transfer finished
+     * is ignored: it was meant for a download in progress, not to delete a
+     * finished video.
+     */
     suspend fun cancelJob(jobId: String) {
-        val videoId = mutex.withLock { currentJob(jobId)?.videoId } ?: return
+        val videoId = mutex.withLock {
+            currentJob(jobId)?.takeIf { it.status != DownloadStatus.Done }?.videoId
+        } ?: return
         remove(videoId)
     }
 

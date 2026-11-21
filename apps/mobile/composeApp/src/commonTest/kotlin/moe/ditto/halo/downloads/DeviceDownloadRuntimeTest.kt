@@ -102,6 +102,24 @@ class DeviceDownloadRuntimeTest {
     }
 
     @Test
+    fun aNotificationCancelAfterTheDownloadFinishedKeepsTheVideo() = runTest {
+        val world = world()
+        testScheduler.advanceUntilIdle()
+        world.runtime.start(media(videoId = "movie"))
+        testScheduler.advanceUntilIdle()
+        val entry = world.entry("movie")
+        world.fileSystem.write("/downloads/${entry.fileName}".toPath()) { writeUtf8("video") }
+        world.port.emit(BackgroundDownloadEvent.Completed("job-1", 5, 5))
+        testScheduler.advanceUntilIdle()
+
+        world.runtime.cancelJob("job-1")
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(DownloadStatus.Done, world.status("movie"))
+        assertTrue(world.fileSystem.exists("/downloads/${entry.fileName}".toPath()))
+    }
+
+    @Test
     fun aPausedRowWhoseTransferSucceededIsFinishedAtLaunch() = runTest {
         val store = FakeStore()
         val vault = FakeDownloadVault()
