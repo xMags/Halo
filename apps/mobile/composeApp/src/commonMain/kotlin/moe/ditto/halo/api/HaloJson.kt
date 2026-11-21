@@ -44,6 +44,15 @@ val HaloJson: Json = Json {
 }
 
 /**
+ * JSON read exactly as `JSON.parse` reads it, for the answers the strict
+ * readers check field by field (capabilities, people, lookups, magnets and
+ * TMDB's own answers). They are held to the same rules as the desktop's, and
+ * the leniency [HaloJson] keeps for addons would let through input the
+ * desktop refuses, such as unquoted keys or strings.
+ */
+val StrictJson: Json = Json
+
+/**
  * `resources` entries are either a bare resource name or an object that
  * additionally constrains types/id prefixes — both forms occur in the wild
  * (Cinemeta and OpenSubtitles use strings, Torrentio objects), so the two

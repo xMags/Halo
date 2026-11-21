@@ -357,7 +357,7 @@ class HaloClient(
     ): JsonElement {
         val text = exchange(method, path, body, query)
         return try {
-            HaloJson.parseToJsonElement(text)
+            StrictJson.parseToJsonElement(text)
         } catch (_: SerializationException) {
             throw MalformedResponseException()
         }
