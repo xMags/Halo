@@ -473,14 +473,25 @@ struct AdoptionPlan {
     rekey: Vec<String>,
     /// Duplicates removed, files included.
     discard: Vec<String>,
+    /// Duplicates whose folder cannot be reached: the record goes, the files
+    /// stay, since nothing can tell whether they are the only good copy.
+    forget: Vec<String>,
 }
 
 /// Every record of `from` moves to `to`, except where `to` already shows the
 /// same video: there a finished download beats an unfinished one, and when
-/// both are finished (or neither is) the one already in `to` stays. A losing
-/// record's replacement backup goes with it, so it cannot resurface as a
-/// second copy.
-fn plan_adoption(entries: &HashMap<String, DownloadRecord>, from: &str, to: &str) -> AdoptionPlan {
+/// both are finished (or neither is) the one already in `to` stays. A
+/// finished record whose folder is in `unreachable` (an unplugged or
+/// sleeping drive) does not count as finished, so a copy that plays wins
+/// over it, and a losing record there is forgotten rather than deleted. A
+/// losing record's replacement backup goes with it, so it cannot resurface
+/// as a second copy.
+fn plan_adoption(
+    entries: &HashMap<String, DownloadRecord>,
+    from: &str,
+    to: &str,
+    unreachable: &HashSet<String>,
+) -> AdoptionPlan {
     if from == to {
         return AdoptionPlan::default();
     }
@@ -489,7 +500,11 @@ fn plan_adoption(entries: &HashMap<String, DownloadRecord>, from: &str, to: &str
             && !entry.pending_deletion
             && !is_hidden_backup(entries, &entry.job_id)
     };
+    let playable = |entry: &DownloadRecord| {
+        entry.status == DownloadStatus::Done && !unreachable.contains(&entry.job_id)
+    };
     let mut discard: HashSet<String> = HashSet::new();
+    let mut forget: HashSet<String> = HashSet::new();
     for moving in entries.values().filter(|entry| visible(entry, from)) {
         let Some(existing) = entries
             .values()
@@ -497,23 +512,36 @@ fn plan_adoption(entries: &HashMap<String, DownloadRecord>, from: &str, to: &str
         else {
             continue;
         };
-        let moving_wins =
-            moving.status == DownloadStatus::Done && existing.status != DownloadStatus::Done;
+        let moving_wins = playable(moving) && !playable(existing);
         let loser = if moving_wins { existing } else { moving };
-        discard.insert(loser.job_id.clone());
-        if let Some(backup) = loser.replacement.as_ref() {
-            discard.insert(backup.job_id.clone());
+        let backup = loser.replacement.as_ref().map(|backup| &backup.job_id);
+        for job_id in std::iter::once(&loser.job_id).chain(backup) {
+            if unreachable.contains(job_id) {
+                forget.insert(job_id.clone());
+            } else {
+                discard.insert(job_id.clone());
+            }
         }
     }
     let mut rekey: Vec<String> = entries
         .values()
-        .filter(|entry| entry.account_key == from && !discard.contains(&entry.job_id))
+        .filter(|entry| {
+            entry.account_key == from
+                && !discard.contains(&entry.job_id)
+                && !forget.contains(&entry.job_id)
+        })
         .map(|entry| entry.job_id.clone())
         .collect();
     rekey.sort();
     let mut discard: Vec<String> = discard.into_iter().collect();
     discard.sort();
-    AdoptionPlan { rekey, discard }
+    let mut forget: Vec<String> = forget.into_iter().collect();
+    forget.sort();
+    AdoptionPlan {
+        rekey,
+        discard,
+        forget,
+    }
 }
 
 /// A record that some live record names as its replacement backup.
@@ -723,9 +751,13 @@ impl DownloadManager {
     ) -> Result<Vec<DownloadView>, String> {
         let from = fingerprint(&from);
         let to = fingerprint(&to);
-        let losers = {
+        // A finished download whose file was deleted is marked missing first,
+        // so it cannot outrank a copy that plays.
+        self.reconcile_missing_files().await;
+        let unreachable = self.unreachable_duplicates(&from, &to).await;
+        let (losers, forgotten) = {
             let mut inner = self.inner.lock().await;
-            let plan = plan_adoption(&inner.entries, &from, &to);
+            let plan = plan_adoption(&inner.entries, &from, &to, &unreachable);
             let now = now_ms();
             for job_id in &plan.rekey {
                 if let Some(entry) = inner.entries.get_mut(job_id) {
@@ -733,12 +765,22 @@ impl DownloadManager {
                     entry.updated_at = now;
                 }
             }
-            plan.discard
+            for job_id in &plan.forget {
+                inner.entries.remove(job_id);
+            }
+            let losers = plan
+                .discard
                 .iter()
                 .filter_map(|job_id| inner.entries.get(job_id).cloned())
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            (losers, plan.forget)
         };
         self.persist().await?;
+        for job_id in &forgotten {
+            self.stop_job(job_id).await;
+            self.delete_request(job_id);
+            self.emit_removed(job_id);
+        }
         for loser in losers {
             self.stop_job(&loser.job_id).await;
             // A file that cannot be deleted now is retried on the next launch
@@ -748,6 +790,47 @@ impl DownloadManager {
         }
         self.kick();
         Ok(self.inner.lock().await.visible_views())
+    }
+
+    /// The records on either side of a sign-in's duplicates whose folder
+    /// cannot be reached now. The disk is read off the lock.
+    async fn unreachable_duplicates(&self, from: &str, to: &str) -> HashSet<String> {
+        let candidates: Vec<(String, PathBuf, PathBuf)> = {
+            let inner = self.inner.lock().await;
+            let videos = |account: &str| -> HashSet<String> {
+                inner
+                    .entries
+                    .values()
+                    .filter(|entry| entry.account_key == account && !entry.pending_deletion)
+                    .map(|entry| entry.media.video_id.clone())
+                    .collect()
+            };
+            let from_videos = videos(from);
+            let to_videos = videos(to);
+            inner
+                .entries
+                .values()
+                .filter(|entry| {
+                    (entry.account_key == from || entry.account_key == to)
+                        && from_videos.contains(&entry.media.video_id)
+                        && to_videos.contains(&entry.media.video_id)
+                })
+                .map(|entry| {
+                    (
+                        entry.job_id.clone(),
+                        PathBuf::from(&entry.root_path),
+                        entry.target(),
+                    )
+                })
+                .collect()
+        };
+        candidates
+            .into_iter()
+            .filter(|(_, root, target)| {
+                matches!(file_presence(root, target), FilePresence::FolderUnavailable)
+            })
+            .map(|(job_id, _, _)| job_id)
+            .collect()
     }
 
     pub async fn list(&self) -> Vec<DownloadView> {
@@ -2594,6 +2677,7 @@ mod tests {
             ]),
             "device",
             "account",
+            &HashSet::new(),
         );
         assert_eq!(plan.rekey, vec!["d1".to_string(), "d2".to_string()]);
         assert!(plan.discard.is_empty());
@@ -2615,6 +2699,7 @@ mod tests {
             ]),
             "device",
             "account",
+            &HashSet::new(),
         );
         assert_eq!(plan.rekey, vec!["d1".to_string()]);
         assert_eq!(
@@ -2636,9 +2721,33 @@ mod tests {
             ]),
             "device",
             "account",
+            &HashSet::new(),
         );
         assert!(plan.rekey.is_empty());
         assert_eq!(plan.discard, vec!["d0".to_string(), "d1".to_string()]);
+    }
+
+    #[test]
+    fn adoption_never_deletes_a_copy_on_a_drive_it_cannot_reach() {
+        let unreachable: HashSet<String> = ["a1".to_string(), "d2".to_string()].into();
+        let plan = plan_adoption(
+            &entries(vec![
+                // The account's finished copy is on a drive that is away: the
+                // device's copy plays, so it wins, and the other is forgotten.
+                owned("d1", "device", "movie:1", DownloadStatus::Done),
+                owned("a1", "account", "movie:1", DownloadStatus::Done),
+                // The device's copy is the one away: the account keeps its
+                // own, and the device's record goes without its files.
+                owned("d2", "device", "movie:2", DownloadStatus::Done),
+                owned("a2", "account", "movie:2", DownloadStatus::Done),
+            ]),
+            "device",
+            "account",
+            &unreachable,
+        );
+        assert_eq!(plan.rekey, vec!["d1".to_string()]);
+        assert!(plan.discard.is_empty());
+        assert_eq!(plan.forget, vec!["a1".to_string(), "d2".to_string()]);
     }
 
     #[test]
@@ -2647,6 +2756,7 @@ mod tests {
             &entries(vec![owned("d1", "device", "movie:1", DownloadStatus::Done)]),
             "device",
             "device",
+            &HashSet::new(),
         );
         assert_eq!(plan, AdoptionPlan::default());
     }
