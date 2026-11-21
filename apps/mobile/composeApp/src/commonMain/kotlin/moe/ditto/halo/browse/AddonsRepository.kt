@@ -65,6 +65,30 @@ class AddonsRepository(
         cache.invalidate(HaloKey.Addons)
     }
 
+    /**
+     * Applies [edit] to the caller's own list as the server has it now. A
+     * save replaces the whole list, so one built from the cached copy would
+     * delete an addon another device added since it was read.
+     */
+    suspend fun editUserAddons(edit: (List<String>) -> List<String>) {
+        val current = client.getAddons().user.mapNotNull { it.transportUrl }
+        val next = edit(current)
+        if (next != current) client.putAddons(next)
+        cache.invalidate(HaloKey.Addons)
+    }
+
+    /** Admin-only: [editUserAddons] for the global list. */
+    suspend fun editGlobalAddons(edit: (List<String>) -> List<String>) {
+        val account = requireAccount()
+        val entries = account.getAddons().global
+        val current = entries.mapNotNull { it.transportUrl }
+        // Admins are sent every global URL; without them the list cannot be re-sent whole.
+        check(current.size == entries.size) { "The global addon list could not be read in full." }
+        val next = edit(current)
+        if (next != current) account.putGlobalAddons(next)
+        cache.invalidate(HaloKey.Addons)
+    }
+
     suspend fun setHideCatalogs(addonId: String, hidden: Boolean) {
         client.patchAddon(addonId, hidden)
         cache.invalidate(HaloKey.Addons)

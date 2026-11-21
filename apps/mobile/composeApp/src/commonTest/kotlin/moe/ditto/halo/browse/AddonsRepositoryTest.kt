@@ -92,6 +92,28 @@ class AddonsRepositoryTest {
     }
 
     @Test
+    fun anEditAppliesToTheListTheServerHasNotTheCachedOne() = runTest {
+        // The phone's cache predates an addon another device added.
+        var server = listOf(addon("a").copy(transportUrl = "https://a.test/manifest.json"))
+        val api = BrowseApi { request ->
+            when (request.method) {
+                HttpMethod.Put -> HttpStatusCode.OK to "[]"
+                else -> HttpStatusCode.OK to addonsJson(user = server)
+            }
+        }
+        val repository = AddonsRepository(api.client, QueryCache(backgroundScope, FakeClock()))
+        repository.observe().first { it.value != null }
+        server = server + addon("other").copy(transportUrl = "https://other.test/manifest.json")
+
+        repository.editUserAddons { it + "https://new.test/manifest.json" }
+
+        assertEquals(
+            listOf("""["https://a.test/manifest.json","https://other.test/manifest.json","https://new.test/manifest.json"]"""),
+            api.writtenBodies(),
+        )
+    }
+
+    @Test
     fun hidingCatalogsRefetchesBecauseTheServerStripsTheManifest() = runTest {
         // A hidden addon comes back with its catalogs already removed, so the
         // cached copy is wrong the moment the toggle is written.

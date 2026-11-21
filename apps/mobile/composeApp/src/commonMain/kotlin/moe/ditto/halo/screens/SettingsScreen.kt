@@ -125,18 +125,19 @@ internal fun SettingsScreen(
             return
         }
         val entries = if (ownership == AddonOwnership.User) addons.user else addons.global
-        val urls = currentUrls(entries)
-        if (urls == null) {
+        if (currentUrls(entries) == null) {
             mutationError = "This addon list cannot be edited safely until it is refreshed."
             return
         }
         val key = if (ownership == AddonOwnership.User) "user-add" else "global-add"
         launchMutation(key, "Could not install the addon. Check the manifest URL and try again.") {
+            // Added to the list as the server has it now, not the one shown.
+            val add = { current: List<String> -> if (url in current) current else current + url }
             if (ownership == AddonOwnership.User) {
-                graph.addons.setUserAddons(urls + url)
+                graph.addons.editUserAddons(add)
                 userAddonUrl = ""
             } else {
-                graph.addons.setGlobalAddons(urls + url)
+                graph.addons.editGlobalAddons(add)
                 globalAddonUrl = ""
             }
         }
@@ -145,7 +146,7 @@ internal fun SettingsScreen(
     fun removeAddon(entry: AddonEntry, ownership: AddonOwnership) {
         val addons = addonsState.value ?: return
         val entries = if (ownership == AddonOwnership.User) addons.user else addons.global
-        val urls = currentUrls(entries) ?: run {
+        currentUrls(entries) ?: run {
             mutationError = "This addon list cannot be edited safely until it is refreshed."
             return
         }
@@ -155,10 +156,11 @@ internal fun SettingsScreen(
         }
         val key = "${ownership.name.lowercase()}-remove-${entry.id}"
         launchMutation(key, "Could not remove the addon. Try again.") {
+            val remove = { current: List<String> -> current.filterNot { it == removedUrl } }
             if (ownership == AddonOwnership.User) {
-                graph.addons.setUserAddons(urls.filterNot { it == removedUrl })
+                graph.addons.editUserAddons(remove)
             } else {
-                graph.addons.setGlobalAddons(urls.filterNot { it == removedUrl })
+                graph.addons.editGlobalAddons(remove)
             }
         }
     }
