@@ -505,8 +505,10 @@ fn plan_adoption(
             && !is_hidden_backup(entries, &entry.job_id)
     };
     // Finished and reachable, then finished on a drive that is away, then
-    // not finished. A re-download in progress counts as its finished backup,
-    // which plays meanwhile and leaves with it when it loses.
+    // not finished. A re-download in progress ranks as its finished backup,
+    // which would leave with it if it lost; but the backup is hidden and does
+    // not play until the re-download ends, so on a tie a copy that plays now
+    // wins. Only a true tie keeps the copy already in `to`.
     let own_rank = |entry: &DownloadRecord| match entry.status {
         DownloadStatus::Done if !unreachable.contains(&entry.job_id) => 2,
         DownloadStatus::Done => 1,
@@ -530,7 +532,7 @@ fn plan_adoption(
         else {
             continue;
         };
-        let moving_wins = rank(moving) > rank(existing);
+        let moving_wins = (rank(moving), own_rank(moving)) > (rank(existing), own_rank(existing));
         let loser = if moving_wins { existing } else { moving };
         let backup = loser.replacement.as_ref().map(|backup| &backup.job_id);
         for job_id in std::iter::once(&loser.job_id).chain(backup) {
@@ -2933,6 +2935,28 @@ mod tests {
         assert!(plan.rekey.is_empty());
         assert!(plan.discard.is_empty());
         assert_eq!(plan.forget, vec!["d1".to_string()]);
+    }
+
+    #[test]
+    fn a_copy_that_plays_now_beats_a_re_download_backed_by_a_finished_one() {
+        let mut replacing = owned("a1", "account", "movie:1", DownloadStatus::Paused);
+        let backup = owned("a0", "account", "movie:1", DownloadStatus::Done);
+        replacing.replacement = Some(ReplacementBackup::of(&backup));
+        let plan = plan_adoption(
+            &entries(vec![
+                replacing,
+                backup,
+                owned("d1", "device", "movie:1", DownloadStatus::Done),
+            ]),
+            "device",
+            "account",
+            &HashSet::new(),
+        );
+        // The device's copy plays now and moves; the account's re-download
+        // and its hidden backup go, so one visible, playable copy is left.
+        assert_eq!(plan.rekey, vec!["d1".to_string()]);
+        assert_eq!(plan.discard, vec!["a0".to_string(), "a1".to_string()]);
+        assert!(plan.forget.is_empty());
     }
 
     #[test]
