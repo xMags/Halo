@@ -502,11 +502,21 @@ fn plan_adoption(
             && !is_hidden_backup(entries, &entry.job_id)
     };
     // Finished and reachable, then finished on a drive that is away, then
-    // not finished.
-    let rank = |entry: &DownloadRecord| match entry.status {
+    // not finished. A re-download in progress counts as its finished backup,
+    // which plays meanwhile and leaves with it when it loses.
+    let own_rank = |entry: &DownloadRecord| match entry.status {
         DownloadStatus::Done if !unreachable.contains(&entry.job_id) => 2,
         DownloadStatus::Done => 1,
         _ => 0,
+    };
+    let rank = |entry: &DownloadRecord| {
+        let backup = entry
+            .replacement
+            .as_ref()
+            .and_then(|backup| entries.get(&backup.job_id))
+            .filter(|backup| !backup.pending_deletion)
+            .map_or(0, own_rank);
+        own_rank(entry).max(backup)
     };
     let mut discard: HashSet<String> = HashSet::new();
     let mut forget: HashSet<String> = HashSet::new();
@@ -773,8 +783,17 @@ impl DownloadManager {
                     entry.updated_at = now;
                 }
             }
+            // Forgotten records are stopped before they go: a worker still
+            // winding down would otherwise find its part files named by no
+            // record and delete them.
             for job_id in &plan.forget {
-                inner.entries.remove(job_id);
+                if let Some(entry) = inner.entries.get_mut(job_id) {
+                    if entry.status.is_active() {
+                        entry.status = DownloadStatus::Paused;
+                        entry.explicit_pause = true;
+                        entry.bytes_per_second = 0;
+                    }
+                }
             }
             let losers = plan
                 .discard
@@ -786,6 +805,16 @@ impl DownloadManager {
         self.persist().await?;
         for job_id in &forgotten {
             self.stop_job(job_id).await;
+        }
+        if !forgotten.is_empty() {
+            let mut inner = self.inner.lock().await;
+            for job_id in &forgotten {
+                inner.entries.remove(job_id);
+            }
+            drop(inner);
+            self.persist().await?;
+        }
+        for job_id in &forgotten {
             self.delete_request(job_id);
             self.emit_removed(job_id);
         }
@@ -2830,6 +2859,29 @@ mod tests {
         assert_eq!(plan.rekey, vec!["d1".to_string()]);
         assert_eq!(plan.discard, vec!["a1".to_string(), "d2".to_string()]);
         assert_eq!(plan.forget, vec!["d3".to_string()]);
+    }
+
+    #[test]
+    fn a_re_download_in_progress_ranks_as_its_finished_backup() {
+        // The account is re-downloading movie:1 over a finished copy that
+        // plays; the device's finished copy is on a drive that is away.
+        let mut replacing = owned("a1", "account", "movie:1", DownloadStatus::Paused);
+        let backup = owned("a0", "account", "movie:1", DownloadStatus::Done);
+        replacing.replacement = Some(ReplacementBackup::of(&backup));
+        let unreachable: HashSet<String> = ["d1".to_string()].into();
+        let plan = plan_adoption(
+            &entries(vec![
+                replacing,
+                backup,
+                owned("d1", "device", "movie:1", DownloadStatus::Done),
+            ]),
+            "device",
+            "account",
+            &unreachable,
+        );
+        assert!(plan.rekey.is_empty());
+        assert!(plan.discard.is_empty());
+        assert_eq!(plan.forget, vec!["d1".to_string()]);
     }
 
     #[test]
