@@ -95,7 +95,7 @@ export function parseSearchQuery(query: string, currentYear = new Date().getFull
   return { full, name, year }
 }
 
-/** Trimmed, at most `SEARCH_MAXIMUM_QUERY` UTF-16 units, never splitting a surrogate pair. */
+/** At most `SEARCH_MAXIMUM_QUERY` UTF-16 units, never splitting a surrogate pair. Not trimmed: callers trim. */
 export function cappedQuery(text: string): string {
   if (text.length <= SEARCH_MAXIMUM_QUERY) return text
   let length = SEARCH_MAXIMUM_QUERY
