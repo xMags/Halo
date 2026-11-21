@@ -7,6 +7,7 @@ import {
   requiresNewSource,
   THROUGHPUT_SLOTS,
 } from './downloadsLogic'
+import { metahubLogoUrl } from '../components/artworkUrl'
 import type { Medal } from '../components/medal'
 import { medalFor, NOT_PARSED } from '../sources/sourcePresentation'
 import { parseStreamInfo } from '../sources/streamInfo'
@@ -64,6 +65,11 @@ export interface DownloadRow {
   poster: string | undefined
   /** Landscape still for the 16:9 art, falling back to the poster. */
   rowArtwork: string | undefined
+  /** The art and logo saved beside the video, which the card prefers so it works offline. */
+  hasSavedArtwork: boolean
+  hasSavedLogo: boolean
+  /** The title's logo on the network, for a card whose logo is not saved yet. */
+  onlineLogo: string | undefined
   requiresNewSource: boolean
   canPause: boolean
   canResume: boolean
@@ -213,6 +219,9 @@ export function rowOf(item: DownloadView): DownloadRow {
     fileName: item.file_name,
     poster: media.poster,
     rowArtwork: media.landscape_artwork || media.poster,
+    hasSavedArtwork: item.has_saved_artwork === true,
+    hasSavedLogo: item.has_saved_logo === true,
+    onlineLogo: metahubLogoUrl(media.meta_id),
     requiresNewSource: newSource,
     canPause: item.status === 'downloading' || item.status === 'queued',
     canResume: item.status === 'paused' || retryable,

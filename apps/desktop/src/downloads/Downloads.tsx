@@ -16,6 +16,7 @@ import {
   formatDownloadBytes,
   pauseAll,
   pauseTransfer,
+  readDownloadSidecar,
   refreshDownloads,
   resumeAll,
   resumeTransfer,
@@ -685,6 +686,68 @@ function RunningCard({
 }
 
 /**
+ * A picture saved beside a finished download, as an address the page can
+ * draw, or undefined while it is read or when none is saved. The address is
+ * released when the card lets go of it.
+ */
+function useSavedPicture(jobId: string, kind: 'logo' | 'art', saved: boolean): string | undefined {
+  const [picture, setPicture] = useState<{ key: string; url: string } | null>(null)
+  const key = `${jobId}|${kind}`
+  useEffect(() => {
+    if (!saved) return
+    let cancelled = false
+    let created: string | undefined
+    readDownloadSidecar(jobId, kind)
+      .then((blob) => {
+        if (cancelled || !blob) return
+        created = URL.createObjectURL(blob)
+        setPicture({ key: `${jobId}|${kind}`, url: created })
+      })
+      // Unreadable: the card keeps the network's copy.
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+      if (created) URL.revokeObjectURL(created)
+      setPicture(null)
+    }
+  }, [jobId, kind, saved])
+  return saved && picture?.key === key ? picture.url : undefined
+}
+
+/**
+ * The title's logo on the art, bottom left, over a fade that darkens the
+ * art's lower part so a coloured wordmark still reads on busy art. Each
+ * source is tried in turn; it shows only once one has loaded, and with none
+ * the card keeps its text title.
+ */
+function CardLogo({ sources, onShownChange }: { sources: string[]; onShownChange: (shown: boolean) => void }) {
+  const sourcesKey = sources.join('\n')
+  const [attempt, setAttempt] = useState({ sourcesKey, index: 0, loaded: false })
+  const current = attempt.sourcesKey === sourcesKey ? attempt : { sourcesKey, index: 0, loaded: false }
+  const src = sources[current.index]
+  const shown = current.loaded && Boolean(src)
+  useEffect(() => {
+    onShownChange(shown)
+  }, [shown, onShownChange])
+  if (!src) return null
+  return (
+    <>
+      <span className={`dl-card-logo-scrim ${shown ? 'dl-card-logo-on' : ''}`} />
+      <img
+        key={src}
+        className={`dl-card-logo-img ${shown ? 'dl-card-logo-on' : ''}`}
+        src={src}
+        alt=""
+        draggable={false}
+        onLoad={() => setAttempt({ sourcesKey, index: current.index, loaded: true })}
+        // Not saved yet, offline, or no logo for this title: the next, or the text.
+        onError={() => setAttempt({ sourcesKey, index: current.index + 1, loaded: false })}
+      />
+    </>
+  )
+}
+
+/**
  * A finished download as an artwork card: clicking it plays, and the rest is
  * on right-click. The card and its play button are siblings, not nested,
  * since a button inside a button is invalid HTML; the play button sits in a
@@ -700,11 +763,17 @@ function ReadyCard({
   onMenu: (event: React.MouseEvent<HTMLElement>) => void
 }): ReactNode {
   const name = row.cardSub ? `${row.cardTitle} · ${row.cardSub}` : row.cardTitle
+  // The pictures saved beside the video first, so the card works offline;
+  // the network's copies when they are not saved yet.
+  const savedArt = useSavedPicture(row.id, 'art', row.hasSavedArtwork)
+  const savedLogo = useSavedPicture(row.id, 'logo', row.hasSavedLogo)
+  const logoSources = [savedLogo, row.onlineLogo].filter((url): url is string => Boolean(url))
+  const [logoShown, setLogoShown] = useState(false)
   return (
-    <div className="dl-card" onContextMenu={onMenu}>
+    <div className={`dl-card ${logoShown ? 'dl-card-logo' : ''}`} onContextMenu={onMenu}>
       <button type="button" className="dl-card-hit" aria-label={name} title={name} onClick={onPlay}>
         <div className="art dl-card-art">
-          <ArtImage src={row.rowArtwork} lazy />
+          <ArtImage src={savedArt ?? row.rowArtwork} fallback={savedArt ? row.rowArtwork : undefined} lazy />
           {row.qualityBadge && (
             <span className={`dl-badge dl-badge-quality ${row.qualityBadge.gold ? 'dl-badge-gold' : ''}`}>
               {row.qualityBadge.label}
@@ -719,6 +788,7 @@ function ReadyCard({
         </div>
       </button>
       <div className="dl-card-overlay">
+        <CardLogo sources={logoSources} onShownChange={setLogoShown} />
         <span className="dl-card-frame" />
         <button
           type="button"

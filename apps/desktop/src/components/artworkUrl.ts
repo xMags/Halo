@@ -31,3 +31,9 @@ export function metahubPosterUrl(id: string | undefined): string | undefined {
   if (!id || !IMDB_ID.test(id)) return undefined
   return `https://images.metahub.space/poster/medium/${id}/img`
 }
+
+/** Stremio's logo for an IMDb title, from the same place; undefined for any other id. */
+export function metahubLogoUrl(id: string | undefined): string | undefined {
+  if (!id || !IMDB_ID.test(id)) return undefined
+  return `https://images.metahub.space/logo/medium/${id}/img`
+}

@@ -558,6 +558,36 @@
   aspect-ratio: 16 / 9;
   pointer-events: none;
 }
+/* The title's logo, bottom left on the art, over a fade that darkens the
+   art's lower part so a coloured wordmark still reads on busy art. Fixed to
+   the art's frame, so the hover zoom does not move it; at most 45% of the
+   art's width, so a long wordmark never reaches the play button. */
+.dl-card-logo-scrim {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: linear-gradient(to bottom, transparent 40%, rgba(0, 0, 0, 0.65));
+  opacity: 0;
+  transition: opacity 167ms ease-out;
+}
+.dl-card-logo-img {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  max-width: 45%;
+  max-height: 56px;
+  object-fit: contain;
+  object-position: left bottom;
+  opacity: 0;
+  transition: opacity 167ms ease-out;
+}
+.dl-card-logo-on {
+  opacity: 1;
+}
+/* The logo says what the title would. */
+.dl-card-logo .dl-card-title {
+  display: none;
+}
 .dl-card-frame {
   position: absolute;
   inset: 0;

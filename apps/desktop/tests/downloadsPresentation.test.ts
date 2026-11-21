@@ -276,3 +276,14 @@ test('storage counts finished files by their agreed size and transfers by what a
   assert.deepEqual(splitBytes(0), { value: '0', unit: 'B' })
   assert.equal(addedLabel(0), 'ADDED UNKNOWN')
 })
+
+test('a card prefers the pictures saved beside its video, and knows the logo on the network', () => {
+  const fresh = rowOf(view({ status: 'done' }))
+  assert.equal(fresh.hasSavedArtwork, false)
+  assert.equal(fresh.hasSavedLogo, false)
+  assert.equal(fresh.onlineLogo, 'https://images.metahub.space/logo/medium/tt1/img')
+  const saved = rowOf(view({ status: 'done', has_saved_artwork: true, has_saved_logo: true }))
+  assert.equal(saved.hasSavedArtwork, true)
+  assert.equal(saved.hasSavedLogo, true)
+  assert.equal(rowOf(view({ media: { meta_id: 'kitsu:1' } })).onlineLogo, undefined)
+})
