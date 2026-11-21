@@ -1,7 +1,7 @@
 package moe.ditto.halo.sync
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.api.HaloBackend
 import moe.ditto.halo.api.WatchState
@@ -31,16 +31,24 @@ class WatchStateRepository(
         cache.peek<List<WatchState>>(HaloKey.WatchStates)?.firstOrNull { it.videoId == videoId }
 
     /**
-     * Progress for one video, loading the history when nothing is cached yet,
-     * for up to [waitMillis]. Null when there is none, or when the history could
-     * not be had in time: playback must not wait on the server.
+     * Where one video resumes: a fresh read of the history, for up to
+     * [waitMillis], or the cached one when the server cannot answer in time
+     * (playback must not wait on it), whichever row is newer. The cached copy
+     * alone can predate progress made on another device, and resuming from it
+     * would report that old position as the newest. Null when there is none.
      */
     suspend fun loadedProgressFor(videoId: String, waitMillis: Long): WatchState? {
-        val rows = cache.peek<List<WatchState>>(HaloKey.WatchStates)
-            ?: withTimeoutOrNull(waitMillis) {
-                observe().first { it.value != null || it.error != null }.value
+        val cached = cache.peek<List<WatchState>>(HaloKey.WatchStates)?.firstOrNull { it.videoId == videoId }
+        val fresh = withTimeoutOrNull(waitMillis) {
+            try {
+                client.getWatchStates()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                null
             }
-        return rows?.firstOrNull { it.videoId == videoId }
+        }?.firstOrNull { it.videoId == videoId }
+        return listOfNotNull(fresh, cached).maxByOrNull { it.updatedAt }
     }
 
     /**

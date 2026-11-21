@@ -1,6 +1,8 @@
 package moe.ditto.halo.sync
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.runTest
 import moe.ditto.halo.cache.QueryCache
 import kotlin.test.Test
@@ -41,6 +43,35 @@ class WatchStateRepositoryTest {
         assertEquals(3180.0, state.durationSec)
         assertEquals(false, state.watched)
         assertEquals(clock.now, state.updatedAt)
+    }
+
+    @Test
+    fun resumeReadsAgainSoProgressFromAnotherDeviceWins() = runTest {
+        var reply = """[{"videoId":"v","itemId":"i","positionSec":100.0,"durationSec":3600.0,"watched":false,"updatedAt":10}]"""
+        val api = RecordingApi { reply }
+        val clock = FakeClock()
+        val repo = repository(api, clock, QueryCache(backgroundScope, clock))
+        repo.observe().first { it.value != null }
+
+        // Another device watched further since the history was cached.
+        reply = """[{"videoId":"v","itemId":"i","positionSec":900.0,"durationSec":3600.0,"watched":false,"updatedAt":20}]"""
+
+        assertEquals(900.0, onRealTime { repo.loadedProgressFor("v", waitMillis = 5_000) }?.positionSec)
+    }
+
+    @Test
+    fun resumeFallsBackToTheCacheWhenTheServerFails() = runTest {
+        var fail = false
+        val api = RecordingApi {
+            if (fail) error("offline")
+            """[{"videoId":"v","itemId":"i","positionSec":100.0,"durationSec":3600.0,"watched":false,"updatedAt":10}]"""
+        }
+        val clock = FakeClock()
+        val repo = repository(api, clock, QueryCache(backgroundScope, clock))
+        repo.observe().first { it.value != null }
+        fail = true
+
+        assertEquals(100.0, onRealTime { repo.loadedProgressFor("v", waitMillis = 5_000) }?.positionSec)
     }
 
     @Test
@@ -161,3 +192,6 @@ class WatchStateRepositoryTest {
         assertEquals(200.0, repo.progressFor("v")?.positionSec)
     }
 }
+
+/** The resume read's timeout runs on the clock, and the mock server answers on real threads. */
+private suspend fun <T> onRealTime(block: suspend () -> T): T = withContext(Dispatchers.Default) { block() }
