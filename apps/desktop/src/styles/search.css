@@ -207,11 +207,10 @@
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  color: var(--t3);
+  color: var(--cr);
 }
 .srch-pill-remove:hover {
   background: var(--crt);
-  color: var(--cr);
 }
 .srch-link {
   padding: 0 2px;
