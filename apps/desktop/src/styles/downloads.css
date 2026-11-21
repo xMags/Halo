@@ -136,77 +136,6 @@
   align-items: center;
   gap: 2px;
 }
-/* WinUI's SelectorBar: text items, the chosen one marked by a short accent
-   pill under it that grows from 4px to 16px. */
-.dl-selector {
-  display: flex;
-  padding: 4px 0;
-}
-.dl-selector-item {
-  position: relative;
-  padding: 10px 12px 7px;
-  border-radius: 4px;
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--t1);
-}
-.dl-selector-item:hover {
-  color: var(--t2);
-}
-.dl-selector-item:active {
-  color: var(--t3);
-}
-.dl-selector-item::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 16px;
-  height: 3px;
-  margin-left: -8px;
-  border-radius: 1.5px;
-  background: var(--ac);
-  opacity: 0;
-  transform: scaleX(0.25);
-  transition:
-    opacity 120ms ease-out,
-    transform 300ms cubic-bezier(0, 0, 0, 1);
-}
-.dl-selector-item-active,
-.dl-selector-item-active:hover {
-  color: var(--t1);
-}
-.dl-selector-item-active::after {
-  opacity: 1;
-  transform: none;
-}
-/* A command bar button: glyph and label, no plate at rest. */
-.dl-subtle-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 10px;
-  border-radius: 4px;
-  font-size: 14px;
-  color: var(--t1);
-  white-space: nowrap;
-}
-.dl-subtle-btn:hover {
-  background: var(--sb);
-}
-.dl-subtle-icon {
-  width: 36px;
-  padding: 0;
-}
-.dl-subtle-btn.dl-danger-text {
-  color: var(--cr);
-}
-.dl-subtle-btn.dl-danger-text:hover {
-  background: var(--crt);
-}
-
 /* ── Body ── */
 .dl-scroll {
   flex: 1;
@@ -293,8 +222,7 @@
   .dl-enter {
     animation: none;
   }
-  .dl-chevron,
-  .dl-selector-item::after {
+  .dl-chevron {
     transition: none;
   }
 }

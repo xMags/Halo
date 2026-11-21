@@ -5,6 +5,7 @@ import { showDialog } from '../components/Dialog'
 import { FluentIcon } from '../components/FluentIcon'
 import { InfoBar } from '../components/InfoBar'
 import { Menu, MenuAnchor, MenuItem, MenuSeparator } from '../components/Menu'
+import { SelectorBar } from '../components/SelectorBar'
 import { DownloadRowSkeleton } from '../components/Skeleton'
 import {
   cancelTransfer,
@@ -194,35 +195,27 @@ export function Downloads() {
       <header className="dl-head">
         <h1 className="dl-title">Downloads</h1>
         <div className="dl-head-bar">
-          <div className="dl-selector" role="tablist" aria-label="Filter downloads">
-            {FILTERS.map((entry) => (
-              <button
-                key={entry.value}
-                type="button"
-                role="tab"
-                aria-selected={filter === entry.value}
-                className={`dl-selector-item ${filter === entry.value ? 'dl-selector-item-active' : ''}`}
-                onClick={() => setFilter(entry.value)}
-              >
-                {`${entry.label} (${counts[entry.value]})`}
-              </button>
-            ))}
-          </div>
+          <SelectorBar
+            label="Filter downloads"
+            options={FILTERS.map((entry) => ({ value: entry.value, label: `${entry.label} (${counts[entry.value]})` }))}
+            value={filter}
+            onChange={setFilter}
+          />
           <div className="dl-head-actions">
             {(active > 0 || pausedAll) && (
-              <button type="button" className="dl-subtle-btn" onClick={() => void togglePauseAll()}>
+              <button type="button" className="btn-subtle" onClick={() => void togglePauseAll()}>
                 <FluentIcon glyph={pausedAll ? 'play' : 'pause'} size={14} />
                 <span>{pausedAll ? 'Resume all' : 'Pause all'}</span>
               </button>
             )}
-            <button type="button" className="dl-subtle-btn" onClick={() => void showInExplorer()}>
+            <button type="button" className="btn-subtle" onClick={() => void showInExplorer()}>
               <FluentIcon glyph="folder" size={14} />
               <span>Open folder</span>
             </button>
             <MenuAnchor>
               <button
                 type="button"
-                className="dl-subtle-btn dl-subtle-icon"
+                className="btn-subtle btn-subtle-icon"
                 aria-label="More download actions"
                 title="More download actions"
                 onClick={() => setMenuOpen((open) => !open)}
@@ -328,7 +321,7 @@ export function Downloads() {
                       Try again
                     </button>
                   )}
-                  <button type="button" className="dl-subtle-btn dl-danger-text" onClick={() => void cancel(row.id)}>
+                  <button type="button" className="btn-subtle btn-subtle-danger" onClick={() => void cancel(row.id)}>
                     Remove
                   </button>
                 </InfoBar>
@@ -384,7 +377,7 @@ export function Downloads() {
                       <span className="dl-caption">{row.downloadedLine}</span>
                       <button
                         type="button"
-                        className="dl-subtle-btn dl-subtle-icon dl-danger-text"
+                        className="btn-subtle btn-subtle-icon btn-subtle-danger"
                         aria-label="Remove from the queue"
                         title="Remove from the queue"
                         onClick={() => void cancel(row.id)}
@@ -646,7 +639,7 @@ function RunningCard({
         <MenuAnchor>
           <button
             type="button"
-            className="dl-subtle-btn dl-subtle-icon"
+            className="btn-subtle btn-subtle-icon"
             aria-label="More actions"
             title="More actions"
             onClick={() => setMenuOpen((value) => !value)}

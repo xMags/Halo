@@ -577,6 +577,85 @@ input[type='range'] {
   color: var(--t4);
 }
 
+/* ── Subtle button ────────────────────────────────────────────────────── */
+/* A command bar button: glyph and label, no plate at rest. */
+.btn-subtle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--t1);
+  white-space: nowrap;
+}
+.btn-subtle:hover {
+  background: var(--sb);
+}
+.btn-subtle-icon {
+  width: 36px;
+  padding: 0;
+}
+.btn-subtle.btn-subtle-danger {
+  color: var(--cr);
+}
+.btn-subtle.btn-subtle-danger:hover {
+  background: var(--crt);
+}
+
+/* ── SelectorBar ───────────────────────────────────────────────────────── */
+/* WinUI's SelectorBar: text items, the chosen one marked by a short accent
+   pill under it that grows from 4px to 16px. */
+.selector-bar {
+  display: flex;
+  padding: 4px 0;
+}
+.selector-bar-item {
+  position: relative;
+  padding: 10px 12px 7px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--t1);
+}
+.selector-bar-item:hover {
+  color: var(--t2);
+}
+.selector-bar-item:active {
+  color: var(--t3);
+}
+.selector-bar-item::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 16px;
+  height: 3px;
+  margin-left: -8px;
+  border-radius: 1.5px;
+  background: var(--ac);
+  opacity: 0;
+  transform: scaleX(0.25);
+  transition:
+    opacity 120ms ease-out,
+    transform 300ms cubic-bezier(0, 0, 0, 1);
+}
+.selector-bar-item-active,
+.selector-bar-item-active:hover {
+  color: var(--t1);
+}
+.selector-bar-item-active::after {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .selector-bar-item::after {
+    transition: none;
+  }
+}
+
 /* ── Menus ─────────────────────────────────────────────────────────────── */
 .menu-anchor {
   position: relative;
