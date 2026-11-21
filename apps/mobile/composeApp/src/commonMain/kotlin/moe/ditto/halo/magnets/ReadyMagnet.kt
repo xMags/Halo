@@ -10,15 +10,27 @@ import kotlinx.coroutines.flow.StateFlow
  * with none. Its files are never listed anywhere.
  */
 class ReadyMagnet {
+    private class Ready(val infoHash: String, val request: MagnetRequest)
+
+    private val ready = MutableStateFlow<Ready?>(null)
     private val _request = MutableStateFlow<MagnetRequest?>(null)
     val request: StateFlow<MagnetRequest?> = _request
 
-    fun remember(request: MagnetRequest) {
-        if (request.state == MagnetState.Ready) _request.value = request
+    /** [infoHash] is the hash the request was made for. */
+    fun remember(infoHash: String, request: MagnetRequest) {
+        if (request.state != MagnetState.Ready) return
+        ready.value = Ready(infoHash, request)
+        _request.value = request
     }
 
-    /** Another magnet was pasted: the previous one is no longer offered. */
-    fun forget() {
+    /**
+     * A magnet was pasted: a different one is no longer offered. The same one
+     * is kept, so asking about it again (back to Search from its title) cannot
+     * lose the ready source if that ask fails.
+     */
+    fun forgetOtherThan(infoHash: String) {
+        if (ready.value?.infoHash == infoHash) return
+        ready.value = null
         _request.value = null
     }
 }

@@ -152,6 +152,25 @@ internal class SessionGraph(
     /** The last pasted magnet that came back ready, offered on its title page. */
     val readyMagnet = ReadyMagnet()
 
+    /**
+     * Tells the account's server to forget a magnet request (Cancel on its
+     * card). Runs for the session, not the screen, so leaving Search right
+     * after Cancel does not abort it. Best effort: the server drops stale
+     * requests on its own.
+     */
+    fun forgetMagnetRequest(id: String) {
+        val client = accountClient ?: return
+        scope.launch {
+            try {
+                client.forgetMagnet(id)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                // Nothing to do: see above.
+            }
+        }
+    }
+
     val searchEngine = SearchEngine(
         sources = BackendSearchSources(
             backend = backend,

@@ -7,13 +7,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.launch
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.HaloApiException
 import moe.ditto.halo.api.MetaDetail
@@ -362,7 +360,6 @@ internal class MagnetTracking(
  */
 @Composable
 private fun rememberMagnetTracking(graph: SessionGraph, magnet: SearchInput.Magnet?, capabilities: CapabilitiesState): MagnetTracking {
-    val scope = rememberCoroutineScope()
     var phase by remember(magnet) { mutableStateOf(MagnetPhase.Checking) }
     var request by remember(magnet) { mutableStateOf<MagnetRequest?>(null) }
     var attempt by remember(magnet) { mutableIntStateOf(0) }
@@ -383,7 +380,7 @@ private fun rememberMagnetTracking(graph: SessionGraph, magnet: SearchInput.Magn
             phase = MagnetPhase.Unavailable
             return@LaunchedEffect
         }
-        graph.readyMagnet.forget()
+        graph.readyMagnet.forgetOtherThan(magnet.infoHash)
         phase = MagnetPhase.Checking
         asking = coroutineContext[Job]
         val trackedAt = graph.nowMs()
@@ -399,7 +396,7 @@ private fun rememberMagnetTracking(graph: SessionGraph, magnet: SearchInput.Magn
         while (true) {
             request = next
             phase = MagnetPhase.Answered
-            graph.readyMagnet.remember(next)
+            graph.readyMagnet.remember(magnet.infoHash, next)
             // Long enough: the card keeps its last answer.
             if (next.state != MagnetState.Downloading || graph.nowMs() - trackedAt >= MagnetPollLimitMs) return@LaunchedEffect
             delay(MagnetPollMs)
@@ -425,18 +422,7 @@ private fun rememberMagnetTracking(graph: SessionGraph, magnet: SearchInput.Magn
             asking?.cancel()
             request = null
             phase = MagnetPhase.Stopped
-            val client = graph.accountClient
-            if (current != null && client != null) {
-                scope.launch {
-                    try {
-                        client.forgetMagnet(current.id)
-                    } catch (cancellation: CancellationException) {
-                        throw cancellation
-                    } catch (_: Exception) {
-                        // Best effort: the server drops stale requests on its own.
-                    }
-                }
-            }
+            if (current != null) graph.forgetMagnetRequest(current.id)
         },
         retry = { attempt += 1 },
     )
