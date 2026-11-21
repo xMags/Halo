@@ -18,12 +18,28 @@ interface StoredKey {
   refused: boolean
 }
 
-/** What screens may know about the key: whether one is saved and whether TMDB still takes it. */
-export type TmdbKeyStatus = 'none' | 'working' | 'refused'
+/**
+ * What screens may know about the key: whether one is saved and whether TMDB
+ * still takes it. `loading` until the protected read first answers, so no
+ * screen mistakes a saved key for none while it is read.
+ */
+export type TmdbKeyStatus = 'loading' | 'none' | 'working' | 'refused'
 
 let loaded: Promise<StoredKey | null> | null = null
-let status: TmdbKeyStatus = 'none'
+let status: TmdbKeyStatus = 'loading'
 const listeners = new Set<() => void>()
+/**
+ * Every change to the stored key, one after another. A change reads what is
+ * stored when its turn comes, so a refusal that lands while the key is being
+ * removed or replaced cannot write the old key back.
+ */
+let changes: Promise<unknown> = Promise.resolve()
+
+function serialized<T>(change: () => Promise<T>): Promise<T> {
+  const run = changes.then(change, change)
+  changes = run.catch(() => undefined)
+  return run
+}
 
 function publish(next: StoredKey | null): void {
   status = !next ? 'none' : next.refused ? 'refused' : 'working'
@@ -73,9 +89,10 @@ export async function usableTmdbCredential(): Promise<TmdbCredential | null> {
 
 /** TMDB refused a key the backend sent: remembered, so the features stay off across launches. */
 export function markTmdbKeyRefused(credential: TmdbCredential): void {
-  void load().then((stored) => {
+  void serialized(async () => {
+    const stored = await load()
     if (!stored || stored.credential.value !== credential.value || stored.refused) return
-    return store({ ...stored, refused: true })
+    await store({ ...stored, refused: true })
   }).catch(() => undefined)
 }
 
@@ -105,17 +122,19 @@ export async function saveTmdbKey(pasted: string): Promise<TmdbKeySaveResult> {
   if (response.status === 401) return 'refused'
   if (!response.ok) return 'unreachable'
   try {
-    await store({ version: 1, credential, refused: false })
+    await serialized(() => store({ version: 1, credential, refused: false }))
   } catch {
     return 'notStored'
   }
   return 'saved'
 }
 
-export async function removeTmdbKey(): Promise<void> {
-  await invoke<void>('device_store_remove', { collection: 'tmdbKey' })
-  loaded = Promise.resolve(null)
-  publish(null)
+export function removeTmdbKey(): Promise<void> {
+  return serialized(async () => {
+    await invoke<void>('device_store_remove', { collection: 'tmdbKey' })
+    loaded = Promise.resolve(null)
+    publish(null)
+  })
 }
 
 function subscribe(listener: () => void): () => void {

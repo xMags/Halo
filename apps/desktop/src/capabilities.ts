@@ -24,8 +24,11 @@ export function useCapabilities(): {
   const { state } = useSession()
   const keyStatus = useTmdbKeyStatus()
   const device = state === 'device'
+  // Without an account the answer follows the key, so it waits for the key's first read.
+  const keyLoading = device && keyStatus === 'loading'
   const query = useQuery({
     queryKey: ['capabilities', device ? `device:${keyStatus}` : 'account'],
+    enabled: !keyLoading,
     queryFn: () => getClient().getCapabilities(),
     staleTime: Infinity,
     retry: false,
@@ -36,6 +39,6 @@ export function useCapabilities(): {
     refreshIfFailed: () => {
       if (query.isError) void query.refetch()
     },
-    needsTmdbKey: device && keyStatus !== 'working',
+    needsTmdbKey: device && !keyLoading && keyStatus !== 'working',
   }
 }
