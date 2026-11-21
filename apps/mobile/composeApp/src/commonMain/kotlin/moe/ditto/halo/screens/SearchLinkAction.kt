@@ -298,9 +298,9 @@ internal fun rememberLinkAction(
             val plainRun: (() -> Unit)? = when {
                 built.action == MagnetCardAction.Cancel -> magnet.cancel
                 built.action == MagnetCardAction.Retry -> magnet.retry
-                // The server's own play link: opened bare, as any pasted link is.
+                // The server's own play link: opened bare, and read again, as any pasted link is.
                 built.action == MagnetCardAction.PlayUnidentified && file != null -> {
-                    { navigation.play(linkPlayerRoute(file.playUrl, file.name.take(SearchWebLinkTitleMaxLength), file.name, file.sizeBytes)) }
+                    { playLink(file.playUrl, file.name, file.name, file.sizeBytes) }
                 }
                 else -> null
             }
