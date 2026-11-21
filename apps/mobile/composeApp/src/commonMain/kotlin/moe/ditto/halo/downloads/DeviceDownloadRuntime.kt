@@ -333,28 +333,43 @@ internal class DeviceDownloadRuntime(
         if (!indexWritable) return
         val removed = mutex.withLock {
             val entry = current(videoId) ?: return
-            publishLocked(_entries.value.filterNot { it.videoId == videoId })
-            pendingRequests.remove(entry.jobId)
-            entry
+            removeLocked(entry)
         }
+        finishRemoval(removed)
+    }
+
+    /**
+     * The notification's Cancel. A tap that lands after the transfer finished
+     * is ignored: it was meant for a download in progress, not to delete a
+     * finished video. Decided and done under one lock, and "finished" includes
+     * a final file already in place whose completion event is still queued.
+     */
+    suspend fun cancelJob(jobId: String) {
+        ready.await()
+        if (!indexWritable) return
+        val removed = mutex.withLock {
+            val entry = currentJob(jobId) ?: return
+            if (entry.status == DownloadStatus.Done) return
+            val root = directory
+            if (root != null && fileSystem.exists(root / entry.fileName)) return
+            removeLocked(entry)
+        }
+        finishRemoval(removed)
+    }
+
+    private fun removeLocked(entry: DownloadEntry): DownloadEntry {
+        publishLocked(_entries.value.filterNot { it.videoId == entry.videoId })
+        pendingRequests.remove(entry.jobId)
+        return entry
+    }
+
+    private suspend fun finishRemoval(removed: DownloadEntry) {
         removed.jobId?.let {
             port.cancel(it)
             vault.delete(it)
         }
         directory?.let { discardFiles(removed, it) }
         pumpNext()
-    }
-
-    /**
-     * The notification's Cancel. A tap that lands after the transfer finished
-     * is ignored: it was meant for a download in progress, not to delete a
-     * finished video.
-     */
-    suspend fun cancelJob(jobId: String) {
-        val videoId = mutex.withLock {
-            currentJob(jobId)?.takeIf { it.status != DownloadStatus.Done }?.videoId
-        } ?: return
-        remove(videoId)
     }
 
     private suspend fun initialize(sweep: Boolean) {
