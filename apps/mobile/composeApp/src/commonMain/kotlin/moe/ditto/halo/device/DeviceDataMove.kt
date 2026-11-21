@@ -58,12 +58,12 @@ internal fun shouldMoveSettings(device: SettingsPayload, account: SettingsPayloa
     account.updatedAt == 0L && device.updatedAt > 0L
 
 /**
- * Sends the phone's records and addons to [account] and returns the names of
- * addons the account refused because their manifest did not load, so one dead
- * addon cannot hold everything else back. Throws when the account cannot be
+ * Sends the phone's records and addons to [account] and returns the addons
+ * the account refused because their manifest did not load, so one dead addon
+ * cannot hold everything else back. Throws when the account cannot be
  * reached or refuses anything else; the caller keeps the phone's data.
  */
-internal suspend fun moveRecordsIntoAccount(device: DeviceBackend, account: HaloBackend): List<String> {
+internal suspend fun moveRecordsIntoAccount(device: DeviceBackend, account: HaloBackend): List<AddonMove> {
     device.getLibrary().chunked(MoveChunkSize).forEach { account.putLibrary(it) }
     // With its removal tombstones, which getWatchStates leaves out.
     device.getStoredWatchStates().chunked(MoveChunkSize).forEach { account.putWatchStates(it) }
@@ -75,7 +75,7 @@ internal suspend fun moveRecordsIntoAccount(device: DeviceBackend, account: Halo
 
     val accountAddons = account.getAddons()
     var own = accountAddons.user.mapNotNull { it.transportUrl }
-    val failed = mutableListOf<String>()
+    val failed = mutableListOf<AddonMove>()
     // One at a time: the account installs a list all or nothing, so adding
     // them together would let one dead addon refuse every other.
     for (move in addonsToMove(device.getAddons().user, accountAddons.user)) {
@@ -83,7 +83,7 @@ internal suspend fun moveRecordsIntoAccount(device: DeviceBackend, account: Halo
             account.putAddons(own + move.transportUrl)
         } catch (refused: HaloApiException) {
             if (refused.status != 400) throw refused
-            failed += move.name
+            failed += move
             continue
         }
         own = installed.mapNotNull { it.transportUrl }
@@ -91,4 +91,22 @@ internal suspend fun moveRecordsIntoAccount(device: DeviceBackend, account: Halo
         if (move.hideCatalogs && entry != null) account.patchAddon(entry.id, hideCatalogs = true)
     }
     return failed
+}
+
+/**
+ * Clears what a finished move put into the account. Addons the account
+ * refused stay on the phone with the profile: their URL can carry a
+ * configuration or a debrid key and the phone holds the only copy, so the
+ * next signed-in start tries them again and signing out shows them. The list
+ * shrinks to those before anything else goes, so a clear cut short simply
+ * runs again; it holds no built-ins then, and Halo without an account tops
+ * them up when it opens.
+ */
+internal suspend fun clearMovedDeviceData(device: DeviceBackend, store: DeviceProfileStore, notMoved: List<AddonMove>) {
+    if (notMoved.isEmpty()) {
+        store.clear()
+        return
+    }
+    device.putAddons(notMoved.map { it.transportUrl })
+    store.clearMovedRecords()
 }

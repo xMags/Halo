@@ -24,6 +24,7 @@ import moe.ditto.halo.cache.QueryCache
 import moe.ditto.halo.device.DefaultAddonUrls
 import moe.ditto.halo.device.DeviceBackend
 import moe.ditto.halo.device.PlatformDeviceStore
+import moe.ditto.halo.device.clearMovedDeviceData
 import moe.ditto.halo.device.moveRecordsIntoAccount
 import moe.ditto.halo.downloads.AddonDownloadSubtitles
 import moe.ditto.halo.magnets.ReadyMagnet
@@ -209,7 +210,7 @@ internal class SessionGraph(
     /**
      * Names of addons from Halo without an account that the account refused
      * on sign-in because their manifest did not load. The rest of the phone's
-     * data moved; these have to be added again.
+     * data moved; these stay on the phone and are tried again on each start.
      */
     val addonsNotMoved: StateFlow<List<String>> = _addonsNotMoved
 
@@ -248,16 +249,18 @@ internal class SessionGraph(
      */
     private suspend fun moveDeviceData(account: HaloClient) {
         val notMoved = try {
-            moveRecordsIntoAccount(DeviceBackend(httpClient, deviceStore, clock), account)
+            val device = DeviceBackend(httpClient, deviceStore, clock)
+            val notMoved = moveRecordsIntoAccount(device, account)
+            // Only after everything has moved: until then the phone keeps the only copy.
+            clearMovedDeviceData(device, deviceStore, notMoved)
+            notMoved
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Exception) {
             return
         }
-        // Only after everything has moved: until then the phone keeps the only copy.
-        deviceStore.clear()
         listOf(HaloKey.Library, HaloKey.WatchStates, HaloKey.Settings, HaloKey.Addons).forEach { cache.invalidate(it) }
-        _addonsNotMoved.value = notMoved
+        _addonsNotMoved.value = notMoved.map { it.name }
     }
 
     /**

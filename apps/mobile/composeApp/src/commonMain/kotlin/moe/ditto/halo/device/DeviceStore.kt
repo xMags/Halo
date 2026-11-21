@@ -30,6 +30,13 @@ interface DeviceProfileStore {
 
     /** Removes the profile and every document, once their contents live in an account. */
     fun clear()
+
+    /**
+     * Removes the library, watch history and settings once they live in an
+     * account, keeping the profile and the addon list: some addons did not
+     * move, and the phone holds the only copy of them.
+     */
+    fun clearMovedRecords()
 }
 
 /** No profile can exist: for hosts and tests that never use Halo without an account. */
@@ -39,6 +46,8 @@ object NoDeviceProfile : DeviceProfileStore {
     override fun createProfile() = Unit
 
     override fun clear() = Unit
+
+    override fun clearMovedRecords() = Unit
 }
 
 /**
@@ -77,6 +86,10 @@ class PlatformDeviceStore(
         secure.delete(AddonsKey)
         DeviceCollection.entries.filter { it != DeviceCollection.Addons }.forEach { plain.delete(it.plainKey()) }
         plain.delete(ProfileKey)
+    }
+
+    override fun clearMovedRecords() {
+        DeviceCollection.entries.filter { it != DeviceCollection.Addons }.forEach { plain.delete(it.plainKey()) }
     }
 
     private fun DeviceCollection.plainKey(): String = when (this) {

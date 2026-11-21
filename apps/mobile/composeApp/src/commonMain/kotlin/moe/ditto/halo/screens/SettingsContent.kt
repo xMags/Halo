@@ -426,7 +426,8 @@ private fun settingsBlocks(
 private fun addonsNotMovedMessage(names: List<String>): String {
     val one = names.size == 1
     return "${names.joinToString(", ")} could not be added to your account because " +
-        "${if (one) "it" else "they"} did not load. You can add ${if (one) "it" else "them"} again above."
+        "${if (one) "it" else "they"} did not load. Halo kept ${if (one) "it" else "them"} on this phone and " +
+        "tries again each time it starts. Signing out shows ${if (one) "it" else "them"} again."
 }
 
 private val ProfileAvatarSize = 48.dp

@@ -81,7 +81,7 @@ class DeviceDataMoveTest {
 
         val notMoved = moveRecordsIntoAccount(phone, account)
 
-        assertEquals(listOf("Dead addon"), notMoved)
+        assertEquals(listOf(AddonMove(dead, "Dead addon", hideCatalogs = false)), notMoved)
         val own = account.getAddons().user
         assertEquals(
             listOf(DefaultAddonUrls[0], "https://stream-b.test/manifest.json", "https://stream-a.test/manifest.json"),
@@ -89,6 +89,45 @@ class DeviceDataMoveTest {
         )
         assertTrue(own.last().hideCatalogs)
         assertFalse(own.first().hideCatalogs)
+    }
+
+    @Test
+    fun anAddonTheAccountRefusedStaysOnThePhoneWithTheProfile() = realTimeTest {
+        val dead = "https://dead.test/manifest.json"
+        val phone = Fixture(mapOf(dead to manifestJson(manifest("Dead addon")))).backend
+        phone.putAddons(listOf("https://stream-a.test/manifest.json", dead))
+        phone.putLibrary(listOf(item("movie:tt1", 20, "Phone")))
+        val profile = RecordingProfile()
+
+        clearMovedDeviceData(phone, profile, listOf(AddonMove(dead, "Dead addon", hideCatalogs = false)))
+
+        assertEquals(listOf(dead), phone.getAddons().user.map { it.transportUrl })
+        assertEquals(listOf("clearMovedRecords"), profile.calls)
+    }
+
+    @Test
+    fun aMoveWithNothingLeftBehindClearsTheProfile() = realTimeTest {
+        val profile = RecordingProfile()
+        clearMovedDeviceData(Fixture().backend, profile, emptyList())
+        assertEquals(listOf("clear"), profile.calls)
+    }
+
+    @Test
+    fun clearingMovedRecordsKeepsTheAddonsAndTheProfile() {
+        val secure = InMemorySecureStorage()
+        val plain = FakeStore()
+        val store = PlatformDeviceStore(secure, plain)
+        store.createProfile()
+        store.write(DeviceCollection.Addons, "addons")
+        store.write(DeviceCollection.Library, "library")
+        store.write(DeviceCollection.Settings, "settings")
+
+        store.clearMovedRecords()
+
+        assertTrue(store.hasProfile())
+        assertEquals("addons", store.read(DeviceCollection.Addons))
+        assertNull(store.read(DeviceCollection.Library))
+        assertNull(store.read(DeviceCollection.Settings))
     }
 
     @Test
@@ -124,4 +163,20 @@ class DeviceDataMoveTest {
         watched = false,
         updatedAt = updatedAt,
     )
+
+    private class RecordingProfile : DeviceProfileStore {
+        val calls = mutableListOf<String>()
+
+        override fun hasProfile(): Boolean = true
+
+        override fun createProfile() = Unit
+
+        override fun clear() {
+            calls += "clear"
+        }
+
+        override fun clearMovedRecords() {
+            calls += "clearMovedRecords"
+        }
+    }
 }
