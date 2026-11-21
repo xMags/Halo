@@ -55,6 +55,13 @@ class SessionController(
     private val browserSignIn: BrowserSignInPort = NoBrowserSignIn,
     sessionRecheck: HaloSessionRecheck = NoHaloSessionRecheck,
     private val deviceProfile: DeviceProfileStore = NoDeviceProfile,
+    /**
+     * Runs when one session gives way to another (a sign-in, a sign-out, a
+     * switch to or from Halo without an account), never on launch's restore.
+     * What the phone keeps for the session in force, such as its settings
+     * mirror, belongs to that session alone.
+     */
+    private val onSessionChanged: () -> Unit = {},
 ) : LocalAuthenticator, AddonAuthenticator {
 
     val localSessions = LocalSessionManager(
@@ -98,7 +105,8 @@ class SessionController(
      * consumer reacting to [state] never observes a new session under the old
      * generation.
      */
-    private fun publish(next: SessionState) {
+    private fun publish(next: SessionState, restored: Boolean = false) {
+        if (!restored) onSessionChanged()
         _sessionGeneration.value += 1
         _state.value = next
     }
@@ -136,12 +144,12 @@ class SessionController(
         _loginNotice.value = null
         val local = localSessions.restore()
         if (local != null) {
-            publish(SessionState.SignedIn(SessionKind.Local, local.serverUrl))
+            publish(SessionState.SignedIn(SessionKind.Local, local.serverUrl), restored = true)
             return
         }
         val addon = addonSessions.restore()
         if (addon != null) {
-            publish(SessionState.SignedIn(SessionKind.Addon, addon.serverUrl))
+            publish(SessionState.SignedIn(SessionKind.Addon, addon.serverUrl), restored = true)
             return
         }
         val oidcServerUrl = oidcPort.restoreSession()
@@ -151,6 +159,7 @@ class SessionController(
                 deviceProfile.hasProfile() -> SessionState.Device
                 else -> SessionState.SignedOut
             },
+            restored = true,
         )
     }
 

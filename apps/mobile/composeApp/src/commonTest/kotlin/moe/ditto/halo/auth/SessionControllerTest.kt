@@ -58,6 +58,27 @@ class SessionControllerTest {
     }
 
     @Test
+    fun sessionScopedDataIsDroppedWhenTheSessionChangesButNotOnRestore() = runTest {
+        val storage = InMemorySecureStorage()
+        var changes = 0
+        val gateway = LoginGateway(IssuedToken("issued-token", now + 1_000_000))
+        val controller = SessionController(storage, gateway, clock, backgroundScope, onSessionChanged = { changes++ })
+        controller.restore()
+        assertEquals(0, changes)
+
+        controller.signIn("https://halo.local", "testuser", "hunter22")
+        assertEquals(1, changes)
+
+        // The next launch restores the same session and keeps what it left.
+        val relaunched = SessionController(storage, NoNetworkGateway(), clock, backgroundScope, onSessionChanged = { changes++ })
+        relaunched.restore()
+        assertEquals(1, changes)
+
+        relaunched.signOut()
+        assertEquals(2, changes)
+    }
+
+    @Test
     fun failedSignInLeavesNoSessionBehind() = runTest {
         val storage = InMemorySecureStorage()
         val gateway = LoginGateway(failure = LocalAuthException(401, "invalid credentials"))

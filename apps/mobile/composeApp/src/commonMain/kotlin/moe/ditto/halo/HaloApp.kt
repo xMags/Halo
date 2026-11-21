@@ -74,6 +74,7 @@ import moe.ditto.halo.player.PlaybackStatus
 import moe.ditto.halo.player.PlayerState
 import moe.ditto.halo.player.PlayerTrack
 import moe.ditto.halo.shell.HaloShell
+import moe.ditto.halo.storage.StorageKeys
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloRadius
@@ -125,6 +126,9 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
                 browserSignIn = dependencies.browserSignIn,
                 sessionRecheck = KtorHaloSessionRecheck(authHttpClient),
                 deviceProfile = deviceStore,
+                // The mirror stands in for the server while it cannot be
+                // reached; another account's copy must never be sent as this one's.
+                onSessionChanged = { dependencies.keyValueStore.delete(StorageKeys.SettingsMirror) },
             )
         }
         var screen by remember { mutableStateOf(ShellScreen.Login) }
