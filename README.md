@@ -36,18 +36,25 @@
   </p>
 </div>
 
+<p align="center">
+  <img src=".github/screenshots/desktop-home.png" alt="Halo on Windows: the Home page with a featured title, Continue watching and Recently watched" width="900">
+</p>
+
+<p align="center"><sub>Halo on Windows, shown with the fixture server's sample data.</sub></p>
+
 ## Download
 
-Halo 1.0.0 is available for Windows and Android.
+Halo 1.1.0 is available for Windows (x64 and ARM) and Android.
 
 | Platform | Download | Requirements |
 | --- | --- | --- |
-| Windows | [Halo_1.0.0_x64-setup.exe](https://github.com/xMags/Halo/releases/download/v1.0.0/Halo_1.0.0_x64-setup.exe) | Windows 10 or 11, 64-bit |
-| Android | [Halo_1.0.0_android-arm64.apk](https://github.com/xMags/Halo/releases/download/v1.0.0/Halo_1.0.0_android-arm64.apk) | Android 8.0 or newer, arm64 |
+| Windows | [Halo_1.1.0_x64-setup.exe](https://github.com/xMags/Halo/releases/download/v1.1.0/Halo_1.1.0_x64-setup.exe) | Windows 10 or 11, 64-bit Intel or AMD |
+| Windows on ARM | [Halo_1.1.0_arm64-setup.exe](https://github.com/xMags/Halo/releases/download/v1.1.0/Halo_1.1.0_arm64-setup.exe) | Windows 11 on ARM, for example Snapdragon laptops |
+| Android | [Halo_1.1.0_android-arm64.apk](https://github.com/xMags/Halo/releases/download/v1.1.0/Halo_1.1.0_android-arm64.apk) | Android 8.0 or newer, arm64 |
 
 Release notes, checksums and every earlier version are on the [releases page](https://github.com/xMags/Halo/releases); the newest one is always at [releases/latest](https://github.com/xMags/Halo/releases/latest).
 
-- **Windows:** the installer is not code-signed, so SmartScreen may warn before it runs. Choose "More info", then "Run anyway". It installs for all users, so Windows asks for permission.
+- **Windows:** the installer is not code-signed, so SmartScreen may warn before it runs. Choose "More info", then "Run anyway". It installs for all users, so Windows asks for permission. Video plays through mpv's official `libmpv` build ([source](https://github.com/shinchiro/mpv-winbuild-cmake)), GPL like Halo itself.
 - **Android:** open the APK and allow installs from your browser or file manager when asked. It is signed with Halo's own key, not distributed through a store.
 - **iOS:** there is no packaged build yet; see [Client Development](#client-development) to build it yourself.
 
@@ -85,10 +92,12 @@ That gives you one private source of truth without turning the server into a ban
 
 - Use existing [Stremio-compatible](https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/protocol.md) catalog, metadata, stream, and subtitle addons.
 - Browse movies and series, search across installed catalogs, and choose a source explicitly.
+- Find actors, directors and writers, open their pages, and paste a title's link straight into Search. Without an account this uses your own free TMDB key, kept on the device.
 - Synchronize library items, watch progress, addon order, and playback preferences per user.
 - Authenticate with Halo-managed local accounts or an external OpenID Connect provider.
 - Play through libmpv with audio-track selection, embedded and external subtitles, subtitle styling, resume, and next-episode support.
-- Download media to Android or iOS for offline playback, with durable platform-owned background work.
+- Download media to Windows, Android or iOS for offline playback, with durable background transfers that resume after a restart.
+- On Windows, each title gets its own folder in your downloads, with its logo and art saved beside the video so finished downloads look right offline.
 - Adapt the native mobile interface across phones, tablets, portrait, and landscape layouts.
 - Keep administrator-managed provider transport URLs out of non-admin responses through opaque addon identifiers.
 
@@ -100,7 +109,7 @@ That gives you one private source of truth without turning the server into a ban
 | Component | Current status | Implementation |
 | --- | --- | --- |
 | `apps/mobile` | Mobile client for Android and iOS. Browsing, playback, sync, settings, and durable downloads are implemented. | Kotlin Multiplatform, Compose Multiplatform, Ktor, libmpv |
-| `apps/desktop` | Functional Windows-first development client with the complete browse-to-playback flow. | Tauri 2, React, TypeScript, Rust, WebView2, libmpv |
+| `apps/desktop` | Windows client for x64 and ARM: browsing, search, playback, sync, settings, and offline downloads are implemented. | Tauri 2, React, TypeScript, Rust, WebView2, libmpv |
 | `apps/api` | Self-hosted API with local and OIDC authentication, SQLite persistence, addon resolution, and per-user synchronization. | Node.js 22, Hono, Drizzle ORM, SQLite |
 | `packages/core` | Shared Stremio protocol types, addon client, subtitle tools, and TypeScript API client. | TypeScript |
 
@@ -245,7 +254,7 @@ Requirements:
 - Node.js 22 and Corepack
 - Rust stable toolchain
 - Microsoft C++ Build Tools and WebView2
-- The LGPL `libmpv-2.dll` described in [`apps/desktop/vendor/README.md`](apps/desktop/vendor/README.md)
+- mpv's official `libmpv-2.dll` build described in [`apps/desktop/vendor/README.md`](apps/desktop/vendor/README.md), which also covers the ARM build
 
 Place the libmpv DLL in the documented vendor directory, then run:
 
