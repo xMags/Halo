@@ -313,6 +313,10 @@ export function useSearchSession(query: string, enabled: boolean, filter: Search
 
   const retry = (): void => {
     memory.attempt += 1
+    // A failed addon list is loaded again too. Reset rather than refetched: a
+    // refetch keeps the query in error while it runs, and the new attempt would
+    // reveal that error at once instead of waiting for the list.
+    if (addonsQuery.isError) void queryClient.resetQueries({ queryKey: ['addons'], exact: true })
     void queryClient.resetQueries({ queryKey: ['search', query] })
     if (peopleQuery.isError) void queryClient.resetQueries({ queryKey: ['people', 'search', query] })
     rerender()
