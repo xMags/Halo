@@ -238,6 +238,11 @@ export function deactivateSession(): void {
   activeServerUrl = SERVER_URL
 }
 
+/** The backend in use, or null between sessions; compared by identity to tell one session from the next. */
+export function currentBackend(): HaloBackend | null {
+  return backend
+}
+
 /** The backend every screen uses: the account's, or this PC's without one. */
 export function getClient(): HaloBackend {
   if (!backend) throw new Error('No backend: Halo is neither signed in nor used without an account')

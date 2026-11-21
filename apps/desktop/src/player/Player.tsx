@@ -10,7 +10,7 @@ import {
 } from '@halo/core'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { getClient } from '../api'
+import { currentBackend, getClient } from '../api'
 import { ArtImage } from '../components/ArtImage'
 import { Icon } from '../components/Icon'
 import { QualityMedal } from '../components/QualityMedal'
@@ -332,9 +332,14 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.videoId, params.itemId])
+  // Progress belongs to the session it was watched under. When that session
+  // ends during playback (a 401, a sign-out), the outbox was already cleared
+  // for the next one, and the closing player must not refill it.
+  const backendAtMount = useRef(currentBackend())
+  const sameSession = () => currentBackend() === backendAtMount.current
   const reportNow = useCallback(() => {
     const state = currentWatchState()
-    if (state) report.mutate([state])
+    if (state && sameSession()) report.mutate([state])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentWatchState])
   // Between reports the position is kept on this PC only, so closing the
@@ -342,7 +347,8 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   // at most; the next launch sends it.
   const stageNow = useCallback(() => {
     const state = currentWatchState()
-    if (state) stageWatchStates([state])
+    if (state && sameSession()) stageWatchStates([state])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentWatchState])
 
   const resumeAppliedRef = useRef(false)
