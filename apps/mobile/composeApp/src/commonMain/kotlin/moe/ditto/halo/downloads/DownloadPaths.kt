@@ -60,12 +60,22 @@ internal object DownloadPaths {
             ?: fallback
 
     /**
-     * Deletes everything in [directory] that no entry claims, including partial
-     * files left by a transfer that was interrupted for good.
+     * Deletes what the runtime itself left behind and no entry claims: part
+     * files, segment records and their temporary copies, a subtitle's
+     * half-written temporary. A finished-looking file no entry names is kept:
+     * it may be a video whose index was lost, and deleting it would cost the
+     * user the video, where keeping it costs only space. Files a removal or a
+     * replacement leaves are deleted by those paths themselves
+     * (discardFiles, retainedNotInUse), not here.
      *
-     * Only ever called with a complete index (see [DownloadIndexSnapshot]). Run
-     * against a partial one it would read every unlisted file as an orphan.
+     * Only ever called with a complete index (see [DownloadIndexSnapshot]).
      */
+    /** A name only a transfer in progress uses: never a finished video or subtitle. */
+    private fun isTransferLeftover(name: String): Boolean =
+        LeftoverSuffixes.any { name.endsWith(it) }
+
+    private val LeftoverSuffixes = listOf(".part", ".part.segments", ".part.segments.tmp")
+
     fun sweepOrphans(fileSystem: FileSystem, directory: Path, entries: List<DownloadEntry>) {
         if (!fileSystem.exists(directory)) return
         val referenced = buildSet {
@@ -83,7 +93,7 @@ internal object DownloadPaths {
             return
         }
         present.forEach { path ->
-            if (path.name in referenced) return@forEach
+            if (path.name in referenced || !isTransferLeftover(path.name)) return@forEach
             try {
                 fileSystem.delete(path, mustExist = false)
             } catch (_: okio.IOException) {

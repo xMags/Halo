@@ -58,7 +58,7 @@ class DownloadPathsTest {
     }
 
     @Test
-    fun theSweepRemovesOnlyWhatNoEntryClaims() {
+    fun theSweepRemovesOnlyTransferLeftoversThatNoEntryClaims() {
         val fileSystem = FakeFileSystem()
         val directory = "/downloads".toPath()
         fileSystem.createDirectories(directory)
@@ -71,8 +71,11 @@ class DownloadPathsTest {
             "partial.mkv.part.segments",
             "partial.mkv.part.segments.tmp",
             "stray.mkv",
+            "stray.srt",
             "stray.mkv.part",
             "stray.mkv.part.segments",
+            "stray.mkv.part.segments.tmp",
+            ".stray.srt.part",
         ).forEach {
             fileSystem.write(directory / it) { writeUtf8("x") }
         }
@@ -81,13 +84,16 @@ class DownloadPathsTest {
 
         assertEquals(
             // A partial file's segment record is part of it: sweeping it would
-            // leave a part with holes that reads as whole.
+            // leave a part with holes that reads as whole. A finished file no
+            // entry names stays: it may be a video whose index was lost.
             listOf(
                 "kept.mkv",
                 "kept.srt",
                 "partial.mkv.part",
                 "partial.mkv.part.segments",
                 "partial.mkv.part.segments.tmp",
+                "stray.mkv",
+                "stray.srt",
             ),
             fileSystem.list(directory).map { it.name }.sorted(),
         )
