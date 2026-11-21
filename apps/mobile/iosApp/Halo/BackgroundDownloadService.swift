@@ -81,13 +81,14 @@ final class BackgroundDownloadService: NSObject, HaloIosBackgroundDownloadHost {
         stateQueue.sync {
             guard Self.validJobId(jobId),
                   Self.validHTTPURL(sourceUrl),
-                  Self.validDownloadPaths(partFilePath: partFilePath, targetFilePath: targetFilePath)
+                  Self.validDownloadPaths(partFilePath: partFilePath, targetFilePath: targetFilePath),
+                  let paths = Self.currentDownloadPaths(partFilePath: partFilePath, targetFilePath: targetFilePath)
             else { return false }
             let request = StoredRequest(
                 jobId: jobId,
                 sourceUrl: sourceUrl,
-                partFilePath: partFilePath,
-                targetFilePath: targetFilePath,
+                partFilePath: paths.part,
+                targetFilePath: paths.target,
                 resumeValidator: resumeValidator,
                 state: .stored,
                 downloadedBytes: 0,
@@ -363,14 +364,11 @@ final class BackgroundDownloadService: NSObject, HaloIosBackgroundDownloadHost {
         var result: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
               let data = result as? Data else { return nil }
-        guard let request = try? JSONDecoder().decode(StoredRequest.self, from: data),
-              request.jobId == jobId,
-              Self.validJobId(request.jobId),
-              Self.validHTTPURL(request.sourceUrl),
-              Self.validDownloadPaths(
-                  partFilePath: request.partFilePath,
-                  targetFilePath: request.targetFilePath
-              )
+        guard let stored = try? JSONDecoder().decode(StoredRequest.self, from: data),
+              stored.jobId == jobId,
+              Self.validJobId(stored.jobId),
+              Self.validHTTPURL(stored.sourceUrl),
+              let request = Self.rebased(stored)
         else { return nil }
         return request
     }
@@ -396,14 +394,11 @@ final class BackgroundDownloadService: NSObject, HaloIosBackgroundDownloadHost {
         return items.compactMap { item in
             guard let account = item[kSecAttrAccount as String] as? String,
                   let data = item[kSecValueData as String] as? Data,
-                  let request = try? JSONDecoder().decode(StoredRequest.self, from: data),
-                  request.jobId == account,
-                  validJobId(request.jobId),
-                  validHTTPURL(request.sourceUrl),
-                  validDownloadPaths(
-                      partFilePath: request.partFilePath,
-                      targetFilePath: request.targetFilePath
-                  )
+                  let stored = try? JSONDecoder().decode(StoredRequest.self, from: data),
+                  stored.jobId == account,
+                  validJobId(stored.jobId),
+                  validHTTPURL(stored.sourceUrl),
+                  let request = rebased(stored)
             else { return nil }
             return request
         }
@@ -481,6 +476,56 @@ final class BackgroundDownloadService: NSObject, HaloIosBackgroundDownloadHost {
             target.deletingLastPathComponent() == downloads &&
             part.lastPathComponent == target.lastPathComponent + ".part" &&
             target.lastPathComponent.isEmpty == false
+    }
+
+    /// The current downloads folder; nil when Documents cannot be found.
+    private static func downloadsDirectory() -> URL? {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("downloads", isDirectory: true)
+            .standardizedFileURL
+    }
+
+    /// The part and target files by name, in the current downloads folder.
+    /// The app's container path can change between installs and updates, so
+    /// a record's stored folder is not trusted, only its file names: they
+    /// must be one plain name and that name with ".part".
+    private static func currentDownloadPaths(
+        partFilePath: String,
+        targetFilePath: String
+    ) -> (part: String, target: String)? {
+        guard let downloads = downloadsDirectory() else { return nil }
+        let partName = URL(fileURLWithPath: partFilePath).lastPathComponent
+        let targetName = URL(fileURLWithPath: targetFilePath).lastPathComponent
+        guard targetName.isEmpty == false,
+              targetName != ".", targetName != "..",
+              targetName.contains("/") == false,
+              partName == targetName + ".part"
+        else { return nil }
+        return (
+            downloads.appendingPathComponent(partName).path,
+            downloads.appendingPathComponent(targetName).path
+        )
+    }
+
+    /// A stored record with its files resolved against the current downloads
+    /// folder, so one written under an earlier container path still works.
+    private static func rebased(_ stored: StoredRequest) -> StoredRequest? {
+        guard let paths = currentDownloadPaths(
+            partFilePath: stored.partFilePath,
+            targetFilePath: stored.targetFilePath
+        ) else { return nil }
+        return StoredRequest(
+            jobId: stored.jobId,
+            sourceUrl: stored.sourceUrl,
+            partFilePath: paths.part,
+            targetFilePath: paths.target,
+            resumeValidator: stored.resumeValidator,
+            state: stored.state,
+            downloadedBytes: stored.downloadedBytes,
+            totalBytes: stored.totalBytes,
+            attemptCount: stored.attemptCount,
+            failureCode: stored.failureCode
+        )
     }
 
     private static let keychainService = "moe.ditto.halo.background-download-request.v1"
