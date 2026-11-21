@@ -158,6 +158,11 @@ internal class DeviceBackend(
             resolver.catalog(entry.resolvable(), type, id, extra)
         } catch (cancellation: CancellationException) {
             throw cancellation
+        } catch (failure: AddonRequestException) {
+            // Here the addon is the server being asked, so its "slow down" is passed
+            // on as is: Search gives a catalog that said so no second try at once.
+            if (failure.status == 429) throw apiError(429, "addon rate limited")
+            throw apiError(502, "catalog fetch failed")
         } catch (_: Exception) {
             throw apiError(502, "catalog fetch failed")
         }
