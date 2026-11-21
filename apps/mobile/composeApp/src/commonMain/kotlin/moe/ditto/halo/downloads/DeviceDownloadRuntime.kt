@@ -353,7 +353,12 @@ internal class DeviceDownloadRuntime(
      * The notification's Cancel. A tap that lands after the transfer finished
      * is ignored: it was meant for a download in progress, not to delete a
      * finished video. Decided and done under one lock, and "finished" includes
-     * a final file already in place whose completion event is still queued.
+     * a transfer whose completion event is still queued: the worker's last
+     * step moves the part file to the final name, so the final file present
+     * with no part file beside it is a finished one. A re-download over an
+     * earlier copy of the same name has its part file and can be cancelled;
+     * only in the moment before its transfer opens that part file is a tap
+     * ignored.
      */
     suspend fun cancelJob(jobId: String) {
         ready.await()
@@ -362,7 +367,9 @@ internal class DeviceDownloadRuntime(
             val entry = currentJob(jobId) ?: return
             if (entry.status == DownloadStatus.Done) return
             val root = directory
-            if (root != null && fileSystem.exists(root / entry.fileName)) return
+            if (root != null && fileSystem.exists(root / entry.fileName) && !fileSystem.exists(root / entry.partFileName)) {
+                return
+            }
             removeLocked(entry)
         }
         finishRemoval(removed)

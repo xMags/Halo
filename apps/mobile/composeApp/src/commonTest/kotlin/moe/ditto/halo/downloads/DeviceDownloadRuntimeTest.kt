@@ -138,6 +138,24 @@ class DeviceDownloadRuntimeTest {
     }
 
     @Test
+    fun aNotificationCancelStopsAReDownloadOverAnEarlierCopy() = runTest {
+        val world = world()
+        testScheduler.advanceUntilIdle()
+        world.runtime.start(media(videoId = "movie"))
+        testScheduler.advanceUntilIdle()
+        val entry = world.entry("movie")
+        // An earlier copy of the same name, and this transfer's part file.
+        world.fileSystem.write("/downloads/${entry.fileName}".toPath()) { writeUtf8("old") }
+        world.fileSystem.write("/downloads/${entry.partFileName}".toPath()) { writeUtf8("new") }
+
+        world.runtime.cancelJob("job-1")
+        testScheduler.advanceUntilIdle()
+
+        assertNull(world.runtime.entryFor("movie"))
+        assertEquals(listOf("job-1"), world.port.cancelled)
+    }
+
+    @Test
     fun aRemovalCutShortIsFinishedAtTheNextLaunch() = runTest {
         val store = FakeStore()
         val vault = FakeDownloadVault()
