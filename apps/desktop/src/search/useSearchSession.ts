@@ -35,6 +35,7 @@ import { getClient } from '../api'
 import { useCapabilities } from '../capabilities'
 import { useEffectiveAddons, useLibrary } from '../queries'
 import { checkPosterLinks, posterLinkState, usePosterChecksVersion } from './posterChecks'
+import { currentSearchVisit } from './searchVisit'
 import { libraryMatches } from './searchResults'
 
 /*
@@ -138,11 +139,13 @@ function marked(titles: readonly MetaPreview[]): SearchTitle[] {
  * The last search's board, kept beyond the page. The screen stack draws only
  * its top screen, so Back from a title builds Search anew; a new board would
  * rank answers that came in meanwhile among the others, and the results seen
- * before would move. Kept only for the backend it was asked through, so a
- * sign-in or sign-out never shows the other one's results.
+ * before would move. Kept for one visit to Search (`searchVisit`), so opening
+ * Search afresh searches anew, and only for the backend it was asked through,
+ * so a sign-in or sign-out never shows the other one's results.
  */
 interface RetainedSearch {
   backend: object
+  visit: number
   session: Session | null
   /** Bumped by Try again. */
   attempt: number
@@ -150,8 +153,8 @@ interface RetainedSearch {
 
 let retained: RetainedSearch | null = null
 
-function retainedFor(backend: object): RetainedSearch {
-  if (retained?.backend !== backend) retained = { backend, session: null, attempt: 0 }
+function retainedFor(backend: object, visit: number): RetainedSearch {
+  if (retained?.backend !== backend || retained.visit !== visit) retained = { backend, visit, session: null, attempt: 0 }
   return retained
 }
 
@@ -163,7 +166,7 @@ export function useSearchSession(query: string, enabled: boolean, filter: Search
   // A poster check that answers renders again, so a reveal waiting on it is looked at.
   usePosterChecksVersion()
   const [, rerender] = useReducer((count: number) => count + 1, 0)
-  const memory = retainedFor(getClient())
+  const memory = retainedFor(getClient(), currentSearchVisit())
   /** The last revealed session, shown dimmed while the next query is awaited. */
   const shownRef = useRef<Session | null>(null)
 

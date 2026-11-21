@@ -20,6 +20,7 @@ import { useNav } from '../nav'
 import { SEARCH_FIELD_TRANSITION } from './searchGlide'
 import { addSearchTerm, clearSearchHistory, getSearchHistory, removeSearchTerm, type SearchHistoryEntry } from './searchHistory'
 import { setSearchQuery, useSearchQuery } from './searchQuery'
+import { currentSearchVisit } from './searchVisit'
 import { ActionCard, SlotSkeleton, TopMatchCard } from './SearchSlots'
 import { useLinkAction } from './useLinkAction'
 import { useSearchSession, type SearchFilter } from './useSearchSession'
@@ -42,17 +43,19 @@ const FILTERS: Array<{ value: SearchFilter; label: string }> = [
 const FIELD_MAX_LENGTH = 2048
 const RESULTS_SKELETON_COUNT = 12
 
-/** The kind chip, kept beyond the page as the board is (see `useSearchSession`), so Back keeps it. */
-let lastFilter: SearchFilter = null
+/** The kind chip, kept for the visit as the board is (see `useSearchSession`), so Back keeps it. */
+let lastFilter: { visit: number; filter: SearchFilter } = { visit: -1, filter: null }
 
 export function Search() {
   const term = useSearchQuery()
   const { push, setRoot } = useNav()
   const { capabilities, needsTmdbKey, refreshIfFailed } = useCapabilities()
   const [activeQuery, setActiveQuery] = useState(() => cappedQuery(term))
-  const [filter, setFilterState] = useState<SearchFilter>(() => lastFilter)
+  const [filter, setFilterState] = useState<SearchFilter>(() =>
+    lastFilter.visit === currentSearchVisit() ? lastFilter.filter : null,
+  )
   const setFilter = (next: SearchFilter) => {
-    lastFilter = next
+    lastFilter = { visit: currentSearchVisit(), filter: next }
     setFilterState(next)
   }
   const [focused, setFocused] = useState(false)

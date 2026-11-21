@@ -3,6 +3,7 @@ import type { CatalogPaging } from './browse/catalogPaging'
 import type { HomeFilter } from './home/homeRows'
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import { forgetSearchGlide, leaveSearch } from './search/searchGlide'
+import { startSearchVisit } from './search/searchVisit'
 
 /**
  * Minimal screen stack with rail sections — a handful of screens doesn't
@@ -153,6 +154,9 @@ export function NavProvider({ children }: { children: ReactNode }) {
     }
     // Leaving the Search page itself: back Home after Home's box glided in, the field glides back.
     const current = stackRef.current
+    // Opening Search from anywhere but the Search page itself searches anew (see searchVisit).
+    const onSearchPage = current.length === 1 && current[0]!.name === 'search'
+    if (section === 'search' && !onSearchPage) startSearchVisit()
     if (current.length === 1 && current[0]!.name === 'search' && section !== 'search') leaveSearch(section === 'home', move)
     else move()
   }, [])
