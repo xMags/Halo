@@ -76,6 +76,32 @@ class WatchStateRepositoryTest {
     }
 
     @Test
+    fun progressTheServerHasNotSeenOutlastsItsAnswer() = runTest {
+        var offline = false
+        var server = """[{"videoId":"v","itemId":"i","positionSec":100.0,"durationSec":3600.0,"watched":false,"updatedAt":10}]"""
+        val api = RecordingApi { request ->
+            if (offline) error("offline")
+            if (request.method == io.ktor.http.HttpMethod.Put) "[]" else server
+        }
+        val clock = FakeClock()
+        val repo = repository(api, clock, QueryCache(backgroundScope, clock))
+        repo.observe().first { it.value != null }
+
+        // Watched further offline: the report cannot be sent.
+        offline = true
+        assertFailsWith<IllegalStateException> { repo.report("v", "i", positionSec = 900.0, durationSec = 3600.0) }
+        offline = false
+
+        val answer = onRealTime { repo.freshProgressFor("v", waitMillis = 5_000) } as FreshProgress.Answered
+        assertEquals(900.0, answer.state?.positionSec)
+
+        // Even when the server no longer has the video at all.
+        server = "[]"
+        val absent = onRealTime { repo.freshProgressFor("v", waitMillis = 5_000) } as FreshProgress.Answered
+        assertEquals(900.0, absent.state?.positionSec)
+    }
+
+    @Test
     fun aVideoMissingFromAFreshReadWasRemovedElsewhere() = runTest {
         val api = RecordingApi { """[]""" }
         val clock = FakeClock()

@@ -2,6 +2,8 @@ package moe.ditto.halo.sync
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.api.HaloBackend
 import moe.ditto.halo.api.WatchState
@@ -30,6 +32,13 @@ class WatchStateRepository(
     private val cache: QueryCache,
     private val clock: EpochClock,
 ) {
+    /**
+     * Reports this run could not send, by video: the server has not seen
+     * them, so its answer must not replace them (freshProgressFor). A later
+     * report for the same video that goes through clears it.
+     */
+    private val unsent = MutableStateFlow<Map<String, WatchState>>(emptyMap())
+
     fun observe(): Flow<QueryState<List<WatchState>>> =
         cache.query(HaloKey.WatchStates, HaloKey.WatchStates.staleMs) { client.getWatchStates() }
 
@@ -54,7 +63,14 @@ class WatchStateRepository(
                 null
             }
         } ?: return FreshProgress.Unknown
-        return FreshProgress.Answered(rows.firstOrNull { it.videoId == videoId })
+        val server = rows.firstOrNull { it.videoId == videoId }
+        // The answer is the truth only about what the server has seen. A
+        // cached row newer than its row (progress whose save failed, or one
+        // that raced the read) still wins, and so does a report this run
+        // could not send, even against an absence.
+        val cached = progressFor(videoId)?.takeIf { server != null }
+        val local = unsent.value[videoId]
+        return FreshProgress.Answered(listOfNotNull(server, cached, local).maxByOrNull { it.updatedAt })
     }
 
     /**
@@ -88,12 +104,20 @@ class WatchStateRepository(
             poster = SyncFields.poster(poster),
             updatedAt = clock.nowMs(),
         )
-        cache.mutate<List<WatchState>>(
-            key = HaloKey.WatchStates,
-            optimistic = { current -> current.orEmpty().upsert(state) },
-            // Per-row merge server-side, so only the changed row is sent.
-            put = { client.putWatchStates(listOf(state)) },
-        )
+        try {
+            cache.mutate<List<WatchState>>(
+                key = HaloKey.WatchStates,
+                optimistic = { current -> current.orEmpty().upsert(state) },
+                // Per-row merge server-side, so only the changed row is sent.
+                put = { client.putWatchStates(listOf(state)) },
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Throwable) {
+            unsent.update { it + (videoId to state) }
+            throw failure
+        }
+        unsent.update { it - videoId }
         return state
     }
 

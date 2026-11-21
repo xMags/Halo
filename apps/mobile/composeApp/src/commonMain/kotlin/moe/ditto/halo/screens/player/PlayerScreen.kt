@@ -244,6 +244,13 @@ internal fun PlayerScreen(
     // reports nothing more for the failed load, so a wait left behind would
     // only ever fire on the retry's load, alongside the retry's own.
     var openFollowUps by remember(item) { mutableStateOf<Job?>(null) }
+    /**
+     * False while the resume place may still be corrected by the server's
+     * answer (at most ResumeHistoryWaitMillis). No progress is reported until
+     * then: a report of the cached place, stamped now, would overwrite newer
+     * progress from another device that the answer was about to bring.
+     */
+    var resumeSettled by remember(item) { mutableStateOf(true) }
 
     /**
      * Loads this item, then, once its file is open, puts it back where it was
@@ -265,22 +272,29 @@ internal fun PlayerScreen(
             // video only when it differs and the viewer has not moved it
             // since. A stream of unknown length opens with no duration, which
             // resumePosition accepts.
-            if (context.recordsHistory) launch {
-                val cached = graph.watchStates.progressFor(context.videoId)
-                val fresh = async { graph.watchStates.freshProgressFor(context.videoId, ResumeHistoryWaitMillis) }
-                val opened = playback.state.first { it.current == item && it.opened }
-                val placed = resumePosition(cached, opened.durationSeconds)
-                placed?.let { playback.seekTo(it) }
-                val placedAt = TimeSource.Monotonic.markNow()
-                val answer = fresh.await() as? FreshProgress.Answered ?: return@launch
-                val target = resumePosition(answer.state, opened.durationSeconds)
-                if (target == placed) return@launch
-                val now = playback.state.value
-                if (now.current != item) return@launch
-                if (!stillAtResumePoint(placed ?: 0.0, placedAt.elapsedNow().inWholeMilliseconds, now.positionSeconds, now.playbackRate)) {
-                    return@launch
+            if (context.recordsHistory) {
+                resumeSettled = false
+                launch {
+                    try {
+                        val cached = graph.watchStates.progressFor(context.videoId)
+                        val fresh = async { graph.watchStates.freshProgressFor(context.videoId, ResumeHistoryWaitMillis) }
+                        val opened = playback.state.first { it.current == item && it.opened }
+                        val placed = resumePosition(cached, opened.durationSeconds)
+                        placed?.let { playback.seekTo(it) }
+                        val placedAt = TimeSource.Monotonic.markNow()
+                        val answer = fresh.await() as? FreshProgress.Answered ?: return@launch
+                        val target = resumePosition(answer.state, opened.durationSeconds)
+                        if (target == placed) return@launch
+                        val now = playback.state.value
+                        if (now.current != item) return@launch
+                        if (!stillAtResumePoint(placed ?: 0.0, placedAt.elapsedNow().inWholeMilliseconds, now.positionSeconds, now.playbackRate)) {
+                            return@launch
+                        }
+                        playback.seekTo(target ?: 0.0)
+                    } finally {
+                        resumeSettled = true
+                    }
                 }
-                playback.seekTo(target ?: 0.0)
             }
             // A downloaded video carries its subtitle beside it, added directly
             // rather than through the addon path: the file is already here, and
@@ -511,7 +525,7 @@ internal fun PlayerScreen(
                 // read has to happen while the position is still the one the
                 // viewer stopped at.
                 windDownAndLeave(
-                    report = { reportProgress(graph, context, playback.state.value, metaState.value) },
+                    report = { if (resumeSettled) reportProgress(graph, context, playback.state.value, metaState.value) },
                     windDown = playback::windDownForExit,
                     navigate = destination,
                 )
@@ -527,13 +541,14 @@ internal fun PlayerScreen(
     LaunchedEffect(item) {
         while (true) {
             delay(WatchStateReportMillis)
+            if (!resumeSettled) continue
             reportProgressBestEffort {
                 reportProgress(graph, context, playback.state.value, metaState.value)
             }
         }
     }
     LaunchedEffect(item, ownState, state.status) {
-        if (ownState && state.status != PlaybackStatus.Playing) {
+        if (ownState && state.status != PlaybackStatus.Playing && resumeSettled) {
             reportProgressBestEffort {
                 reportProgress(graph, context, playback.state.value, metaState.value)
             }
