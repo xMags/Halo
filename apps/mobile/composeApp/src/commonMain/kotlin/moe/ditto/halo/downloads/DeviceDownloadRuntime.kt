@@ -76,6 +76,15 @@ internal class DeviceDownloadRuntime(
      */
     private var pendingDeletions: Set<String> = emptySet()
 
+    /**
+     * Pending names, by job, whose removal is still waiting for its transfer
+     * to stop. Another removal's delete pass leaves them alone, so nothing is
+     * deleted under a transfer still writing it; the job's own removal clears
+     * its entry when it reaches its delete. Never persisted: at launch no
+     * transfer of this process is running.
+     */
+    private val stopping = mutableMapOf<String, Set<String>>()
+
     private val _entries: MutableStateFlow<List<DownloadEntry>>
     val entries: StateFlow<List<DownloadEntry>>
 
@@ -377,6 +386,7 @@ internal class DeviceDownloadRuntime(
 
     private fun removeLocked(entry: DownloadEntry): DownloadEntry {
         pendingDeletions = pendingDeletions + entry.ownedFileNames()
+        entry.jobId?.let { stopping[it] = entry.ownedFileNames().toSet() }
         publishLocked(_entries.value.filterNot { it.videoId == entry.videoId })
         pendingRequests.remove(entry.jobId)
         return entry
@@ -388,7 +398,10 @@ internal class DeviceDownloadRuntime(
             port.cancel(it)
             vault.delete(it)
         }
-        mutex.withLock { deletePendingLocked() }
+        mutex.withLock {
+            removed.jobId?.let { stopping.remove(it) }
+            deletePendingLocked()
+        }
         pumpNext()
     }
 
@@ -719,8 +732,13 @@ internal class DeviceDownloadRuntime(
         if (pendingDeletions.isEmpty()) return
         val root = directory ?: return
         val inUse = _entries.value.flatMapTo(HashSet()) { it.ownedFileNames() }
+        val stillStopping = stopping.values.flatMapTo(HashSet()) { it }
         val remaining = pendingDeletions.filterTo(HashSet()) { name ->
-            name !in inUse && !deleteFile(root / name)
+            when {
+                name in stillStopping -> true
+                name in inUse -> false
+                else -> !deleteFile(root / name)
+            }
         }
         if (remaining == pendingDeletions) return
         pendingDeletions = remaining

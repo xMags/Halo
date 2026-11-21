@@ -156,6 +156,36 @@ class DeviceDownloadRuntimeTest {
     }
 
     @Test
+    fun anotherRemovalLeavesFilesWhoseTransferIsStillStopping() = runTest {
+        val store = FakeStore()
+        val vault = FakeDownloadVault()
+        DownloadIndex(store, vault).write(
+            listOf(
+                entry(videoId = "a", status = DownloadStatus.Paused, fileName = "a.mkv"),
+                entry(videoId = "b", fileName = "b.mkv"),
+            ),
+        )
+        val world = world(store = store, vault = vault, files = listOf("a.mkv.part", "b.mkv"))
+        testScheduler.advanceUntilIdle()
+        val cancelGate = CompletableDeferred<Unit>()
+        world.port.cancelGate = cancelGate
+
+        // A's transfer has been asked to stop and has not yet.
+        val removingA = async { world.runtime.remove("a") }
+        testScheduler.runCurrent()
+        world.runtime.remove("b")
+        testScheduler.runCurrent()
+
+        assertFalse(world.fileSystem.exists("/downloads/b.mkv".toPath()))
+        assertTrue(world.fileSystem.exists("/downloads/a.mkv.part".toPath()))
+
+        cancelGate.complete(Unit)
+        removingA.await()
+        testScheduler.advanceUntilIdle()
+        assertFalse(world.fileSystem.exists("/downloads/a.mkv.part".toPath()))
+    }
+
+    @Test
     fun aRemovalCutShortIsFinishedAtTheNextLaunch() = runTest {
         val store = FakeStore()
         val vault = FakeDownloadVault()
