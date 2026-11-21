@@ -1,11 +1,12 @@
 import type { MetaDetail } from '@halo/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { useEffect, useMemo, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type RefObject } from 'react'
 import { FluentIcon } from '../../components/FluentIcon'
 import { QualityMedal } from '../../components/QualityMedal'
 import { formatTimeLeft, ratedValue } from '../../format'
 import { useStreams } from '../../queries'
 import { formatRuntime, summarizeAvailability, trailerUrl, type Availability } from './detailFacts'
+import { useHeroLogo } from './useHeroLogo'
 
 /** What the page's main button plays, shared by the hero and the compact bar. */
 export interface PlayTarget {
@@ -159,19 +160,54 @@ export function DetailHero({
 
 /**
  * The title's logo art when its addon has one, else the name in the display
- * face. A logo that fails to load falls back to the name, never a gap.
+ * face. A logo that fails to load falls back to the name, never a gap; on the
+ * light page a light logo is drawn in the page's ink (useHeroLogo).
  */
 function HeroTitle({ name, logo }: { name: string; logo: string | undefined }) {
-  const [failed, setFailed] = useState(false)
-  if (!logo || failed) return <h1 className="dh-title">{name}</h1>
+  return <TitleArt name={name} logo={logo} logoClass="dh-logo" titleClass="dh-title" heading />
+}
+
+/**
+ * A logo as useHeroLogo says to draw it, or the name. Shared by the hero and
+ * the compact bar so both draw the same treatment of the same logo.
+ */
+function TitleArt({
+  name,
+  logo,
+  logoClass,
+  titleClass,
+  heading = false,
+}: {
+  name: string
+  logo: string | undefined
+  logoClass: string
+  titleClass: string
+  heading?: boolean
+}) {
+  const art = useHeroLogo(logo)
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  // Held empty while the light page judges the logo: nothing flashes, and the
+  // hero's children keep their order for its staggered entrance.
+  if (art.kind === 'pending') return <span className={`${logoClass} title-art-pending`} aria-hidden />
+  if (art.kind === 'name' || (art.kind === 'original' && art.src === failedSrc)) {
+    return heading ? <h1 className={titleClass}>{name}</h1> : <span className={`${titleClass} ellipsis`}>{name}</span>
+  }
+  if (art.kind === 'inked') {
+    const style = {
+      '--logo-ratio': art.ratio,
+      maskImage: `url("${art.src}")`,
+      WebkitMaskImage: `url("${art.src}")`,
+    } as CSSProperties
+    return <span className={`${logoClass} title-art-ink`} role="img" aria-label={name} title={name} style={style} />
+  }
   return (
     <img
-      className="dh-logo"
-      src={logo}
+      className={logoClass}
+      src={art.src}
       alt={name}
       title={name}
       draggable={false}
-      onError={() => setFailed(true)}
+      onError={() => setFailedSrc(art.src)}
     />
   )
 }
@@ -259,7 +295,6 @@ export function CompactBar({
   playButton: RefObject<HTMLButtonElement | null>
 }) {
   const [shown, setShown] = useState(false)
-  const [logoFailed, setLogoFailed] = useState(false)
 
   useEffect(() => {
     const root = scroller.current
@@ -280,11 +315,7 @@ export function CompactBar({
 
   return (
     <header className={`compact-bar ${shown ? 'compact-bar-shown' : ''}`} aria-hidden={!shown}>
-      {meta.logo && !logoFailed ? (
-        <img className="compact-logo" src={meta.logo} alt={meta.name} onError={() => setLogoFailed(true)} />
-      ) : (
-        <span className="compact-title ellipsis">{meta.name}</span>
-      )}
+      <TitleArt name={meta.name} logo={meta.logo} logoClass="compact-logo" titleClass="compact-title" />
       <span className="spacer" />
       {play.progress && (
         <span className="compact-left">

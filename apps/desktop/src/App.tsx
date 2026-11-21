@@ -139,11 +139,8 @@ function Shell() {
     return <Player key={screen.videoId || screen.url} {...screen} windowFullscreen={windowFullscreen} />
   }
 
-  // A title page is drawn on its art in both themes, so the whole window goes
-  // dark with it, the title bar and menu included, rather than leaving a light
-  // frame around a dark page.
   return (
-    <div className={`shell ${screen.name === 'detail' ? 'theme-dark' : ''}`}>
+    <div className="shell">
       <div className="glow glow-a" />
       <div className="glow glow-b" />
       <TitleBar />

@@ -1,6 +1,6 @@
 /* ── Tokens: dark (default) ────────────────────────────────────────────── */
 /* `.theme-dark` re-scopes a subtree to this palette whatever the app theme:
-   the title page sits on the title's own dark art in both themes.
+   the player and the sign-in page are dark in both themes.
    The dark values are the mobile app's palette (HaloColors: #0A0C11 ground,
    blue-grey surfaces, #4CC2FF accent) by choice, not the native WinUI greys;
    the token names still follow the native brushes. */

@@ -125,6 +125,11 @@ export function useLocalPrefs(): LocalPrefs {
   return useSyncExternalStore(subscribe, snapshot, snapshot)
 }
 
+/** The palette on screen now, `system` resolved; re-renders when the OS flips it. */
+export function useResolvedTheme(): 'light' | 'dark' {
+  return resolve(useLocalPrefs().theme)
+}
+
 /* ── Theme application ───────────────────────────────────────────────────── */
 
 const SYSTEM_LIGHT = '(prefers-color-scheme: light)'

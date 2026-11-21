@@ -16,8 +16,8 @@ import { EpisodesPanel } from './EpisodesPanel'
 /**
  * Title page: the title's art fills the top with the logo, facts and playback
  * over it, and runs on behind the whole page blurred, so every panel below is
- * frosted glass over the title's own colours. The page is dark in both app
- * themes (`theme-dark`), because it always sits on that art.
+ * frosted glass over the title's own colours. Each app theme has the page's
+ * own palette for sitting on that art (styles/detail.css).
  */
 export function Detail({ type, id }: { type: string; id: string }) {
   const { pop, openSheet } = useNav()
@@ -136,7 +136,7 @@ export function Detail({ type, id }: { type: string; id: string }) {
   }
 
   return (
-    <div className="view detail-screen theme-dark">
+    <div className="view detail-screen">
       <div className="detail-bg" aria-hidden>
         {(meta.background ?? meta.poster) && (
           <>

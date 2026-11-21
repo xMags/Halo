@@ -138,7 +138,7 @@ export function HeroSkeleton() {
 /** Full-screen detail placeholder matching `.detail-view` with full-page background. */
 export function DetailSkeleton() {
   return (
-    <div className="view detail-screen detail-skeleton theme-dark" aria-hidden>
+    <div className="view detail-screen detail-skeleton" aria-hidden>
       <div className="detail-view">
         <section className="dh">
           <div className="dh-inner">
