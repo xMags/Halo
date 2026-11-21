@@ -31,6 +31,7 @@ import moe.ditto.halo.people.SessionCapabilities
 import moe.ditto.halo.people.TmdbKeySaveResult
 import moe.ditto.halo.people.TmdbKeys
 import moe.ditto.halo.people.saveTmdbKey
+import moe.ditto.halo.people.tmdbHttpClient
 import moe.ditto.halo.downloads.DeviceDownloadRuntime
 import moe.ditto.halo.downloads.DownloadStoragePort
 import moe.ditto.halo.player.StreamVideoHasher
@@ -104,6 +105,9 @@ internal class SessionGraph(
      */
     private val httpClient = HttpClient()
 
+    /** TMDB's own client: the viewer's key may be in its URLs, so it keeps no response cache. */
+    private val tmdbHttp = tmdbHttpClient()
+
     /** Account-only calls (who is signed in, the admin's global addons); null without an account. */
     val accountClient: HaloClient? = when (mode) {
         is SessionMode.Account -> HaloClient(mode.serverUrl, mode.tokens, httpClient, mode.onUnauthorized)
@@ -112,7 +116,7 @@ internal class SessionGraph(
 
     /** The phone's own backend, which only Halo without an account uses. */
     private val deviceBackend: DeviceBackend? =
-        if (accountClient == null) DeviceBackend(httpClient, deviceStore, clock, tmdbKeys = tmdbKeys) else null
+        if (accountClient == null) DeviceBackend(httpClient, deviceStore, clock, tmdbKeys = tmdbKeys, tmdbHttp = tmdbHttp) else null
 
     /** What every screen asks: the account's server, or the phone itself without one. */
     val backend: HaloBackend = accountClient ?: checkNotNull(deviceBackend)
@@ -144,7 +148,7 @@ internal class SessionGraph(
     val capabilities = SessionCapabilities(scope, backend::getCapabilities, if (accountClient == null) tmdbKeys.status else null)
 
     /** Checks a pasted TMDB key with TMDB and keeps it on the phone when TMDB takes it. */
-    suspend fun saveTmdbKey(pasted: String): TmdbKeySaveResult = saveTmdbKey(httpClient, tmdbKeys, pasted)
+    suspend fun saveTmdbKey(pasted: String): TmdbKeySaveResult = saveTmdbKey(tmdbHttp, tmdbKeys, pasted)
 
     /** The session's clock, for screens that time something themselves (a magnet's polling limit). */
     fun nowMs(): Long = clock.nowMs()
@@ -266,5 +270,6 @@ internal class SessionGraph(
         detachDownloadSubtitles()
         scope.cancel()
         httpClient.close()
+        tmdbHttp.close()
     }
 }

@@ -79,6 +79,8 @@ internal class DeviceBackend(
      * usable key) turns the features off.
      */
     private val tmdbKeys: TmdbKeys? = null,
+    /** TMDB's own client, which keeps no response cache (see [moe.ditto.halo.people.tmdbHttpClient]). */
+    private val tmdbHttp: HttpClient = http,
 ) : HaloBackend {
     private val locks = DeviceCollection.entries.associateWith { Mutex() }
 
@@ -249,7 +251,7 @@ internal class DeviceBackend(
         val credential = keys.usableCredential() ?: return null
         return tmdbLock.withLock {
             tmdb?.takeIf { it.first == credential.value }?.second
-                ?: TmdbClient(http, credential, clock::nowMs, onRefused = { keys.markRefused(credential) }).also {
+                ?: TmdbClient(tmdbHttp, credential, clock::nowMs, onRefused = { keys.markRefused(credential) }).also {
                     tmdb = credential.value to it
                 }
         }
