@@ -66,6 +66,16 @@ internal class DeviceDownloadRuntime(
      */
     private var indexUnverified = false
 
+    /**
+     * File names to delete, kept in the index (see [DownloadIndexSnapshot]):
+     * a removal names its files here in the same write that drops its row,
+     * and each name leaves once its file is gone, so nothing a removal meant
+     * to delete is left behind for good when the app dies midway. Only the
+     * index ever names a file for deletion; the sweep removes transfer
+     * leftovers alone.
+     */
+    private var pendingDeletions: Set<String> = emptySet()
+
     private val _entries: MutableStateFlow<List<DownloadEntry>>
     val entries: StateFlow<List<DownloadEntry>>
 
@@ -80,6 +90,7 @@ internal class DeviceDownloadRuntime(
         entries = _entries.asStateFlow()
         indexWritable = snapshot.complete
         indexUnverified = snapshot.absent && directoryHoldsFiles()
+        pendingDeletions = snapshot.pendingDeletions.toSet()
         scope.launch { initialize(sweep = snapshot.complete && !indexUnverified) }
     }
 
@@ -358,17 +369,19 @@ internal class DeviceDownloadRuntime(
     }
 
     private fun removeLocked(entry: DownloadEntry): DownloadEntry {
+        pendingDeletions = pendingDeletions + entry.ownedFileNames()
         publishLocked(_entries.value.filterNot { it.videoId == entry.videoId })
         pendingRequests.remove(entry.jobId)
         return entry
     }
 
     private suspend fun finishRemoval(removed: DownloadEntry) {
+        // The transfer stops first, so nothing writes the files being deleted.
         removed.jobId?.let {
             port.cancel(it)
             vault.delete(it)
         }
-        directory?.let { discardFiles(removed, it) }
+        mutex.withLock { deletePendingLocked() }
         pumpNext()
     }
 
@@ -389,7 +402,6 @@ internal class DeviceDownloadRuntime(
         }
         val jobsById = jobs.associateBy { it.jobId }
         val completedJobs = mutableListOf<String>()
-        val retainedToDelete = mutableListOf<String>()
         val jobsToPause = mutableListOf<String>()
 
         mutex.withLock {
@@ -418,7 +430,7 @@ internal class DeviceDownloadRuntime(
                     BackgroundDownloadJobState.Paused ->
                         putLocked(entry.copy(status = DownloadStatus.Paused, bytesPerSecond = 0, connections = null))
                     BackgroundDownloadJobState.Succeeded -> {
-                        retainedToDelete += entry.retainedNotInUse()
+                        pendingDeletions = pendingDeletions + entry.retainedNotInUse()
                         completeLocked(entry, job.downloadedBytes, job.totalBytes)
                         completedJobs += job.jobId
                     }
@@ -446,9 +458,10 @@ internal class DeviceDownloadRuntime(
                 }
             }
             settleLocked(sweep)
+            // Also what an earlier run named for deletion and did not finish.
+            deletePendingLocked()
         }
 
-        retainedToDelete.forEach { name -> directory?.let { deleteFile(it / name) } }
         completedJobs.forEach(vault::delete)
         jobsToPause.forEach { port.pause(it) }
 
@@ -477,14 +490,16 @@ internal class DeviceDownloadRuntime(
                     // The row's own job finished, so its file is complete even
                     // when a pause or a failure was recorded as it did.
                     if (entry.status == DownloadStatus.Done) return
+                    // Named in the same write that completes the row; deleted
+                    // under the lock, so a subtitle being attached sees its file
+                    // either kept (it is in use) or gone (and fetches it again).
+                    pendingDeletions = pendingDeletions + entry.retainedNotInUse()
                     completeLocked(
                         entry,
                         event.downloadedBytes,
                         event.totalBytes,
                     )
-                    // Under the lock, so a subtitle being attached sees its file
-                    // either kept (it is in use) or gone (and fetches it again).
-                    entry.retainedNotInUse().forEach { name -> directory?.let { deleteFile(it / name) } }
+                    deletePendingLocked()
                     pendingRequests.remove(event.jobId)
                     completedJob = event.jobId
                 }
@@ -642,7 +657,7 @@ internal class DeviceDownloadRuntime(
 
     private fun publishLocked(entries: List<DownloadEntry>) {
         _entries.value = entries
-        if (indexWritable && !indexUnverified) index.write(entries)
+        if (indexWritable && !indexUnverified) index.write(entries, pendingDeletions.toList())
     }
 
     private fun directoryHoldsFiles(): Boolean {
@@ -687,17 +702,30 @@ internal class DeviceDownloadRuntime(
         return retainedFileNames.filterNot(inUse::contains)
     }
 
-    private fun discardFiles(entry: DownloadEntry, root: Path) {
-        entry.ownedFileNames().distinct().forEach { deleteFile(root / it) }
+    /**
+     * Deletes the files named for deletion and drops each name once its file
+     * is gone. A name a live download uses now (a re-download reusing a file
+     * name, say) is dropped without deleting anything. One that will not
+     * delete stays named, and the next launch tries again.
+     */
+    private fun deletePendingLocked() {
+        if (pendingDeletions.isEmpty()) return
+        val root = directory ?: return
+        val inUse = _entries.value.flatMapTo(HashSet()) { it.ownedFileNames() }
+        val remaining = pendingDeletions.filterTo(HashSet()) { name ->
+            name !in inUse && !deleteFile(root / name)
+        }
+        if (remaining == pendingDeletions) return
+        pendingDeletions = remaining
+        publishLocked(_entries.value)
     }
 
-    private fun deleteFile(path: Path) {
-        try {
-            fileSystem.delete(path, mustExist = false)
-        } catch (_: okio.IOException) {
-            // A later sweep can retry. State changes must not be rolled back by
-            // an uncooperative filesystem delete.
-        }
+    /** True once the file is gone. State never waits on a delete that will not go through. */
+    private fun deleteFile(path: Path): Boolean = try {
+        fileSystem.delete(path, mustExist = false)
+        true
+    } catch (_: okio.IOException) {
+        false
     }
 
     private companion object {

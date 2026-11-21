@@ -20,12 +20,20 @@ internal data class DownloadIndexSnapshot(
      * can tell those apart.
      */
     val absent: Boolean = false,
+    /** File names a removal or replacement named for deletion and may not have deleted yet. */
+    val pendingDeletions: List<String> = emptyList(),
 )
 
 @Serializable
 private data class DownloadIndexV2(
     val version: Int,
     val entries: Map<String, DownloadEntry>,
+    /**
+     * Files to delete, written in the same document that drops the rows
+     * owning them: a removal cut short by process death is finished at the
+     * next launch. Ignored by builds that predate it.
+     */
+    val pendingDeletions: List<String> = emptyList(),
 )
 
 /** URL-free restart point for an interrupted v1 migration. */
@@ -106,8 +114,12 @@ internal class DownloadIndex(
     fun isStored(): Boolean =
         store.read(StorageKeys.DownloadsV2) != null || store.read(StorageKeys.Downloads) != null
 
-    fun write(entries: List<DownloadEntry>) {
-        val document = DownloadIndexV2(version = 2, entries = entries.associateBy { it.videoId })
+    fun write(entries: List<DownloadEntry>, pendingDeletions: List<String> = emptyList()) {
+        val document = DownloadIndexV2(
+            version = 2,
+            entries = entries.associateBy { it.videoId },
+            pendingDeletions = pendingDeletions,
+        )
         store.write(StorageKeys.DownloadsV2, HaloJson.encodeToString(DownloadIndexV2.serializer(), document))
     }
 
@@ -129,7 +141,11 @@ internal class DownloadIndex(
             return decodeV2EntriesIndividually(root["entries"] as JsonObject)
         }
         if (document.version != 2) return DownloadIndexSnapshot(emptyList(), complete = false)
-        return DownloadIndexSnapshot(document.entries.values.toList(), complete = true)
+        return DownloadIndexSnapshot(
+            document.entries.values.toList(),
+            complete = true,
+            pendingDeletions = document.pendingDeletions,
+        )
     }
 
     private fun decodeV2EntriesIndividually(entries: JsonObject): DownloadIndexSnapshot {

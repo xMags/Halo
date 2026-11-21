@@ -138,6 +138,42 @@ class DeviceDownloadRuntimeTest {
     }
 
     @Test
+    fun aRemovalCutShortIsFinishedAtTheNextLaunch() = runTest {
+        val store = FakeStore()
+        val vault = FakeDownloadVault()
+        // The row was dropped and its files named; the app died before deleting them.
+        DownloadIndex(store, vault).write(
+            listOf(entry(videoId = "kept", fileName = "kept.mkv")),
+            pendingDeletions = listOf("gone.mkv", "gone.srt", "kept.mkv"),
+        )
+        val world = world(store = store, vault = vault, files = listOf("gone.mkv", "gone.srt", "kept.mkv"))
+        testScheduler.advanceUntilIdle()
+
+        assertFalse(world.fileSystem.exists("/downloads/gone.mkv".toPath()))
+        assertFalse(world.fileSystem.exists("/downloads/gone.srt".toPath()))
+        // A name a live download uses is never deleted.
+        assertTrue(world.fileSystem.exists("/downloads/kept.mkv".toPath()))
+        assertEquals(emptyList(), DownloadIndex(store, vault).read().pendingDeletions)
+    }
+
+    @Test
+    fun aRemovalNamesItsFilesInTheIndexUntilTheyAreGone() = runTest {
+        val store = FakeStore()
+        val vault = FakeDownloadVault()
+        DownloadIndex(store, vault).write(listOf(entry(videoId = "movie", fileName = "movie.mkv")))
+        val world = world(store = store, vault = vault, files = listOf("movie.mkv"))
+        testScheduler.advanceUntilIdle()
+
+        world.runtime.remove("movie")
+        testScheduler.advanceUntilIdle()
+
+        assertFalse(world.fileSystem.exists("/downloads/movie.mkv".toPath()))
+        val after = DownloadIndex(store, vault).read()
+        assertTrue(after.entries.isEmpty())
+        assertEquals(emptyList(), after.pendingDeletions)
+    }
+
+    @Test
     fun aPausedRowWhoseTransferSucceededIsFinishedAtLaunch() = runTest {
         val store = FakeStore()
         val vault = FakeDownloadVault()
