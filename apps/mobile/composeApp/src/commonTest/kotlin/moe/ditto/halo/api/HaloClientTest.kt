@@ -348,6 +348,18 @@ class HaloClientTest {
     }
 
     @Test
+    fun omitsEmptyNextEpisodeHints() = runTest {
+        // A pasted magnet's file plays with an empty addon id.
+        val client = client { jsonResponse("""{"video":null,"stream":null}""") }
+
+        client.getNextEpisode(type = "series", metaId = "tt0944947", videoId = "tt0944947:1:2", addonId = "", bingeGroup = "")
+
+        val url = recorded.single().url
+        assertNull(url.parameters["addon"])
+        assertNull(url.parameters["bingeGroup"])
+    }
+
+    @Test
     fun encodesAddonIdInThePath() = runTest {
         val client = client { jsonResponse("""{"ok":true}""") }
 

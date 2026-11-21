@@ -179,8 +179,10 @@ class HaloClient(
             put("type", type)
             put("metaId", metaId)
             put("videoId", videoId)
-            addonId?.let { put("addon", it) }
-            bingeGroup?.let { put("bingeGroup", it) }
+            // Empty values are left out, as the desktop's client does: a source
+            // no addon offered (a pasted magnet's file) has an empty addon id.
+            addonId?.takeIf { it.isNotEmpty() }?.let { put("addon", it) }
+            bingeGroup?.takeIf { it.isNotEmpty() }?.let { put("bingeGroup", it) }
         },
     ).withoutActions()
 
