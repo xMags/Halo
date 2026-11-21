@@ -12,6 +12,7 @@ import {
   type ResolveContext,
   type SubtitleQuery,
 } from '../addon/resolve'
+import { AddonRequestError } from '../addon/client'
 import type { CatalogResponse, Manifest, MetaResponse } from '../addon/types'
 import type { HaloBackend } from '../api/backend'
 import { HaloApiError, type RequestOptions } from '../api/client'
@@ -202,6 +203,9 @@ export class DeviceBackend implements HaloBackend {
       return await fetchCatalog(entry, type, id, extra ?? {}, this.context(opts))
     } catch (err) {
       throwIfCancelled(opts)
+      // Here the addon is the server being asked, so its "slow down" is passed
+      // on as is: Search gives a catalog that said so no second try at once.
+      if (err instanceof AddonRequestError && err.status === 429) throw apiError(429, 'addon rate limited', err)
       throw apiError(502, 'catalog fetch failed', err)
     }
   }

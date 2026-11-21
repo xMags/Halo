@@ -156,9 +156,10 @@ test('hiding an addon’s catalogs strips them from the list but keeps it answer
 
 /* ── Resolution ────────────────────────────────────────────────────────────── */
 
-test('catalogs: unknown addons are refused, extras are bounded, upstream failures are a 502', async () => {
+test('catalogs: unknown addons are refused, extras are bounded, upstream failures are a 502, a rate limit a 429', async () => {
   const { backend } = makeBackend({
     'https://catalog.test/catalog/movie/top/search=dune.json': { metas: [{ id: 'tt2', type: 'movie', name: 'Dune' }] },
+    'https://catalog.test/catalog/movie/top/search=busy.json': () => new Response('slow down', { status: 429 }),
   })
   const [catalog] = await backend.putAddons([CATALOG_ADDON])
   assert.equal((await backend.getCatalog(catalog!.id, 'movie', 'top', { search: 'dune' })).metas[0]!.name, 'Dune')
@@ -167,6 +168,7 @@ test('catalogs: unknown addons are refused, extras are bounded, upstream failure
   const tooMany = Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`k${i}`, 'v']))
   await rejectsWithStatus(backend.getCatalog(catalog!.id, 'movie', 'top', tooMany), 400)
   await rejectsWithStatus(backend.getCatalog(catalog!.id, 'movie', 'missing'), 502)
+  await rejectsWithStatus(backend.getCatalog(catalog!.id, 'movie', 'top', { search: 'busy' }), 429)
 })
 
 test('meta: the first addon that can describe the id answers, skipping ones that fail', async () => {
