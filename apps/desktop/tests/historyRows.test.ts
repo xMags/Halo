@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { LibraryItem, WatchState } from '@halo/core'
-import { buildHistory, groupHistory, searchHistory } from '../src/history/historyRows.ts'
+import {
+  buildHistory,
+  countHistoryViews,
+  filterHistoryView,
+  groupHistory,
+  historyNote,
+  historyProgress,
+  historyStateText,
+  historyTitleCount,
+  searchHistory,
+} from '../src/history/historyRows.ts'
 
 function row(partial: Partial<WatchState> & Pick<WatchState, 'itemId' | 'videoId' | 'updatedAt'>): WatchState {
   return { positionSec: 600, durationSec: 3000, watched: false, name: 'Title', ...partial } as WatchState
@@ -94,4 +104,57 @@ test('search keeps the titles holding every word, ignoring case and accents', ()
   assert.deepEqual(searchHistory(history, 'spider verse').map((entry) => entry.videoId), ['a'])
   assert.deepEqual(searchHistory(history, 'AMELIE').map((entry) => entry.videoId), ['b'])
   assert.equal(searchHistory(history, '   ').length, 3)
+})
+
+test('In progress holds what is not finished, and each tab counts what it would show', () => {
+  const history = buildHistory(
+    [
+      row({ itemId: 'series:a', videoId: 'a:1:1', updatedAt: 10, watched: true }),
+      row({ itemId: 'series:a', videoId: 'a:1:2', updatedAt: 30 }),
+      row({ itemId: 'movie:b', videoId: 'b', updatedAt: 20 }),
+      row({ itemId: 'movie:c', videoId: 'c', updatedAt: 5, watched: true }),
+    ],
+    [],
+    'all',
+  )
+  assert.deepEqual(
+    filterHistoryView(history, 'inProgress').map((entry) => entry.videoId),
+    ['a:1:2', 'b'],
+  )
+  assert.deepEqual(countHistoryViews(history), { all: 4, movie: 2, series: 2, inProgress: 2 })
+})
+
+test('a row says it was watched, what is left, or only that it started', () => {
+  const [unfinished, watched, unknown] = buildHistory(
+    [
+      row({ itemId: 'movie:a', videoId: 'a', updatedAt: 30, positionSec: 600, durationSec: 3000 }),
+      row({ itemId: 'movie:b', videoId: 'b', updatedAt: 20, watched: true }),
+      row({ itemId: 'movie:c', videoId: 'c', updatedAt: 10, positionSec: 40, durationSec: 0 }),
+    ],
+    [],
+    'all',
+  )
+  assert.equal(historyStateText(unfinished!), '40 min left')
+  assert.equal(historyStateText(watched!), 'Watched')
+  assert.equal(historyStateText(unknown!), 'Started')
+  assert.equal(historyProgress(unfinished!), 0.2)
+  assert.equal(historyProgress(watched!), 0)
+  assert.equal(historyProgress(unknown!), 0)
+  assert.equal(historyTitleCount(1), '1 title')
+  assert.equal(historyTitleCount(3), '3 titles')
+})
+
+test('the note covers loading, an empty history, a search and an empty tab', () => {
+  const base = { loading: false, failed: false, hasAny: true, groupsEmpty: true, query: '', view: 'all' as const }
+  assert.equal(historyNote({ ...base, loading: true }), 'Loading your history…')
+  assert.equal(historyNote({ ...base, failed: true }), null)
+  assert.equal(historyNote({ ...base, hasAny: false }), 'Nothing watched yet. What you play shows up here.')
+  assert.equal(historyNote({ ...base, groupsEmpty: false }), null)
+  assert.equal(historyNote({ ...base, query: ' dune ' }), 'Nothing in your history matches “dune”.')
+  assert.equal(
+    historyNote({ ...base, view: 'inProgress' }),
+    'Nothing in progress. Everything you started is finished.',
+  )
+  assert.equal(historyNote({ ...base, view: 'movie' }), 'No movies in your history.')
+  assert.equal(historyNote({ ...base, view: 'series' }), 'No series in your history.')
 })

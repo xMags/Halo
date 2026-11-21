@@ -1,4 +1,5 @@
 import type { LibraryItem, WatchState } from '@halo/core'
+import { formatTimeLeft } from '../format'
 import { isFinishedWatchState, itemMetaId, itemType, matchesHomeFilter, type HomeFilter } from '../home/homeRows'
 
 /**
@@ -120,4 +121,68 @@ export function searchHistory(entries: HistoryEntry[], query: string): HistoryEn
 
 function foldForSearch(text: string): string {
   return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+}
+
+/** The page's tabs: the two media types, and what is not finished yet. */
+export type HistoryView = 'all' | 'movie' | 'series' | 'inProgress'
+
+function showsIn(entry: HistoryEntry, view: HistoryView): boolean {
+  if (view === 'inProgress') return !entry.finished
+  return matchesHomeFilter(view, entry.type)
+}
+
+export function filterHistoryView(entries: HistoryEntry[], view: HistoryView): HistoryEntry[] {
+  return entries.filter((entry) => showsIn(entry, view))
+}
+
+/** How many rows each tab would show under the same search. */
+export function countHistoryViews(entries: readonly HistoryEntry[]): Record<HistoryView, number> {
+  const counts: Record<HistoryView, number> = { all: 0, movie: 0, series: 0, inProgress: 0 }
+  for (const entry of entries) {
+    for (const view of Object.keys(counts) as HistoryView[]) {
+      if (showsIn(entry, view)) counts[view] += 1
+    }
+  }
+  return counts
+}
+
+/** The count under a section's heading. */
+export function historyTitleCount(count: number): string {
+  return `${count} ${count === 1 ? 'title' : 'titles'}`
+}
+
+/** A row's state beside its tag: watched, the time left, or only that it began. */
+export function historyStateText(entry: HistoryEntry): string {
+  if (entry.finished) return 'Watched'
+  if (entry.durationSec > 0) return formatTimeLeft(entry.positionSec, entry.durationSec)
+  return 'Started'
+}
+
+/** How far through an unfinished video of known length, 0 to 1. */
+export function historyProgress(entry: HistoryEntry): number {
+  if (entry.finished || !(entry.durationSec > 0)) return 0
+  const fraction = entry.positionSec / entry.durationSec
+  return Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0
+}
+
+/**
+ * The line shown in place of the sections, or null when the sections say
+ * enough. A failed load has its own error bar, so it has no note.
+ */
+export function historyNote(input: {
+  loading: boolean
+  failed: boolean
+  hasAny: boolean
+  groupsEmpty: boolean
+  query: string
+  view: HistoryView
+}): string | null {
+  if (input.loading) return 'Loading your history…'
+  if (input.failed) return null
+  if (!input.hasAny) return 'Nothing watched yet. What you play shows up here.'
+  if (!input.groupsEmpty) return null
+  const trimmed = input.query.trim()
+  if (trimmed) return `Nothing in your history matches “${trimmed}”.`
+  if (input.view === 'inProgress') return 'Nothing in progress. Everything you started is finished.'
+  return input.view === 'movie' ? 'No movies in your history.' : 'No series in your history.'
 }

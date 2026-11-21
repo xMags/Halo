@@ -7,43 +7,73 @@ import { ArtImage } from '../components/ArtImage'
 import { metahubPosterUrl } from '../components/artworkUrl'
 import { showDialog } from '../components/Dialog'
 import { FluentIcon } from '../components/FluentIcon'
+import { InfoBar } from '../components/InfoBar'
+import { Menu, MenuAnchor, MenuItem } from '../components/Menu'
 import { SearchBox } from '../components/SearchBox'
-import { SectionHeader } from '../components/SectionHeader'
-import { Segmented } from '../components/Segmented'
-import { formatTimeLeft, videoIdTag } from '../format'
+import { SelectorBar } from '../components/SelectorBar'
+import { videoIdTag } from '../format'
 import { continueSheetParams } from '../home/continueShelf'
-import type { HomeFilter } from '../home/homeRows'
 import { useNav } from '../nav'
 import { useLibrary, useRemoveFromHistory, useWatchStates } from '../queries'
-import { buildHistory, groupHistory, historyTime, searchHistory, type HistoryEntry } from './historyRows'
+import {
+  buildHistory,
+  countHistoryViews,
+  filterHistoryView,
+  groupHistory,
+  historyNote,
+  historyProgress,
+  historyStateText,
+  historyTime,
+  historyTitleCount,
+  searchHistory,
+  type HistoryEntry,
+  type HistoryView,
+} from './historyRows'
 
-const FILTERS: ReadonlyArray<{ value: HomeFilter; label: string }> = [
+const TABS: ReadonlyArray<{ value: HistoryView; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'movie', label: 'Movies' },
   { value: 'series', label: 'Series' },
+  { value: 'inProgress', label: 'In progress' },
 ]
 
 /**
  * Everything played, newest first, one row per video, from the synced watch
- * history. A row's menu does what the same title's menu does anywhere else,
- * and can also remove the row; Clear history removes every row. A removal
- * forgets the video's progress too, everywhere the history syncs.
+ * history, as a timeline: each section (Today, Yesterday, Earlier this week,
+ * then a month) has its heading in a column on the left and its videos as the
+ * rows of one card on the right. A row's buttons replace its time under the
+ * pointer or with focus inside it; its menu does what the same title's menu
+ * does anywhere else and can also remove the row. Clear history waits in the
+ * header's menu. A removal forgets the video's progress too, everywhere the
+ * history syncs.
  */
 export function History() {
-  const { data: watchStates, isLoading, error } = useWatchStates()
+  const { data: watchStates, isLoading, error, refetch } = useWatchStates()
   const { data: library } = useLibrary()
-  const [filter, setFilter] = useState<HomeFilter>('all')
+  const [view, setView] = useState<HistoryView>('all')
   const [query, setQuery] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
 
-  const groups = useMemo(
-    () => groupHistory(searchHistory(buildHistory(watchStates, library, filter), query)),
-    [watchStates, library, filter, query],
+  // One build serves every tab: the counts are of what each would show under the same search.
+  const matching = useMemo(
+    () => searchHistory(buildHistory(watchStates, library, 'all'), query),
+    [watchStates, library, query],
   )
+  const counts = countHistoryViews(matching)
+  const groups = useMemo(() => groupHistory(filterHistoryView(matching, view)), [matching, view])
   const hasAny = (watchStates?.length ?? 0) > 0
-  const searching = query.trim() !== ''
   const removeFromHistory = useRemoveFromHistory()
+  const canClear = !isLoading && !error && hasAny && !removeFromHistory.isPending
+  const note = historyNote({
+    loading: isLoading,
+    failed: Boolean(error),
+    hasAny,
+    groupsEmpty: groups.length === 0,
+    query,
+    view,
+  })
 
-  /** Every row, whatever the filter and search show: the dialog says so. */
+  /** Every row, whatever the tab and search show: the dialog says so. */
   const clearHistory = async () => {
     const count = watchStates?.length ?? 0
     if (count === 0) return
@@ -57,53 +87,76 @@ export function History() {
     if (!confirmed) return
     try {
       await removeFromHistory.mutateAsync(watchStates ?? [])
-    } catch (error) {
-      await showDialog({ title: 'Could not clear your history', body: String(error), close: 'Close' })
+    } catch (failure) {
+      await showDialog({ title: 'Could not clear your history', body: String(failure), close: 'Close' })
     }
   }
 
   return (
-    <div className="view view-col">
-      <SectionHeader title="History">
-        <SearchBox value={query} onChange={setQuery} placeholder="Search history" />
-        <Segmented options={FILTERS} value={filter} onChange={setFilter} />
-        <button
-          type="button"
-          className="btn-danger history-clear"
-          disabled={!hasAny || removeFromHistory.isPending}
-          onClick={() => void clearHistory()}
-        >
-          <FluentIcon glyph="delete" size={13} />
-          <span>Clear history</span>
-        </button>
-      </SectionHeader>
+    <div className="view history-page">
+      <header className="history-head">
+        <h1 className="history-title">History</h1>
+        <div className="history-bar">
+          <SelectorBar
+            label="Filter history"
+            options={TABS.map((tab) => ({ value: tab.value, label: `${tab.label} (${counts[tab.value]})` }))}
+            value={view}
+            onChange={setView}
+          />
+          <span className="spacer" />
+          <div className="history-search">
+            <SearchBox value={query} onChange={setQuery} placeholder="Search history" />
+          </div>
+          <MenuAnchor>
+            <button
+              type="button"
+              className="btn-subtle btn-subtle-icon"
+              aria-label="More history actions"
+              title="More history actions"
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <FluentIcon glyph="more" size={14} />
+            </button>
+            <Menu open={menuOpen} onClose={() => setMenuOpen(false)} minWidth={220}>
+              <MenuItem
+                glyph="delete"
+                label="Clear history…"
+                danger
+                disabled={!canClear}
+                onClick={() => {
+                  setMenuOpen(false)
+                  void clearHistory()
+                }}
+              />
+            </Menu>
+          </MenuAnchor>
+        </div>
+      </header>
 
       <div className="history-scroll">
-        {error && <div className="state-note error-text">{String(error)}</div>}
-        {isLoading && <div className="state-note">Loading your history…</div>}
-        {!isLoading && !error && !hasAny && (
-          <div className="state-note">Nothing watched yet. What you play shows up here.</div>
-        )}
-        {hasAny && groups.length === 0 && (
-          <div className="state-note">
-            {searching
-              ? `Nothing in your history matches “${query.trim()}”.`
-              : `No ${filter === 'movie' ? 'movies' : 'series'} in your history.`}
-          </div>
-        )}
-        {groups.map((group) => (
-          <section key={group.label} className="history-group">
-            <h2 className="history-label">
-              {group.label}
-              <span className="history-count">{group.entries.length}</span>
-            </h2>
-            <div className="history-grid">
-              {group.entries.map((entry) => (
-                <HistoryRow key={entry.videoId} entry={entry} />
-              ))}
-            </div>
-          </section>
-        ))}
+        <div className="history-body">
+          {error && (
+            <InfoBar title="Your history could not be loaded." message="Check the connection to your Halo server.">
+              <button type="button" className="btn" onClick={() => void refetch()}>
+                Retry
+              </button>
+            </InfoBar>
+          )}
+          {note && <p className="history-note">{note}</p>}
+          {groups.map((group) => (
+            <section key={group.label} className="history-group">
+              <div className="history-heading">
+                <h2 className="history-label ellipsis">{group.label}</h2>
+                <span className="history-count">{historyTitleCount(group.entries.length)}</span>
+              </div>
+              <div className="history-card">
+                {group.entries.map((entry) => (
+                  <HistoryRow key={entry.videoId} entry={entry} />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -121,13 +174,11 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
   const queryClient = useQueryClient()
   const titleMenu = useTitleMenu()
   const tag = videoIdTag(entry.videoId, entry.metaId)
-  const progress = entry.finished || entry.durationSec <= 0 ? 0 : entry.positionSec / entry.durationSec
-  const state = entry.finished
-    ? 'WATCHED'
-    : entry.durationSec > 0
-      ? formatTimeLeft(entry.positionSec, entry.durationSec).toUpperCase()
-      : 'STARTED'
+  const progress = historyProgress(entry)
+  const showsProgress = !entry.finished && entry.durationSec > 0
   const played = new Date(entry.updatedAt).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })
+  const openLabel = `${entry.name}${entry.finished ? ': open details' : ': resume'}`
+  const playLabel = entry.finished ? 'Play again' : 'Resume'
 
   /** The sources sheet for this video: resumes it, or plays it again once finished. */
   const play = async () => {
@@ -147,51 +198,54 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
 
   return (
     <div className="history-row" onContextMenu={showMenu}>
+      {/* Everything but the buttons: resumes, or opens the title page once finished.
+          The time gives way to the buttons under the pointer, so the tooltip
+          carries when it was played. */}
       <button
         type="button"
         className="history-open"
+        aria-label={openLabel}
+        title={`${openLabel}\n${played}`}
         onClick={() => (entry.finished ? openDetails() : void play())}
-        title={entry.finished ? `${entry.name}: open details` : `${entry.name}: resume`}
       >
-        <div className="art history-thumb">
+        <span className="art history-thumb">
           <ArtImage src={entry.poster} fallback={metahubPosterUrl(entry.metaId)} lazy />
-          {progress > 0 && (
-            <div className="art-progress">
-              <div style={{ width: `${Math.round(progress * 100)}%` }} />
-            </div>
-          )}
-        </div>
-        <div className="history-body">
-          <div className="history-title ellipsis">{entry.name}</div>
-          <div className="card-meta">
-            {tag} · {state}
-          </div>
-          <div className="history-time" title={played}>
-            {historyTime(entry.updatedAt)}
-          </div>
-        </div>
+        </span>
+        <span className="history-text">
+          <span className="history-name ellipsis">{entry.name}</span>
+          <span className="history-line">
+            <span className="history-tag">{tag}</span>
+            {showsProgress && (
+              <span className="history-track">
+                <span style={{ width: `${Math.max(1, Math.round(120 * progress))}px` }} />
+              </span>
+            )}
+            <span className="history-state">
+              {entry.finished && <FluentIcon glyph="check" size={12} />}
+              <span>{historyStateText(entry)}</span>
+            </span>
+          </span>
+        </span>
       </button>
-      <div className="history-actions">
-        <button
-          type="button"
-          className="icon-btn icon-btn-bare"
-          aria-label={entry.finished ? 'Play again' : 'Resume'}
-          title={entry.finished ? 'Play again' : 'Resume'}
-          onClick={() => void play()}
-        >
-          <FluentIcon glyph={entry.finished ? 'retry' : 'play'} />
-        </button>
-        <button
-          type="button"
-          className="icon-btn icon-btn-bare"
-          aria-label="More options"
-          aria-haspopup="menu"
-          title="More options"
-          onClick={showMenu}
-        >
-          <FluentIcon glyph="more" />
-        </button>
-      </div>
+      <span className="history-end">
+        <span className="history-time">{historyTime(entry.updatedAt)}</span>
+        <span className="history-actions">
+          <button type="button" className="btn-accent history-play" aria-label={playLabel} onClick={() => void play()}>
+            <FluentIcon glyph={entry.finished ? 'retry' : 'play'} size={12} />
+            <span>{playLabel}</span>
+          </button>
+          <button
+            type="button"
+            className="btn-subtle btn-subtle-icon"
+            aria-label="More options"
+            aria-haspopup="menu"
+            title="More options"
+            onClick={showMenu}
+          >
+            <FluentIcon glyph="more" size={14} />
+          </button>
+        </span>
+      </span>
     </div>
   )
 }
