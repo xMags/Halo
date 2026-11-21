@@ -165,6 +165,8 @@ export function Login() {
   const [password, setPassword] = useState('')
   const [detailsOpen, setDetailsOpen] = useState(false)
   const attempt = useRef(0)
+  /** Undoes the attempt whose bound session is waiting on its last request, if one is. */
+  const inFlight = useRef<(() => void) | null>(null)
   const discovery = useRef(0)
   /** What asking the server found, once it has answered. */
   const discovered = useRef<RestingStep | null>(null)
@@ -197,7 +199,7 @@ export function Login() {
   useEffect(() => {
     void discover()
     return () => {
-      attempt.current++
+      cancelInFlight()
       discovery.current++
     }
     // Discovery runs once per mount; Retry calls it again.
@@ -225,9 +227,19 @@ export function Login() {
     }
     activateSession(kind)
     const activated = getAccountClient()
-    const me = await (activated?.getMe() ?? Promise.resolve(null)).catch(() => null)
-    if (id !== attempt.current) {
+    // Undone at once if the attempt is cancelled while this waits (see
+    // cancelInFlight), not only when the request settles; at most once.
+    let abandoned = false
+    const abandonOnce = () => {
+      if (abandoned) return
+      abandoned = true
       abandon(kind, discard, save, activated)
+    }
+    inFlight.current = abandonOnce
+    const me = await (activated?.getMe() ?? Promise.resolve(null)).catch(() => null)
+    if (inFlight.current === abandonOnce) inFlight.current = null
+    if (id !== attempt.current) {
+      abandonOnce()
       return
     }
     // Moving needs the account's id (it names the downloads partition); when
@@ -248,7 +260,19 @@ export function Login() {
     }
     await Promise.all([ready(), delay(SIGNED_IN_DWELL_MS)])
     if (id === attempt.current) signedIn(kind)
-    else abandon(kind, discard, save, activated)
+    else abandonOnce()
+  }
+
+  /**
+   * Cancels the attempt in flight. One whose session is already bound and
+   * waiting on its last request is undone now, so the screens behind this one
+   * never run on the account the person backed out of.
+   */
+  function cancelInFlight() {
+    attempt.current++
+    const pending = inFlight.current
+    inFlight.current = null
+    pending?.()
   }
 
   /**
@@ -369,7 +393,7 @@ export function Login() {
   }
 
   function cancelBrowser(method: BrowserMethod) {
-    attempt.current++
+    cancelInFlight()
     cancelBrowserSignIn()
     setStep({ kind: 'browser', method, error: null })
   }
