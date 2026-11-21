@@ -550,6 +550,9 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       // See resumeWatchState for how the answers combine.
       const cached = queryClient.getQueryData<WatchState[]>(['watchStates'])
       const fresh = recordsHistory ? await withinTimeout(getClient().getWatchStates()) : null
+      // A read that settles after the player closed may belong to a backend
+      // that is no longer the active one; its rows must not reach the cache.
+      if (disposed) return
       if (fresh) queryClient.setQueryData(['watchStates'], fresh)
       priorStateRef.current = recordsHistory
         ? resumeWatchState(params.videoId, fresh, cached, pendingWatchStates())
