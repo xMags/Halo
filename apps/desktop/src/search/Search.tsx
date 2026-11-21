@@ -42,12 +42,19 @@ const FILTERS: Array<{ value: SearchFilter; label: string }> = [
 const FIELD_MAX_LENGTH = 2048
 const RESULTS_SKELETON_COUNT = 12
 
+/** The kind chip, kept beyond the page as the board is (see `useSearchSession`), so Back keeps it. */
+let lastFilter: SearchFilter = null
+
 export function Search() {
   const term = useSearchQuery()
   const { push, setRoot } = useNav()
   const { capabilities, needsTmdbKey, refreshIfFailed } = useCapabilities()
   const [activeQuery, setActiveQuery] = useState(() => cappedQuery(term))
-  const [filter, setFilter] = useState<SearchFilter>(null)
+  const [filter, setFilterState] = useState<SearchFilter>(() => lastFilter)
+  const setFilter = (next: SearchFilter) => {
+    lastFilter = next
+    setFilterState(next)
+  }
   const [focused, setFocused] = useState(false)
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false)
   const [history, setHistory] = useState<SearchHistoryEntry[]>(() => getSearchHistory())

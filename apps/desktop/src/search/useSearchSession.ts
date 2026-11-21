@@ -133,6 +133,27 @@ function marked(titles: readonly MetaPreview[]): SearchTitle[] {
   })
 }
 
+/**
+ * The last search's board, kept beyond the page. The screen stack draws only
+ * its top screen, so Back from a title builds Search anew; a new board would
+ * rank answers that came in meanwhile among the others, and the results seen
+ * before would move. Kept only for the backend it was asked through, so a
+ * sign-in or sign-out never shows the other one's results.
+ */
+interface RetainedSearch {
+  backend: object
+  session: Session | null
+  /** Bumped by Try again. */
+  attempt: number
+}
+
+let retained: RetainedSearch | null = null
+
+function retainedFor(backend: object): RetainedSearch {
+  if (retained?.backend !== backend) retained = { backend, session: null, attempt: 0 }
+  return retained
+}
+
 export function useSearchSession(query: string, enabled: boolean, filter: SearchFilter): SearchView {
   const queryClient = useQueryClient()
   const { capabilities } = useCapabilities()
@@ -141,10 +162,9 @@ export function useSearchSession(query: string, enabled: boolean, filter: Search
   // A poster check that answers renders again, so a reveal waiting on it is looked at.
   usePosterChecksVersion()
   const [, rerender] = useReducer((count: number) => count + 1, 0)
-  const sessionRef = useRef<Session | null>(null)
+  const memory = retainedFor(getClient())
   /** The last revealed session, shown dimmed while the next query is awaited. */
   const shownRef = useRef<Session | null>(null)
-  const attemptRef = useRef(0)
 
   const targets = addonsQuery.data ? rankedTargets(addonsQuery.data) : []
   const searching = enabled && !!addonsQuery.data
@@ -183,14 +203,14 @@ export function useSearchSession(query: string, enabled: boolean, filter: Search
   /* ── The board, kept outside React state: it only grows, and is read on render. ── */
 
   if (!enabled) {
-    if (sessionRef.current) sessionRef.current = null
+    memory.session = null
     // Back to the empty page: the next query starts without dimmed leftovers.
     shownRef.current = null
-  } else if (!sessionRef.current || sessionRef.current.query !== query || sessionRef.current.attempt !== attemptRef.current) {
-    if (sessionRef.current?.revealed) shownRef.current = sessionRef.current
-    sessionRef.current = {
+  } else if (!memory.session || memory.session.query !== query || memory.session.attempt !== memory.attempt) {
+    if (memory.session?.revealed) shownRef.current = memory.session
+    memory.session = {
       query,
-      attempt: attemptRef.current,
+      attempt: memory.attempt,
       board: new SearchBoard(),
       askedAt: Date.now(),
       revealed: false,
@@ -201,7 +221,7 @@ export function useSearchSession(query: string, enabled: boolean, filter: Search
       personAdmitted: false,
     }
   }
-  const session = sessionRef.current
+  const session = memory.session
 
   const pending = searching ? catalogs.filter((result) => result.isPending).length : 0
   const failedTargets = searching ? targets.filter((_, index) => catalogs[index]?.isError) : []
@@ -292,7 +312,7 @@ export function useSearchSession(query: string, enabled: boolean, filter: Search
   /* ── What the page shows ── */
 
   const retry = (): void => {
-    attemptRef.current += 1
+    memory.attempt += 1
     void queryClient.resetQueries({ queryKey: ['search', query] })
     if (peopleQuery.isError) void queryClient.resetQueries({ queryKey: ['people', 'search', query] })
     rerender()
