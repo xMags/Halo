@@ -482,8 +482,9 @@ struct AdoptionPlan {
 /// same video: there a finished download beats an unfinished one, and when
 /// both are finished (or neither is) the one already in `to` stays. A
 /// finished record whose folder is in `unreachable` (an unplugged or
-/// sleeping drive) does not count as finished, so a copy that plays wins
-/// over it, and a losing record there is forgotten rather than deleted. A
+/// sleeping drive) ranks between the two: a finished copy that plays beats
+/// it, and it still beats one that is not finished. A losing record there is
+/// forgotten rather than deleted. A
 /// losing record's replacement backup goes with it, so it cannot resurface
 /// as a second copy.
 fn plan_adoption(
@@ -500,8 +501,12 @@ fn plan_adoption(
             && !entry.pending_deletion
             && !is_hidden_backup(entries, &entry.job_id)
     };
-    let playable = |entry: &DownloadRecord| {
-        entry.status == DownloadStatus::Done && !unreachable.contains(&entry.job_id)
+    // Finished and reachable, then finished on a drive that is away, then
+    // not finished.
+    let rank = |entry: &DownloadRecord| match entry.status {
+        DownloadStatus::Done if !unreachable.contains(&entry.job_id) => 2,
+        DownloadStatus::Done => 1,
+        _ => 0,
     };
     let mut discard: HashSet<String> = HashSet::new();
     let mut forget: HashSet<String> = HashSet::new();
@@ -512,7 +517,7 @@ fn plan_adoption(
         else {
             continue;
         };
-        let moving_wins = playable(moving) && !playable(existing);
+        let moving_wins = rank(moving) > rank(existing);
         let loser = if moving_wins { existing } else { moving };
         let backup = loser.replacement.as_ref().map(|backup| &backup.job_id);
         for job_id in std::iter::once(&loser.job_id).chain(backup) {
@@ -2800,6 +2805,31 @@ mod tests {
         assert_eq!(plan.rekey, vec!["d1".to_string()]);
         assert!(plan.discard.is_empty());
         assert_eq!(plan.forget, vec!["a1".to_string(), "d2".to_string()]);
+    }
+
+    #[test]
+    fn a_finished_copy_on_a_drive_that_is_away_still_beats_an_unfinished_one() {
+        let unreachable: HashSet<String> = ["d1".to_string(), "a2".to_string(), "d3".to_string(), "a3".to_string()].into();
+        let plan = plan_adoption(
+            &entries(vec![
+                // The device's finished copy is away; the account's never finished.
+                owned("d1", "device", "movie:1", DownloadStatus::Done),
+                owned("a1", "account", "movie:1", DownloadStatus::Failed),
+                // The account's finished copy is away; the device's is paused.
+                owned("d2", "device", "movie:2", DownloadStatus::Paused),
+                owned("a2", "account", "movie:2", DownloadStatus::Done),
+                // Both finished and both away: the account keeps its own, and
+                // the device's record goes without its files.
+                owned("d3", "device", "movie:3", DownloadStatus::Done),
+                owned("a3", "account", "movie:3", DownloadStatus::Done),
+            ]),
+            "device",
+            "account",
+            &unreachable,
+        );
+        assert_eq!(plan.rekey, vec!["d1".to_string()]);
+        assert_eq!(plan.discard, vec!["a1".to_string(), "d2".to_string()]);
+        assert_eq!(plan.forget, vec!["d3".to_string()]);
     }
 
     #[test]
