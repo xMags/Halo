@@ -15,7 +15,10 @@ import type { Manifest, MetaDetail, MetaPreview, MetaVideo, Stream, Subtitle } f
  * every addon response itself is local.
  */
 
-const POSTER = (id: string) => `https://images.metahub.space/poster/medium/${id}/img`
+// Large, not the medium size the apps fall back on (Stremio's own poster for an
+// IMDb id), so a poster that fails and its fallback are two different images
+// and the fallback path can be exercised by blocking one title's artwork.
+const POSTER = (id: string) => `https://images.metahub.space/poster/large/${id}/img`
 const BACKGROUND = (id: string) => `https://images.metahub.space/background/medium/${id}/img`
 const LOGO = (id: string) => `https://images.metahub.space/logo/medium/${id}/img`
 
