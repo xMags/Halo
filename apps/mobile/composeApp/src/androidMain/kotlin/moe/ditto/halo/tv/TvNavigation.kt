@@ -24,11 +24,15 @@ import moe.ditto.halo.shell.HomeRoute
 import moe.ditto.halo.shell.LibraryRoute
 import moe.ditto.halo.shell.SearchRoute
 import moe.ditto.halo.shell.SettingsRoute
+import moe.ditto.halo.shell.PlayerRoute
 import moe.ditto.halo.shell.ShelfRoute
+import moe.ditto.halo.shell.StreamsRoute
+import moe.ditto.halo.shell.playerRoute
 import moe.ditto.halo.shell.movieSources
 import moe.ditto.halo.tv.browse.TvBrowseNavigation
 import moe.ditto.halo.tv.browse.TvDetailScreen
 import moe.ditto.halo.tv.browse.TvHomeScreen
+import moe.ditto.halo.tv.browse.TvSourcesScreen
 
 /**
  * The signed-in TV app: the shell frame around one navigation graph over the
@@ -92,6 +96,18 @@ internal fun TvShell(
                     TvDetailScreen(graph, route.type, route.metaId, navigation, titleMenus.menus)
                 }
                 composable<ShelfRoute> { TvPlaceholderScreen("See all") }
+                composable<StreamsRoute> { entry ->
+                    val route = entry.toRoute<StreamsRoute>()
+                    TvSourcesScreen(graph, route) { addon, stream ->
+                        val url = stream.url ?: return@TvSourcesScreen
+                        // The picker is replaced rather than stacked, so
+                        // leaving the player returns to the title.
+                        navController.navigate(route.playerRoute(addon, stream, url)) {
+                            popUpTo<StreamsRoute> { inclusive = true }
+                        }
+                    }
+                }
+                composable<PlayerRoute> { TvPlaceholderScreen("Player") }
             }
             TvTitleMenuOverlays(titleMenus)
         }
