@@ -40,6 +40,8 @@ data class DeviceChallenge(
     val expiresInSeconds: Int,
     /** How long to wait between polls, at least. */
     val intervalSeconds: Int,
+    /** Whatever the method needs again when it polls (where it started, say). */
+    val extras: Map<String, String> = emptyMap(),
 ) {
     override fun toString(): String =
         "DeviceChallenge(userCode=$userCode, verificationUrl=$verificationUrl, expiresInSeconds=$expiresInSeconds, intervalSeconds=$intervalSeconds)"
