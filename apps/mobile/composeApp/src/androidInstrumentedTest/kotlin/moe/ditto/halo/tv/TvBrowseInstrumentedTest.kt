@@ -1,5 +1,7 @@
 package moe.ditto.halo.tv
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -52,21 +54,26 @@ class TvBrowseInstrumentedTest {
         remote.waitFor(hasText("Plays instantly"))
         remote.select()
         remote.waitFor(hasContentDescription("Playback"), 15_000)
-        // The emulator's software renderer sometimes never opens the file
-        // under instrumentation; a player still loading cannot be left
-        // cleanly, so the rest only runs once it has.
-        val opened = runCatching {
-            composeRule.waitUntil(20_000) { composeRule.onAllNodes(hasText("Loading…")).fetchSemanticsNodes().isEmpty() }
-        }.isSuccess
-        assumeTrue("the file did not open under instrumentation on this emulator", opened)
-        // Out through the player's own exit, so the engine winds down.
-        repeat(3) {
-            if (composeRule.onAllNodes(hasContentDescription("Playback")).fetchSemanticsNodes().isNotEmpty()) {
-                remote.back()
-                Thread.sleep(800)
-            }
+        // Under instrumentation this emulator often never gets the picture
+        // going, and a player whose engine is stuck cannot be left; the rest
+        // only runs once the playhead moves.
+        val playhead = {
+            composeRule.onAllNodes(hasContentDescription("Playback")).fetchSemanticsNodes().firstOrNull()
+                ?.config?.getOrNull(SemanticsProperties.StateDescription)
         }
-        composeRule.waitUntil(15_000) { remote.railShows("Home") }
+        val start = playhead()
+        val advancing = runCatching { composeRule.waitUntil(20_000) { playhead().let { it != null && it != start } } }.isSuccess
+        assumeTrue("playback does not start under instrumentation on this emulator", advancing)
+        // Out through the player's own exit, so the engine winds down: Back
+        // hides the controls, Back leaves, and the player goes once the
+        // decoder is released.
+        val playing = { composeRule.onAllNodes(hasContentDescription("Playback")).fetchSemanticsNodes().isNotEmpty() }
+        repeat(2) { if (playing()) remote.back() }
+        composeRule.waitUntil(10_000) { !playing() }
+        // Home, or the source list on the way to it.
+        runCatching { composeRule.waitUntil(3_000) { remote.railShows("Home") } }
+        if (!remote.railShows("Home")) remote.back()
+        composeRule.waitUntil(10_000) { remote.railShows("Home") }
     }
 
     @Test

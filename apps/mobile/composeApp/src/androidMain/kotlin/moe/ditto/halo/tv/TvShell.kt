@@ -145,11 +145,22 @@ internal fun TvShellFrame(
     var railFocused by remember { mutableStateOf(false) }
     // True while the rail has focus because Left put it there.
     var railChosen by remember { mutableStateOf(false) }
-    // A screen change can leave focus in the rail without the viewer asking
-    // (the old screen's focused control went away mid-change and the window
-    // took focus back). Once the change has settled, the new screen gets it,
-    // tried again for a while: a screen still loading has nothing to focus.
-    LaunchedEffect(entry?.id) {
+    // Focus can land in the rail without the viewer asking: a screen change
+    // where the old screen's focused control went away mid-change and the
+    // window took focus back, or a control that disappeared (a Try again
+    // button once its retry worked). Once things have settled, the screen
+    // gets it, tried again for a while: a screen still loading has nothing to
+    // focus.
+    LaunchedEffect(entry?.id, railFocused) {
+        // Cleared here rather than as focus moves: entering with Left is
+        // redirected to the current destination, and the rail can report a
+        // moment without focus on the way, which must not forget the Left.
+        if (!railFocused) {
+            railChosen = false
+            tracker.inRailByChoice = false
+            return@LaunchedEffect
+        }
+        if (railChosen) return@LaunchedEffect
         delay(SettleMs)
         repeat(SettleTries) {
             if (!railFocused || railChosen) return@LaunchedEffect
@@ -157,6 +168,12 @@ internal fun TvShellFrame(
             focusContent()
             delay(SettleRetryMs)
         }
+    }
+
+    // The viewer is done with the rail: the next screen may take focus.
+    fun leaveRailForScreen() {
+        railChosen = false
+        tracker.inRailByChoice = false
     }
 
     BackHandler(enabled = onOtherTopLevel) { navController.switchTo(HomeRoute) }
@@ -174,18 +191,23 @@ internal fun TvShellFrame(
                 graph = graph,
                 isCurrent = { item -> destination.isRoute(item.route::class) },
                 onSelect = { item ->
-                    if (!destination.isRoute(item.route::class)) navController.switchTo(item.route)
+                    if (!destination.isRoute(item.route::class)) {
+                        // Choosing a destination hands focus to it.
+                        leaveRailForScreen()
+                        navController.switchTo(item.route)
+                    }
                 },
-                onAccount = { navController.switchTo(SettingsRoute) },
+                onAccount = {
+                    leaveRailForScreen()
+                    navController.switchTo(SettingsRoute)
+                },
                 onEnterFromScreen = {
                     returnTo = tracker.last
                     railChosen = true
+                    tracker.inRailByChoice = true
                 },
                 onLeave = focusContent,
-                onFocusChange = { focused ->
-                    railFocused = focused
-                    if (!focused) railChosen = false
-                },
+                onFocusChange = { focused -> railFocused = focused },
             )
         }
         if (askExit) {

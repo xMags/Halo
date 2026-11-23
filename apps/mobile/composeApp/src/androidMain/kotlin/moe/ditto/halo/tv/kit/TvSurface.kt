@@ -50,6 +50,13 @@ import moe.ditto.halo.ui.HaloColors
  */
 internal class TvFocusTracker {
     var last: FocusRequester? = null
+
+    /**
+     * True while the viewer has taken focus to the shell's rail with Left. A
+     * screen whose content arrives meanwhile does not pull focus back to
+     * itself; the viewer returns with Right when they choose.
+     */
+    var inRailByChoice: Boolean = false
 }
 
 internal val LocalTvFocusTracker = staticCompositionLocalOf { TvFocusTracker() }

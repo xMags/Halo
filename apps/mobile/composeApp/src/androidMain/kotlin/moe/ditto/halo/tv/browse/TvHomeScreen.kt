@@ -88,6 +88,14 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
     val memory = rememberTvFocusMemory()
     var retry by remember { mutableIntStateOf(0) }
     val addons by remember(graph, retry) { graph.addons.observeEffective() }.collectAsState(QueryState())
+    // A failed load stays on screen until one succeeds. The query drops its
+    // error each time a fetch starts (another part of the screen subscribing
+    // starts one), and showing the loading rows meanwhile would take the
+    // Try again button away from under the remote's focus.
+    var addonsFailed by remember(graph) { mutableStateOf(false) }
+    LaunchedEffect(addons) {
+        if (addons.value != null) addonsFailed = false else if (addons.error != null) addonsFailed = true
+    }
     val watchStates by remember(graph) { graph.watchStates.observe() }.collectAsState(QueryState())
     val library by remember(graph) { graph.library.observe() }.collectAsState(QueryState())
     val settings by remember(graph) { graph.settings.observe() }.collectAsState(QueryState())
@@ -140,7 +148,7 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
                 }
             }
             when {
-                addons.value == null && addons.error != null -> TvBodyMessage(
+                addons.value == null && (addons.error != null || addonsFailed) -> TvBodyMessage(
                     "Could not reach your Halo server.",
                     retryModifier = Modifier.defaultFocus(memory, "retry"),
                     onRetry = { retry += 1 },

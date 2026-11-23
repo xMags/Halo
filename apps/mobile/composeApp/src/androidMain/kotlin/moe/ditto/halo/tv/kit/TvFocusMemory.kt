@@ -49,9 +49,10 @@ internal fun rememberTvFocusMemory(): TvFocusMemory =
 @Composable
 internal fun Modifier.rememberFocus(memory: TvFocusMemory, key: String): Modifier {
     val requester = remember { FocusRequester() }
+    val tracker = LocalTvFocusTracker.current
     LaunchedEffect(memory, key) {
         if (memory.key != key) return@LaunchedEffect
-        claimFocus(memory, requester)
+        claimFocus(memory, requester, tracker)
     }
     return this
         .focusRequester(requester)
@@ -65,13 +66,14 @@ internal fun Modifier.rememberFocus(memory: TvFocusMemory, key: String): Modifie
 @Composable
 internal fun Modifier.defaultFocus(memory: TvFocusMemory, key: String, ready: Boolean = true): Modifier {
     val requester = remember { FocusRequester() }
+    val tracker = LocalTvFocusTracker.current
     LaunchedEffect(memory, ready) {
         if (!ready || !memory.pending) return@LaunchedEffect
         // A remembered item claims first; this one waits until it has had
         // every chance (it may be gone, a title removed from a row).
         val remembered = memory.key
         delay(if (remembered == null || remembered == key) RestoreGraceMs else RememberedWaitMs)
-        claimFocus(memory, requester)
+        claimFocus(memory, requester, tracker)
     }
     return this.rememberFocus(memory, key).focusRequester(requester)
 }
@@ -80,11 +82,15 @@ internal fun Modifier.defaultFocus(memory: TvFocusMemory, key: String, ready: Bo
  * Asks for focus each frame until it is given, another item has taken it,
  * or [ClaimMs] has passed:
  * an item in a lazy row can be composed a frame before it is placed, and a
- * request made then fails.
+ * request made then fails. Never while the viewer has gone to the rail.
  */
-private suspend fun claimFocus(memory: TvFocusMemory, requester: FocusRequester) {
+private suspend fun claimFocus(memory: TvFocusMemory, requester: FocusRequester, tracker: TvFocusTracker) {
     withTimeoutOrNull(ClaimMs) {
         while (memory.pending) {
+            if (tracker.inRailByChoice) {
+                memory.pending = false
+                return@withTimeoutOrNull
+            }
             if (runCatching { requester.requestFocus(FocusDirection.Enter) }.getOrDefault(false)) {
                 memory.pending = false
                 return@withTimeoutOrNull
