@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.screens.ShelfSnapshots
 import moe.ditto.halo.screens.TitleNavigation
@@ -26,6 +27,7 @@ import moe.ditto.halo.shell.SettingsRoute
 import moe.ditto.halo.shell.ShelfRoute
 import moe.ditto.halo.shell.movieSources
 import moe.ditto.halo.tv.browse.TvBrowseNavigation
+import moe.ditto.halo.tv.browse.TvDetailScreen
 import moe.ditto.halo.tv.browse.TvHomeScreen
 
 /**
@@ -85,7 +87,10 @@ internal fun TvShell(
                 composable<SearchRoute> { TvPlaceholderScreen("Search") }
                 composable<LibraryRoute> { TvPlaceholderScreen("Library") }
                 composable<SettingsRoute> { TvPlaceholderScreen("Settings") }
-                composable<DetailRoute> { TvPlaceholderScreen("Title") }
+                composable<DetailRoute> { entry ->
+                    val route = entry.toRoute<DetailRoute>()
+                    TvDetailScreen(graph, route.type, route.metaId, navigation, titleMenus.menus)
+                }
                 composable<ShelfRoute> { TvPlaceholderScreen("See all") }
             }
             TvTitleMenuOverlays(titleMenus)

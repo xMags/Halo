@@ -27,16 +27,24 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Scrolls so the focused item's leading edge sits [pivot] from the start of
+ * Scrolls so the focused item's leading edge sits [pivotPx] from the start of
  * the list, the way a TV row keeps its focused card in one place while the
  * row slides under it. The list clamps at its ends on its own, so the first
  * cards never pull away from the edge.
+ *
+ * With [stayWhenVisible] an item already wholly in view does not move the
+ * list, which suits a page that opens on its top: focusing its first button
+ * must not scroll the title above it away.
  */
 @OptIn(ExperimentalFoundationApi::class)
-internal class TvPivotBringIntoViewSpec(private val pivotPx: Float) : BringIntoViewSpec {
+internal class TvPivotBringIntoViewSpec(
+    private val pivotPx: Float,
+    private val stayWhenVisible: Boolean = false,
+) : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
         // Something larger than the list cannot be pinned; show its start.
         if (size >= containerSize) return offset
+        if (stayWhenVisible && offset >= 0f && offset + size <= containerSize) return 0f
         return offset - pivotPx
     }
 }

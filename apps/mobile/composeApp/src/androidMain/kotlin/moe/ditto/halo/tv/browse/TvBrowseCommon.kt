@@ -64,13 +64,14 @@ internal const val SeriesType = "series"
 
 /**
  * Scrolls a vertical list so the focused element sits [pivot] below its top,
- * which keeps a row's heading in view above its focused card.
+ * which keeps a row's heading in view above its focused card. An element
+ * already wholly in view leaves the list where it is.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ProvideVerticalPivot(pivot: Dp, content: @Composable () -> Unit) {
     val pivotPx = with(LocalDensity.current) { pivot.toPx() }
-    val spec: BringIntoViewSpec = remember(pivotPx) { TvPivotBringIntoViewSpec(pivotPx) }
+    val spec: BringIntoViewSpec = remember(pivotPx) { TvPivotBringIntoViewSpec(pivotPx, stayWhenVisible = true) }
     CompositionLocalProvider(LocalBringIntoViewSpec provides spec, content = content)
 }
 

@@ -50,6 +50,14 @@ class TvPivotBringIntoViewSpecTest {
     }
 
     @Test
+    fun aPageLeavesAnItemAlreadyInViewWhereItIs() {
+        val page = TvPivotBringIntoViewSpec(pivotPx = 100f, stayWhenVisible = true)
+        assertEquals(0f, page.calculateScrollDistance(offset = 300f, size = 120f, containerSize = 1000f))
+        assertEquals(850f, page.calculateScrollDistance(offset = 950f, size = 120f, containerSize = 1000f))
+        assertEquals(-160f, page.calculateScrollDistance(offset = -60f, size = 120f, containerSize = 1000f))
+    }
+
+    @Test
     fun anItemWiderThanTheListShowsItsStart() {
         assertEquals(500f, spec.calculateScrollDistance(offset = 500f, size = 1200f, containerSize = 1000f))
     }
