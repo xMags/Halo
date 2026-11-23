@@ -232,6 +232,9 @@ kotlin {
             // emulator-only. The shipping Android build replaces it with an
             // owned reproducible libmpv build, like iOS's patched MPVKit.
             implementation("dev.jdtech.mpv:libmpv:1.0.0")
+            // QR codes for signing in on a TV with a phone. Encoder only at run
+            // time; no dependencies of its own.
+            implementation("com.google.zxing:core:3.5.3")
         }
         // Instrumented Compose UI tests — the Android parallel to the iOS
         // XCUITests. Drive the real MainActivity (real libmpv core) by semantics,

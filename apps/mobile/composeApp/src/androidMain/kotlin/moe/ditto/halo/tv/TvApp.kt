@@ -77,6 +77,7 @@ private fun TvRoot(dependencies: PlatformDependencies, audioOutput: TvAudioOutpu
                     localAuthenticator = controller,
                     serverUrl = serverUrl,
                     notice = session.loginNotice,
+                    onDeviceSession = controller::establishDeviceSession,
                     onContinueWithoutAccount = { controller.continueWithoutAccount() },
                 )
             }

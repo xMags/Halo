@@ -35,7 +35,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import moe.ditto.halo.PlatformDependencies
+import moe.ditto.halo.auth.DeviceSession
+import moe.ditto.halo.auth.DeviceSignInOffer
 import moe.ditto.halo.auth.LocalAuthenticator
+import moe.ditto.halo.auth.deviceSignInOffer
 import moe.ditto.halo.auth.LoginPresenter
 import moe.ditto.halo.auth.PasswordSignInOutcome
 import moe.ditto.halo.auth.signInWithPassword
@@ -56,13 +59,14 @@ internal const val TvWebSignInMessage =
         "Continue without an account, or use a server that has its own usernames and passwords."
 
 /**
- * The TV sign-in: sign in with a password on a server that has its own
- * accounts, or continue without an account. The phone sign-in tile waits for
- * device sign-in, which needs the server's support.
+ * The TV sign-in. When the server lets a phone approve the TV, that leads:
+ * a QR code and a short code, with a password and no account as the other
+ * choices. Otherwise: a password on a server that has its own accounts, or
+ * continue without an account.
  *
- * Signing in hands the session to [localAuthenticator] (the session
- * controller), whose state change moves the app to the shell, exactly as on
- * the phone.
+ * Signing in hands the session to [localAuthenticator] or [onDeviceSession]
+ * (both the session controller), whose state change moves the app to the
+ * shell, exactly as on the phone.
  */
 @Composable
 internal fun TvSignInScreen(
@@ -71,6 +75,7 @@ internal fun TvSignInScreen(
     /** Prefilled in the password form: a debug override, the last server used, or this build's own. */
     serverUrl: String,
     notice: String?,
+    onDeviceSession: (serverUrl: String, session: DeviceSession) -> Unit,
     onContinueWithoutAccount: () -> Unit,
 ) {
     val presenter = remember {
@@ -87,6 +92,14 @@ internal fun TvSignInScreen(
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // What the built-in or remembered server offers for signing in with a
+    // phone; null while asking, when it offers nothing, or when it cannot be
+    // reached (the password form then says why).
+    var phoneOffer by remember { mutableStateOf<DeviceSignInOffer?>(null) }
+    LaunchedEffect(serverUrl) {
+        if (serverUrl.isBlank()) return@LaunchedEffect
+        phoneOffer = runCatching { dependencies.authConfigSource.fetch(serverUrl).deviceSignInOffer() }.getOrNull()
+    }
 
     fun submit() {
         if (busy) return
@@ -127,10 +140,10 @@ internal fun TvSignInScreen(
                     modifier = Modifier.padding(top = 24.dp),
                 )
                 Text(
-                    if (showForm) {
-                        "For a Halo server that has its own accounts. Press select on a field to type."
-                    } else {
-                        "Your library, history and addons follow your account to every screen."
+                    when {
+                        showForm -> "For a Halo server that has its own accounts. Press select on a field to type."
+                        phoneOffer != null -> "Approve this TV on your phone. Your library, history and addons follow your account to every screen."
+                        else -> "Your library, history and addons follow your account to every screen."
                     },
                     style = TvType.Body,
                 )
@@ -157,10 +170,23 @@ internal fun TvSignInScreen(
                         },
                     )
                 } else {
-                    Choices(
-                        onUsePassword = { showForm = true },
-                        onContinueWithoutAccount = onContinueWithoutAccount,
-                    )
+                    val offer = phoneOffer
+                    if (offer != null) {
+                        TvPhoneSignIn(
+                            offer = offer,
+                            serverUrl = serverUrl,
+                            onSession = { session -> onDeviceSession(serverUrl, session) },
+                        )
+                        SecondaryChoices(
+                            onUsePassword = { showForm = true },
+                            onContinueWithoutAccount = onContinueWithoutAccount,
+                        )
+                    } else {
+                        Choices(
+                            onUsePassword = { showForm = true },
+                            onContinueWithoutAccount = onContinueWithoutAccount,
+                        )
+                    }
                 }
             }
         }
@@ -200,6 +226,17 @@ private fun Choices(onUsePassword: () -> Unit, onContinueWithoutAccount: () -> U
         style = TvType.Caption,
         modifier = Modifier.padding(top = 8.dp, start = 4.dp),
     )
+}
+
+/** The other ways in, below the phone sign-in. */
+@Composable
+private fun SecondaryChoices(onUsePassword: () -> Unit, onContinueWithoutAccount: () -> Unit) {
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        TvButton("Use a password instead", onClick = onUsePassword, modifier = Modifier.focusRequester(first))
+        TvButton("Continue without an account", onClick = onContinueWithoutAccount)
+    }
 }
 
 @Composable
