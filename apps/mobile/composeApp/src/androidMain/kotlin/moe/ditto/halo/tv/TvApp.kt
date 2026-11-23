@@ -76,7 +76,15 @@ private fun TvRoot(dependencies: PlatformDependencies, onExitApp: () -> Unit) {
             }
             // Null for the frame between a sign-out landing in session state
             // and the collector moving the screen to sign-in.
-            TvScreen.Shell -> session.graph?.let { graph -> TvShell(graph = graph, onExitApp = onExitApp) }
+            TvScreen.Shell -> session.graph?.let { graph ->
+                TvShell(
+                    graph = graph,
+                    playback = session.playback,
+                    playerSurface = dependencies.nativePlayerSurface,
+                    playerSystem = dependencies.playerSystemPort,
+                    onExitApp = onExitApp,
+                )
+            }
         }
     }
 }

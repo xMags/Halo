@@ -15,7 +15,16 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import moe.ditto.halo.NativePlayerSurface
+import moe.ditto.halo.PlaybackHost
 import moe.ditto.halo.SessionGraph
+import moe.ditto.halo.player.PlayerSystemPort
+import moe.ditto.halo.screens.player.EpisodeChoice
+import moe.ditto.halo.shell.episodeSources
+import moe.ditto.halo.shell.playbackContext
+import moe.ditto.halo.shell.sourcesRoute
+import moe.ditto.halo.shell.withContext
+import moe.ditto.halo.tv.player.TvPlayerScreen
 import moe.ditto.halo.screens.ShelfSnapshots
 import moe.ditto.halo.screens.TitleNavigation
 import moe.ditto.halo.screens.rememberTitleMenuHost
@@ -47,6 +56,10 @@ import moe.ditto.halo.tv.browse.TvSourcesScreen
 @Composable
 internal fun TvShell(
     graph: SessionGraph,
+    /** The app's one playback owner; the player route drives it. */
+    playback: PlaybackHost,
+    playerSurface: NativePlayerSurface,
+    playerSystem: PlayerSystemPort,
     onExitApp: () -> Unit,
 ) {
     val navController = rememberNavController()
@@ -126,7 +139,38 @@ internal fun TvShell(
                         }
                     }
                 }
-                composable<PlayerRoute> { TvPlaceholderScreen("Player") }
+                composable<PlayerRoute> { entry ->
+                    val route = entry.toRoute<PlayerRoute>()
+                    TvPlayerScreen(
+                        graph = graph,
+                        playback = playback,
+                        surface = playerSurface,
+                        system = playerSystem,
+                        context = route.playbackContext(),
+                        // Both replace the player rather than stacking on it, so
+                        // Back still returns to the title.
+                        onSelectEpisode = { choice ->
+                            when (choice) {
+                                is EpisodeChoice.Resolved -> navController.navigate(route.withContext(choice.context)) {
+                                    popUpTo<PlayerRoute> { inclusive = true }
+                                }
+                                is EpisodeChoice.NeedsSource -> navController.navigate(route.episodeSources(choice)) {
+                                    popUpTo<PlayerRoute> { inclusive = true }
+                                }
+                            }
+                        },
+                        onPickAnotherSource = if (route.recordsHistory) {
+                            {
+                                navController.navigate(route.sourcesRoute()) {
+                                    popUpTo<PlayerRoute> { inclusive = true }
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
             TvTitleMenuOverlays(titleMenus)
         }
