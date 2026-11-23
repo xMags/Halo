@@ -45,7 +45,11 @@ internal class TitleMenuHost {
 }
 
 @Composable
-internal fun rememberTitleMenuHost(graph: SessionGraph, navigation: TitleNavigation): TitleMenuHost {
+internal fun rememberTitleMenuHost(
+    graph: SessionGraph,
+    navigation: TitleNavigation,
+    offersDownloads: Boolean = true,
+): TitleMenuHost {
     val scope = rememberCoroutineScope()
     return remember(graph) {
         TitleMenuHost().also { host ->
@@ -56,6 +60,7 @@ internal fun rememberTitleMenuHost(graph: SessionGraph, navigation: TitleNavigat
                 present = { host.menu = it },
                 confirm = { host.confirmation = it },
                 report = { host.message = it },
+                offersDownloads = offersDownloads,
             )
         }
     }

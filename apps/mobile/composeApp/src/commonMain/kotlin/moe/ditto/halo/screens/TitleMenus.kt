@@ -66,6 +66,8 @@ internal class TitleMenus(
     private val present: (TitleMenu) -> Unit,
     private val confirm: (MenuConfirmation) -> Unit,
     private val report: (String) -> Unit,
+    /** False where the device keeps no downloads (a TV): their actions are left out. */
+    private val offersDownloads: Boolean = true,
 ) {
     /** Opens the menu for a poster or the featured banner. */
     fun openPoster(meta: MetaCard) = present(forPoster(meta))
@@ -244,6 +246,7 @@ internal class TitleMenus(
 
     /** "Play offline", re-read when chosen: the file may have been deleted while the menu was open. */
     private fun playOffline(videoId: String): MenuAction? {
+        if (!offersDownloads) return null
         if (graph.downloads.entryFor(videoId)?.status != DownloadStatus.Done) return null
         return MenuAction("Play offline", HaloIcons.Download) {
             graph.downloads.entryFor(videoId)?.takeIf { it.status == DownloadStatus.Done }?.let(navigation.playDownload)
@@ -252,7 +255,7 @@ internal class TitleMenus(
 
     /** The video's download, if there is one in any state. */
     private fun downloadActions(videoId: String): List<MenuAction> =
-        listOfNotNull(graph.downloads.entryFor(videoId)?.let(::deleteDownloadAction))
+        if (!offersDownloads) emptyList() else listOfNotNull(graph.downloads.entryFor(videoId)?.let(::deleteDownloadAction))
 
     private fun deleteDownloadAction(entry: DownloadEntry): MenuAction {
         val finished = entry.status == DownloadStatus.Done
