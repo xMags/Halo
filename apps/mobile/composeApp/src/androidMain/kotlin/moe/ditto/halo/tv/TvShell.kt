@@ -59,9 +59,11 @@ import moe.ditto.halo.screens.AccountAvatar
 import moe.ditto.halo.shell.DetailRoute
 import moe.ditto.halo.shell.HomeRoute
 import moe.ditto.halo.shell.LibraryRoute
+import moe.ditto.halo.shell.PersonRoute
 import moe.ditto.halo.shell.PlayerRoute
 import moe.ditto.halo.shell.SearchRoute
 import moe.ditto.halo.shell.SettingsRoute
+import moe.ditto.halo.shell.ShelfRoute
 import moe.ditto.halo.shell.StreamsRoute
 import moe.ditto.halo.tv.kit.TvAction
 import moe.ditto.halo.tv.kit.TvButton
@@ -88,8 +90,12 @@ internal val TvRailItems = listOf(
 /** Destinations the rail stands beside; every other one covers the screen. */
 private val RailRoutes: List<KClass<*>> = listOf(SearchRoute::class, HomeRoute::class, LibraryRoute::class, SettingsRoute::class)
 
-/** Full-screen destinations: the title page, its sources, and the player. */
-private val CoveringRoutes: List<KClass<*>> = listOf(DetailRoute::class, StreamsRoute::class, PlayerRoute::class)
+/**
+ * Full-screen destinations, opened from a screen and left with Back: a title
+ * page, its sources, the player, a "See all" grid and a person page.
+ */
+private val CoveringRoutes: List<KClass<*>> =
+    listOf(DetailRoute::class, StreamsRoute::class, PlayerRoute::class, ShelfRoute::class, PersonRoute::class)
 
 internal fun NavDestination?.isRoute(route: KClass<*>): Boolean =
     this != null && hierarchy.any { it.hasRoute(route) }

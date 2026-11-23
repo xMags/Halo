@@ -24,6 +24,7 @@ import moe.ditto.halo.shell.HomeRoute
 import moe.ditto.halo.shell.LibraryRoute
 import moe.ditto.halo.shell.SearchRoute
 import moe.ditto.halo.shell.SettingsRoute
+import moe.ditto.halo.shell.PersonRoute
 import moe.ditto.halo.shell.PlayerRoute
 import moe.ditto.halo.shell.ShelfRoute
 import moe.ditto.halo.shell.StreamsRoute
@@ -33,6 +34,9 @@ import moe.ditto.halo.tv.browse.TvBrowseNavigation
 import moe.ditto.halo.tv.browse.TvDetailScreen
 import moe.ditto.halo.tv.browse.TvHomeScreen
 import moe.ditto.halo.tv.browse.TvLibraryScreen
+import moe.ditto.halo.tv.browse.TvPersonScreen
+import moe.ditto.halo.tv.browse.TvSearchScreen
+import moe.ditto.halo.tv.browse.TvShelfScreen
 import moe.ditto.halo.tv.browse.TvSourcesScreen
 
 /**
@@ -89,7 +93,7 @@ internal fun TvShell(
                 popExitTransition = { fadeOut(tween(FadeMs)) },
             ) {
                 composable<HomeRoute> { TvHomeScreen(graph, navigation, titleMenus.menus) }
-                composable<SearchRoute> { TvPlaceholderScreen("Search") }
+                composable<SearchRoute> { TvSearchScreen(graph, navigation, titleMenus.menus) }
                 composable<LibraryRoute> {
                     TvLibraryScreen(
                         graph = graph,
@@ -104,7 +108,13 @@ internal fun TvShell(
                     val route = entry.toRoute<DetailRoute>()
                     TvDetailScreen(graph, route.type, route.metaId, navigation, titleMenus.menus)
                 }
-                composable<ShelfRoute> { TvPlaceholderScreen("See all") }
+                composable<ShelfRoute> { entry ->
+                    TvShelfScreen(graph, shelves[entry.toRoute<ShelfRoute>().key], navigation, titleMenus.menus)
+                }
+                composable<PersonRoute> { entry ->
+                    val route = entry.toRoute<PersonRoute>()
+                    TvPersonScreen(graph, route.tmdbId, route.name, route.photo, navigation)
+                }
                 composable<StreamsRoute> { entry ->
                     val route = entry.toRoute<StreamsRoute>()
                     TvSourcesScreen(graph, route) { addon, stream ->
