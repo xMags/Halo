@@ -84,9 +84,12 @@ open class DeviceSignInException(message: String) : Exception(message)
 /** A server's offer to sign in with a phone: the method, and the server's `/auth/config` it reads. */
 class DeviceSignInOffer(val signIn: DeviceSignIn, val config: JsonObject)
 
-/** The phone sign-in a server's sign-in method offers, or null when it has none. */
-fun AuthConfig.deviceSignInOffer(): DeviceSignInOffer? = when (this) {
+/**
+ * The phone sign-in a server's sign-in method offers, or null when it has
+ * none. [local] is the built-in method for local-mode servers that offer it.
+ */
+fun AuthConfig.deviceSignInOffer(local: DeviceSignIn): DeviceSignInOffer? = when (this) {
     is AuthConfig.Addon -> (addon as? DeviceSignIn)?.let { DeviceSignInOffer(it, fields) }
-    is AuthConfig.Local -> null
+    is AuthConfig.Local -> if (deviceSignIn) DeviceSignInOffer(local, JsonObject(emptyMap())) else null
     is AuthConfig.Oidc -> null
 }

@@ -19,7 +19,7 @@ class PasswordSignInTest {
     @Test
     fun aPasswordServerSignsInWithTheTrimmedAddress() = runTest {
         val calls = mutableListOf<Triple<String, String, String>>()
-        val presenter = presenter({ AuthConfig.Local }) { server, user, pass -> calls += Triple(server, user, pass) }
+        val presenter = presenter({ AuthConfig.Local() }) { server, user, pass -> calls += Triple(server, user, pass) }
 
         val outcome = presenter.signInWithPassword(" https://halo.local/ ", " admin ", "secret")
 
@@ -29,7 +29,7 @@ class PasswordSignInTest {
 
     @Test
     fun aRejectionKeepsTheServersMessage() = runTest {
-        val presenter = presenter({ AuthConfig.Local }) { _, _, _ -> throw LocalAuthException(401, "invalid credentials") }
+        val presenter = presenter({ AuthConfig.Local() }) { _, _, _ -> throw LocalAuthException(401, "invalid credentials") }
 
         assertEquals(
             PasswordSignInOutcome.Failed("invalid credentials"),
@@ -62,7 +62,7 @@ class PasswordSignInTest {
     @Test
     fun aSecondTryAfterAFailureStartsFromTheServerAgain() = runTest {
         var reachable = false
-        val presenter = presenter({ if (reachable) AuthConfig.Local else throw IllegalStateException("down") }) { _, _, _ -> }
+        val presenter = presenter({ if (reachable) AuthConfig.Local() else throw IllegalStateException("down") }) { _, _, _ -> }
 
         presenter.signInWithPassword("https://halo.local", "admin", "secret")
         reachable = true

@@ -11,6 +11,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -69,6 +71,10 @@ internal fun TvPhoneSignIn(
         onDispose { presenter.cancel() }
     }
     val state by presenter.state.collectAsState()
+    // A code that ran out while the viewer watched offers a new one with
+    // focus; a sign-in that never got a code leaves focus on the other choices.
+    var shownCode by remember(presenter) { mutableStateOf(false) }
+    if (state is DeviceSignInState.Showing) shownCode = true
 
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.CenterVertically) {
         when (val shown = state) {
@@ -76,12 +82,14 @@ internal fun TvPhoneSignIn(
                 TvQrCode(shown.qrUrl, size = QrSize)
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Scan with your phone's camera, or go to", style = TvType.Body)
-                    Text(shown.verificationUrl.removePrefix("https://"), style = TvType.Label)
+                    Text(shown.verificationUrl.removePrefix("https://").removePrefix("http://"), style = TvType.Label)
                     Text("and enter", style = TvType.Body, modifier = Modifier.padding(top = 4.dp))
                     Text(
                         shown.userCode,
                         color = HaloColors.Text,
-                        fontSize = 34.sp,
+                        fontSize = 30.sp,
+                        maxLines = 1,
+                        softWrap = false,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Monospace,
                         letterSpacing = 2.sp,
@@ -91,17 +99,17 @@ internal fun TvPhoneSignIn(
             }
             DeviceSignInState.Starting -> Text("Getting a code…", style = TvType.Body, modifier = Modifier.size(QrSize))
             DeviceSignInState.Approved -> Text("Signed in. Opening Halo…", style = TvType.Body)
-            DeviceSignInState.Expired -> Retry("This code has expired.", presenter::start)
-            DeviceSignInState.Denied -> Retry("Sign-in was declined on the phone.", presenter::start)
-            is DeviceSignInState.Failed -> Retry(shown.message, presenter::start)
+            DeviceSignInState.Expired -> Retry("This code has expired.", presenter::start, takeFocus = shownCode)
+            DeviceSignInState.Denied -> Retry("Sign-in was declined on the phone.", presenter::start, takeFocus = shownCode)
+            is DeviceSignInState.Failed -> Retry(shown.message, presenter::start, takeFocus = shownCode)
         }
     }
 }
 
 @Composable
-private fun Retry(message: String, onNewCode: () -> Unit) {
+private fun Retry(message: String, onNewCode: () -> Unit, takeFocus: Boolean) {
     val focus = remember { FocusRequester() }
-    LaunchedEffect(message) { runCatching { focus.requestFocus() } }
+    LaunchedEffect(message) { if (takeFocus) runCatching { focus.requestFocus() } }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(message, style = TvType.Body, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         TvButton("Get a new code", onClick = onNewCode, style = TvButtonStyle.Primary, modifier = Modifier.focusRequester(focus))
@@ -111,4 +119,4 @@ private fun Retry(message: String, onNewCode: () -> Unit) {
 /** "9:42". */
 private fun formatCountdown(seconds: Int): String = "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
 
-private val QrSize = 248.dp
+private val QrSize = 240.dp

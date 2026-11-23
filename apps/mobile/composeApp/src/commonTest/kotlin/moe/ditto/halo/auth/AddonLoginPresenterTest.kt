@@ -80,7 +80,7 @@ class AddonLoginPresenterTest {
 
     @Test
     fun beginningOutsideTheAddonPhaseDoesNothing() = runTest {
-        val presenter = LoginPresenter(FixedConfig(AuthConfig.Local), NoHost, { _, _, _ -> }, null, RecordingAddonAuthenticator())
+        val presenter = LoginPresenter(FixedConfig(AuthConfig.Local()), NoHost, { _, _, _ -> }, null, RecordingAddonAuthenticator())
         presenter.editServerUrl("https://halo.local")
         presenter.continueFromServer()
 

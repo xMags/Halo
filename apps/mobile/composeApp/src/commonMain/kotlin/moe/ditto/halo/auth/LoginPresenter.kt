@@ -102,7 +102,7 @@ class LoginPresenter(
         }
 
         when (config) {
-            AuthConfig.Local -> {
+            is AuthConfig.Local -> {
                 val matchingPrefill = localCredentialsPrefill?.takeIf {
                     it.serverUrl.trim().trimEnd('/') == normalizedUrl
                 }

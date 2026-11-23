@@ -33,10 +33,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.ktor.client.HttpClient
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.PlatformDependencies
 import moe.ditto.halo.auth.DeviceSession
 import moe.ditto.halo.auth.DeviceSignInOffer
+import moe.ditto.halo.auth.KtorLocalDeviceSignIn
 import moe.ditto.halo.auth.LocalAuthenticator
 import moe.ditto.halo.auth.deviceSignInOffer
 import moe.ditto.halo.auth.LoginPresenter
@@ -96,9 +99,17 @@ internal fun TvSignInScreen(
     // phone; null while asking, when it offers nothing, or when it cannot be
     // reached (the password form then says why).
     var phoneOffer by remember { mutableStateOf<DeviceSignInOffer?>(null) }
+    // The choices wait for the server's answer (briefly), so they do not
+    // rearrange under the remote once it arrives.
+    var offerChecked by remember { mutableStateOf(serverUrl.isBlank()) }
+    val phoneLayout = !showForm && offerChecked && phoneOffer != null
+    val localDeviceSignIn = remember { KtorLocalDeviceSignIn(HttpClient()) }
     LaunchedEffect(serverUrl) {
         if (serverUrl.isBlank()) return@LaunchedEffect
-        phoneOffer = runCatching { dependencies.authConfigSource.fetch(serverUrl).deviceSignInOffer() }.getOrNull()
+        phoneOffer = withTimeoutOrNull(OfferWaitMs) {
+            runCatching { dependencies.authConfigSource.fetch(serverUrl).deviceSignInOffer(localDeviceSignIn) }.getOrNull()
+        }
+        offerChecked = true
     }
 
     fun submit() {
@@ -130,9 +141,10 @@ internal fun TvSignInScreen(
             Modifier
                 .fillMaxSize()
                 .padding(horizontal = TvMetrics.SideMargin + 24.dp, vertical = TvMetrics.VerticalMargin + 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(64.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (phoneLayout) 48.dp else 64.dp),
         ) {
-            Column(Modifier.width(360.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            // Narrower beside the QR code, which needs the room for its code.
+            Column(Modifier.width(if (phoneLayout) 300.dp else 360.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Brand()
                 Text(
                     if (showForm) "Sign in with a password" else "Sign in to Halo",
@@ -147,6 +159,12 @@ internal fun TvSignInScreen(
                     },
                     style = TvType.Body,
                 )
+                if (phoneLayout) {
+                    SecondaryChoices(
+                        onUsePassword = { showForm = true },
+                        onContinueWithoutAccount = onContinueWithoutAccount,
+                    )
+                }
             }
             Column(
                 Modifier.weight(1f).padding(top = 72.dp),
@@ -169,17 +187,13 @@ internal fun TvSignInScreen(
                             error = null
                         },
                     )
-                } else {
+                } else if (offerChecked) {
                     val offer = phoneOffer
                     if (offer != null) {
                         TvPhoneSignIn(
                             offer = offer,
                             serverUrl = serverUrl,
                             onSession = { session -> onDeviceSession(serverUrl, session) },
-                        )
-                        SecondaryChoices(
-                            onUsePassword = { showForm = true },
-                            onContinueWithoutAccount = onContinueWithoutAccount,
                         )
                     } else {
                         Choices(
@@ -228,16 +242,18 @@ private fun Choices(onUsePassword: () -> Unit, onContinueWithoutAccount: () -> U
     )
 }
 
-/** The other ways in, below the phone sign-in. */
+/** The other ways in, below the phone sign-in, in the same order as without it. */
 @Composable
 private fun SecondaryChoices(onUsePassword: () -> Unit, onContinueWithoutAccount: () -> Unit) {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
-    Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        TvButton("Use a password instead", onClick = onUsePassword, modifier = Modifier.focusRequester(first))
+    Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        TvButton("Use a username and password", onClick = onUsePassword, modifier = Modifier.focusRequester(first))
         TvButton("Continue without an account", onClick = onContinueWithoutAccount)
     }
 }
+
+private const val OfferWaitMs = 4_000L
 
 @Composable
 private fun PasswordForm(

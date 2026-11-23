@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 class LoginPresenterTest {
     @Test
     fun credentialEditsAreIgnoredBeforeLocalModeDiscovery() {
-        val presenter = presenter(AuthConfig.Local)
+        val presenter = presenter(AuthConfig.Local())
         presenter.editServerUrl("https://halo.local")
 
         presenter.editUsername("testuser")
@@ -24,7 +24,7 @@ class LoginPresenterTest {
 
     @Test
     fun localModeRevealsCredentialsOnlyAfterDiscovery() = runTest {
-        val presenter = presenter(AuthConfig.Local)
+        val presenter = presenter(AuthConfig.Local())
         presenter.editServerUrl(" https://halo.local/ ")
 
         presenter.continueFromServer()
@@ -37,7 +37,7 @@ class LoginPresenterTest {
     @Test
     fun debugCredentialsArePrefilledOnlyAfterLocalModeDiscovery() = runTest {
         val presenter = presenter(
-            config = AuthConfig.Local,
+            config = AuthConfig.Local(),
             localCredentialsPrefill = LoginCredentialsPrefill(
                 serverUrl = "https://halo.local/",
                 username = "admin",
@@ -59,7 +59,7 @@ class LoginPresenterTest {
     @Test
     fun debugCredentialsAreNotPrefilledForAnotherLocalServer() = runTest {
         val presenter = presenter(
-            config = AuthConfig.Local,
+            config = AuthConfig.Local(),
             localCredentialsPrefill = LoginCredentialsPrefill(
                 serverUrl = "http://127.0.0.1:18790",
                 username = "admin",
@@ -77,7 +77,7 @@ class LoginPresenterTest {
 
     @Test
     fun editingServerResetsDiscoveredModeAndCredentials() = runTest {
-        val presenter = presenter(AuthConfig.Local)
+        val presenter = presenter(AuthConfig.Local())
         presenter.editServerUrl("https://first.local")
         presenter.continueFromServer()
         presenter.editUsername("testuser")
@@ -136,7 +136,7 @@ class LoginPresenterTest {
     @Test
     fun beginOidcDoesNothingOutsideTheReadyPhase() = runTest {
         val host = RecordingNativeHost()
-        val presenter = presenter(AuthConfig.Local, host)
+        val presenter = presenter(AuthConfig.Local(), host)
         presenter.editServerUrl("https://halo.local")
         presenter.continueFromServer(startOidc = false)
 
@@ -170,7 +170,7 @@ class LoginPresenterTest {
     fun authEventsAreDroppedOutsideAnInFlightRequest() {
         // A late event that lands after the form reset (still on Server) must not
         // resurrect a terminal phase.
-        val presenter = presenter(AuthConfig.Local)
+        val presenter = presenter(AuthConfig.Local())
         presenter.editServerUrl("https://halo.local")
 
         presenter.onAuthEvent(AuthEvent.OidcSucceeded("https://halo.example", "proof"))
@@ -193,7 +193,7 @@ class LoginPresenterTest {
     @Test
     fun submitExchangesCredentialsForSessionAndWipesThePassword() = runTest {
         val authenticator = RecordingAuthenticator()
-        val presenter = presenter(AuthConfig.Local, authenticator = authenticator)
+        val presenter = presenter(AuthConfig.Local(), authenticator = authenticator)
         presenter.editServerUrl("https://halo.local")
         presenter.continueFromServer()
         presenter.editUsername(" testuser ")
@@ -210,7 +210,7 @@ class LoginPresenterTest {
     @Test
     fun submitWithBlankCredentialsIsIgnored() = runTest {
         val authenticator = RecordingAuthenticator()
-        val presenter = presenter(AuthConfig.Local, authenticator = authenticator)
+        val presenter = presenter(AuthConfig.Local(), authenticator = authenticator)
         presenter.editServerUrl("https://halo.local")
         presenter.continueFromServer()
 
@@ -223,7 +223,7 @@ class LoginPresenterTest {
     @Test
     fun serverRejectionKeepsTheFormAndSurfacesTheServerMessage() = runTest {
         val authenticator = RecordingAuthenticator(failure = LocalAuthException(401, "invalid credentials"))
-        val presenter = presenter(AuthConfig.Local, authenticator = authenticator)
+        val presenter = presenter(AuthConfig.Local(), authenticator = authenticator)
         presenter.editServerUrl("https://halo.local")
         presenter.continueFromServer()
         presenter.editUsername("testuser")
@@ -239,7 +239,7 @@ class LoginPresenterTest {
     @Test
     fun transportFailureReadsAsAConnectionProblemNotARejection() = runTest {
         val authenticator = RecordingAuthenticator(failure = RuntimeException())
-        val presenter = presenter(AuthConfig.Local, authenticator = authenticator)
+        val presenter = presenter(AuthConfig.Local(), authenticator = authenticator)
         presenter.editServerUrl("https://halo.local")
         presenter.continueFromServer()
         presenter.editUsername("testuser")
@@ -256,7 +256,7 @@ class LoginPresenterTest {
         val entered = CompletableDeferred<Unit>()
         val gate = CompletableDeferred<Unit>()
         val presenter = presenter(
-            AuthConfig.Local,
+            AuthConfig.Local(),
             authenticator = LocalAuthenticator { _, _, _ ->
                 entered.complete(Unit)
                 gate.await()
@@ -281,7 +281,7 @@ class LoginPresenterTest {
     @Test
     fun submitOutsideTheCredentialsPhaseIsIgnored() = runTest {
         val authenticator = RecordingAuthenticator()
-        val presenter = presenter(AuthConfig.Local, authenticator = authenticator)
+        val presenter = presenter(AuthConfig.Local(), authenticator = authenticator)
         presenter.editServerUrl("https://halo.local")
 
         presenter.submitLocalCredentials()

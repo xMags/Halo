@@ -3,11 +3,13 @@ package moe.ditto.halo.auth
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 
 sealed interface AuthConfig {
-    data object Local : AuthConfig
+    /** The server's own accounts; [deviceSignIn] when a TV can sign in with a code approved on a phone. */
+    data class Local(val deviceSignIn: Boolean = false) : AuthConfig
 
     data class Oidc(
         val issuer: String,
@@ -33,7 +35,7 @@ object AuthConfigParser {
         val value = json.parseToJsonElement(payload) as? JsonObject
             ?: throw SerializationException("Auth config must be a JSON object")
         return when (val mode = value.requiredString("mode")) {
-            "local" -> AuthConfig.Local
+            "local" -> AuthConfig.Local(deviceSignIn = value["deviceSignIn"]?.jsonPrimitive?.booleanOrNull == true)
             "oidc" -> AuthConfig.Oidc(
                 issuer = value.requiredString("issuer"),
                 clientId = value.requiredString("clientId"),

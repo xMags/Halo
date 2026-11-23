@@ -25,7 +25,7 @@ class KtorAuthConfigSourceTest {
         }
         val source = KtorAuthConfigSource(HttpClient(engine))
 
-        assertEquals(AuthConfig.Local, source.fetch("https://halo.example"))
+        assertEquals(AuthConfig.Local(), source.fetch("https://halo.example"))
     }
 
     @Test

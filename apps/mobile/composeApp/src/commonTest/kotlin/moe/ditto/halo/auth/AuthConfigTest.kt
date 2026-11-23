@@ -10,7 +10,7 @@ import kotlin.test.assertIs
 class AuthConfigTest {
     @Test
     fun parsesLocalUnionMember() {
-        assertEquals(AuthConfig.Local, AuthConfigParser.parse("""{"mode":"local"}"""))
+        assertEquals(AuthConfig.Local(), AuthConfigParser.parse("""{"mode":"local"}"""))
     }
 
     @Test

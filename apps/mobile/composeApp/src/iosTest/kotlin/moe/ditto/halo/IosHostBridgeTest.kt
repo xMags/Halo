@@ -25,7 +25,7 @@ class IosHostBridgeTest {
         val host = RecordingAuthHost()
         val adapter = IosAuthHostAdapter(host)
 
-        assertEquals(AuthConfig.Local, adapter.fetch("https://halo.local"))
+        assertEquals(AuthConfig.Local(), adapter.fetch("https://halo.local"))
         adapter.requestOidc(
             OidcHostRequest(
                 serverUrl = "https://halo.example",
