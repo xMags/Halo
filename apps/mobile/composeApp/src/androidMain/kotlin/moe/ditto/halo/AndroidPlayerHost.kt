@@ -20,6 +20,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.MpvCore
+import moe.ditto.halo.player.MpvProfile
 import moe.ditto.halo.player.PlayerBuffering
 import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerPort
@@ -37,6 +38,8 @@ import moe.ditto.halo.player.headerLines
  */
 internal class AndroidMpvPlayerHost(
     private val appContext: Context,
+    /** Engine options for the device class this host serves. */
+    private val profile: MpvProfile,
 ) {
 
     private var coreSequence = 0
@@ -84,7 +87,7 @@ internal class AndroidMpvPlayerHost(
     private fun installFreshCore(): MpvCore? {
         if (!acceptingWork.get()) return null
         val generation = coreGeneration + 1
-        val created = MpvCore.create(appContext, "core-${++coreSequence}", coreExecutor)
+        val created = MpvCore.create(appContext, "core-${++coreSequence}", profile, coreExecutor)
         coreCreationCount += 1
         core = created
         activeCoreGeneration = generation
@@ -253,6 +256,7 @@ internal class AndroidMpvPlayerHost(
     suspend fun selectSubtitleTrack(id: String?) = enqueue("subtitle-track") { it.selectSubtitleTrack(id) }
     suspend fun setPlaybackRate(rate: Double) = enqueue("playback-rate") { it.setPlaybackRate(rate) }
     suspend fun setAudioDelay(seconds: Double) = enqueue("audio-delay") { it.setAudioDelay(seconds) }
+    suspend fun setAudioPassthrough(codecs: String?) = enqueue("audio-spdif") { it.setAudioPassthrough(codecs) }
     suspend fun setVideoFillsScreen(fills: Boolean) = enqueue("video-fill") { it.setVideoFillsScreen(fills) }
     suspend fun setSubtitleDelay(seconds: Double) = enqueue("subtitle-delay") { it.setSubtitleDelay(seconds) }
     suspend fun setSubtitleScale(scale: Double) = enqueue("subtitle-scale") { it.setSubtitleScale(scale) }

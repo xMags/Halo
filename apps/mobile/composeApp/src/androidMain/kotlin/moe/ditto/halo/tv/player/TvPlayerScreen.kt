@@ -107,6 +107,8 @@ internal fun TvPlayerScreen(
     playback: PlaybackHost,
     surface: NativePlayerSurface,
     system: PlayerSystemPort,
+    preferences: TvPlaybackPreferences,
+    audioOutput: TvAudioOutput,
     context: PlaybackContext,
     onSelectEpisode: (EpisodeChoice) -> Unit,
     /** Null for a pasted link, which has no list to pick another source from. */
@@ -129,6 +131,13 @@ internal fun TvPlayerScreen(
     TvPlaybackSystem(playback = playback, session = session, scope = scope, onPausedFromOutside = controller::showChrome)
     val state = session.state
     val paused = state.status != PlaybackStatus.Playing
+    TvFrameRateMatching(frameRate = state.videoFormat.frameRate, enabled = preferences.matchFrameRate)
+    // Surround formats the receiver takes as they are, asked again per title.
+    var spdifCodecs by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(session.item, preferences.surroundSound) { spdifCodecs = audioOutput.apply(preferences.surroundSound) }
+    val audioTrack = state.tracks.audio.firstOrNull { it.id == (state.tracks.selectedAudioId ?: state.tracks.audio.firstOrNull()?.id) }
+    // Sound sent on untouched cannot be delayed or sped up here.
+    val passthrough = passesThrough(spdifCodecs, audioTrack?.codec)
     val medal = remember(state.videoFormat) { classifyVideoQuality(state.videoFormat) }
     var panel by remember { mutableStateOf<TvPlayerPanel?>(null) }
     val seek = remember(session.item) { TvSeekTarget() }
@@ -272,7 +281,9 @@ internal fun TvPlayerScreen(
                         )
                         TvButton("Audio", onClick = { panel = TvPlayerPanel.Audio })
                         TvButton("Subtitles", onClick = { panel = TvPlayerPanel.Subtitles })
-                        TvButton("Speed ${formatRate(state.playbackRate)}", onClick = { panel = TvPlayerPanel.Speed })
+                        if (!passthrough) {
+                            TvButton("Speed ${formatRate(state.playbackRate)}", onClick = { panel = TvPlayerPanel.Speed })
+                        }
                         if (context.isEpisode && session.episodes.isNotEmpty()) {
                             TvButton("Episodes", onClick = { panel = TvPlayerPanel.Episodes })
                         }
@@ -321,7 +332,7 @@ internal fun TvPlayerScreen(
             TvPlayerPanel.Audio -> TvAudioPanel(
                 tracks = state.tracks,
                 delaySeconds = state.audioDelaySeconds,
-                delayAvailable = true,
+                delayAvailable = !passthrough,
                 onSelect = { id -> scope.launch { playback.selectAudioTrack(id) } },
                 onDelay = { seconds -> scope.launch { playback.setAudioDelay(clampedDelay(seconds)) } },
                 onDismiss = ::closePanel,

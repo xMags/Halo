@@ -78,6 +78,8 @@ data class VideoFormat(
     val height: Int = 0,
     val gamma: String? = null,
     val dolbyVision: Boolean = false,
+    /** Frames per second as the file states it, or as decoding measures it; null before either is known. */
+    val frameRate: Double? = null,
 )
 
 sealed interface PlayerEvent {

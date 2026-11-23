@@ -56,6 +56,8 @@ internal class MpvCore private constructor(
     // The decoded picture, assembled from four separate observations and only
     // touched on the callback executor. Reported whole, and only when it moves.
     private var videoFormat = VideoFormat()
+    private var containerFps: Double? = null
+    private var estimatedFps: Double? = null
     // END_FILE's reason is hidden by this JNI binding. The small state machine
     // distinguishes a real failure from the END_FILE that loadfile emits for
     // the file it replaced, and serializes the caller, event and log threads.
@@ -97,6 +99,7 @@ internal class MpvCore private constructor(
                         dispatch { listener?.onBufferedPosition(value) }
                     }
                 }
+                ContainerFps, EstimatedFps -> dispatch { handleFrameRate(property, value) }
             }
         }
 
@@ -139,7 +142,22 @@ internal class MpvCore private constructor(
             VideoHeight -> updateVideoFormat(videoFormat.copy(height = 0))
             VideoGamma -> updateVideoFormat(videoFormat.copy(gamma = null))
             VideoColorMatrix -> updateVideoFormat(videoFormat.copy(dolbyVision = false))
+            ContainerFps, EstimatedFps -> handleFrameRate(property, null)
         }
+    }
+
+    /**
+     * The file's own frame rate when it states one; otherwise the first rate
+     * decoding measures. The measured one wanders by small amounts while
+     * playing, so it is taken once per file rather than followed.
+     */
+    private fun handleFrameRate(property: String, value: Double?) {
+        val usable = value?.takeIf { it.isFinite() && it > 0 }
+        when (property) {
+            ContainerFps -> containerFps = usable
+            EstimatedFps -> if (usable == null || estimatedFps == null) estimatedFps = usable
+        }
+        updateVideoFormat(videoFormat.copy(frameRate = containerFps ?: estimatedFps))
     }
 
     private fun handleProperty(property: String, value: String) {
@@ -328,6 +346,15 @@ internal class MpvCore private constructor(
         mpv.setPropertyDouble("audio-delay", seconds)
     }
 
+    /**
+     * The compressed formats sent untouched to the receiver, as mpv's
+     * `audio-spdif` list (`ac3,eac3`), or null to decode everything here.
+     */
+    fun setAudioPassthrough(codecs: String?) {
+        if (destroyed) return
+        mpv.setPropertyString("audio-spdif", codecs.orEmpty())
+    }
+
     // Live subtitle controls — the exact capability libVLC lacked on mobile:
     // these apply to the running core with no recreation.
     fun setSubtitleDelay(seconds: Double) {
@@ -492,14 +519,16 @@ internal class MpvCore private constructor(
         private const val DefaultSubtitleFont = "sans-serif"
 
         /** Create + configure + initialize a fresh core with a stable [id]. */
-        fun create(context: Context, id: String, callbackExecutor: Executor? = null): MpvCore {
+        fun create(context: Context, id: String, profile: MpvProfile, callbackExecutor: Executor? = null): MpvCore {
             val mpv = MPVLib.create(context) ?: error("MPVLib.create returned null")
             // Pre-init options (mpv-android's proven Android render/decode stack).
             mpv.setOptionString("config", "no")
             mpv.setOptionString("vo", "null") // no output until a surface attaches
             mpv.setOptionString("gpu-context", "android")
             mpv.setOptionString("opengl-es", "yes")
-            mpv.setOptionString("hwdec", "mediacodec-copy") // auto-falls back to sw
+            mpv.setOptionString("hwdec", profile.hwdec) // falls back to software
+            profile.demuxerMaxBytes?.let { mpv.setOptionString("demuxer-max-bytes", it) }
+            profile.demuxerMaxBackBytes?.let { mpv.setOptionString("demuxer-max-back-bytes", it) }
             mpv.setOptionString("ao", "audiotrack")
             mpv.setOptionString("keep-open", "yes") // so eof-reached fires
             // mpv's default is to hand a URL it could not open to youtube-dl.
@@ -542,6 +571,9 @@ internal class MpvCore private constructor(
             mpv.observeProperty(VideoHeight, MPVLib.MpvFormat.MPV_FORMAT_INT64)
             mpv.observeProperty(VideoGamma, MPVLib.MpvFormat.MPV_FORMAT_STRING)
             mpv.observeProperty(VideoColorMatrix, MPVLib.MpvFormat.MPV_FORMAT_STRING)
+            // The frame rate, for matching the display's refresh rate on a TV.
+            mpv.observeProperty(ContainerFps, MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
+            mpv.observeProperty(EstimatedFps, MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
             return core
         }
     }
@@ -620,3 +652,5 @@ private const val VideoWidth = "video-params/dw"
 private const val VideoHeight = "video-params/dh"
 private const val VideoGamma = "video-params/gamma"
 private const val VideoColorMatrix = "video-params/colormatrix"
+private const val ContainerFps = "container-fps"
+private const val EstimatedFps = "estimated-vf-fps"

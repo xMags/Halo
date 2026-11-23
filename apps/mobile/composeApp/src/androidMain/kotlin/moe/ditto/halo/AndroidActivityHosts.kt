@@ -14,6 +14,7 @@ import moe.ditto.halo.auth.KtorAuthConfigSource
 import moe.ditto.halo.auth.NoBrowserSignIn
 import moe.ditto.halo.downloads.DownloadStoragePort
 import moe.ditto.halo.player.AndroidPlayerSystemPort
+import moe.ditto.halo.player.MpvProfile
 import moe.ditto.halo.player.SubtitleFontLibrary
 import moe.ditto.halo.player.VideoFrameSource
 import moe.ditto.halo.storage.AndroidPreferencesStore
@@ -28,7 +29,11 @@ import java.io.File
  * Create it in `onCreate` (the OIDC host registers for activity results) and
  * [close] it in `onDestroy`.
  */
-internal class AndroidActivityHosts(activity: ComponentActivity) {
+internal class AndroidActivityHosts(
+    activity: ComponentActivity,
+    /** The phone's engine options unless the activity serves another kind of screen. */
+    playerProfile: MpvProfile = MpvProfile.Phone,
+) {
     val authHttpClient: HttpClient = HttpClient(OkHttp)
     private val secureStorage = AndroidSecureStorage(activity.applicationContext)
     val authHost = AndroidOidcAuthHost(
@@ -36,7 +41,7 @@ internal class AndroidActivityHosts(activity: ComponentActivity) {
         storage = secureStorage,
         wire = KtorAndroidOidcWire(authHttpClient),
     )
-    val playerHost = AndroidMpvPlayerHost(activity.applicationContext)
+    val playerHost = AndroidMpvPlayerHost(activity.applicationContext, playerProfile)
     val playerSystemPort = AndroidPlayerSystemPort(activity)
     private val application = activity.application as HaloApplication
     private val applicationContext = activity.applicationContext

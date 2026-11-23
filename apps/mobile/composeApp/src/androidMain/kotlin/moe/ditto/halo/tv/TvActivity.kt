@@ -5,7 +5,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import moe.ditto.halo.AndroidActivityHosts
 import moe.ditto.halo.downloads.NoDownloadStorage
+import moe.ditto.halo.player.MpvProfile
 import moe.ditto.halo.player.NoVideoFrameSource
+import moe.ditto.halo.tv.player.TvAudioOutput
 
 /**
  * The TV entry point, listed by TV launchers (`LEANBACK_LAUNCHER`) while phone
@@ -23,7 +25,7 @@ class TvActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        hosts = AndroidActivityHosts(this)
+        hosts = AndroidActivityHosts(this, playerProfile = MpvProfile.Tv)
         val dependencies = hosts.dependencies(
             intent = intent,
             downloadStorage = NoDownloadStorage,
@@ -31,8 +33,9 @@ class TvActivity : ComponentActivity() {
         )
         // Debug-only, like every launch extra: any app can start this activity.
         val showKitGallery = hosts.diagnosticsEnabled && intent?.getBooleanExtra("tvKitGallery", false) == true
+        val audioOutput = TvAudioOutput(applicationContext, hosts.playerHost)
         setContent {
-            TvApp(dependencies, onExitApp = { finish() }, showKitGallery = showKitGallery)
+            TvApp(dependencies, audioOutput = audioOutput, onExitApp = { finish() }, showKitGallery = showKitGallery)
         }
     }
 

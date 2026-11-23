@@ -24,6 +24,8 @@ import moe.ditto.halo.shell.episodeSources
 import moe.ditto.halo.shell.playbackContext
 import moe.ditto.halo.shell.sourcesRoute
 import moe.ditto.halo.shell.withContext
+import moe.ditto.halo.tv.player.TvAudioOutput
+import moe.ditto.halo.tv.player.TvPlaybackPreferences
 import moe.ditto.halo.tv.player.TvPlayerScreen
 import moe.ditto.halo.screens.ShelfSnapshots
 import moe.ditto.halo.screens.TitleNavigation
@@ -60,6 +62,9 @@ internal fun TvShell(
     playback: PlaybackHost,
     playerSurface: NativePlayerSurface,
     playerSystem: PlayerSystemPort,
+    /** This TV's own playback settings (frame rate, surround). */
+    playbackPreferences: TvPlaybackPreferences,
+    audioOutput: TvAudioOutput,
     onExitApp: () -> Unit,
 ) {
     val navController = rememberNavController()
@@ -146,6 +151,8 @@ internal fun TvShell(
                         playback = playback,
                         surface = playerSurface,
                         system = playerSystem,
+                        preferences = playbackPreferences,
+                        audioOutput = audioOutput,
                         context = route.playbackContext(),
                         // Both replace the player rather than stacking on it, so
                         // Back still returns to the title.

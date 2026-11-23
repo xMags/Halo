@@ -18,6 +18,8 @@ import moe.ditto.halo.tv.signin.TvSignInScreen
 import moe.ditto.halo.tv.kit.LocalTvFocusTracker
 import moe.ditto.halo.tv.kit.TvFocusTracker
 import moe.ditto.halo.tv.kit.TvKitGallery
+import moe.ditto.halo.tv.player.TvAudioOutput
+import moe.ditto.halo.tv.player.TvPlaybackPreferences
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloTheme
 import moe.ditto.halo.ui.haloImageLoader
@@ -28,6 +30,8 @@ private enum class TvScreen { SignIn, Shell }
 @Composable
 internal fun TvApp(
     dependencies: PlatformDependencies,
+    /** The TV's sound output, for surround passthrough. */
+    audioOutput: TvAudioOutput,
     /** Closes the app; the TV root confirms first. */
     onExitApp: () -> Unit,
     /** Debug builds only: opens the TV kit gallery instead of the app. */
@@ -41,14 +45,16 @@ internal fun TvApp(
     val focusTracker = remember { TvFocusTracker() }
     HaloTheme {
         CompositionLocalProvider(LocalTvFocusTracker provides focusTracker) {
-            if (showKitGallery) TvKitGallery() else TvRoot(dependencies, onExitApp)
+            if (showKitGallery) TvKitGallery() else TvRoot(dependencies, audioOutput, onExitApp)
         }
     }
 }
 
 @Composable
-private fun TvRoot(dependencies: PlatformDependencies, onExitApp: () -> Unit) {
+private fun TvRoot(dependencies: PlatformDependencies, audioOutput: TvAudioOutput, onExitApp: () -> Unit) {
     var screen by remember { mutableStateOf(TvScreen.SignIn) }
+    // The device's, not the account's: it outlives every session.
+    val playbackPreferences = remember { TvPlaybackPreferences(dependencies.keyValueStore) }
     val session = rememberAppSession(
         dependencies = dependencies,
         isShowingSignIn = { screen == TvScreen.SignIn },
@@ -82,6 +88,8 @@ private fun TvRoot(dependencies: PlatformDependencies, onExitApp: () -> Unit) {
                     playback = session.playback,
                     playerSurface = dependencies.nativePlayerSurface,
                     playerSystem = dependencies.playerSystemPort,
+                    playbackPreferences = playbackPreferences,
+                    audioOutput = audioOutput,
                     onExitApp = onExitApp,
                 )
             }
