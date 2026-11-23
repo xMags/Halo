@@ -71,11 +71,6 @@ import dev.chrisbanes.haze.rememberHazeState
 import moe.ditto.halo.NativePlayerSurface
 import moe.ditto.halo.PlaybackHost
 import moe.ditto.halo.SessionGraph
-import moe.ditto.halo.api.MetaCard
-import moe.ditto.halo.api.MetaDetail
-import moe.ditto.halo.api.MetaVideo
-import moe.ditto.halo.api.movieVideoId
-import moe.ditto.halo.browse.episodeTag
 import moe.ditto.halo.screens.AccountAvatar
 import moe.ditto.halo.screens.DetailScreen
 import moe.ditto.halo.screens.DownloadsScreen
@@ -749,40 +744,6 @@ private fun NavHostController.sourcesRequest(route: StreamsRoute) = SourcesReque
  */
 private fun NavHostController.openDetail(ref: MetaRef) =
     navigate(DetailRoute(type = ref.type, metaId = ref.metaId))
-
-/**
- * A film's sources. There is one video, and it is the title: its meta id, or the
- * IMDb id a TMDB-listed film names to play as (see [movieVideoId]).
- */
-private fun movieSources(meta: MetaCard) = StreamsRoute(
-    type = meta.type,
-    metaId = meta.id,
-    videoId = meta.movieVideoId,
-    showTitle = meta.name,
-    poster = meta.poster,
-)
-
-/**
- * An episode's sources, named in the parts that are set separately downstream:
- * the show, which episode of it, and what that episode is called.
- *
- * The name is dropped when it is the tag: [episodeTag] falls back to the video's
- * own title for anything unnumbered, and the same string printed twice reads as
- * a rendering fault rather than as a missing episode number.
- */
-private fun episodeSources(meta: MetaDetail, video: MetaVideo): StreamsRoute {
-    val tag = episodeTag(video)
-    return StreamsRoute(
-        type = meta.type,
-        metaId = meta.id,
-        videoId = video.id,
-        showTitle = meta.name,
-        episodeTag = tag,
-        episodeName = video.displayTitle?.takeIf { it != tag },
-        episodeThumbnail = video.thumbnail,
-        poster = meta.poster,
-    )
-}
 
 /**
  * Opens a tab at its own screen, whatever was open before.

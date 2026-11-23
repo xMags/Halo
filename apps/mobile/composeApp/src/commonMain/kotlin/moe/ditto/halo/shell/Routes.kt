@@ -2,7 +2,12 @@ package moe.ditto.halo.shell
 
 import kotlinx.serialization.Serializable
 import moe.ditto.halo.api.AddonSource
+import moe.ditto.halo.api.MetaCard
+import moe.ditto.halo.api.MetaDetail
+import moe.ditto.halo.api.MetaVideo
+import moe.ditto.halo.api.movieVideoId
 import moe.ditto.halo.api.Stream
+import moe.ditto.halo.browse.episodeTag
 import moe.ditto.halo.downloads.DownloadEntry
 import moe.ditto.halo.downloads.DownloadFiles
 import moe.ditto.halo.downloads.DownloadMedia
@@ -397,3 +402,37 @@ internal fun PlayerRoute.sourcesRoute(): StreamsRoute = StreamsRoute(
     episodeThumbnail = episodeThumbnail,
     poster = poster,
 )
+
+/**
+ * A film's sources. There is one video, and it is the title: its meta id, or the
+ * IMDb id a TMDB-listed film names to play as (see [movieVideoId]).
+ */
+internal fun movieSources(meta: MetaCard) = StreamsRoute(
+    type = meta.type,
+    metaId = meta.id,
+    videoId = meta.movieVideoId,
+    showTitle = meta.name,
+    poster = meta.poster,
+)
+
+/**
+ * An episode's sources, named in the parts that are set separately downstream:
+ * the show, which episode of it, and what that episode is called.
+ *
+ * The name is dropped when it is the tag: [episodeTag] falls back to the video's
+ * own title for anything unnumbered, and the same string printed twice reads as
+ * a rendering fault rather than as a missing episode number.
+ */
+internal fun episodeSources(meta: MetaDetail, video: MetaVideo): StreamsRoute {
+    val tag = episodeTag(video)
+    return StreamsRoute(
+        type = meta.type,
+        metaId = meta.id,
+        videoId = video.id,
+        showTitle = meta.name,
+        episodeTag = tag,
+        episodeName = video.displayTitle?.takeIf { it != tag },
+        episodeThumbnail = video.thumbnail,
+        poster = meta.poster,
+    )
+}
