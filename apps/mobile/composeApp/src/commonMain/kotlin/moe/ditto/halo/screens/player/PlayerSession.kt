@@ -225,7 +225,7 @@ internal class PlayerSession internal constructor(
      *
      * An episode change is a way out too. It replaces this screen rather than
      * stacking on it, so the engine has to be wound down for it exactly as it is
-     * for back — otherwise the decoder is still holding the surface Compose is
+     * for back. Otherwise the decoder is still holding the surface Compose is
      * about to take away, which is the deadlock the bounded release exists for.
      *
      * Playback is paused rather than torn down. Teardown is terminal for the
