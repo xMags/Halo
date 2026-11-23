@@ -32,7 +32,7 @@ class TvActivity : ComponentActivity() {
         // Debug-only, like every launch extra: any app can start this activity.
         val showKitGallery = hosts.diagnosticsEnabled && intent?.getBooleanExtra("tvKitGallery", false) == true
         setContent {
-            TvApp(dependencies, showKitGallery = showKitGallery)
+            TvApp(dependencies, onExitApp = { finish() }, showKitGallery = showKitGallery)
         }
     }
 

@@ -110,8 +110,9 @@ internal fun TvDialog(
 }
 
 /**
- * Asks before doing something. A [destructive] confirmation is red, and focus
- * starts on Cancel so a stray press of select does no harm.
+ * Asks before doing something. A [destructive] confirmation is red. Focus
+ * starts on Cancel when [cancelFirst] (always for destructive ones), so a
+ * stray press of select does no harm.
  */
 @Composable
 internal fun TvConfirmDialog(
@@ -122,17 +123,19 @@ internal fun TvConfirmDialog(
     onDismiss: () -> Unit,
     returnFocusTo: FocusRequester? = null,
     destructive: Boolean = false,
+    cancelFirst: Boolean = destructive,
     cancelLabel: String = "Cancel",
 ) {
     TvDialog(onDismiss = onDismiss, returnFocusTo = returnFocusTo) {
         Text(title, style = TvType.Title)
         if (message != null) Text(message, style = TvType.Body)
         Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (destructive) {
+            val confirmStyle = if (destructive) TvButtonStyle.Danger else TvButtonStyle.Primary
+            if (cancelFirst) {
                 TvButton(cancelLabel, onClick = onDismiss)
-                TvButton(confirmLabel, onClick = onConfirm, style = TvButtonStyle.Danger)
+                TvButton(confirmLabel, onClick = onConfirm, style = confirmStyle)
             } else {
-                TvButton(confirmLabel, onClick = onConfirm, style = TvButtonStyle.Primary)
+                TvButton(confirmLabel, onClick = onConfirm, style = confirmStyle)
                 TvButton(cancelLabel, onClick = onDismiss)
             }
         }

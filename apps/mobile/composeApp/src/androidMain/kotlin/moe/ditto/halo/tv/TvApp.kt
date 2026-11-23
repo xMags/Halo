@@ -3,18 +3,18 @@ package moe.ditto.halo.tv
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import coil3.compose.setSingletonImageLoaderFactory
 import moe.ditto.halo.PlatformDependencies
+import moe.ditto.halo.auth.builtInServerUrl
 import moe.ditto.halo.rememberAppSession
+import moe.ditto.halo.tv.signin.TvSignInScreen
 import moe.ditto.halo.tv.kit.LocalTvFocusTracker
 import moe.ditto.halo.tv.kit.TvFocusTracker
 import moe.ditto.halo.tv.kit.TvKitGallery
@@ -28,6 +28,8 @@ private enum class TvScreen { SignIn, Shell }
 @Composable
 internal fun TvApp(
     dependencies: PlatformDependencies,
+    /** Closes the app; the TV root confirms first. */
+    onExitApp: () -> Unit,
     /** Debug builds only: opens the TV kit gallery instead of the app. */
     showKitGallery: Boolean = false,
 ) {
@@ -39,13 +41,13 @@ internal fun TvApp(
     val focusTracker = remember { TvFocusTracker() }
     HaloTheme {
         CompositionLocalProvider(LocalTvFocusTracker provides focusTracker) {
-            if (showKitGallery) TvKitGallery() else TvRoot(dependencies)
+            if (showKitGallery) TvKitGallery() else TvRoot(dependencies, onExitApp)
         }
     }
 }
 
 @Composable
-private fun TvRoot(dependencies: PlatformDependencies) {
+private fun TvRoot(dependencies: PlatformDependencies, onExitApp: () -> Unit) {
     var screen by remember { mutableStateOf(TvScreen.SignIn) }
     val session = rememberAppSession(
         dependencies = dependencies,
@@ -56,8 +58,25 @@ private fun TvRoot(dependencies: PlatformDependencies) {
     Box(Modifier.fillMaxSize().background(HaloColors.Background)) {
         if (!session.restored) return@Box
         when (screen) {
-            TvScreen.SignIn -> Text("TV sign-in", color = HaloColors.Text, modifier = Modifier.align(Alignment.Center))
-            TvScreen.Shell -> Text("TV shell", color = HaloColors.Text, modifier = Modifier.align(Alignment.Center))
+            TvScreen.SignIn -> {
+                val controller = session.sessionController
+                val serverUrl = remember(controller) {
+                    dependencies.initialServerUrl.takeIf { it != PlatformDependencies.DefaultServerUrl }
+                        ?: controller.storedServerUrl()
+                        ?: builtInServerUrl
+                        ?: ""
+                }
+                TvSignInScreen(
+                    dependencies = dependencies,
+                    localAuthenticator = controller,
+                    serverUrl = serverUrl,
+                    notice = session.loginNotice,
+                    onContinueWithoutAccount = { controller.continueWithoutAccount() },
+                )
+            }
+            // Null for the frame between a sign-out landing in session state
+            // and the collector moving the screen to sign-in.
+            TvScreen.Shell -> session.graph?.let { graph -> TvShell(graph = graph, onExitApp = onExitApp) }
         }
     }
 }
