@@ -5,25 +5,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import dev.chrisbanes.haze.rememberHazeState
 import io.ktor.http.URLProtocol
 import io.ktor.http.Url
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.AddonEntry
 import moe.ditto.halo.api.UserSettings
-import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.LanguageOptions
 import moe.ditto.halo.ui.LocalHazeState
@@ -31,11 +24,9 @@ import moe.ditto.halo.ui.SelectOption
 import moe.ditto.halo.ui.SelectSheet
 import moe.ditto.halo.ui.glassSource
 import moe.ditto.halo.ui.rememberResponsive
-import kotlin.time.TimeSource
 
 private const val NoLanguage = "none"
 private const val RemoveAddon = "remove"
-private const val LatencyProbeIntervalMillis = 15_000L
 
 private sealed interface SettingsOverlay {
     data class Language(val kind: SettingsLanguageKind) : SettingsOverlay
@@ -51,171 +42,8 @@ internal fun SettingsScreen(
     modifier: Modifier = Modifier,
     onOpenDebugGate: (() -> Unit)? = null,
 ) {
-    val addonsState by remember(graph) { graph.addons.observe() }.collectAsState(QueryState())
-    val accountState by remember(graph) { graph.account.observe() }.collectAsState(QueryState())
-    val settingsState by remember(graph) { graph.settings.observe() }.collectAsState(QueryState())
-    val addonsNotMoved by graph.addonsNotMoved.collectAsState()
-    val scope = rememberCoroutineScope()
-
-    var userAddonUrl by remember { mutableStateOf("") }
-    var globalAddonUrl by remember { mutableStateOf("") }
-    var pendingAction by remember { mutableStateOf<String?>(null) }
-    var mutationError by remember { mutableStateOf<String?>(null) }
+    val (session, uiState) = rememberSettingsSession(graph)
     var overlay by remember { mutableStateOf<SettingsOverlay?>(null) }
-    var latencyMillis by remember { mutableStateOf<Long?>(null) }
-
-    // Settings shows how quick the server is rather than where it lives. A
-    // small authenticated request is timed end to end, the same path every
-    // screen's calls take, and re-measured while the screen stays open. A
-    // failed probe keeps the last reading: the Status row reports outages.
-    // Without an account there is no server to time.
-    LaunchedEffect(graph) {
-        val client = graph.accountClient ?: return@LaunchedEffect
-        while (true) {
-            val started = TimeSource.Monotonic.markNow()
-            try {
-                client.getMe()
-                latencyMillis = started.elapsedNow().inWholeMilliseconds
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-            }
-            delay(LatencyProbeIntervalMillis)
-        }
-    }
-
-    fun launchMutation(key: String, failureMessage: String, action: suspend () -> Unit) {
-        if (pendingAction != null) return
-        pendingAction = key
-        mutationError = null
-        scope.launch {
-            try {
-                action()
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                mutationError = failureMessage
-            } finally {
-                pendingAction = null
-            }
-        }
-    }
-
-    fun currentUrls(entries: List<AddonEntry>): List<String>? {
-        val urls = entries.mapNotNull { it.transportUrl }
-        return urls.takeIf { it.size == entries.size }
-    }
-
-    fun addAddon(ownership: AddonOwnership) {
-        val raw = if (ownership == AddonOwnership.User) userAddonUrl else globalAddonUrl
-        val url = normalizedAddonUrl(raw)
-        if (url == null) {
-            mutationError = "Enter a complete HTTP or HTTPS manifest URL."
-            return
-        }
-        val addons = addonsState.value
-        if (addons == null) {
-            mutationError = "Wait for the addon list to finish loading."
-            return
-        }
-        // Every installed entry, not just the effective ones: a personal copy
-        // of a global addon is installed even though it is not in use.
-        if ((addons.global + addons.user).any { it.transportUrl == url }) {
-            mutationError = "That addon is already installed."
-            return
-        }
-        val entries = if (ownership == AddonOwnership.User) addons.user else addons.global
-        if (currentUrls(entries) == null) {
-            mutationError = "This addon list cannot be edited safely until it is refreshed."
-            return
-        }
-        val key = if (ownership == AddonOwnership.User) "user-add" else "global-add"
-        launchMutation(key, "Could not install the addon. Check the manifest URL and try again.") {
-            // Added to the list as the server has it now, not the one shown.
-            val add = { current: List<String> -> if (url in current) current else current + url }
-            if (ownership == AddonOwnership.User) {
-                graph.addons.editUserAddons(add)
-                userAddonUrl = ""
-            } else {
-                graph.addons.editGlobalAddons(add)
-                globalAddonUrl = ""
-            }
-        }
-    }
-
-    fun removeAddon(entry: AddonEntry, ownership: AddonOwnership) {
-        val addons = addonsState.value ?: return
-        val entries = if (ownership == AddonOwnership.User) addons.user else addons.global
-        currentUrls(entries) ?: run {
-            mutationError = "This addon list cannot be edited safely until it is refreshed."
-            return
-        }
-        val removedUrl = entry.transportUrl ?: run {
-            mutationError = "This addon does not expose an editable manifest URL."
-            return
-        }
-        val key = "${ownership.name.lowercase()}-remove-${entry.id}"
-        launchMutation(key, "Could not remove the addon. Try again.") {
-            val remove = { current: List<String> -> current.filterNot { it == removedUrl } }
-            if (ownership == AddonOwnership.User) {
-                graph.addons.editUserAddons(remove)
-            } else {
-                graph.addons.editGlobalAddons(remove)
-            }
-        }
-    }
-
-    fun toggleCatalogs(entry: AddonEntry, ownership: AddonOwnership) {
-        val key = "${ownership.name.lowercase()}-catalogs-${entry.id}"
-        launchMutation(key, "Could not update catalog visibility. Try again.") {
-            if (ownership == AddonOwnership.User) {
-                graph.addons.setHideCatalogs(entry.id, !entry.hideCatalogs)
-            } else {
-                graph.addons.setGlobalHideCatalogs(entry.id, !entry.hideCatalogs)
-            }
-        }
-    }
-
-    fun updateLanguage(kind: SettingsLanguageKind, code: String?) {
-        val key = if (kind == SettingsLanguageKind.Audio) "audio-language" else "subtitle-language"
-        launchMutation(key, "Could not save the language preference. Try again.") {
-            graph.settings.update { current ->
-                if (kind == SettingsLanguageKind.Audio) {
-                    current.withPreferredAudioLang(code)
-                } else {
-                    current.withPreferredSubtitleLang(code)
-                }
-            }
-        }
-    }
-
-    fun updateCatalogLanguage(language: String?) {
-        launchMutation("catalog-language", "Could not save the language for Home's rows. Try again.") {
-            graph.settings.update { it.withCatalogLanguage(language) }
-        }
-    }
-
-    fun updateAutoplay(enabled: Boolean) {
-        launchMutation("autoplay", "Could not save the autoplay preference. Try again.") {
-            graph.settings.update { it.withAutoplayNextEpisode(enabled) }
-        }
-    }
-
-    val uiState = SettingsUiState(
-        signedIn = graph.signedIn,
-        addonsNotMoved = addonsNotMoved,
-        latencyMillis = latencyMillis,
-        addons = addonsState.value,
-        account = accountState.value,
-        settings = settingsState.value,
-        accountFetching = accountState.isFetching,
-        settingsFetching = settingsState.isFetching,
-        addonsError = addonsState.error != null,
-        accountError = accountState.error != null,
-        settingsError = settingsState.error != null,
-        pendingAction = pendingAction,
-        mutationError = mutationError,
-    )
 
     // The sheets frost this screen, so the blur source is the screen's own
     // body: a sheet inside the shell's navigation-host source samples nothing
@@ -228,16 +56,16 @@ internal fun SettingsScreen(
             Box(Modifier.fillMaxSize().glassSource(bodyHaze), contentAlignment = Alignment.TopCenter) {
                 SettingsContent(
                     state = uiState,
-                    userAddonUrl = userAddonUrl,
-                    globalAddonUrl = globalAddonUrl,
-                    onUserAddonUrlChange = { userAddonUrl = it },
-                    onGlobalAddonUrlChange = { globalAddonUrl = it },
-                    onAddAddon = ::addAddon,
-                    onToggleCatalogs = ::toggleCatalogs,
+                    userAddonUrl = session.userAddonUrl,
+                    globalAddonUrl = session.globalAddonUrl,
+                    onUserAddonUrlChange = { session.userAddonUrl = it },
+                    onGlobalAddonUrlChange = { session.globalAddonUrl = it },
+                    onAddAddon = session::addAddon,
+                    onToggleCatalogs = session::toggleCatalogs,
                     onRemoveAddon = { entry, ownership -> overlay = SettingsOverlay.Remove(entry, ownership) },
                     onOpenLanguage = { overlay = SettingsOverlay.Language(it) },
                     onOpenCatalogLanguage = { overlay = SettingsOverlay.CatalogLanguage(it) },
-                    onAutoplayChange = ::updateAutoplay,
+                    onAutoplayChange = session::updateAutoplay,
                     onSignOut = onSignOut,
                     onSignIn = onSignIn,
                     accountAvatar = { size -> AccountAvatar(graph, onClick = null, size = size) },
@@ -248,7 +76,7 @@ internal fun SettingsScreen(
 
             when (val activeOverlay = overlay) {
                 is SettingsOverlay.Language -> {
-                    val settings = settingsState.value ?: UserSettings.Empty
+                    val settings = uiState.settings ?: UserSettings.Empty
                     val selected = if (activeOverlay.kind == SettingsLanguageKind.Audio) {
                         settings.preferredAudioLang
                     } else {
@@ -278,13 +106,13 @@ internal fun SettingsScreen(
                                 selected = selected == language.code,
                             )
                         },
-                        onSelect = { key -> updateLanguage(activeOverlay.kind, key.takeUnless { it == NoLanguage }) },
+                        onSelect = { key -> session.updateLanguage(activeOverlay.kind, key.takeUnless { it == NoLanguage }) },
                         onClose = { overlay = null },
                     bottomClearance = responsive.floatingBarClearance,
                     )
                 }
                 is SettingsOverlay.CatalogLanguage -> {
-                    val selected = settingsState.value?.catalogLanguage?.takeIf { it in activeOverlay.choices }
+                    val selected = uiState.settings?.catalogLanguage?.takeIf { it in activeOverlay.choices }
                     SelectSheet(
                         visible = true,
                         title = "Language rows on Home",
@@ -294,7 +122,7 @@ internal fun SettingsScreen(
                         ) + activeOverlay.choices.map { language ->
                             SelectOption(key = language, label = language, selected = selected == language)
                         },
-                        onSelect = { key -> updateCatalogLanguage(key.takeUnless { it == NoLanguage }) },
+                        onSelect = { key -> session.updateCatalogLanguage(key.takeUnless { it == NoLanguage }) },
                         onClose = { overlay = null },
                         bottomClearance = responsive.floatingBarClearance,
                     )
@@ -311,7 +139,7 @@ internal fun SettingsScreen(
                             destructive = true,
                         ),
                     ),
-                    onSelect = { removeAddon(activeOverlay.entry, activeOverlay.ownership) },
+                    onSelect = { session.removeAddon(activeOverlay.entry, activeOverlay.ownership) },
                     onClose = { overlay = null },
                     bottomClearance = responsive.floatingBarClearance,
                 )

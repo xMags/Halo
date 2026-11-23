@@ -59,12 +59,12 @@ import moe.ditto.halo.ui.HaloType
  * same card (`settings/TmdbKeyCard.tsx`).
  */
 
-private const val GetKeyUrl = "https://www.themoviedb.org/settings/api"
-private const val WorkingText = "Key works. People search and IMDb and TVDB links are on."
-private const val RefusedLaterText = "TMDB no longer accepts the saved key. Paste a new one to turn people search back on."
+internal const val TmdbGetKeyUrl = "https://www.themoviedb.org/settings/api"
+internal const val TmdbWorkingText = "Key works. People search and IMDb and TVDB links are on."
+internal const val TmdbRefusedLaterText = "TMDB no longer accepts the saved key. Paste a new one to turn people search back on."
 private val InputShape = RoundedCornerShape(8.dp)
 
-private fun problemOf(result: TmdbKeySaveResult): String? = when (result) {
+internal fun tmdbProblemOf(result: TmdbKeySaveResult): String? = when (result) {
     TmdbKeySaveResult.Saved -> null
     TmdbKeySaveResult.NotAKey -> "That isn't a TMDB API key or read access token. Copy one from your TMDB account's API page."
     TmdbKeySaveResult.Refused -> "TMDB refused this key. Check it and try again."
@@ -88,10 +88,10 @@ internal fun TmdbKeyCard(graph: SessionGraph) {
         scope.launch {
             val result = graph.saveTmdbKey(text)
             busy = false
-            val problem = problemOf(result)
+            val problem = tmdbProblemOf(result)
             if (problem == null) {
                 text = ""
-                message = true to WorkingText
+                message = true to TmdbWorkingText
             } else {
                 message = false to problem
             }
@@ -106,7 +106,7 @@ internal fun TmdbKeyCard(graph: SessionGraph) {
             message = false to "Halo couldn't remove the key from this phone."
         }
     }
-    val shown = message ?: if (status == TmdbKeyStatus.Refused) false to RefusedLaterText else null
+    val shown = message ?: if (status == TmdbKeyStatus.Refused) false to TmdbRefusedLaterText else null
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SettingsCard {
@@ -127,7 +127,7 @@ internal fun TmdbKeyCard(graph: SessionGraph) {
                         color = HaloColors.Accent,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clickable(role = Role.Button) { runCatching { uriHandler.openUri(GetKeyUrl) } }.padding(vertical = 2.dp),
+                        modifier = Modifier.clickable(role = Role.Button) { runCatching { uriHandler.openUri(TmdbGetKeyUrl) } }.padding(vertical = 2.dp),
                     )
                 }
             }

@@ -423,7 +423,7 @@ private fun settingsBlocks(
     }
 }
 
-private fun addonsNotMovedMessage(names: List<String>): String {
+internal fun addonsNotMovedMessage(names: List<String>): String {
     val one = names.size == 1
     return "${names.joinToString(", ")} could not be added to your account because " +
         "${if (one) "it" else "they"} did not load. Halo kept ${if (one) "it" else "them"} on this phone and " +
