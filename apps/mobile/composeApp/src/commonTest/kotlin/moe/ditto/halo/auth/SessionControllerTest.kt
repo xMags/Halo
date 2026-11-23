@@ -58,6 +58,33 @@ class SessionControllerTest {
     }
 
     @Test
+    fun aDeviceSignInIsKeptLikeTheSignInItStandsFor() = runTest {
+        val storage = InMemorySecureStorage()
+        val controller = SessionController(storage, NoNetworkGateway(), clock, backgroundScope)
+        controller.restore()
+
+        controller.establishDeviceSession("https://halo.local", DeviceSession.Local("device-token", now + 1_000_000))
+
+        assertEquals(SessionState.SignedIn(SessionKind.Local, "https://halo.local"), controller.state.value)
+        assertEquals("device-token", controller.tokenProvider.accessToken())
+        assertEquals("https://halo.local", storage.read(AuthStorageKeys.ServerUrl))
+        // And it comes back after a relaunch, with no network.
+        val relaunched = SessionController(storage, NoNetworkGateway(), clock, backgroundScope)
+        relaunched.restore()
+        assertEquals(SessionState.SignedIn(SessionKind.Local, "https://halo.local"), relaunched.state.value)
+
+        val addonStorage = InMemorySecureStorage()
+        val addonController = SessionController(addonStorage, NoNetworkGateway(), clock, backgroundScope)
+        addonController.restore()
+        addonController.establishDeviceSession(
+            "https://halo.example",
+            DeviceSession.Addon("example", AddonSignedIn("addon-token", mapOf("refresh" to "r"))),
+        )
+        assertEquals(SessionState.SignedIn(SessionKind.Addon, "https://halo.example"), addonController.state.value)
+        assertEquals("addon-token", addonController.tokenProvider.accessToken())
+    }
+
+    @Test
     fun sessionScopedDataIsDroppedWhenTheSessionChangesButNotOnRestore() = runTest {
         val storage = InMemorySecureStorage()
         var changes = 0

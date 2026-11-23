@@ -211,6 +211,35 @@ class SessionController(
     }
 
     /**
+     * Keeps the session a device sign-in (a code approved on a phone)
+     * produced, exactly as the password or add-on sign-in it stands in for
+     * keeps its own: same persistence, same post-401 rule.
+     */
+    fun establishDeviceSession(serverUrl: String, session: DeviceSession) {
+        val kind = when (session) {
+            is DeviceSession.Local -> {
+                localSessions.establish(LocalSessionData(serverUrl = serverUrl, token = session.token, expiresAt = session.expiresAt))
+                SessionKind.Local
+            }
+            is DeviceSession.Addon -> {
+                addonSessions.establish(
+                    AddonSession(
+                        mode = session.mode,
+                        serverUrl = serverUrl,
+                        token = session.signedIn.token,
+                        extras = session.signedIn.extras,
+                    ),
+                )
+                SessionKind.Addon
+            }
+        }
+        // Survives sign-out on purpose: the login form prefills the last server.
+        storage.write(AuthStorageKeys.ServerUrl, serverUrl)
+        _loginNotice.value = null
+        publish(SessionState.SignedIn(kind, serverUrl))
+    }
+
+    /**
      * Folds native-host auth outcomes into session state. Success means the
      * host already persisted the session — this only mirrors it into state
      * (and the server prefill). Invalidation is honoured only while an OIDC
