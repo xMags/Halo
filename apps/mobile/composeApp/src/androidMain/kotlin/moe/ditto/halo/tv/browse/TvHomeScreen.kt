@@ -95,6 +95,8 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
     val catalogLanguage = settings.value?.catalogLanguage
 
     val rows = remember(addons.value) { catalogRows(addons.value.orEmpty()) }
+    val personalReady = (watchStates.value != null || watchStates.error != null) &&
+        (library.value != null || library.error != null)
     val shelves = remember(watchStates.value, library.value) { homeShelves(watchStates.value, library.value, null) }
 
     // Until a card has focus, the hero shows the first catalog's lead title
@@ -143,7 +145,10 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
                     retryModifier = Modifier.defaultFocus(memory, "retry"),
                     onRetry = { retry += 1 },
                 )
-                addons.value == null -> TvSkeletonRow(6, HomePosterWidth, HomePosterWidth * 1.5f)
+                // The personal rows sit above the catalogs, so all of them wait
+                // for history and library: a list that showed the catalogs
+                // first would keep its place on them when the rows above arrive.
+                addons.value == null || !personalReady -> TvSkeletonRow(6, HomePosterWidth, HomePosterWidth * 1.5f)
                 rows.isEmpty() && shelves.continueWatching.isEmpty() -> TvBodyMessage(
                     "No catalogs to show. Add an addon that publishes them, such as Cinemeta, in Settings.",
                     retryModifier = Modifier.defaultFocus(memory, "settings"),

@@ -57,7 +57,7 @@ class TvShellInstrumentedTest {
         composeRule.waitUntil(5_000) { remote.railShows("Search") }
 
         // Choosing a destination hands focus to it.
-        assertTrue("focus left the rail, got ${remote.focused()}", remote.focused() !in RailLabels)
+        assertTrue("focus left the rail, got ${remote.focused()}", !remote.railHasFocus())
 
         remote.left()
         remote.waitForFocusOn("Search")
@@ -68,6 +68,8 @@ class TvShellInstrumentedTest {
 
         remote.back()
         composeRule.waitUntil(5_000) { remote.railShows("Home") }
+        // Home takes focus back once the screen change has settled.
+        composeRule.waitUntil(5_000) { !remote.railHasFocus() }
 
         remote.left()
         remote.waitForFocusOn("Home")
@@ -100,7 +102,4 @@ class TvShellInstrumentedTest {
         assertTrue(remote.railShows("Home"))
     }
 
-    private companion object {
-        val RailLabels = setOf("Search", "Home", "Library", "Settings", "Account")
-    }
 }

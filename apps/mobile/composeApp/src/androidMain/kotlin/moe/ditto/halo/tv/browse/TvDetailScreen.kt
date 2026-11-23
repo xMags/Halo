@@ -26,6 +26,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -191,7 +192,8 @@ private fun DetailBody(
     val isSeries = meta.videos.isNotEmpty()
     val seasons = remember(meta) { seasonNumbers(meta.videos) }
     val openOn = remember(meta, watchStates.value, itemId) { lastWatchedSeason(meta.videos, watchStates.value, itemId) }
-    var chosenSeason by remember(meta.id) { mutableStateOf<Int?>(null) }
+    // Saved with the page, so Back from an episode's sources returns to its season.
+    var chosenSeason by rememberSaveable(meta.id) { mutableStateOf<Int?>(null) }
     // Explicit choice first, then where the last episode was watched, then
     // the earliest season, as on the phone.
     val activeSeason = chosenSeason ?: openOn ?: seasons.firstOrNull()

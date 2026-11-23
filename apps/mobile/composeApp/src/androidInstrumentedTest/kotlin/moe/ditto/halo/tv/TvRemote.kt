@@ -1,5 +1,6 @@
 package moe.ditto.halo.tv
 
+import android.util.Log
 import android.view.KeyEvent
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -26,6 +27,7 @@ internal class TvRemote(private val compose: ComposeTestRule) {
         keyCodes.forEach { code ->
             instrumentation.sendKeyDownUpSync(code)
             compose.waitForIdle()
+            Log.i(LogTag, "${KeyEvent.keyCodeToString(code)} -> ${focused()}")
         }
     }
 
@@ -37,14 +39,36 @@ internal class TvRemote(private val compose: ComposeTestRule) {
     fun back() = press(KeyEvent.KEYCODE_BACK)
 
     fun waitFor(matcher: SemanticsMatcher, timeoutMs: Long = 10_000) {
-        compose.waitUntil(timeoutMs) { compose.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() }
+        try {
+            compose.waitUntil(timeoutMs) { compose.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() }
+        } catch (timeout: Throwable) {
+            captureScreen()
+            throw AssertionError("never saw ${matcher.description}; focus is on \"${focused()}\"", timeout)
+        }
+    }
+
+    /**
+     * Saves the screen to `/data/local/tmp/tv-test-failure-<time>.png`
+     * through the shell, which outlives the test app being uninstalled after
+     * the run.
+     */
+    fun captureScreen() {
+        runCatching {
+            val path = "/data/local/tmp/tv-test-failure-${System.currentTimeMillis()}.png"
+            instrumentation.uiAutomation.executeShellCommand("screencap -p $path").close()
+        }
     }
 
     fun waitForText(text: String, timeoutMs: Long = 10_000) = waitFor(hasText(text, substring = true), timeoutMs)
 
-    /** Waits until the focused node matches [matcher]. */
+    /** Waits until the focused node matches [matcher]; a timeout names what has focus instead. */
     fun waitForFocus(matcher: SemanticsMatcher, timeoutMs: Long = 5_000) {
-        compose.waitUntil(timeoutMs) { compose.onAllNodes(matcher and isFocused()).fetchSemanticsNodes().isNotEmpty() }
+        try {
+            compose.waitUntil(timeoutMs) { compose.onAllNodes(matcher and isFocused()).fetchSemanticsNodes().isNotEmpty() }
+        } catch (timeout: Throwable) {
+            captureScreen()
+            throw AssertionError("focus never reached ${matcher.description}; it is on \"${focused()}\"", timeout)
+        }
     }
 
     fun waitForFocusOn(description: String, timeoutMs: Long = 5_000) =
@@ -59,9 +83,17 @@ internal class TvRemote(private val compose: ComposeTestRule) {
         return node.config.getOrElse(SemanticsProperties.Text) { emptyList() }.joinToString { it.text }
     }
 
+    /** True when a rail entry (the only controls with a selected state there) has focus. */
+    fun railHasFocus(): Boolean =
+        compose.onAllNodes(isFocused() and SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected))
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+
     /** True when the rail entry named [label] is the current destination. */
     fun railShows(label: String): Boolean =
         compose.onAllNodes(hasContentDescription(label) and SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
             .fetchSemanticsNodes()
             .isNotEmpty()
 }
+
+private const val LogTag = "TvRemote"

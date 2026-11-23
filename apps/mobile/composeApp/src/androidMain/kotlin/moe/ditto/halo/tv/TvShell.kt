@@ -24,16 +24,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -54,6 +56,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import kotlin.reflect.KClass
+import kotlinx.coroutines.delay
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.screens.AccountAvatar
 import moe.ditto.halo.shell.DetailRoute
@@ -68,6 +71,7 @@ import moe.ditto.halo.shell.StreamsRoute
 import moe.ditto.halo.tv.kit.TvAction
 import moe.ditto.halo.tv.kit.TvButton
 import moe.ditto.halo.tv.kit.TvKeyMap
+import moe.ditto.halo.tv.kit.LocalTvFocusTracker
 import moe.ditto.halo.tv.kit.TvConfirmDialog
 import moe.ditto.halo.tv.kit.defaultFocus
 import moe.ditto.halo.tv.kit.rememberTvFocusMemory
@@ -130,14 +134,39 @@ internal fun TvShellFrame(
     val railVisible = destination != null && CoveringRoutes.none { destination.isRoute(it) }
     var askExit by remember { mutableStateOf(false) }
     val contentFocus = remember { FocusRequester() }
+    val tracker = LocalTvFocusTracker.current
+    // The screen control that had focus when Left took it into the rail.
+    var returnTo by remember { mutableStateOf<FocusRequester?>(null) }
+    val focusContent: () -> Unit = {
+        val back = returnTo
+        val restored = back != null && runCatching { back.requestFocus(FocusDirection.Enter) }.getOrDefault(false)
+        if (!restored) runCatching { contentFocus.requestFocus(FocusDirection.Enter) }
+    }
+    var railFocused by remember { mutableStateOf(false) }
+    // True while the rail has focus because Left put it there.
+    var railChosen by remember { mutableStateOf(false) }
+    // A screen change can leave focus in the rail without the viewer asking
+    // (the old screen's focused control went away mid-change and the window
+    // took focus back). Once the change has settled, the new screen gets it,
+    // tried again for a while: a screen still loading has nothing to focus.
+    LaunchedEffect(entry?.id) {
+        delay(SettleMs)
+        repeat(SettleTries) {
+            if (!railFocused || railChosen) return@LaunchedEffect
+            returnTo = null
+            focusContent()
+            delay(SettleRetryMs)
+        }
+    }
 
     BackHandler(enabled = onOtherTopLevel) { navController.switchTo(HomeRoute) }
     BackHandler(enabled = onHome && !askExit) { askExit = true }
 
     Box(Modifier.fillMaxSize().background(HaloColors.Background)) {
-        // One group with focus memory: Right from the rail returns to the item
-        // that had focus before Left took it there.
-        Box(Modifier.fillMaxSize().focusRequester(contentFocus).focusRestorer().focusGroup()) {
+        // One group, so the rail can hand focus to the screen. Not a focus
+        // restorer: during a screen change the old screen is still drawn,
+        // and restoring into it would lose focus once it is gone.
+        Box(Modifier.fillMaxSize().focusRequester(contentFocus).focusGroup()) {
             content()
         }
         AnimatedVisibility(visible = railVisible, enter = fadeIn(), exit = fadeOut()) {
@@ -148,7 +177,15 @@ internal fun TvShellFrame(
                     if (!destination.isRoute(item.route::class)) navController.switchTo(item.route)
                 },
                 onAccount = { navController.switchTo(SettingsRoute) },
-                onLeave = { runCatching { contentFocus.requestFocus() } },
+                onEnterFromScreen = {
+                    returnTo = tracker.last
+                    railChosen = true
+                },
+                onLeave = focusContent,
+                onFocusChange = { focused ->
+                    railFocused = focused
+                    if (!focused) railChosen = false
+                },
             )
         }
         if (askExit) {
@@ -180,7 +217,14 @@ private fun TvRail(
     isCurrent: (TvRailItem) -> Boolean,
     onSelect: (TvRailItem) -> Unit,
     onAccount: () -> Unit,
-    /** Right from the rail: the widened rail covers the content's edge, so this goes there directly. */
+    /** Left into the rail; called while the screen control still has focus. */
+    onEnterFromScreen: () -> Unit,
+    onFocusChange: (Boolean) -> Unit,
+    /**
+     * Right from the rail, or focus arriving there any way but Left: back to
+     * the screen. The widened rail covers the screen's edge, so a plain focus
+     * search would find nothing to its right.
+     */
     onLeave: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -191,6 +235,9 @@ private fun TvRail(
     )
     val requesters = remember { TvRailItems.associateWith { FocusRequester() } }
     val current = TvRailItems.firstOrNull(isCurrent)
+    // Read when focus arrives, not when the rule was set up: by then the
+    // current destination may have changed.
+    val currentRequester by rememberUpdatedState(current?.let { requesters[it] })
 
     Box(
         Modifier
@@ -208,7 +255,10 @@ private fun TvRail(
             Modifier
                 .fillMaxHeight()
                 .padding(start = TvMetrics.SideMargin - 8.dp, top = TvMetrics.VerticalMargin + 4.dp, bottom = TvMetrics.VerticalMargin)
-                .onFocusChanged { expanded = it.hasFocus }
+                .onFocusChanged {
+                    expanded = it.hasFocus
+                    onFocusChange(it.hasFocus)
+                }
                 .onPreviewKeyEvent { event ->
                     val right = TvKeyMap.actionFor(event.nativeKeyEvent.keyCode) == TvAction.Right
                     if (right && event.type == KeyEventType.KeyDown) onLeave()
@@ -216,10 +266,20 @@ private fun TvRail(
                 }
                 .focusProperties {
                     onEnter = {
-                        val target = current?.let { requesters[it] }
-                        if (target != null) {
-                            cancelFocusChange()
-                            target.requestFocus()
+                        // A remote enters the rail with Left; it lands on
+                        // the current destination. Focus can also arrive
+                        // when the window takes focus back after a screen
+                        // lost it: that is let through (refusing it would
+                        // leave the window without focus and the remote
+                        // dead), and TvShellFrame hands it to the screen
+                        // once the screen has settled.
+                        val target = currentRequester
+                        if (requestedFocusDirection == FocusDirection.Left) {
+                            onEnterFromScreen()
+                            if (target != null) {
+                                cancelFocusChange()
+                                target.requestFocus()
+                            }
                         }
                     }
                 }
@@ -318,3 +378,10 @@ internal fun TvPlaceholderScreen(title: String) {
         TvButton("Coming soon", onClick = {}, modifier = Modifier.defaultFocus(memory, "placeholder"))
     }
 }
+
+/** Longer than a screen change's cross-fade. */
+private const val SettleMs = 400L
+
+/** Retries every [SettleRetryMs] for up to about five seconds. */
+private const val SettleTries = 40
+private const val SettleRetryMs = 120L
