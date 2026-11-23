@@ -91,6 +91,8 @@ private fun TvRoot(dependencies: PlatformDependencies, audioOutput: TvAudioOutpu
                     playerSystem = dependencies.playerSystemPort,
                     playbackPreferences = playbackPreferences,
                     audioOutput = audioOutput,
+                    onSignOut = { session.sessionController.signOut() },
+                    onSignIn = { session.sessionController.startSignIn() },
                     onExitApp = onExitApp,
                 )
             }

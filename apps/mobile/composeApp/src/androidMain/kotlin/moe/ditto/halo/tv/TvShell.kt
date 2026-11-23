@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -69,12 +68,9 @@ import moe.ditto.halo.shell.SettingsRoute
 import moe.ditto.halo.shell.ShelfRoute
 import moe.ditto.halo.shell.StreamsRoute
 import moe.ditto.halo.tv.kit.TvAction
-import moe.ditto.halo.tv.kit.TvButton
 import moe.ditto.halo.tv.kit.TvKeyMap
 import moe.ditto.halo.tv.kit.LocalTvFocusTracker
 import moe.ditto.halo.tv.kit.TvConfirmDialog
-import moe.ditto.halo.tv.kit.defaultFocus
-import moe.ditto.halo.tv.kit.rememberTvFocusMemory
 import moe.ditto.halo.tv.kit.TvMetrics
 import moe.ditto.halo.tv.kit.TvSurface
 import moe.ditto.halo.tv.kit.TvSurfaceColors
@@ -385,19 +381,6 @@ private fun RailEntry(
                     .background(HaloColors.Accent, RoundedCornerShape(2.dp)),
             )
         }
-    }
-}
-
-/** A placeholder screen body while a destination has no TV screen yet. */
-@Composable
-internal fun TvPlaceholderScreen(title: String) {
-    val memory = rememberTvFocusMemory()
-    Column(
-        Modifier.fillMaxWidth().padding(start = TvMetrics.ContentStart, top = TvMetrics.VerticalMargin),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text(title, color = HaloColors.Text, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
-        TvButton("Coming soon", onClick = {}, modifier = Modifier.defaultFocus(memory, "placeholder"))
     }
 }
 

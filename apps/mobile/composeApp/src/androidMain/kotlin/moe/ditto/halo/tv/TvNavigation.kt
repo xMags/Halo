@@ -25,6 +25,7 @@ import moe.ditto.halo.shell.playbackContext
 import moe.ditto.halo.shell.sourcesRoute
 import moe.ditto.halo.shell.withContext
 import moe.ditto.halo.tv.player.TvAudioOutput
+import moe.ditto.halo.tv.settings.TvSettingsScreen
 import moe.ditto.halo.tv.player.TvPlaybackPreferences
 import moe.ditto.halo.tv.player.TvPlayerScreen
 import moe.ditto.halo.screens.ShelfSnapshots
@@ -65,6 +66,9 @@ internal fun TvShell(
     /** This TV's own playback settings (frame rate, surround). */
     playbackPreferences: TvPlaybackPreferences,
     audioOutput: TvAudioOutput,
+    onSignOut: () -> Unit,
+    /** Halo without an account: back to the sign-in screen. */
+    onSignIn: () -> Unit,
     onExitApp: () -> Unit,
 ) {
     val navController = rememberNavController()
@@ -121,7 +125,9 @@ internal fun TvShell(
                         onHistoryTaken = { libraryHistory = false },
                     )
                 }
-                composable<SettingsRoute> { TvPlaceholderScreen("Settings") }
+                composable<SettingsRoute> {
+                    TvSettingsScreen(graph = graph, preferences = playbackPreferences, onSignOut = onSignOut, onSignIn = onSignIn)
+                }
                 composable<DetailRoute> { entry ->
                     val route = entry.toRoute<DetailRoute>()
                     TvDetailScreen(graph, route.type, route.metaId, navigation, titleMenus.menus)
