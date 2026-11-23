@@ -32,6 +32,7 @@ import moe.ditto.halo.shell.movieSources
 import moe.ditto.halo.tv.browse.TvBrowseNavigation
 import moe.ditto.halo.tv.browse.TvDetailScreen
 import moe.ditto.halo.tv.browse.TvHomeScreen
+import moe.ditto.halo.tv.browse.TvLibraryScreen
 import moe.ditto.halo.tv.browse.TvSourcesScreen
 
 /**
@@ -89,7 +90,15 @@ internal fun TvShell(
             ) {
                 composable<HomeRoute> { TvHomeScreen(graph, navigation, titleMenus.menus) }
                 composable<SearchRoute> { TvPlaceholderScreen("Search") }
-                composable<LibraryRoute> { TvPlaceholderScreen("Library") }
+                composable<LibraryRoute> {
+                    TvLibraryScreen(
+                        graph = graph,
+                        navigation = navigation,
+                        menus = titleMenus.menus,
+                        openHistory = libraryHistory,
+                        onHistoryTaken = { libraryHistory = false },
+                    )
+                }
                 composable<SettingsRoute> { TvPlaceholderScreen("Settings") }
                 composable<DetailRoute> { entry ->
                     val route = entry.toRoute<DetailRoute>()
