@@ -52,11 +52,14 @@ internal fun Modifier.rememberFocus(memory: TvFocusMemory, key: String): Modifie
     val tracker = LocalTvFocusTracker.current
     LaunchedEffect(memory, key) {
         if (memory.key != key) return@LaunchedEffect
-        claimFocus(memory, requester, tracker)
+        claimFocus(memory, requester, tracker, key)
     }
     return this
         .focusRequester(requester)
-        .onFocusChanged { if (it.isFocused) memory.key = key }
+        // Not while a restore is pending: the system can place focus on the
+        // first control before the remembered one exists, and recording that
+        // would forget the viewer's place.
+        .onFocusChanged { if (it.isFocused && !memory.pending) memory.key = key }
 }
 
 /**
@@ -73,7 +76,7 @@ internal fun Modifier.defaultFocus(memory: TvFocusMemory, key: String, ready: Bo
         // every chance (it may be gone, a title removed from a row).
         val remembered = memory.key
         delay(if (remembered == null || remembered == key) RestoreGraceMs else RememberedWaitMs)
-        claimFocus(memory, requester, tracker)
+        claimFocus(memory, requester, tracker, key)
     }
     return this.rememberFocus(memory, key).focusRequester(requester)
 }
@@ -84,7 +87,7 @@ internal fun Modifier.defaultFocus(memory: TvFocusMemory, key: String, ready: Bo
  * an item in a lazy row can be composed a frame before it is placed, and a
  * request made then fails. Never while the viewer has gone to the rail.
  */
-private suspend fun claimFocus(memory: TvFocusMemory, requester: FocusRequester, tracker: TvFocusTracker) {
+private suspend fun claimFocus(memory: TvFocusMemory, requester: FocusRequester, tracker: TvFocusTracker, key: String) {
     withTimeoutOrNull(ClaimMs) {
         while (memory.pending) {
             if (tracker.inRailByChoice) {
@@ -93,6 +96,7 @@ private suspend fun claimFocus(memory: TvFocusMemory, requester: FocusRequester,
             }
             if (runCatching { requester.requestFocus(FocusDirection.Enter) }.getOrDefault(false)) {
                 memory.pending = false
+                memory.key = key
                 return@withTimeoutOrNull
             }
             withFrameNanos { }
@@ -102,8 +106,13 @@ private suspend fun claimFocus(memory: TvFocusMemory, requester: FocusRequester,
 
 private const val RestoreGraceMs = 120L
 
-/** Longer than a remembered item's own [ClaimMs] of trying. */
-private const val RememberedWaitMs = 1_100L
+/**
+ * How long the default waits for a remembered item. Longer than that item's
+ * own [ClaimMs] of trying, and long enough for a list loaded after the page
+ * (a season's episodes) to arrive on a slow connection: the default taking
+ * focus first would lose the viewer's place.
+ */
+private const val RememberedWaitMs = 2_500L
 
 /** How long an item keeps asking, frame by frame. */
 private const val ClaimMs = 900L

@@ -117,12 +117,11 @@ class TvPlayerInstrumentedTest {
         remote.select()
         remote.back()
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasText("Off")).fetchSemanticsNodes().isEmpty() }
+        // Closing a panel hands focus back to the button that opened it.
+        remote.waitForFocusOn("Subtitles")
 
-        // Audio: the first track, from the panel.
-        showControls()
-        remote.waitForFocusOn("Position")
-        remote.down()
-        remote.right()
+        // Audio: the first track, from the panel next door.
+        remote.left()
         remote.waitForFocusOn("Audio")
         remote.select()
         remote.waitForText("Delay")

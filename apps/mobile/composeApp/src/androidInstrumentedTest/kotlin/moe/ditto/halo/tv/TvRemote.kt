@@ -74,6 +74,28 @@ internal class TvRemote(private val compose: ComposeTestRule) {
     fun waitForFocusOn(description: String, timeoutMs: Long = 5_000) =
         waitForFocus(hasContentDescription(description, substring = true) or hasText(description, substring = true), timeoutMs)
 
+    /**
+     * Waits until focus has stayed on one control for [quietMs]: a screen
+     * still loading (or recovering from a failed load) moves it as content
+     * arrives.
+     */
+    fun waitForSteadyFocus(quietMs: Long = 1_500, timeoutMs: Long = 15_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var last = focused()
+        var since = System.currentTimeMillis()
+        while (System.currentTimeMillis() < deadline) {
+            Thread.sleep(250)
+            compose.waitForIdle()
+            val now = focused()
+            if (now != last) {
+                last = now
+                since = System.currentTimeMillis()
+            } else if (System.currentTimeMillis() - since >= quietMs) {
+                return
+            }
+        }
+    }
+
     /** The focused node's description, or its text when it has none. */
     fun focused(): String {
         val nodes = compose.onAllNodes(isFocused()).fetchSemanticsNodes()

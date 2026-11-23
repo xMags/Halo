@@ -84,6 +84,7 @@ class TvShellInstrumentedTest {
 
     @Test
     fun rightFromTheRailReturnsToWhereFocusWas() {
+        remote.waitForSteadyFocus()
         val before = remote.focused()
         remote.left()
         remote.waitForFocusOn("Home")
