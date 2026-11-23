@@ -18,7 +18,7 @@
 
   <p>
     <a href="https://github.com/xMags/Halo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/xMags/Halo?style=for-the-badge&labelColor=20232a&color=0A84FF&label=release"></a>
-    <img alt="Platforms" src="https://img.shields.io/badge/platforms-Android%20%7C%20iOS%20%7C%20Windows-0A84FF?style=for-the-badge&labelColor=20232a">
+    <img alt="Platforms" src="https://img.shields.io/badge/platforms-Android%20%7C%20Android%20TV%20%7C%20iOS%20%7C%20Windows-0A84FF?style=for-the-badge&labelColor=20232a">
     <img alt="Addon protocol" src="https://img.shields.io/badge/addons-Stremio%20protocol-8B5CF6?style=for-the-badge&labelColor=20232a">
     <img alt="Playback" src="https://img.shields.io/badge/playback-libmpv-16A34A?style=for-the-badge&labelColor=20232a">
     <img alt="Backend" src="https://img.shields.io/badge/backend-self--hosted-F97316?style=for-the-badge&labelColor=20232a">
@@ -99,6 +99,7 @@ That gives you one private source of truth without turning the server into a ban
 - Download media to Windows, Android or iOS for offline playback, with durable background transfers that resume after a restart.
 - On Windows, each title gets its own folder in your downloads, with its logo and art saved beside the video so finished downloads look right offline.
 - Adapt the native mobile interface across phones, tablets, portrait, and landscape layouts.
+- Watch on Android TV and Fire TV with the remote alone, signing in by scanning a QR code with your phone.
 - Keep administrator-managed provider transport URLs out of non-admin responses through opaque addon identifiers.
 
 > [!NOTE]
@@ -108,7 +109,7 @@ That gives you one private source of truth without turning the server into a ban
 
 | Component | Current status | Implementation |
 | --- | --- | --- |
-| `apps/mobile` | Mobile client for Android and iOS. Browsing, playback, sync, settings, and durable downloads are implemented. | Kotlin Multiplatform, Compose Multiplatform, Ktor, libmpv |
+| `apps/mobile` | Mobile client for Android and iOS, and a TV app for Android TV and Fire TV in the same Android APK. Browsing, playback, sync, settings, and durable downloads (phones and tablets) are implemented. | Kotlin Multiplatform, Compose Multiplatform, Ktor, libmpv |
 | `apps/desktop` | Windows client for x64 and ARM: browsing, search, playback, sync, settings, and offline downloads are implemented. | Tauri 2, React, TypeScript, Rust, WebView2, libmpv |
 | `apps/api` | Self-hosted API with local and OIDC authentication, SQLite persistence, addon resolution, and per-user synchronization. | Node.js 22, Hono, Drizzle ORM, SQLite |
 | `packages/core` | Shared Stremio protocol types, addon client, subtitle tools, and TypeScript API client. | TypeScript |

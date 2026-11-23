@@ -77,6 +77,40 @@ launch overrides to that port, so it does not inherit the default media route on
 debug-only: a release build ignores them, because any app can start the exported
 launcher activity.
 
+## Android TV and Fire TV
+
+The same APK carries a TV app: `tv/TvActivity` is the `LEANBACK_LAUNCHER`
+activity (with its own `taskAffinity` and banner), so a TV launcher lists only
+it and a phone launcher only `MainActivity`. Its code lives in
+`composeApp/src/androidMain/kotlin/moe/ditto/halo/tv/`: a small remote-driven
+component kit (`kit/`), the shell and rail, the browse screens, the player
+(`player/`: remote controls, media session, audio focus, frame-rate matching
+and surround passthrough), sign-in with a QR code approved on a phone
+(`signin/`), and Settings. Everything below the screens (session, repositories,
+player wiring, settings rules) is the phone's own shared code. The TV gets its
+own mpv profile (`MpvProfile.Tv`: direct `mediacodec` decoding, a smaller
+demuxer cache) and no Downloads. Its device-only settings (match frame rate,
+surround sound) are kept on the device, never synced.
+
+A headless TV emulator for development (API 36 Android TV image, 1080p):
+
+```powershell
+emulator -avd Halo_TV_1080p -port 5580 -no-window -no-snapshot-save -no-audio -no-boot-anim -gpu host
+```
+
+TV instrumented tests need the fixture API (`pnpm --filter @halo/api
+dev:fixtures --media <file>` on :18790, then `adb reverse tcp:18790
+tcp:18790`) and must name the TV device, since connected tasks otherwise run
+on every attached device:
+
+```powershell
+$env:ANDROID_SERIAL = "emulator-5580"
+.\gradlew.bat :composeApp:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.package=moe.ditto.halo.tv"
+```
+
+A TV build for 32-bit sticks adds the older ABI:
+`.\gradlew.bat :composeApp:assembleRelease "-PhaloAbis=armeabi-v7a,arm64-v8a"`.
+
 ## Local commands
 
 Windows metadata and compile checks:

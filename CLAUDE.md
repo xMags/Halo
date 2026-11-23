@@ -17,7 +17,7 @@ no build orchestration on purpose.
 | --- | --- | --- |
 | `packages/core` | Addon protocol client, addon resolvers shared by the API and the on-device backend, subtitle utils (OpenSubtitles hash, srt→vtt, languages), typed API client and `DeviceBackend`; Search's rules (`search/`: the reveal-once board and pasted-input classifier), people and TMDB (`people/`) and magnet readers and card policy (`magnets/`) | `pnpm --filter @halo/core typecheck` + `pnpm --filter @halo/core test` |
 | `apps/api` | Hono + Drizzle/better-sqlite3 sync backend | `pnpm --filter @halo/api test` (vitest), then curl |
-| `apps/mobile` | Compose Multiplatform client (iOS-first, Android kept compiling) over libmpv. Standalone Gradle project outside the pnpm workspace; its `README.md` is the guide | `.\gradlew.bat :composeApp:compileCommonMainKotlinMetadata` and `:composeApp:compileTestKotlinIosSimulatorArm64` (Apple framework and XCUITests need macOS) |
+| `apps/mobile` | Compose Multiplatform client (iOS-first, Android kept compiling) over libmpv, plus an Android TV / Fire TV app in the same APK (`androidMain/.../tv/`). Standalone Gradle project outside the pnpm workspace; its `README.md` is the guide | `.\gradlew.bat :composeApp:compileCommonMainKotlinMetadata` and `:composeApp:compileTestKotlinIosSimulatorArm64` (Apple framework and XCUITests need macOS) |
 | `apps/desktop` | Tauri v2 client (Windows-first), React UI over mpv, device-local downloads. `src/` is grouped by feature (auth, home, search, browse, sources, player, downloads, settings); styles are `src/styles/` partials | typecheck + `pnpm --filter @halo/desktop test` + `cargo build` in `src-tauri` (needs `vendor/mpv/libmpv-2.dll`, see `vendor/README.md`) |
 
 Dev: `pnpm dev` (api :8787, needs `apps/api/.env` from `.env.example`).
@@ -106,7 +106,13 @@ different server is wiped locally at startup, so back up the WebView2 profile's
     only among local rows (partial index) — an IdP rename must never collide.
     `POST /auth/refresh` slides the session (a valid token buys a fresh one, up
     to a 90-day `auth_time` cap); revocation = deleting the user, which kills
-    tokens on the next request's row lookup.
+    tokens on the next request's row lookup. A TV signs in with a code
+    approved on a phone (`/auth/config` says `deviceSignIn: true`):
+    `POST /auth/device/start` and `POST /auth/device/token` (RFC 8628's
+    answers), approved on the server's own script-free page `GET /auth/device`
+    with username and password (`POST /auth/device/approve`, sharing the
+    login limiter and timing decoy). Pending codes live in memory only,
+    hashed, capped, and released once (`src/deviceSignIn.ts`).
   - **Other modes** are for sign-in add-ons, not this server. An app can
     bundle one for a further `/auth/config` mode from the git-ignored `local/`
     folder at the repo root: desktop loads `local/desktop/signInAddons.ts`
