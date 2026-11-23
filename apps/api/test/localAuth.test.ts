@@ -11,7 +11,7 @@ describe('auth config discovery', () => {
     const { app } = makeLocalApp()
     const res = await app.request('/auth/config')
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ mode: 'local' })
+    expect(await res.json()).toEqual({ mode: 'local', deviceSignIn: true })
   })
 
   it('an OIDC deployment exposes no local auth routes', async () => {

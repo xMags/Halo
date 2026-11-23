@@ -60,6 +60,8 @@ export interface OidcAuthConfig {
 /** Local-accounts deployment: the app shows a username/password form and posts to /auth/login. */
 export interface LocalAuthConfig {
   mode: 'local'
+  /** True when a TV can sign in with a code approved on a phone (/auth/device). */
+  deviceSignIn?: boolean
 }
 
 /** How the server at /auth/config says it authenticates. */

@@ -41,6 +41,8 @@ import type { Db } from './db'
 import { globalAddons, libraryItems, userAddons, users, userSettings, watchStates } from './schema'
 import { logAddonFailure, type AddonFailureLogger } from './addonResolution'
 import { ProxyTargetError } from './proxyGuard'
+import { DEVICE_CODE_TTL_MS, DEVICE_POLL_INTERVAL_SEC, DeviceSignInStore, formatUserCode, normalizeUserCode } from './deviceSignIn'
+import { DEVICE_PAGE_HEADERS, approvalPage, resultPage } from './deviceSignInPage'
 import { WindowRateLimiter } from './rateLimit'
 import { safeFetch } from './safeFetch'
 
@@ -82,6 +84,24 @@ const loginSchema = z.object({
   username: z.string().min(1).max(MAX_USERNAME_LENGTH),
   password: z.string().min(1).max(MAX_PASSWORD_LENGTH),
 })
+const deviceTokenSchema = z.object({ device_code: z.string().min(1).max(256) })
+const deviceApproveSchema = z.object({
+  code: z.string().max(32),
+  username: z.string().min(1).max(MAX_USERNAME_LENGTH),
+  password: z.string().min(1).max(MAX_PASSWORD_LENGTH),
+  decision: z.enum(['approve', 'deny']),
+})
+
+/**
+ * The caller's address as the socket sees it, for per-address limits. Not a
+ * forwarded header, which any caller could set; behind a reverse proxy every
+ * caller shares the proxy's address, which only makes the limit stricter.
+ */
+function clientAddress(c: Context): string {
+  const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined
+  return env?.incoming?.socket?.remoteAddress ?? 'unknown'
+}
+
 const passwordChangeSchema = z.object({
   current: z.string().min(1).max(MAX_PASSWORD_LENGTH),
   next: z.string().min(8).max(MAX_PASSWORD_LENGTH),
@@ -248,7 +268,7 @@ export function createApp(config: AppConfig) {
   app.get('/auth/config', (c) =>
     config.auth.mode === 'oidc'
       ? c.json({ mode: 'oidc', issuer: config.auth.issuer, clientId: config.auth.clientId, scopes: OIDC_SCOPES })
-      : c.json({ mode: 'local' }),
+      : c.json({ mode: 'local', deviceSignIn: true }),
   )
 
   const authed = new Hono<{ Variables: AuthVariables }>()
@@ -290,6 +310,103 @@ export function createApp(config: AppConfig) {
       }
       loginLimiter.reset(username)
       return c.json(await issueLocalToken(jwtSecret, row!.id, Math.floor(Date.now() / 1000)))
+    })
+
+    // Signing in on a TV: the TV shows a code, the viewer approves it on a
+    // phone at /auth/device with their username and password, and the TV
+    // polls /auth/device/token until the session is ready (see deviceSignIn.ts).
+    const deviceGrants = new DeviceSignInStore()
+    const deviceStartLimiter = new WindowRateLimiter(10, 10 * 60_000)
+    const devicePollLimiter = new WindowRateLimiter(60, 60_000)
+    const deviceApproveLimiter = new WindowRateLimiter(30, 10 * 60_000)
+    const noStore = (c: Context) => {
+      for (const [name, value] of Object.entries(DEVICE_PAGE_HEADERS)) c.header(name, value)
+    }
+    const deviceError = (c: Context, error: string, status: 400 | 429 | 503 = 400) => {
+      noStore(c)
+      return c.json({ error }, status)
+    }
+
+    app.post('/auth/device/start', (c) => {
+      const wait = deviceStartLimiter.take(clientAddress(c))
+      if (wait !== null) {
+        c.header('Retry-After', String(wait))
+        return deviceError(c, 'rate_limited', 429)
+      }
+      const started = deviceGrants.start()
+      if (!started) return deviceError(c, 'temporarily_unavailable', 503)
+      const page = new URL('/auth/device', c.req.url)
+      noStore(c)
+      return c.json({
+        device_code: started.deviceCode,
+        user_code: formatUserCode(started.userCode),
+        verification_uri: page.toString(),
+        verification_uri_complete: `${page}?code=${started.userCode}`,
+        expires_in: DEVICE_CODE_TTL_MS / 1000,
+        interval: DEVICE_POLL_INTERVAL_SEC,
+      })
+    })
+
+    app.post('/auth/device/token', async (c) => {
+      if (devicePollLimiter.take(clientAddress(c)) !== null) return deviceError(c, 'slow_down')
+      const body = deviceTokenSchema.safeParse(await c.req.json().catch(() => null))
+      if (!body.success) return deviceError(c, 'invalid_request')
+      const answer = deviceGrants.poll(body.data.device_code)
+      switch (answer.status) {
+        case 'pending':
+          return deviceError(c, 'authorization_pending')
+        case 'slow_down':
+          return deviceError(c, 'slow_down')
+        case 'denied':
+          return deviceError(c, 'access_denied')
+        case 'expired':
+          return deviceError(c, 'expired_token')
+        case 'unknown':
+          return deviceError(c, 'invalid_grant')
+      }
+      // The account may have been deleted since it approved.
+      const row = db.select({ id: users.id }).from(users).where(eq(users.id, answer.userId)).get()
+      if (!row) return deviceError(c, 'access_denied')
+      noStore(c)
+      return c.json(await issueLocalToken(jwtSecret, row.id, Math.floor(Date.now() / 1000)))
+    })
+
+    app.get('/auth/device', (c) => {
+      for (const [name, value] of Object.entries(DEVICE_PAGE_HEADERS)) c.header(name, value)
+      // Opening the page never decides anything: it only fills in the code.
+      return c.html(approvalPage(normalizeUserCode(c.req.query('code') ?? '') ?? ''))
+    })
+
+    app.post('/auth/device/approve', async (c) => {
+      for (const [name, value] of Object.entries(DEVICE_PAGE_HEADERS)) c.header(name, value)
+      const form = deviceApproveSchema.safeParse(await c.req.parseBody().catch(() => null))
+      if (!form.success) {
+        return c.html(approvalPage('', { kind: 'error', text: 'Enter the code on your TV, your username and your password.' }), 400)
+      }
+      const { username, password, decision } = form.data
+      const code = normalizeUserCode(form.data.code)
+      if (deviceApproveLimiter.take(clientAddress(c)) !== null || loginLimiter.isBlocked(username)) {
+        return c.html(approvalPage(code ?? '', { kind: 'error', text: 'Too many attempts. Try again later.' }), 429)
+      }
+      // The same check as /auth/login, with the same constant hashing work.
+      const row = db
+        .select()
+        .from(users)
+        .where(and(eq(users.username, username.toLowerCase()), isNotNull(users.passwordHash)))
+        .get()
+      const ok = verifyPassword(password, row?.passwordHash ?? TIMING_DECOY) && !!row
+      if (!ok) {
+        loginLimiter.recordFailure(username)
+        return c.html(approvalPage(code ?? '', { kind: 'error', text: 'Wrong username or password.' }), 401)
+      }
+      loginLimiter.reset(username)
+      if (!code || !deviceGrants.decide(code, decision === 'approve' ? row!.id : null)) {
+        return c.html(
+          approvalPage('', { kind: 'error', text: 'That code has expired or was already used. Get a new code on your TV.' }),
+          404,
+        )
+      }
+      return c.html(resultPage(decision === 'approve'))
     })
 
     // Sliding refresh: a still-valid token buys a fresh 30-day one, so active
