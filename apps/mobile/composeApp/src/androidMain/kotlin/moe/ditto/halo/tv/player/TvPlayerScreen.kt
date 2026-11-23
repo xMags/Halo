@@ -126,6 +126,7 @@ internal fun TvPlayerScreen(
         // The TV's controls stand taller than the phone's.
         captionLiftPercent = CaptionLiftPercent,
     )
+    TvPlaybackSystem(playback = playback, session = session, scope = scope, onPausedFromOutside = controller::showChrome)
     val state = session.state
     val paused = state.status != PlaybackStatus.Playing
     val medal = remember(state.videoFormat) { classifyVideoQuality(state.videoFormat) }
