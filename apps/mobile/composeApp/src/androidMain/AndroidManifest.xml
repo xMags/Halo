@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- TVs have neither; declaring them optional keeps the app installable there. -->
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
     <application
         android:name=".HaloApplication"
         android:allowBackup="false"
@@ -55,6 +59,19 @@
                     android:scheme="halo"
                     android:host="oauth"
                     android:path="${signInAddonCallbackPath}" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".tv.TvActivity"
+            android:exported="true"
+            android:banner="@drawable/tv_banner"
+            android:launchMode="singleTask"
+            android:taskAffinity="moe.ditto.halo.tv"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|smallestScreenSize|density|uiMode|fontScale|locale|layoutDirection"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
         <receiver

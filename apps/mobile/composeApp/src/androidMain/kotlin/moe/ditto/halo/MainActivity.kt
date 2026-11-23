@@ -2,7 +2,6 @@ package moe.ditto.halo
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
@@ -11,19 +10,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
 import moe.ditto.halo.auth.AndroidBrowserSignIn
-import moe.ditto.halo.auth.AndroidSecureStorage
-import moe.ditto.halo.auth.KtorAndroidOidcWire
-import moe.ditto.halo.auth.KtorAuthConfigSource
-import moe.ditto.halo.downloads.AndroidDownloadStorage
 import moe.ditto.halo.downloads.AndroidDownloadNotifications
-import moe.ditto.halo.player.AndroidPlayerSystemPort
 import moe.ditto.halo.player.AndroidVideoFrameSource
-import moe.ditto.halo.player.SubtitleFontLibrary
-import moe.ditto.halo.storage.AndroidPreferencesStore
-import java.io.File
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 
@@ -40,86 +29,35 @@ import kotlinx.coroutines.flow.receiveAsFlow
  */
 class MainActivity : ComponentActivity() {
 
-    private lateinit var playerHost: AndroidMpvPlayerHost
-    private lateinit var playerSystemPort: AndroidPlayerSystemPort
-    private lateinit var authHost: AndroidOidcAuthHost
+    private lateinit var hosts: AndroidActivityHosts
     private lateinit var browserSignIn: AndroidBrowserSignIn
-    private lateinit var authHttpClient: HttpClient
     private val openDownloads = Channel<Unit>(Channel.UNLIMITED)
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { /* A denied prompt does not block WorkManager. */ }
 
     /** Instrumentation seam that reads the initialized core, not an option list. */
-    internal fun playerMutedForTest(): Boolean? = playerHost.mutedForTest
+    internal fun playerMutedForTest(): Boolean? = hosts.playerHost.mutedForTest
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        authHttpClient = HttpClient(OkHttp)
-        val secureStorage = AndroidSecureStorage(applicationContext)
-        authHost = AndroidOidcAuthHost(
-            activity = this,
-            storage = secureStorage,
-            wire = KtorAndroidOidcWire(authHttpClient),
-        )
+        hosts = AndroidActivityHosts(this)
         browserSignIn = AndroidBrowserSignIn(this)
-        playerHost = AndroidMpvPlayerHost(applicationContext)
-        playerSystemPort = AndroidPlayerSystemPort(this)
         val haloApplication = application as HaloApplication
         haloApplication.backgroundDownloadPort.attachNotificationPermissionRequester {
             requestNotificationPermission()
         }
 
-        val diagnosticsEnabled =
-            (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-
-        // Automation may point at a fixture and reset the session. A release
-        // build ignores these extras, since any app can start this activity.
-        val serverUrlExtra = intent?.getStringExtra("serverUrl")
-        val resetSessionExtra = intent?.getBooleanExtra("resetSession", false) ?: false
-        val launch = LaunchOverrides.resolve(
-            diagnosticsEnabled = diagnosticsEnabled,
-            serverUrl = serverUrlExtra,
-            mediaHttpBase = intent?.getStringExtra("mediaHttpBase"),
-            resetSession = resetSessionExtra,
-        )
-        // Every instrumented suite launches with a fixture server or a reset.
-        val automationLaunch = diagnosticsEnabled && (serverUrlExtra != null || resetSessionExtra)
-
-        val dependencies = PlatformDependencies(
-            authConfigSource = KtorAuthConfigSource(authHttpClient),
-            nativeHostRequests = authHost,
-            secureStorage = secureStorage,
-            keyValueStore = AndroidPreferencesStore(applicationContext),
-            // cacheDir, not filesDir: Android's auto-backup skips it and the
-            // system may reclaim it, which suits re-fetchable poster art.
-            imageCacheDirectory = File(applicationContext.cacheDir, "halo-images").path,
-            subtitleCacheDirectory = File(applicationContext.cacheDir, "halo-subtitles").path,
+        val dependencies = hosts.dependencies(
+            intent = intent,
+            browserSignIn = browserSignIn,
             // filesDir, not cacheDir: the system may reclaim a cache at any
             // time, and a downloaded film is the one thing here that cannot be
             // fetched again on demand.
             downloadStorage = haloApplication.downloadStorage,
-            downloadRuntime = haloApplication.downloadRuntime,
-            // The manifest's own debuggable flag, so a release build cannot
-            // reach the diagnostics harness. Read from ApplicationInfo rather
-            // than BuildConfig, which this module does not generate.
-            diagnosticsEnabled = diagnosticsEnabled,
-            playerPort = AndroidPlayerPort(playerHost),
-            playerSystemPort = playerSystemPort,
             videoFrameSource = AndroidVideoFrameSource(),
-            bundledSubtitleFonts = SubtitleFontLibrary.bundledFamilies(),
-            playerEvents = playerHost.playerEvents,
-            oidcSessionPort = authHost,
-            browserSignIn = browserSignIn,
-            authEvents = authHost.events,
             openDownloadsEvents = openDownloads.receiveAsFlow(),
-            nativePlayerSurface = AndroidNativePlayerSurface(playerHost),
-            nativeHostDiagnostics = AndroidNativeHostDiagnostics(authHost, playerHost),
-            initialServerUrl = launch.serverUrl,
-            mediaHttpBase = launch.mediaHttpBase,
-            resetPersistedSession = launch.resetSession,
-            automationLaunch = automationLaunch,
         )
 
         setContent {
@@ -142,17 +80,15 @@ class MainActivity : ComponentActivity() {
         newConfig: Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        if (::playerSystemPort.isInitialized) {
-            playerSystemPort.onPictureInPictureModeChanged(isInPictureInPictureMode)
+        if (::hosts.isInitialized) {
+            hosts.playerSystemPort.onPictureInPictureModeChanged(isInPictureInPictureMode)
         }
     }
 
     override fun onDestroy() {
         (application as? HaloApplication)?.backgroundDownloadPort
             ?.attachNotificationPermissionRequester(null)
-        if (::playerHost.isInitialized) playerHost.close()
-        authHost.close()
-        authHttpClient.close()
+        if (::hosts.isInitialized) hosts.close()
         super.onDestroy()
     }
 
@@ -168,7 +104,7 @@ class MainActivity : ComponentActivity() {
 
     /** Add-on sign-in first: its callback path is its own, and the OIDC host need never see it. */
     private fun handleAuthIntent(intent: Intent?) {
-        if (!browserSignIn.handleIntent(intent)) authHost.handleIntent(intent)
+        if (!browserSignIn.handleIntent(intent)) hosts.authHost.handleIntent(intent)
     }
 
     private fun handleDownloadNavigation(intent: Intent?) {
