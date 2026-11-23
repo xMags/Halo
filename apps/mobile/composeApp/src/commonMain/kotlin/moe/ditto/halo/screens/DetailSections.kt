@@ -207,16 +207,6 @@ private fun ImdbRating(rating: String) {
     }
 }
 
-/** What the page plays: Resume or Play, the episode, time left and how far in. */
-internal data class PlayTarget(
-    val label: String,
-    /** "34 MIN LEFT", when partway through. */
-    val left: String?,
-    /** 0..1 when partway through. */
-    val progress: Float?,
-    val enabled: Boolean,
-)
-
 /** The white play button, with the quality line under it. */
 @Composable
 internal fun PlayBlock(target: PlayTarget, availability: Availability?, loading: Boolean, onPlay: () -> Unit) {

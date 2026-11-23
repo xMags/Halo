@@ -68,7 +68,6 @@ import moe.ditto.halo.browse.ratedValue
 import moe.ditto.halo.browse.aboutRows
 import moe.ditto.halo.browse.creditsOf
 import moe.ditto.halo.browse.episodePages
-import moe.ditto.halo.browse.episodeTag
 import moe.ditto.halo.browse.episodesIn
 import moe.ditto.halo.browse.formatReleaseDate
 import moe.ditto.halo.browse.formatRuntime
@@ -404,31 +403,6 @@ internal fun DetailScreen(
             )
         }
     }
-}
-
-/** The newest unfinished row of this title whose video it still lists; a film's own, which it never lists. */
-private fun resumeStateOf(meta: MetaDetail, watchStates: List<WatchState>?, itemId: String): WatchState? {
-    val videoIds = meta.videos.mapTo(mutableSetOf()) { it.id }
-    return watchStates.orEmpty()
-        .filter { it.itemId == itemId && !it.watched && it.durationSec > 0 && it.positionSec > 0 }
-        .filter { videoIds.isEmpty() || it.videoId in videoIds }
-        .maxByOrNull { it.updatedAt }
-}
-
-private fun playTargetOf(isSeries: Boolean, video: MetaVideo?, resume: WatchState?, targetState: WatchState?): PlayTarget {
-    val partway = targetState?.takeIf { !it.watched && it.durationSec > 0 && it.positionSec > 0 }
-    val verb = if (partway != null) "Resume" else "Play"
-    val label = when {
-        !isSeries -> verb
-        video != null -> "$verb ${episodeTag(video)}"
-        else -> "No episodes yet"
-    }
-    return PlayTarget(
-        label = label,
-        left = partway?.let { "${timeLeft(it.positionSec, it.durationSec)} LEFT" },
-        progress = partway?.let { (it.positionSec / it.durationSec).toFloat() },
-        enabled = !isSeries || video != null || resume != null,
-    )
 }
 
 private val PhoneGutter = 20.dp
