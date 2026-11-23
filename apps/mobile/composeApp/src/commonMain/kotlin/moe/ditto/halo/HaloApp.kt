@@ -25,7 +25,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,36 +44,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.collectAsState
 import coil3.compose.setSingletonImageLoaderFactory
-import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import moe.ditto.halo.auth.AddonAuthenticator
 import moe.ditto.halo.auth.AuthEvent
-import moe.ditto.halo.auth.KtorHaloSessionRecheck
-import moe.ditto.halo.auth.KtorLocalAuthGateway
 import moe.ditto.halo.auth.LocalAuthenticator
 import moe.ditto.halo.auth.LoginCredentialsPrefill
 import moe.ditto.halo.auth.LoginPhase
 import moe.ditto.halo.auth.LoginPresenter
-import moe.ditto.halo.auth.SessionController
 import moe.ditto.halo.auth.SessionState
-import moe.ditto.halo.auth.SystemEpochClock
 import moe.ditto.halo.auth.builtInServerUrl
-import moe.ditto.halo.auth.installedSignInAddons
-import moe.ditto.halo.device.PlatformDeviceStore
-import moe.ditto.halo.people.TmdbKeys
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlaybackStatus
 import moe.ditto.halo.player.PlayerState
 import moe.ditto.halo.player.PlayerTrack
 import moe.ditto.halo.shell.HaloShell
-import moe.ditto.halo.storage.StorageKeys
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloDimensions
 import moe.ditto.halo.ui.HaloRadius
@@ -109,139 +95,32 @@ internal fun HaloApp(dependencies: PlatformDependencies) {
         haloImageLoader(context, dependencies.imageCacheDirectory)
     }
     HaloTheme {
-        val playback = remember(dependencies) { PlaybackHost(dependencies.playerPort) }
-        val deviceStore = remember(dependencies) {
-            PlatformDeviceStore(dependencies.secureStorage, dependencies.keyValueStore)
-        }
-        val tmdbKeys = remember(dependencies) { TmdbKeys(dependencies.secureStorage) }
-        val sessionController = remember(dependencies) {
-            val authHttpClient = HttpClient()
-            SessionController(
-                storage = dependencies.secureStorage,
-                gateway = KtorLocalAuthGateway(authHttpClient),
-                clock = SystemEpochClock,
-                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-                oidcPort = dependencies.oidcSessionPort,
-                addons = installedSignInAddons,
-                browserSignIn = dependencies.browserSignIn,
-                sessionRecheck = KtorHaloSessionRecheck(authHttpClient),
-                deviceProfile = deviceStore,
-                // The mirror stands in for the server while it cannot be
-                // reached; another account's copy must never be sent as this one's.
-                onSessionChanged = { dependencies.keyValueStore.delete(StorageKeys.SettingsMirror) },
-            )
-        }
         var screen by remember { mutableStateOf(ShellScreen.Login) }
-        var sessionRestored by remember { mutableStateOf(false) }
         var hostSnapshot by remember { mutableStateOf(dependencies.nativeHostDiagnostics.snapshot()) }
         val refreshHostSnapshot = { hostSnapshot = dependencies.nativeHostDiagnostics.snapshot() }
         val recreatePlayerCore = {
             dependencies.nativeHostDiagnostics.destroyAndRecreatePlayerCore()
             refreshHostSnapshot()
         }
-
-        // Session restore gates the first render (a persisted session must boot
-        // to the app, not flash the login form), then the state collector owns
-        // both navigation directions: Login → Shell on sign-in/restore or on
-        // continuing without an account, and any screen → Login on a live
-        // sign-out (the button, or invalid_grant from a background refresh) or
-        // on leaving Halo without an account to sign in. The kick fires only
-        // on a transition out of the app, so the fake-host diagnostics suites
-        // — which walk to the gate with no session at all — never bounce.
-        LaunchedEffect(sessionController) {
-            if (dependencies.resetPersistedSession) sessionController.resetPersistedSessions()
-            sessionController.restore()
-            sessionRestored = true
-            var previous: SessionState? = null
-            sessionController.state.collect { state ->
-                val inApp = state is SessionState.SignedIn || state == SessionState.Device
-                if (inApp && screen == ShellScreen.Login) {
-                    refreshHostSnapshot()
-                    screen = ShellScreen.Shell
-                }
-                if (state == SessionState.SignedOut &&
-                    previous is SessionState.SignedIn &&
-                    screen != ShellScreen.Login
-                ) {
-                    // A rejected token and the visible sign-out button arrive
-                    // through this same transition. Both durably pause queued
-                    // and OS-owned work before the outgoing graph disappears.
-                    dependencies.downloadRuntime.pauseAllForSignOut()
-                    screen = ShellScreen.Login
-                }
-                // Going to sign in from Halo without an account is the same
-                // person, so their downloads carry on.
-                if (state == SessionState.SignedOut &&
-                    previous == SessionState.Device &&
-                    screen != ShellScreen.Login
-                ) {
-                    screen = ShellScreen.Login
-                }
-                previous = state
-            }
-        }
-
-        // Auth events fan out from here for the app's whole lifetime: the
-        // channel behind dependencies.authEvents is single-consumer, but the
-        // session controller must see lifecycle events even when the login
-        // screen is not composed (an invalid_grant can arrive on any screen).
-        // The login screen re-collects through this shared flow instead.
-        val loginAuthEvents = remember(dependencies) { MutableSharedFlow<AuthEvent>(extraBufferCapacity = 16) }
-        LaunchedEffect(sessionController) {
-            dependencies.authEvents.collect { event ->
-                sessionController.onAuthEvent(event)
-                loginAuthEvents.emit(event)
-            }
-        }
-
-        // Native playback events feed the presenter for the whole app lifetime,
-        // not just while a player screen is composed — otherwise events that
-        // arrive elsewhere would only apply after re-entry.
-        LaunchedEffect(playback) {
-            dependencies.playerEvents.collect { event -> playback.onEvent(event) }
-        }
+        val session = rememberAppSession(
+            dependencies = dependencies,
+            isShowingSignIn = { screen == ShellScreen.Login },
+            onEnterApp = {
+                refreshHostSnapshot()
+                screen = ShellScreen.Shell
+            },
+            onLeaveApp = { screen = ShellScreen.Login },
+        )
+        val playback = session.playback
+        val sessionController = session.sessionController
+        val loginAuthEvents = session.loginAuthEvents
         val playerState by playback.state.collectAsState()
-
-        val sessionState by sessionController.state.collectAsState()
-        val loginNotice by sessionController.loginNotice.collectAsState()
-
-        // One graph per session. Keyed on the generation as well as the state
-        // because session state alone cannot distinguish two users on one
-        // server — see SessionController.sessionGeneration. Signing out drops
-        // it to null, which closes the outgoing one.
-        val sessionGeneration by sessionController.sessionGeneration.collectAsState()
-        val graph = remember(sessionGeneration, sessionState) {
-            // Copied out of the state: the delegate would be read again each
-            // time the callback runs, so an older session's client would name
-            // whichever session is current by then and end that one instead.
-            val issuedFor = sessionGeneration
-            val mode = when (val state = sessionState) {
-                is SessionState.SignedIn -> SessionMode.Account(
-                    serverUrl = state.serverUrl,
-                    tokens = sessionController.tokenProvider,
-                    onUnauthorized = { sessionController.rejectSession(issuedFor) },
-                )
-                SessionState.Device -> SessionMode.Device
-                SessionState.SignedOut, SessionState.Restoring -> null
-            }
-            mode?.let {
-                SessionGraph(
-                    mode = it,
-                    deviceStore = deviceStore,
-                    keyValueStore = dependencies.keyValueStore,
-                    subtitleCacheDirectory = dependencies.subtitleCacheDirectory,
-                    downloadRuntime = dependencies.downloadRuntime,
-                    downloadStorage = dependencies.downloadStorage,
-                    tmdbKeys = tmdbKeys,
-                )
-            }
-        }
-        DisposableEffect(graph) {
-            onDispose { graph?.close() }
-        }
+        val sessionState = session.sessionState
+        val loginNotice = session.loginNotice
+        val graph = session.graph
 
         Box(Modifier.fillMaxSize().background(HaloColors.Background)) {
-            if (!sessionRestored) return@Box
+            if (!session.restored) return@Box
             when (screen) {
                 // The graph can be null here for the frame between a sign-out
                 // landing in session state and the collector above moving the
