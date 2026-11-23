@@ -43,6 +43,7 @@ import moe.ditto.halo.api.Stream
 import moe.ditto.halo.browse.SourceDetails
 import moe.ditto.halo.browse.SourceEntry
 import moe.ditto.halo.browse.SourceFilter
+import moe.ditto.halo.browse.SourcesListing
 import moe.ditto.halo.browse.SourceSort
 import moe.ditto.halo.browse.SourceStatus
 import moe.ditto.halo.browse.buildListing
@@ -162,17 +163,26 @@ internal fun TvSourcesScreen(
                             val listing = remember(result, filter, revealAll) {
                                 buildListing(result, filter, SourceSort.Recommended, revealAll)
                             }
+                            val entries = remember(listing) { listedEntries(listing) }
                             val counts = remember(result) { filterCounts(result.pool) }
                             val heaviest = remember(result) { result.pool.maxOfOrNull { it.neededMbps } ?: 0.0 }
                             SourcesList(
-                                entries = listOfNotNull(listing.pick) + listing.groups.flatMap { it.entries },
+                                entries = entries,
                                 hiddenCount = listing.hiddenCount,
                                 empty = listing.empty,
                                 filter = filter,
                                 counts = counts,
                                 memory = memory,
                                 onFilter = { filter = it },
-                                onReveal = { revealAll = true },
+                                onReveal = {
+                                    // The button goes away with the press, so focus moves to
+                                    // the first source it brings into view.
+                                    val shown = entries.mapTo(HashSet()) { it.key }
+                                    listedEntries(buildListing(result, filter, SourceSort.Recommended, revealAll = true))
+                                        .firstOrNull { it.key !in shown }
+                                        ?.let { memory.focusWhenShown(sourceFocusKey(it)) }
+                                    revealAll = true
+                                },
                                 onPlay = { onPlay(it.addon, it.stream) },
                                 onDetails = { details = it to detailsFor(it, heaviest) },
                             )
@@ -240,9 +250,9 @@ private fun SourcesList(
                     onClick = { onPlay(entry) },
                     onMenu = { onDetails(entry) },
                     modifier = if (entry == entries.first()) {
-                        Modifier.defaultFocus(memory, "source/${entry.key}")
+                        Modifier.defaultFocus(memory, sourceFocusKey(entry))
                     } else {
-                        Modifier.rememberFocus(memory, "source/${entry.key}")
+                        Modifier.rememberFocus(memory, sourceFocusKey(entry))
                     },
                 )
             }
@@ -259,6 +269,12 @@ private fun SourcesList(
         }
     }
 }
+
+/** The listing's rows in screen order: the pick first, then each group's. */
+private fun listedEntries(listing: SourcesListing): List<SourceEntry> =
+    listOfNotNull(listing.pick) + listing.groups.flatMap { it.entries }
+
+private fun sourceFocusKey(entry: SourceEntry): String = "source/${entry.key}"
 
 @Composable
 private fun FilterPill(label: String, count: Int, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {

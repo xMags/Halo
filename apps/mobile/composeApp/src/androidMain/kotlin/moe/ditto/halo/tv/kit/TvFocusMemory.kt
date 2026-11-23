@@ -30,6 +30,16 @@ internal class TvFocusMemory(key: String?) {
     /** True until the first item has taken focus on this composition. */
     internal var pending: Boolean = true
 
+    /**
+     * Gives focus to the item marked [key] when it is first composed: for a
+     * control that removes itself to show more items, so focus lands on the
+     * first new one instead of wherever the system puts it.
+     */
+    fun focusWhenShown(key: String) {
+        this.key = key
+        pending = true
+    }
+
     companion object {
         val Saver: Saver<TvFocusMemory, String> = Saver(
             save = { it.key ?: "" },
