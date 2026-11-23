@@ -191,7 +191,7 @@ internal class MpvCore private constructor(
         when (property) {
             "pause" -> listener?.onPauseChanged(value)
             "eof-reached" -> if (value) {
-                if (fileLifecycle.markEofReached()) listener?.onEnded()
+                if (fileLifecycle.markEofReached()) reportEnd()
             } else if (fileLifecycle.clearEofReached()) {
                 // A seek back from the end: the next end has to count again.
                 listener?.onEndCleared()
@@ -439,6 +439,23 @@ internal class MpvCore private constructor(
         runCatching { mpv.destroy() }
     }
 
+    /**
+     * The end of the file, or a lost connection that mpv took for one: when a
+     * network stream drops and ffmpeg's reconnects give up, mpv plays out what
+     * it had cached and reports the end. Treated as an end, that would raise
+     * the next episode mid-film, so an end well short of the length is a
+     * failure the error card can retry from the saved place.
+     */
+    private fun reportEnd() {
+        val position = mpv.getPropertyDouble("time-pos")
+        val duration = mpv.getPropertyDouble("duration")
+        if (endedShortOfDuration(position, duration)) {
+            listener?.onError(SourceLostMessage)
+            return
+        }
+        listener?.onEnded()
+    }
+
     private fun onFileLoaded() {
         val duration = mpv.getPropertyDouble("duration")?.takeIf { it.isFinite() && it >= 0.0 }
         listener?.onReady(duration)
@@ -647,6 +664,23 @@ internal class MpvFileLifecycle {
         lastErrorMessage ?: "Playback ended unexpectedly."
     }
 }
+
+/**
+ * True when playback stopped well before the file's stated length. The
+ * allowance covers files whose length is stated a little long (audio that
+ * outlasts the picture, rounding in the container), scaled for long films.
+ * Without a usable length there is nothing to compare, so it is an end.
+ */
+internal fun endedShortOfDuration(positionSeconds: Double?, durationSeconds: Double?): Boolean {
+    if (positionSeconds == null || durationSeconds == null) return false
+    if (!positionSeconds.isFinite() || !durationSeconds.isFinite() || durationSeconds <= 0.0) return false
+    val allowance = maxOf(EndAllowanceSeconds, durationSeconds * EndAllowanceFraction)
+    return durationSeconds - positionSeconds > allowance
+}
+
+private const val EndAllowanceSeconds = 30.0
+private const val EndAllowanceFraction = 0.02
+private const val SourceLostMessage = "The connection to this source was lost."
 
 private const val VideoWidth = "video-params/dw"
 private const val VideoHeight = "video-params/dh"

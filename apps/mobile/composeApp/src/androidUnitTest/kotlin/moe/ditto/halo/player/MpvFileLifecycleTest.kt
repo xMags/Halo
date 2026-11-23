@@ -46,4 +46,28 @@ class MpvFileLifecycleTest {
         assertFalse(lifecycle.markEofReached())
         assertNull(lifecycle.endFileFailure())
     }
+
+    @Test
+    fun anEndAtTheStatedLengthIsAnEnd() {
+        assertFalse(endedShortOfDuration(599.96, 600.0))
+        // Audio a few seconds longer than the picture.
+        assertFalse(endedShortOfDuration(592.0, 600.0))
+        // A two-hour film may stop a couple of minutes short of a padded length.
+        assertFalse(endedShortOfDuration(7_080.0, 7_200.0))
+    }
+
+    @Test
+    fun anEndWellShortOfTheLengthIsALostSource() {
+        // A dropped connection: the cache played out at 6:48 of 10:00.
+        assertTrue(endedShortOfDuration(408.0, 600.0))
+        assertTrue(endedShortOfDuration(3_600.0, 7_200.0))
+    }
+
+    @Test
+    fun withoutAUsableLengthEveryEndIsAnEnd() {
+        assertFalse(endedShortOfDuration(10.0, null))
+        assertFalse(endedShortOfDuration(null, 600.0))
+        assertFalse(endedShortOfDuration(10.0, 0.0))
+        assertFalse(endedShortOfDuration(10.0, Double.NaN))
+    }
 }
