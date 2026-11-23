@@ -83,6 +83,8 @@ import moe.ditto.halo.auth.LocalAuthenticator
 import moe.ditto.halo.auth.LoginPhase
 import moe.ditto.halo.auth.LoginPresenter
 import moe.ditto.halo.auth.LoginState
+import moe.ditto.halo.auth.PasswordSignInOutcome
+import moe.ditto.halo.auth.signInWithPassword
 import moe.ditto.halo.resources.Res
 import moe.ditto.halo.resources.halo_mark
 import moe.ditto.halo.ui.HaloColors
@@ -190,21 +192,10 @@ internal fun SignInScreen(
         formBusy = true
         formError = null
         scope.launch {
-            custom.editServerUrl(formServer)
-            custom.continueFromServer(startOidc = false)
-            when (custom.state.phase) {
-                is LoginPhase.LocalCredentials -> {
-                    custom.editUsername(formUsername)
-                    custom.editPassword(formPassword)
-                    custom.submitLocalCredentials()
-                    if (custom.state.phase is LoginPhase.LocalSignedIn) {
-                        formSignedIn = true
-                    } else {
-                        formError = custom.state.error ?: "Could not sign in."
-                    }
-                }
-                LoginPhase.Server -> formError = custom.state.error ?: "Could not reach that server."
-                else -> formError = PasswordOnlyMessage
+            when (val outcome = custom.signInWithPassword(formServer, formUsername, formPassword)) {
+                PasswordSignInOutcome.SignedIn -> formSignedIn = true
+                is PasswordSignInOutcome.Failed -> formError = outcome.message
+                PasswordSignInOutcome.NotPasswordServer -> formError = PasswordOnlyMessage
             }
             formBusy = false
         }
