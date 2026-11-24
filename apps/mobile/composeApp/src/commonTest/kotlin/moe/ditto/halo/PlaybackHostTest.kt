@@ -1,5 +1,6 @@
 package moe.ditto.halo
 
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlaybackStatus
@@ -54,6 +55,20 @@ class PlaybackHostTest {
         // paused deliberately — so a source that is merely loaded stays
         // stopped, which reads as the second source in a session being broken.
         assertEquals(listOf(false, true, false), port.pauses)
+    }
+
+    @Test
+    fun leavingStillReleasesTheVideoWhenThePauseNeverAnswers() = runTest {
+        val port = RecordingPlayerPort()
+        val host = PlaybackHost(port)
+
+        host.play(current)
+        port.pauseNeverAnswers = true
+        // A stuck engine must not keep the viewer in the player: the exit
+        // goes on to the release, which has its own bound, and returns.
+        host.windDownForExit()
+
+        assertEquals(1, port.videoReleases)
     }
 
     @Test
@@ -143,8 +158,12 @@ class PlaybackHostTest {
             loads += item
         }
 
+        /** An engine whose command queue is stuck: the pause never returns. */
+        var pauseNeverAnswers = false
+
         override suspend fun setPaused(paused: Boolean) {
             pauses += paused
+            if (pauseNeverAnswers) awaitCancellation()
         }
         override suspend fun seekTo(positionSeconds: Double) = Unit
         override suspend fun selectAudioTrack(id: String?) = Unit

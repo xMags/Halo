@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlaybackStatus
 import moe.ditto.halo.player.PlayerEvent
@@ -190,7 +191,11 @@ internal class PlaybackHost(private val playerPort: PlayerPort) {
      * having stopped responding.
      */
     suspend fun windDownForExit() {
-        playerPresenter.setPaused(true)
+        // Pausing is a courtesy on the way out; the release below is what the
+        // exit needs, and it has its own bound. An engine that never answers
+        // the pause (its command queue stuck) must not keep the viewer in the
+        // player with Back doing nothing.
+        withTimeoutOrNull(ExitPauseTimeoutMillis) { playerPresenter.setPaused(true) }
         playerPort.releaseVideoOutput()
         publish()
     }
@@ -207,3 +212,6 @@ internal class PlaybackHost(private val playerPort: PlayerPort) {
         }
     }
 }
+
+/** Long enough for a healthy engine to pause, short enough not to feel like a hang. */
+private const val ExitPauseTimeoutMillis = 2_000L
