@@ -28,12 +28,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -56,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.round
 import moe.ditto.halo.NativePlayerSurface
@@ -163,7 +166,12 @@ internal fun TvPlayerScreen(
     // keyed on the panel: a closing panel hands focus back to its button.
     LaunchedEffect(controller.chromeVisible, controller.upNextSecondsRemaining) {
         if (panel != null || controller.upNextSecondsRemaining != null) return@LaunchedEffect
-        runCatching { if (controller.chromeVisible) barFocus.requestFocus() else rootFocus.requestFocus() }
+        val target = if (controller.chromeVisible) barFocus else rootFocus
+        // The controls fade in, and the bar can be placed a frame or two after
+        // this runs; a request made before then fails without a word.
+        withTimeoutOrNull(FocusClaimMs) {
+            while (!runCatching { target.requestFocus(FocusDirection.Enter) }.getOrDefault(false)) withFrameNanos { }
+        }
     }
     LaunchedEffect(controller.upNextSecondsRemaining != null) {
         if (controller.upNextSecondsRemaining != null) runCatching { upNextFocus.requestFocus() }
@@ -489,10 +497,13 @@ private fun SeekBar(position: Double, duration: Double?, buffered: Double?, targ
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(formatTimecode(position), style = TvType.Label, modifier = Modifier.width(76.dp))
         Box(
-            modifier
+            // Ahead of the caller's focusable: a focus listener sees only the
+            // focus targets after it in the chain.
+            Modifier
+                .onFocusChanged { focused = it.isFocused }
+                .then(modifier)
                 .weight(1f)
                 .height(28.dp)
-                .onFocusChanged { focused = it.isFocused }
                 .onSizeChanged { width = it }
                 .semantics {
                     contentDescription = "Position"
@@ -612,4 +623,7 @@ private fun ErrorCard(message: String?, onRetry: () -> Unit, onPickAnotherSource
 }
 
 private const val FadeMs = 180
+
+/** How long a control keeps asking for focus while it fades in. */
+private const val FocusClaimMs = 600L
 private const val CaptionLiftPercent = 30
