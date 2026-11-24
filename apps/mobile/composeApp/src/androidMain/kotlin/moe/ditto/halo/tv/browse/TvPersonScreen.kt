@@ -131,7 +131,10 @@ internal fun TvPersonScreen(graph: SessionGraph, tmdbId: Long, name: String, pho
                     TvBodyMessage(
                         state.message,
                         retryModifier = Modifier.defaultFocus(memory, "retry"),
-                        onRetry = if (state.canRetry) ({ attempt += 1 }) else null,
+                        // Nothing else on the page can take focus, so a failure
+                        // that cannot be retried offers the way back instead.
+                        onRetry = if (state.canRetry) ({ attempt += 1 }) else navigation.back,
+                        actionLabel = if (state.canRetry) "Try again" else "Go back",
                     )
                 }
                 is PersonLoad.Loaded -> {
@@ -151,7 +154,15 @@ internal fun TvPersonScreen(graph: SessionGraph, tmdbId: Long, name: String, pho
                         }
                     }
                     if (shown.isEmpty()) {
-                        item(key = "empty") { TvBodyMessage("No films or series listed for $shownName yet.") }
+                        item(key = "empty") {
+                            TvBodyMessage(
+                                "No films or series listed for $shownName yet.",
+                                retryModifier = Modifier.defaultFocus(memory, "back", ready = filters.size <= 1),
+                                // The filters take focus when there are any.
+                                onRetry = navigation.back.takeIf { filters.size <= 1 },
+                                actionLabel = "Go back",
+                            )
+                        }
                     }
                     items(shown.chunked(PersonColumns), key = { row -> row.joinToString { "${it.type}:${it.imdbId}" } }) { row ->
                         Row(Modifier.padding(start = TvMetrics.SideMargin + 8.dp), horizontalArrangement = Arrangement.spacedBy(TvMetrics.CardGap)) {

@@ -57,6 +57,8 @@ internal class TvBrowseNavigation(
     /** The Library destination, on its History view or its saved titles. */
     val openLibrary: (history: Boolean) -> Unit,
     val openSettings: () -> Unit,
+    /** Back to the screen before, as the remote's Back does. */
+    val back: () -> Unit,
 )
 
 /** A card's caption below its focused shape: two short lines. */
@@ -128,11 +130,13 @@ internal fun TvBodyMessage(
     modifier: Modifier = Modifier,
     retryModifier: Modifier = Modifier,
     onRetry: (() -> Unit)? = null,
+    /** What the button does; not every message's way on is a retry. */
+    actionLabel: String = "Try again",
 ) {
     Box(modifier.fillMaxWidth().padding(start = TvMetrics.ContentStart, end = TvMetrics.SideMargin), contentAlignment = Alignment.CenterStart) {
         Column(Modifier.width(520.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(message, style = TvType.Body, textAlign = TextAlign.Start)
-            if (onRetry != null) TvButton("Try again", onClick = onRetry, modifier = retryModifier)
+            if (onRetry != null) TvButton(actionLabel, onClick = onRetry, modifier = retryModifier)
         }
     }
 }

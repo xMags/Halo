@@ -161,6 +161,7 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
                     "No catalogs to show. Add an addon that publishes them, such as Cinemeta, in Settings.",
                     retryModifier = Modifier.defaultFocus(memory, "settings"),
                     onRetry = navigation.openSettings,
+                    actionLabel = "Open Settings",
                 )
                 else -> HomeRows(
                     graph = graph,

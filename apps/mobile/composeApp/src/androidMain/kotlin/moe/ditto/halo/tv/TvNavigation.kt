@@ -100,6 +100,7 @@ internal fun TvShell(
                 navController.switchTo(LibraryRoute)
             },
             openSettings = { navController.switchTo(SettingsRoute) },
+            back = { navController.popBackStack() },
         )
     }
 

@@ -222,6 +222,7 @@ internal fun TvSearchScreen(graph: SessionGraph, navigation: TvBrowseNavigation,
                             "None of your addons can search. Add one with a search catalog in Settings.",
                             retryModifier = Modifier.rememberFocus(memory, "settings"),
                             onRetry = navigation.openSettings,
+                            actionLabel = "Open Settings",
                         )
                     }
                     view.addonsUnreachable -> item(key = "unreachable") {

@@ -58,7 +58,12 @@ internal fun TvShelfScreen(graph: SessionGraph, snapshot: ShelfSnapshot?, naviga
             Text(listOfNotNull(snapshot?.source, count).joinToString(" · "), style = TvType.Meta.copy(color = HaloColors.TextDim))
         }
         if (items.isEmpty()) {
-            TvBodyMessage("Nothing to show here any more. Go back to see this row again.")
+            TvBodyMessage(
+                "Nothing to show here any more. Go back to see this row again.",
+                retryModifier = Modifier.defaultFocus(memory, "back"),
+                onRetry = navigation.back,
+                actionLabel = "Go back",
+            )
             return@Column
         }
         TvGrid(
