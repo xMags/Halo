@@ -1,6 +1,7 @@
 package moe.ditto.halo.tv.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -27,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -91,6 +93,7 @@ internal fun TvSettingsScreen(
     var askRemove by remember { mutableStateOf<TvSettingsPanel.Addon?>(null) }
     val languageChoices = state.addons?.let { homeLanguageChoices(it.user + it.global) }
     val sections = TvSettingsSection.entries.filter { it != TvSettingsSection.Home || languageChoices != null }
+    val sectionFocus = remember { TvSettingsSection.entries.associateWith { FocusRequester() } }
 
     Box(Modifier.fillMaxSize().background(HaloColors.Background)) {
         Row(
@@ -99,7 +102,17 @@ internal fun TvSettingsScreen(
                 .padding(start = TvMetrics.ContentStart, end = TvMetrics.SideMargin, top = TvMetrics.VerticalMargin + 8.dp),
             horizontalArrangement = Arrangement.spacedBy(40.dp),
         ) {
-            Column(Modifier.width(240.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                Modifier
+                    .width(240.dp)
+                    .fillMaxHeight()
+                    // Left from a pane returns to that pane's section, not to
+                    // whichever name is level with the row: the section follows
+                    // focus, so landing elsewhere would swap the pane.
+                    .focusRestorer(sectionFocus.getValue(section))
+                    .focusGroup(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Text("Settings", style = TvType.Hero, modifier = Modifier.padding(bottom = 16.dp))
                 sections.forEachIndexed { index, item ->
                     val focusKey = "section/${item.name}"
@@ -110,6 +123,7 @@ internal fun TvSettingsScreen(
                         // The section follows focus, so the pane is always the
                         // one beside the highlighted name.
                         modifier = Modifier
+                            .focusRequester(sectionFocus.getValue(item))
                             .onFocusChanged { if (it.hasFocus) section = item }
                             .let { if (index == 0) it.defaultFocus(memory, focusKey) else it.rememberFocus(memory, focusKey) },
                     )
