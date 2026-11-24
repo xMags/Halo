@@ -58,6 +58,8 @@ internal fun TvTextField(
     imeAction: ImeAction = ImeAction.Done,
     onSubmit: () -> Unit = {},
     outerFocus: FocusRequester = remember { FocusRequester() },
+    /** Where Down goes, when the nearest control below is not the next step. */
+    down: FocusRequester? = null,
 ) {
     var editing by remember { mutableStateOf(false) }
     val inner = remember { FocusRequester() }
@@ -86,6 +88,7 @@ internal fun TvTextField(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp)
+                .focusProperties { if (down != null) this.down = down }
                 .focusRequester(outerFocus)
                 .semantics { contentDescription = label },
             cornerRadius = 12.dp,

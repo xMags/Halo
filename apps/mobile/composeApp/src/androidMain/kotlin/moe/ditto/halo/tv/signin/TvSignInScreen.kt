@@ -269,6 +269,7 @@ private fun PasswordForm(
     onBack: () -> Unit,
 ) {
     val first = remember { FocusRequester() }
+    val signIn = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     TvTextField(
         value = server,
@@ -287,12 +288,15 @@ private fun PasswordForm(
         password = true,
         imeAction = ImeAction.Done,
         onSubmit = onSubmit,
+        // Back sits nearer the field's middle; after the password comes Sign in.
+        down = signIn,
     )
     error?.let { ErrorLine(it) }
     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         TvButton(
             if (busy) "Signing in…" else "Sign in",
             onClick = onSubmit,
+            modifier = Modifier.focusRequester(signIn),
             style = TvButtonStyle.Primary,
             enabled = !busy,
         )
