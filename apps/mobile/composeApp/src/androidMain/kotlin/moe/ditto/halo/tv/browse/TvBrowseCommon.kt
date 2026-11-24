@@ -59,6 +59,9 @@ internal class TvBrowseNavigation(
     val openSettings: () -> Unit,
 )
 
+/** A card's caption below its focused shape: two short lines. */
+private val CaptionRoom = 48.dp
+
 internal const val MovieType = "movie"
 internal const val SeriesType = "series"
 
@@ -66,14 +69,15 @@ internal const val SeriesType = "series"
  * Scrolls a vertical list so the focused element sits [pivot] below its top,
  * which keeps a row's heading in view above its focused card. An element
  * already wholly in view leaves the list where it is; "in view" stops at the
- * bottom safe margin, which a TV may crop.
+ * bottom safe margin, which a TV may crop, less room for the caption a card
+ * carries under its focused shape (a title, a cast name).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ProvideVerticalPivot(pivot: Dp, content: @Composable () -> Unit) {
     val density = LocalDensity.current
     val pivotPx = with(density) { pivot.toPx() }
-    val marginPx = with(density) { TvMetrics.VerticalMargin.toPx() }
+    val marginPx = with(density) { (TvMetrics.VerticalMargin + CaptionRoom).toPx() }
     val spec: BringIntoViewSpec = remember(pivotPx, marginPx) {
         TvPivotBringIntoViewSpec(pivotPx, stayWhenVisible = true, endMarginPx = marginPx)
     }
