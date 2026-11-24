@@ -106,6 +106,13 @@ internal fun TvSourcesScreen(
     var revealAll by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf<Pair<SourceEntry, SourceDetails>?>(null) }
     val retry: () -> Unit = { scope.launch { runCatching { graph.browse.retryStreams(route.type, route.videoId) } } }
+    // Each state replaces the panel's content and the control that had focus
+    // with it (a cached failure's Try again when the fresh answer arrives), so
+    // the new content takes focus. Before its items compose, so they see it.
+    val contentKind = state::class
+    remember(contentKind) {
+        memory.contentReplaced(gone = if (state is StreamsContentState.Sources) RetryFocusKey else null)
+    }
 
     Box(Modifier.fillMaxSize().background(HaloColors.Background)) {
         // The title behind the panel, dimmed: where the sources belong.
@@ -203,7 +210,7 @@ internal fun TvSourcesScreen(
 private fun Failure(message: String, memory: TvFocusMemory, onRetry: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(message, style = TvType.Body)
-        TvButton("Try again", onClick = onRetry, modifier = Modifier.defaultFocus(memory, "retry"))
+        TvButton("Try again", onClick = onRetry, modifier = Modifier.defaultFocus(memory, RetryFocusKey))
     }
 }
 
@@ -275,6 +282,8 @@ private fun listedEntries(listing: SourcesListing): List<SourceEntry> =
     listOfNotNull(listing.pick) + listing.groups.flatMap { it.entries }
 
 private fun sourceFocusKey(entry: SourceEntry): String = "source/${entry.key}"
+
+private const val RetryFocusKey = "retry"
 
 @Composable
 private fun FilterPill(label: String, count: Int, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {

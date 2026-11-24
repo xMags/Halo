@@ -40,6 +40,18 @@ internal class TvFocusMemory(key: String?) {
         pending = true
     }
 
+    /**
+     * The screen replaced what it shows (a loading state, a failure, a list),
+     * and the focused control went with it: the new content's items may take
+     * focus again. [gone] is a key the new content cannot have (a failure's
+     * Try again once a list arrives), forgotten so the default takes focus at
+     * once instead of waiting for it.
+     */
+    fun contentReplaced(gone: String? = null) {
+        if (gone != null && key == gone) key = null
+        pending = true
+    }
+
     companion object {
         val Saver: Saver<TvFocusMemory, String> = Saver(
             save = { it.key ?: "" },
