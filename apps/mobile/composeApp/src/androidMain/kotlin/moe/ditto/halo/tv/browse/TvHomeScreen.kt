@@ -296,8 +296,9 @@ private fun HomeRows(
     libraryCount: Int,
 ) {
     val listState = rememberLazyListState()
-    // Room above the focused card for its row heading.
-    ProvideVerticalPivot(pivot = 52.dp) {
+    // The focused row's heading at the top of the list: any more room there
+    // shows the end of the row above (its captions) under the hero.
+    ProvideVerticalPivot(pivot = 4.dp) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),

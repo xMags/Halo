@@ -265,7 +265,9 @@ private fun TvRail(
                 if (expanded) {
                     Brush.horizontalGradient(0f to HaloColors.Background, 0.7f to HaloColors.Background.copy(alpha = 0.96f), 1f to Color.Transparent)
                 } else {
-                    Brush.horizontalGradient(0f to HaloColors.Background.copy(alpha = 0.7f), 1f to Color.Transparent)
+                    // Solid behind the icons: rows scroll under the rail, and a
+                    // poster must not show through the account button.
+                    Brush.horizontalGradient(0f to HaloColors.Background, 0.72f to HaloColors.Background.copy(alpha = 0.94f), 1f to Color.Transparent)
                 },
             ),
     ) {

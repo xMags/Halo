@@ -58,6 +58,15 @@ class TvPivotBringIntoViewSpecTest {
     }
 
     @Test
+    fun anItemInTheBottomSafeMarginIsNotInView() {
+        val page = TvPivotBringIntoViewSpec(pivotPx = 100f, stayWhenVisible = true, endMarginPx = 54f)
+        // Ends at the very bottom of the list, inside the band a TV may crop.
+        assertEquals(780f, page.calculateScrollDistance(offset = 880f, size = 120f, containerSize = 1000f))
+        // Ends above the band: stays.
+        assertEquals(0f, page.calculateScrollDistance(offset = 800f, size = 120f, containerSize = 1000f))
+    }
+
+    @Test
     fun anItemWiderThanTheListShowsItsStart() {
         assertEquals(500f, spec.calculateScrollDistance(offset = 500f, size = 1200f, containerSize = 1000f))
     }

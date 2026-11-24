@@ -34,17 +34,20 @@ import androidx.compose.ui.unit.dp
  *
  * With [stayWhenVisible] an item already wholly in view does not move the
  * list, which suits a page that opens on its top: focusing its first button
- * must not scroll the title above it away.
+ * must not scroll the title above it away. An item reaching into the last
+ * [endMarginPx] of the list (a TV's overscan band at the screen's bottom)
+ * does not count as in view.
  */
 @OptIn(ExperimentalFoundationApi::class)
 internal class TvPivotBringIntoViewSpec(
     private val pivotPx: Float,
     private val stayWhenVisible: Boolean = false,
+    private val endMarginPx: Float = 0f,
 ) : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
         // Something larger than the list cannot be pinned; show its start.
         if (size >= containerSize) return offset
-        if (stayWhenVisible && offset >= 0f && offset + size <= containerSize) return 0f
+        if (stayWhenVisible && offset >= 0f && offset + size <= containerSize - endMarginPx) return 0f
         return offset - pivotPx
     }
 }

@@ -65,13 +65,18 @@ internal const val SeriesType = "series"
 /**
  * Scrolls a vertical list so the focused element sits [pivot] below its top,
  * which keeps a row's heading in view above its focused card. An element
- * already wholly in view leaves the list where it is.
+ * already wholly in view leaves the list where it is; "in view" stops at the
+ * bottom safe margin, which a TV may crop.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ProvideVerticalPivot(pivot: Dp, content: @Composable () -> Unit) {
-    val pivotPx = with(LocalDensity.current) { pivot.toPx() }
-    val spec: BringIntoViewSpec = remember(pivotPx) { TvPivotBringIntoViewSpec(pivotPx, stayWhenVisible = true) }
+    val density = LocalDensity.current
+    val pivotPx = with(density) { pivot.toPx() }
+    val marginPx = with(density) { TvMetrics.VerticalMargin.toPx() }
+    val spec: BringIntoViewSpec = remember(pivotPx, marginPx) {
+        TvPivotBringIntoViewSpec(pivotPx, stayWhenVisible = true, endMarginPx = marginPx)
+    }
     CompositionLocalProvider(LocalBringIntoViewSpec provides spec, content = content)
 }
 
