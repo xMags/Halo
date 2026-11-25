@@ -1,6 +1,8 @@
 package moe.ditto.halo.tv.browse
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -223,6 +225,7 @@ private fun DetailBody(
     }
 
     val listState = rememberLazyListState()
+    val heroInView = remember { BringIntoViewRequester() }
     ProvideVerticalPivot(pivot = 56.dp) {
         LazyColumn(
             state = listState,
@@ -234,7 +237,14 @@ private fun DetailBody(
                 Column(
                     Modifier
                         // Back at the buttons, the page returns to its top, title and all.
-                        .onFocusChanged { if (it.hasFocus) scope.launch { listState.animateScrollToItem(0) } }
+                        // Asked of the list as a request to show the whole hero rather
+                        // than a scroll of its own: a separate scroll and the focused
+                        // button's own request cancel each other, and the button's
+                        // (which leaves the title out of view) usually came last. The
+                        // list keeps the larger of two nested requests, and the hero,
+                        // first on the page, can only be shown from the top.
+                        .bringIntoViewRequester(heroInView)
+                        .onFocusChanged { if (it.hasFocus) scope.launch { heroInView.bringIntoView() } }
                         .padding(start = TvMetrics.SideMargin + 8.dp, top = TvMetrics.VerticalMargin + 8.dp)
                         .width(560.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
