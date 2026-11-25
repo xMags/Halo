@@ -1,6 +1,18 @@
 package moe.ditto.halo.tv.kit
 
+import android.view.ViewTreeObserver
 import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,6 +78,7 @@ internal fun TvTextField(
     // Only a field that had focus can lose it; the first report is not a loss.
     var innerFocused by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     fun stopEditing() {
         if (!editing) return
@@ -80,6 +93,20 @@ internal fun TvTextField(
         keyboard?.show()
     }
     BackHandler(enabled = editing) { stopEditing() }
+    // The first Back while typing goes to the keyboard, which closes itself
+    // and never passes the key on. Typing ends with it, so one Back is enough
+    // to be back on the field with the arrows working.
+    val view = LocalView.current
+    DisposableEffect(view, editing) {
+        if (!editing) return@DisposableEffect onDispose {}
+        var keyboardSeen = false
+        val listener = ViewTreeObserver.OnGlobalLayoutListener {
+            val open = ViewCompat.getRootWindowInsets(view)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+            if (open) keyboardSeen = true else if (keyboardSeen) stopEditing()
+        }
+        view.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        onDispose { view.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
+    }
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(label, style = TvType.Caption)
@@ -125,6 +152,19 @@ internal fun TvTextField(
                         .fillMaxWidth()
                         .focusRequester(inner)
                         .focusProperties { canFocus = editing }
+                        // Up or Down while typing (with the keyboard put away)
+                        // leaves the field the way the arrows would from it.
+                        .onPreviewKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            val direction = when (event.key) {
+                                Key.DirectionDown -> FocusDirection.Down
+                                Key.DirectionUp -> FocusDirection.Up
+                                else -> return@onPreviewKeyEvent false
+                            }
+                            stopEditing()
+                            focusManager.moveFocus(direction)
+                            true
+                        }
                         .onFocusChanged { state ->
                             if (state.isFocused) {
                                 innerFocused = true
