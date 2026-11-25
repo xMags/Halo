@@ -1,6 +1,8 @@
 package moe.ditto.halo.tv.browse
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -21,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -29,9 +33,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -65,6 +71,7 @@ import moe.ditto.halo.tv.kit.TvWideCard
 import moe.ditto.halo.tv.kit.defaultFocus
 import moe.ditto.halo.tv.kit.rememberFocus
 import moe.ditto.halo.tv.kit.rememberTvFocusMemory
+import moe.ditto.halo.tv.kit.tvRowHeadingRoom
 import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
@@ -76,11 +83,17 @@ private data class HeroTitle(val meta: MetaCard, val resume: ContinueEntry? = nu
 private val HomePosterWidth = 112.dp
 private val HeroHeight = 262.dp
 
+/** The hero once the rows are scrolled: its title and facts only. */
+private val HeroCompactHeight = 140.dp
+
 /**
  * TV Home: a hero for the focused title at the top, then the personal rows
  * (Continue watching, Recently watched, My library) and one row per catalog.
  * The hero follows the focused card after a short pause, and its buttons act
- * on whatever it shows. Built on the same row and shelf rules as the phone
+ * on whatever it shows. It is full size only while the rows are at their top
+ * (the hero's buttons or the first row have focus); further down it keeps
+ * just its title and facts, which leaves room for a poster row with its
+ * heading and captions. Built on the same row and shelf rules as the phone
  * ([catalogRows], [homeShelves]).
  */
 @Composable
@@ -131,14 +144,27 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
     }
     val shown = hero ?: shelves.continueWatching.firstOrNull()?.let { HeroTitle(it.meta, it) } ?: featured?.let { HeroTitle(it) }
 
+    // At the top of the rows the hero is full size, with its buttons there for
+    // the remote to reach from the first row; anywhere lower it is compact.
+    // Focusing the first row always scrolls the list back to its top, so the
+    // scroll position alone decides this.
+    val listState = rememberLazyListState()
+    val expanded by remember(listState) { derivedStateOf { !listState.canScrollBackward } }
+    val heroHeight by animateDpAsState(
+        targetValue = if (expanded) HeroHeight else HeroCompactHeight,
+        animationSpec = tween(HeroResizeMs),
+        label = "tv-hero-height",
+    )
+
     Box(Modifier.fillMaxSize()) {
-        shown?.let { HeroBackdrop(graph, it.meta) }
+        shown?.let { HeroBackdrop(graph, it.meta, heroHeight) }
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxWidth().height(HeroHeight)) {
+            Box(Modifier.fillMaxWidth().height(heroHeight).clipToBounds()) {
                 shown?.let { title ->
                     HeroInfo(
                         graph = graph,
                         title = title,
+                        expanded = expanded,
                         memory = memory,
                         inLibrary = library.value.orEmpty().any {
                             it.id == LibraryRepository.itemId(title.meta.type, title.meta.id) && !it.isRemoved
@@ -165,6 +191,7 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
                 )
                 else -> HomeRows(
                     graph = graph,
+                    listState = listState,
                     rows = rows,
                     shelves = shelves,
                     catalogLanguage = catalogLanguage,
@@ -181,10 +208,10 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
 }
 
 @Composable
-private fun HeroBackdrop(graph: SessionGraph, meta: MetaCard) {
+private fun HeroBackdrop(graph: SessionGraph, meta: MetaCard, heroHeight: Dp) {
     val full by remember(graph, meta.type, meta.id) { graph.browse.meta(meta.type, meta.id) }.collectAsState(QueryState())
     val art = full.value?.background ?: meta.background ?: full.value?.poster ?: meta.poster
-    Box(Modifier.fillMaxWidth().height(HeroHeight + 60.dp)) {
+    Box(Modifier.fillMaxWidth().height(heroHeight + 60.dp)) {
         Crossfade(targetState = art, animationSpec = tween(400), label = "tv-hero-art") { url ->
             Row(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(0.38f))
@@ -219,6 +246,7 @@ private fun HeroBackdrop(graph: SessionGraph, meta: MetaCard) {
 private fun HeroInfo(
     graph: SessionGraph,
     title: HeroTitle,
+    expanded: Boolean,
     memory: TvFocusMemory,
     inLibrary: Boolean,
     navigation: TvBrowseNavigation,
@@ -226,9 +254,7 @@ private fun HeroInfo(
     val meta = title.meta
     val full by remember(graph, meta.type, meta.id) { graph.browse.meta(meta.type, meta.id) }.collectAsState(QueryState())
     val card: MetaCard = full.value?.takeIf { it.id == meta.id } ?: meta
-    val scope = rememberCoroutineScope()
     val resume = title.resume
-    val tag = resume?.let { episodeTagOf(it.videoId, meta.id) }
     val kind = if (meta.type == SeriesType) "SERIES" else "MOVIE"
 
     Column(
@@ -243,6 +269,27 @@ private fun HeroInfo(
         )
         Text(card.name, style = TvType.Hero, maxLines = 1, overflow = TextOverflow.Ellipsis)
         TvMetaLine(card)
+        AnimatedVisibility(visible = expanded, label = "tv-hero-actions") {
+            HeroActions(graph, title, card, memory, inLibrary, navigation)
+        }
+    }
+}
+
+/** The full hero's description and buttons, which the compact hero leaves out. */
+@Composable
+private fun HeroActions(
+    graph: SessionGraph,
+    title: HeroTitle,
+    card: MetaCard,
+    memory: TvFocusMemory,
+    inLibrary: Boolean,
+    navigation: TvBrowseNavigation,
+) {
+    val meta = title.meta
+    val resume = title.resume
+    val tag = resume?.let { episodeTagOf(it.videoId, meta.id) }
+    val scope = rememberCoroutineScope()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             card.description.orEmpty(),
             style = TvType.Body.copy(fontSize = TvType.Meta.fontSize, lineHeight = TvType.Meta.lineHeight),
@@ -286,6 +333,7 @@ private fun HeroInfo(
 @Composable
 private fun HomeRows(
     graph: SessionGraph,
+    listState: LazyListState,
     rows: List<CatalogRowSpec>,
     shelves: HomeShelves,
     catalogLanguage: String?,
@@ -296,10 +344,10 @@ private fun HomeRows(
     onFocusTitle: (HeroTitle) -> Unit,
     libraryCount: Int,
 ) {
-    val listState = rememberLazyListState()
-    // The focused row's heading at the top of the list: any more room there
-    // shows the end of the row above (its captions) under the hero.
-    ProvideVerticalPivot(pivot = 4.dp) {
+    // Every focused row moves to the top, its card just below its heading, so
+    // nothing of the row before (its posters, its captions) shows under the
+    // hero. Focus within a row leaves it where it is: the card is already there.
+    ProvideVerticalPivot(pivot = tvRowHeadingRoom(), stayWhenVisible = false) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -475,7 +523,8 @@ private fun ContinueCard(
     TvWideCard(
         title = entry.meta.name,
         imageUrl = still,
-        line = tag ?: "Movie",
+        // A film gets no line of its own: the hero above already says what it is.
+        line = tag,
         detail = "${timeLeft(0.0, entry.remainingSec).lowercase()} left",
         progress = entry.progress,
         onClick = onClick,
@@ -486,3 +535,4 @@ private fun ContinueCard(
 }
 
 private const val HeroFollowMs = 350L
+private const val HeroResizeMs = 250

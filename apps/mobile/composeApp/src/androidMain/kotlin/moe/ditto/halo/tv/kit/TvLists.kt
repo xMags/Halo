@@ -60,6 +60,18 @@ private fun ProvidePivot(pivot: Dp, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalBringIntoViewSpec provides spec, content = content)
 }
 
+private val RowHeadingGap = 14.dp
+private val RowCardInset = 8.dp
+
+/**
+ * How far a titled [TvRow]'s cards sit below the row's top: its heading, the
+ * gap and the cards' inset. A vertical list that scrolls a focused card to
+ * this distance from its top shows the whole heading above it.
+ */
+@Composable
+internal fun tvRowHeadingRoom(): Dp =
+    with(LocalDensity.current) { TvType.Heading.lineHeight.toDp() } + RowHeadingGap + RowCardInset
+
 /**
  * A titled horizontal row of cards. Focus returns to the card that last had it
  * when the row is entered again, and the focused card stays at the row's start
@@ -73,13 +85,13 @@ internal fun TvRow(
     startPadding: Dp = TvMetrics.ContentStart,
     content: LazyListScope.() -> Unit,
 ) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(RowHeadingGap)) {
         if (title != null) Text(title, style = TvType.Heading, modifier = Modifier.padding(start = startPadding))
         ProvidePivot(startPadding) {
             LazyRow(
                 state = state,
                 modifier = Modifier.focusRestorer(),
-                contentPadding = PaddingValues(start = startPadding, end = TvMetrics.SideMargin, top = 8.dp, bottom = 8.dp),
+                contentPadding = PaddingValues(start = startPadding, end = TvMetrics.SideMargin, top = RowCardInset, bottom = RowCardInset),
                 horizontalArrangement = Arrangement.spacedBy(TvMetrics.CardGap),
                 content = content,
             )

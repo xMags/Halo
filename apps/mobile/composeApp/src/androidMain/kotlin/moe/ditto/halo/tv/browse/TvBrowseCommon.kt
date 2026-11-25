@@ -73,15 +73,20 @@ internal const val SeriesType = "series"
  * already wholly in view leaves the list where it is; "in view" stops at the
  * bottom safe margin, which a TV may crop, less room for the caption a card
  * carries under its focused shape (a title, a cast name).
+ *
+ * The visibility check runs on every frame of the scroll, so a list that
+ * stays put for visible elements also stops the moment an element comes into
+ * view: at the bottom edge going down, at the top edge going up. With
+ * [stayWhenVisible] false, every focus change pins the element at [pivot].
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun ProvideVerticalPivot(pivot: Dp, content: @Composable () -> Unit) {
+internal fun ProvideVerticalPivot(pivot: Dp, stayWhenVisible: Boolean = true, content: @Composable () -> Unit) {
     val density = LocalDensity.current
     val pivotPx = with(density) { pivot.toPx() }
     val marginPx = with(density) { (TvMetrics.VerticalMargin + CaptionRoom).toPx() }
-    val spec: BringIntoViewSpec = remember(pivotPx, marginPx) {
-        TvPivotBringIntoViewSpec(pivotPx, stayWhenVisible = true, endMarginPx = marginPx)
+    val spec: BringIntoViewSpec = remember(pivotPx, marginPx, stayWhenVisible) {
+        TvPivotBringIntoViewSpec(pivotPx, stayWhenVisible = stayWhenVisible, endMarginPx = marginPx)
     }
     CompositionLocalProvider(LocalBringIntoViewSpec provides spec, content = content)
 }
