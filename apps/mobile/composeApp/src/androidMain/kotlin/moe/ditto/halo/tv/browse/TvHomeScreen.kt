@@ -548,6 +548,7 @@ private fun PosterRow(
         items(metas.take(PosterRowLimit), key = { "${it.type}:${it.id}" }) { meta ->
             TvPosterCard(
                 title = meta.name,
+                type = meta.type,
                 posterUrl = meta.poster,
                 fallbackUrl = metahubPosterUrl(meta.id),
                 width = HomePosterWidth,

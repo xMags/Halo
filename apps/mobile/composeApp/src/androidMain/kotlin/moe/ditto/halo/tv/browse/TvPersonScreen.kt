@@ -170,6 +170,7 @@ internal fun TvPersonScreen(graph: SessionGraph, tmdbId: Long, name: String, pho
                                 val key = "credit/${credit.type}:${credit.imdbId}"
                                 TvPosterCard(
                                     title = credit.name,
+                                    type = credit.type,
                                     posterUrl = credit.poster,
                                     fallbackUrl = metahubPosterUrl(credit.imdbId),
                                     subtitle = creditLine(credit),

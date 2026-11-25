@@ -337,6 +337,11 @@ object HaloIcons {
         icon("M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z")
     }
 
+    /** A series (Material "tv"). */
+    val Tv: ImageVector by lazy {
+        icon("M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z")
+    }
+
     /** A kind filter that left nothing (Material "filter_list"). */
     val Filter: ImageVector by lazy {
         icon("M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z")

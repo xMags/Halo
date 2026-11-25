@@ -147,6 +147,7 @@ private fun SavedGrid(graph: SessionGraph, filter: MediaTypeFilter, memory: TvFo
                 val preview = remember(item) { item.metaPreview() }
                 TvPosterCard(
                     title = item.name,
+                    type = item.type,
                     posterUrl = item.poster,
                     fallbackUrl = metahubPosterUrl(preview.id),
                     width = GridPosterWidth,

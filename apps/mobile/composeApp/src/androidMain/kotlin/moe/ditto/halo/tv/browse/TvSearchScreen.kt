@@ -259,6 +259,7 @@ internal fun TvSearchScreen(graph: SessionGraph, navigation: TvBrowseNavigation,
                             row.forEach { title ->
                                 TvPosterCard(
                                     title = title.name,
+                                    type = title.type,
                                     posterUrl = title.poster,
                                     fallbackUrl = metahubPosterUrl(title.id),
                                     subtitle = title.releaseInfo,
@@ -358,6 +359,7 @@ private fun TitlesRow(title: String, titles: List<MetaPreview>, memory: TvFocusM
         items(titles, key = { "${it.type}:${it.id}" }) { meta ->
             TvPosterCard(
                 title = meta.name,
+                type = meta.type,
                 posterUrl = meta.poster,
                 fallbackUrl = metahubPosterUrl(meta.id),
                 width = ResultPosterWidth,

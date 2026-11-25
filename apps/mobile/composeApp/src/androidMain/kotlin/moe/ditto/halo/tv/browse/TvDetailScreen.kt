@@ -518,6 +518,7 @@ private fun SimilarRow(
         items(titles, key = { "${it.type}:${it.id}" }) { title ->
             TvPosterCard(
                 title = title.name,
+                type = title.type,
                 posterUrl = title.poster,
                 fallbackUrl = metahubPosterUrl(title.id),
                 width = DetailPosterWidth,

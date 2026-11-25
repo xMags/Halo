@@ -81,6 +81,7 @@ internal fun TvKitGallery() {
                 items(12) { index ->
                     TvPosterCard(
                         title = "Poster ${index + 1}",
+                        type = "movie",
                         posterUrl = null,
                         subtitle = "202${index % 10}",
                         progress = if (index % 3 == 0) 0.4f else null,

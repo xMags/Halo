@@ -28,7 +28,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -66,6 +65,8 @@ internal fun TvProgressBar(progress: Float, modifier: Modifier = Modifier) {
 @Composable
 internal fun TvPosterCard(
     title: String,
+    /** The title's addon type, `movie` or `series`; it picks the art for a title that has none. */
+    type: String,
     posterUrl: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -98,7 +99,7 @@ internal fun TvPosterCard(
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 fallbackUrl = fallbackUrl,
-                failure = { ArtlessPoster(title) },
+                failure = { ArtlessPoster(series = type == "series") },
             )
             if (progress != null && progress > 0f) {
                 TvProgressBar(progress, Modifier.align(Alignment.BottomCenter).padding(10.dp))
@@ -119,30 +120,23 @@ internal fun TvPosterCard(
 }
 
 /**
- * A poster for a title with no artwork, or whose artwork will not load: its
- * name set on a quiet gradient under a film glyph, so the card still reads as
- * that title rather than an empty slot.
+ * A poster for a title with no artwork, or whose artwork will not load: a
+ * quiet gradient with a film or a television glyph. The caption under the
+ * card already names the title, so the art does not repeat it.
  */
 @Composable
-private fun BoxScope.ArtlessPoster(title: String) {
-    Column(
+private fun BoxScope.ArtlessPoster(series: Boolean) {
+    Box(
         Modifier
             .matchParentSize()
-            .background(Brush.linearGradient(listOf(HaloColors.SurfaceHigh, HaloColors.Surface)))
-            .padding(horizontal = 12.dp, vertical = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+            .background(Brush.linearGradient(listOf(HaloColors.SurfaceHigh, HaloColors.Surface))),
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(HaloIcons.Movie, contentDescription = null, tint = HaloColors.TextMeta.copy(alpha = 0.45f), modifier = Modifier.size(26.dp))
-        Text(
-            title,
-            color = HaloColors.TextMeta,
-            fontSize = 15.sp,
-            lineHeight = 19.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            maxLines = 4,
-            overflow = TextOverflow.Ellipsis,
+        Icon(
+            if (series) HaloIcons.Tv else HaloIcons.Movie,
+            contentDescription = null,
+            tint = HaloColors.TextMeta.copy(alpha = 0.4f),
+            modifier = Modifier.size(40.dp),
         )
     }
 }

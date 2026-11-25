@@ -80,6 +80,7 @@ internal fun TvShelfScreen(graph: SessionGraph, snapshot: ShelfSnapshot?, naviga
                 val key = "shelf/${meta.type}:${meta.id}"
                 TvPosterCard(
                     title = meta.name,
+                    type = meta.type,
                     posterUrl = meta.poster,
                     fallbackUrl = metahubPosterUrl(meta.id),
                     subtitle = meta.releaseInfo,
