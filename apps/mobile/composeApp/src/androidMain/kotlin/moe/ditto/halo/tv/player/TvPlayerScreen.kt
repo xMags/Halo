@@ -292,6 +292,17 @@ internal fun TvPlayerScreen(
                         if (!passthrough) {
                             TvButton("Speed ${formatRate(state.playbackRate)}", onClick = { panel = TvPlayerPanel.Speed })
                         }
+                        // Letterboxed to fit, or cropped to fill the screen: wide
+                        // films and old 4:3 shows on a 16:9 TV. Remembered for the
+                        // next video, as on the phone.
+                        TvButton(
+                            if (state.videoFillsScreen) "Fill" else "Fit",
+                            icon = HaloIcons.FitScreen,
+                            onClick = { scope.launch { playback.setVideoFillsScreen(!state.videoFillsScreen) } },
+                            modifier = Modifier.semantics {
+                                contentDescription = if (state.videoFillsScreen) "Picture fills the screen" else "Picture fits the screen"
+                            },
+                        )
                         if (context.isEpisode && session.episodes.isNotEmpty()) {
                             TvButton("Episodes", onClick = { panel = TvPlayerPanel.Episodes })
                         }
@@ -349,15 +360,32 @@ internal fun TvPlayerScreen(
                 tracks = state.tracks,
                 addonSubtitles = session.addonSubtitles,
                 selectedAddonId = controller.selectedAddonSubtitleId,
+                preferredLang = session.preferredSubtitleLang,
+                expandedLanguages = controller.expandedSubtitleLanguages,
                 loading = session.addonSubtitlesFetching,
                 loadError = session.subtitleLoadError,
-                scale = state.subtitleScale,
-                delaySeconds = state.subtitleDelaySeconds,
                 onSelectTrack = session::selectSubtitleTrack,
                 onSelectAddon = session::selectAddonSubtitle,
+                onToggleLanguage = controller::toggleSubtitleLanguage,
+                onOpenStyle = { panel = TvPlayerPanel.SubtitleStyle },
+                onDismiss = ::closePanel,
+            )
+            TvPlayerPanel.SubtitleStyle -> TvSubtitleStylePanel(
+                tracks = state.tracks,
+                scale = state.subtitleScale,
+                delaySeconds = state.subtitleDelaySeconds,
+                font = state.subtitleFont,
+                outline = session.subtitleOutline,
+                shadow = session.subtitleShadow,
+                trackStyling = state.subtitleTrackStyling,
                 onScale = { scale -> scope.launch { playback.setSubtitleScale(scale) } },
                 onDelay = { seconds -> scope.launch { playback.setSubtitleDelay(clampedDelay(seconds)) } },
-                onDismiss = ::closePanel,
+                onFont = { font -> scope.launch { playback.setSubtitleFont(font) } },
+                onOutline = session::changeSubtitleOutline,
+                onShadow = session::changeSubtitleShadow,
+                onTrackStyling = { keep -> scope.launch { playback.setSubtitleTrackStyling(keep) } },
+                // Back returns to the list it was opened from.
+                onDismiss = { panel = TvPlayerPanel.Subtitles },
             )
             TvPlayerPanel.Speed -> TvSpeedPanel(
                 rate = state.playbackRate,
