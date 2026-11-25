@@ -49,6 +49,7 @@ import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.QualityMedal
+import moe.ditto.halo.ui.MedalSize
 import moe.ditto.halo.ui.SheetScaffold
 import moe.ditto.halo.ui.monoStyle
 
@@ -109,7 +110,7 @@ private fun ColumnScope.DetailsBody(
             .padding(top = HaloSpacing.Xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            QualityMedal(medalFor(entry.info), large = true)
+            QualityMedal(medalFor(entry.info), size = MedalSize.Large)
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     StatusDot(entry.status)

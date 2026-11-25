@@ -75,6 +75,7 @@ import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloSkeleton
 import moe.ditto.halo.ui.QualityMedal
+import moe.ditto.halo.ui.MedalSize
 import moe.ditto.halo.ui.monoStyle
 
 private val PanelWidth = 540.dp
@@ -327,7 +328,7 @@ private fun SourceRow(entry: SourceEntry, onClick: () -> Unit, onMenu: () -> Uni
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            QualityMedal(medal, large = true)
+            QualityMedal(medal, size = MedalSize.Large)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(Modifier.size(7.dp).background(statusColor(entry.status), CircleShape))
@@ -348,7 +349,7 @@ private fun SourceRow(entry: SourceEntry, onClick: () -> Unit, onMenu: () -> Uni
 private fun SourceDetailsPanel(entry: SourceEntry, facts: SourceDetails, onPlay: () -> Unit, onDismiss: () -> Unit) {
     TvSidePanel(title = "File details", subtitle = entry.status.label, onDismiss = onDismiss, width = 480.dp) {
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item { QualityMedal(medalFor(entry.info), large = true) }
+            item { QualityMedal(medalFor(entry.info), size = MedalSize.Large) }
             item { Fact("Picture", listOf(facts.resolution) + facts.pictureChips.map { it.label }) }
             item { Fact("Sound", listOf(facts.sound) + facts.audioLanguages.map { it.label }) }
             if (facts.subtitles.isNotEmpty()) item { Fact("Subtitles", facts.subtitles.map { it.label }) }

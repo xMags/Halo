@@ -59,6 +59,7 @@ import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.HaloRadius
 import moe.ditto.halo.ui.HaloSpacing
 import moe.ditto.halo.ui.QualityMedal
+import moe.ditto.halo.ui.MedalSize
 import moe.ditto.halo.ui.formatBytes
 import moe.ditto.halo.ui.longPressClickable
 import moe.ditto.halo.ui.monoStyle
@@ -209,7 +210,7 @@ internal fun PickCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            QualityMedal(medalFor(entry.info), large = true)
+            QualityMedal(medalFor(entry.info), size = MedalSize.Large)
             Text(
                 text = metaLine(entry.info),
                 style = monoStyle(12.sp, FontWeight.Normal, color = HaloColors.TextDim),
@@ -266,7 +267,7 @@ internal fun OfflineCard(entry: DownloadEntry, onPlay: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (info.quality != null) QualityMedal(medalFor(info), large = true)
+            if (info.quality != null) QualityMedal(medalFor(info), size = MedalSize.Large)
             Text(
                 text = listOfNotNull(
                     info.codec,

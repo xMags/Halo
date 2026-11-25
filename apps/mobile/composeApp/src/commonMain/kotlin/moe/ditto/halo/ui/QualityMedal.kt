@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.ditto.halo.browse.Medal
@@ -34,33 +36,51 @@ import moe.ditto.halo.browse.MedalFinish
 /** The regular medal's width, for layouts that leave room for one. */
 internal val QualityMedalWidth = 96.dp
 
+/** How big a medal is drawn. */
+internal enum class MedalSize(
+    val width: Dp,
+    val height: Dp,
+    val corner: Dp,
+    val rim: Dp,
+    val plateMinWidth: Dp,
+    val platePadding: Dp,
+    val plateText: TextUnit,
+    val tagText: TextUnit,
+) {
+    /** Inline with a line of facts, about as tall as their text. */
+    Compact(70.dp, 22.dp, 5.dp, 2.dp, 34.dp, 4.dp, 11.sp, 8.5.sp),
+    Regular(QualityMedalWidth, 30.dp, 6.dp, 3.dp, 48.dp, 6.dp, 13.sp, 10.5.sp),
+    /** A source's own header, where the medal leads. */
+    Large(112.dp, 36.dp, 6.dp, 3.dp, 56.dp, 6.dp, 15.sp, 12.sp),
+}
+
 @Composable
-internal fun QualityMedal(medal: Medal, modifier: Modifier = Modifier, large: Boolean = false) {
+internal fun QualityMedal(medal: Medal, modifier: Modifier = Modifier, size: MedalSize = MedalSize.Regular) {
     val finish = finishOf(medal.finish)
-    val shape = RoundedCornerShape(6.dp)
+    val shape = RoundedCornerShape(size.corner)
     val description = listOfNotNull(medal.plate, medal.tag).joinToString(" ")
     Row(
         modifier = modifier
-            .size(width = if (large) 112.dp else QualityMedalWidth, height = if (large) 36.dp else 30.dp)
+            .size(width = size.width, height = size.height)
             .clip(shape)
             .background(finish.rim)
             .border(1.dp, finish.edge, shape)
-            .padding(3.dp)
+            .padding(size.rim)
             .clearAndSetSemantics { contentDescription = description },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val plate = Modifier
             .fillMaxHeight()
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(size.corner - 2.dp))
             .background(finish.plate)
-            .padding(horizontal = 6.dp)
+            .padding(horizontal = size.platePadding)
         Box(
-            modifier = if (medal.tag == null) plate.weight(1f) else plate.widthIn(min = if (large) 56.dp else 48.dp),
+            modifier = if (medal.tag == null) plate.weight(1f) else plate.widthIn(min = size.plateMinWidth),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = medal.plate,
-                style = monoStyle(if (large) 15.sp else 13.sp, FontWeight.ExtraBold, letterSpacing = 0.5.sp)
+                style = monoStyle(size.plateText, FontWeight.ExtraBold, letterSpacing = 0.5.sp)
                     .copy(brush = finish.ink),
                 maxLines = 1,
             )
@@ -70,7 +90,7 @@ internal fun QualityMedal(medal: Medal, modifier: Modifier = Modifier, large: Bo
                 Text(
                     text = tag,
                     style = monoStyle(
-                        if (large) 12.sp else 10.5.sp,
+                        size.tagText,
                         FontWeight.ExtraBold,
                         color = finish.tagInk,
                         letterSpacing = 1.sp,

@@ -93,6 +93,7 @@ import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.MetaLine
+import moe.ditto.halo.ui.MedalSize
 import moe.ditto.halo.ui.QualityMedal
 import moe.ditto.halo.ui.metahubPosterUrl
 
@@ -256,7 +257,7 @@ private fun DetailBody(
                         // Addons send blank fields as often as missing ones.
                         val certificate = meta.ageRating?.takeIf { it.isNotBlank() }
                         MetaLine(parts = heroFacts(meta, isSeries, seasons) + listOfNotNull(certificate), rating = ratedValue(meta.imdbRating))
-                        availability?.groups?.firstOrNull()?.let { best -> QualityMedal(best.medal) }
+                        availability?.groups?.firstOrNull()?.let { best -> QualityMedal(best.medal, size = MedalSize.Compact) }
                     }
                     Text(
                         meta.description.orEmpty(),
