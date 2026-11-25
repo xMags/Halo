@@ -2,14 +2,11 @@ package moe.ditto.halo.player
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.HttpRequestBuilder
-import io.ktor.client.request.get
-import io.ktor.client.request.head
 import io.ktor.client.request.header
-import io.ktor.client.statement.HttpResponse
+import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -53,13 +50,15 @@ internal class StreamVideoHasher(private val http: HttpClient) {
     }
 
     private suspend fun hash(url: String, knownSizeBytes: Long?, headers: Map<String, String>): VideoFingerprint? {
-        val size = knownSizeBytes?.takeIf { it > 0 } ?: contentLength(url, headers) ?: return null
+        val declared = knownSizeBytes?.takeIf { it > 0 }
+        val source = if (declared != null) ResolvedSource(url, declared) else resolve(url, headers) ?: return null
+        val size = source.sizeBytes
         if (size < VideoHash.MinimumHashableBytes) return null
 
         val last = size - 1
         val chunks = coroutineScope {
-            val head = async { rangeBytes(url, headers, 0, VideoHash.ChunkBytes - 1L) }
-            val tail = async { rangeBytes(url, headers, size - VideoHash.ChunkBytes, last) }
+            val head = async { rangeBytes(source.url, headers, 0, VideoHash.ChunkBytes - 1L) }
+            val tail = async { rangeBytes(source.url, headers, size - VideoHash.ChunkBytes, last) }
             listOf(head.await(), tail.await())
         }
         val (head, tail) = chunks
@@ -68,41 +67,45 @@ internal class StreamVideoHasher(private val http: HttpClient) {
         return VideoFingerprint(VideoHash.fromChunks(size, head, tail), size)
     }
 
-    /**
-     * HEAD first, then a one-byte range: some hosts answer HEAD with nothing
-     * useful but still report the total in `Content-Range`.
-     */
-    private suspend fun contentLength(url: String, headers: Map<String, String>): Long? {
-        val head: HttpResponse = http.head(url) { sourceHeaders(headers) }
-        if (head.status.isSuccess()) {
-            head.headers[HttpHeaders.ContentLength]?.toLongOrNull()?.takeIf { it > 0 }?.let { return it }
-        }
+    /** Where the link led and how big the file is. */
+    private data class ResolvedSource(val url: String, val sizeBytes: Long)
 
-        val probe = http.get(url) {
+    /**
+     * One byte asked for with a ranged GET, never a HEAD: a debrid addon's play
+     * link may answer HEAD differently from GET (ElfHosted sends HEAD on a good
+     * link to its placeholder clip), and the hash must describe the file the
+     * player gets. The size comes from `Content-Range`, and the chunks are then
+     * read from where the redirects ended, so both come from that one file and
+     * the play link is resolved once. The body is never read: a host that
+     * ignores the range would be sending the whole file.
+     */
+    private suspend fun resolve(url: String, headers: Map<String, String>): ResolvedSource? =
+        http.prepareGet(url) {
             sourceHeaders(headers)
             header(HttpHeaders.Range, "bytes=0-0")
+        }.execute { probe ->
+            if (probe.status != HttpStatusCode.PartialContent) return@execute null
+            val size = probe.headers[HttpHeaders.ContentRange]
+                ?.substringAfterLast('/')
+                ?.takeIf { it != "*" }
+                ?.toLongOrNull()
+                ?.takeIf { it > 0 }
+                ?: return@execute null
+            ResolvedSource(probe.call.request.url.toString(), size)
         }
-        if (probe.status != HttpStatusCode.PartialContent) return null
-        return probe.headers[HttpHeaders.ContentRange]
-            ?.substringAfterLast('/')
-            ?.takeIf { it != "*" }
-            ?.toLongOrNull()
-            ?.takeIf { it > 0 }
-    }
 
     /**
      * Anything but 206 means the host ignored the range and is about to send
      * the whole file, which for a hash would be a download of gigabytes.
      */
-    private suspend fun rangeBytes(url: String, headers: Map<String, String>, from: Long, to: Long): ByteArray? {
-        val response = http.get(url) {
+    private suspend fun rangeBytes(url: String, headers: Map<String, String>, from: Long, to: Long): ByteArray? =
+        http.prepareGet(url) {
             sourceHeaders(headers)
             header(HttpHeaders.Range, "bytes=$from-$to")
+        }.execute { response ->
+            if (response.status != HttpStatusCode.PartialContent) return@execute null
+            response.readRawBytes().takeIf { it.size.toLong() == to - from + 1 }
         }
-        if (response.status != HttpStatusCode.PartialContent) return null
-        val bytes = response.readRawBytes()
-        return bytes.takeIf { it.size.toLong() == to - from + 1 }
-    }
 }
 
 /** The source's own headers first, so a request's Range, set after, is the one sent. */

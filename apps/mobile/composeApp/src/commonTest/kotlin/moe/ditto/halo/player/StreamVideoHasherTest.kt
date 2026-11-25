@@ -10,6 +10,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlinx.coroutines.test.runTest
 
@@ -47,10 +48,20 @@ class StreamVideoHasherTest {
         val fingerprint = hasher.fingerprint(Url)
 
         assertEquals(FileBytes, fingerprint?.sizeBytes)
-        // HEAD first, then the two chunks. The fallback path is unchanged: a
-        // host that answers HEAD usefully still costs one extra request.
+        // A one-byte ranged GET for the size, then the two chunks. Never a
+        // HEAD: ElfHosted answers HEAD on a good link with its placeholder.
         assertEquals(3, calls.size)
-        assertEquals("HEAD", calls.first())
+        assertEquals("GET bytes=0-0", calls.first())
+        assertFalse("HEAD" in calls)
+    }
+
+    @Test
+    fun aHostThatIgnoresRangesHasNoFingerprint() = runTest {
+        val hasher = StreamVideoHasher(
+            HttpClient(MockEngine { respond(content = ByteArray(16), status = HttpStatusCode.OK) }),
+        )
+
+        assertNull(hasher.fingerprint(Url))
     }
 
     @Test
@@ -71,7 +82,7 @@ class StreamVideoHasherTest {
         val fingerprint = hasher.fingerprint(Url, knownSizeBytes = 0)
 
         assertEquals(FileBytes, fingerprint?.sizeBytes)
-        assertEquals("HEAD", calls.first())
+        assertEquals("GET bytes=0-0", calls.first())
     }
 
     @Test
@@ -88,10 +99,11 @@ class StreamVideoHasherTest {
     private fun client(calls: MutableList<String>) = HttpClient(
         MockEngine { request ->
             if (request.method == HttpMethod.Head) {
+                // Like ElfHosted: HEAD on a good link describes its placeholder.
                 calls += "HEAD"
                 return@MockEngine respond(
                     content = ByteArray(0),
-                    headers = headersOf(HttpHeaders.ContentLength, FileBytes.toString()),
+                    headers = headersOf(HttpHeaders.ContentLength, "300"),
                 )
             }
             val range = request.headers[HttpHeaders.Range] ?: return@MockEngine respondError(

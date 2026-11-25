@@ -4,7 +4,7 @@
  * Matching by hash instead of title guesswork is what makes subtitle results
  * accurate; addons accept it as the `videoHash` extra.
  *
- * Computed remotely with two HTTP Range requests — no full download needed.
+ * Computed remotely with HTTP Range requests: no full download needed.
  */
 
 const CHUNK = 65536n
@@ -50,17 +50,28 @@ async function fetchRange(
   return res.arrayBuffer()
 }
 
-async function contentLength(url: string, doFetch: typeof fetch, signal?: AbortSignal): Promise<bigint> {
-  const head = await doFetch(url, { method: 'HEAD', signal })
-  const len = head.headers.get('content-length')
-  if (head.ok && len && BigInt(len) > 0n) return BigInt(len)
-  // Some hosts refuse HEAD; a 1-byte range response carries the size in Content-Range.
+/** Where the link led and how big the file is, from one ranged request. */
+interface ResolvedSource {
+  url: string
+  size: bigint
+}
+
+/**
+ * One byte asked for with a ranged GET, never a HEAD: a debrid addon's play
+ * link may answer HEAD differently from GET (ElfHosted sends HEAD on a good
+ * link to its placeholder clip), and the hash must describe the file the
+ * player will get. The size comes from `Content-Range`, and the chunks are
+ * then read from where the redirects ended, so both come from that one file
+ * and the play link is resolved once rather than once per request.
+ */
+async function resolveSource(url: string, doFetch: typeof fetch, signal?: AbortSignal): Promise<ResolvedSource> {
   const res = await doFetch(url, { headers: { Range: 'bytes=0-0' }, signal })
   await res.body?.cancel()
-  const range = res.headers.get('content-range') // "bytes 0-0/123456"
-  const total = range?.split('/')[1]
-  if (res.status === 206 && total && total !== '*') return BigInt(total)
-  throw new Error(`Cannot determine file size for ${url}`)
+  const total = res.headers.get('content-range')?.split('/')[1]?.trim() // "bytes 0-0/123456"
+  if (res.status !== 206 || !total || !/^\d+$/.test(total)) {
+    throw new Error(`Cannot determine file size for ${url} (${res.status})`)
+  }
+  return { url: res.url || url, size: BigInt(total) }
 }
 
 /** The 64 KiB chunk length the OpenSubtitles hash is defined over. */
@@ -88,12 +99,13 @@ export async function computeVideoHash(
   opts: { fetch?: typeof fetch; signal?: AbortSignal } = {},
 ): Promise<VideoHashResult> {
   const doFetch = opts.fetch ?? fetch
-  const size = await contentLength(url, doFetch, opts.signal)
+  const source = await resolveSource(url, doFetch, opts.signal)
+  const size = source.size
   if (size < CHUNK * 2n) throw new Error(`File too small to hash (${size} bytes)`)
 
   const [head, tail] = await Promise.all([
-    fetchRange(url, 0n, CHUNK - 1n, doFetch, opts.signal),
-    fetchRange(url, size - CHUNK, size - 1n, doFetch, opts.signal),
+    fetchRange(source.url, 0n, CHUNK - 1n, doFetch, opts.signal),
+    fetchRange(source.url, size - CHUNK, size - 1n, doFetch, opts.signal),
   ])
 
   const hash = (size + sumUint64LE(head) + sumUint64LE(tail)) & MASK
