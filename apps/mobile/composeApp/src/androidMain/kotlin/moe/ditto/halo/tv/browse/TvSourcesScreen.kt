@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -30,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
@@ -63,8 +66,8 @@ import moe.ditto.halo.screens.StreamsContentState
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.shell.StreamsRoute
 import moe.ditto.halo.sync.runtimeMinutes
-import moe.ditto.halo.tv.kit.ProvidePivot
 import moe.ditto.halo.tv.kit.defaultFocus
+import moe.ditto.halo.tv.kit.ProvidePivot
 import moe.ditto.halo.tv.kit.rememberFocus
 import moe.ditto.halo.tv.kit.rememberTvFocusMemory
 import moe.ditto.halo.tv.kit.TvButton
@@ -311,9 +314,18 @@ private fun SourcesList(
                 // start rather than flush with an edge, where its ring and its
                 // focus growth would be cut; the end padding gives the last
                 // pill the same room.
+                // Coming back up from the sources, the list would stop as soon as
+                // the pill itself shows, flush with its top, cutting the focus
+                // ring. Asking for the whole row, padding and all, instead
+                // keeps room above it; the list keeps the larger request.
+                val rowInView = remember { BringIntoViewRequester() }
+                val scope = rememberCoroutineScope()
                 ProvidePivot(PillRowInset) {
                     LazyRow(
-                        Modifier.padding(bottom = 8.dp),
+                        Modifier
+                            .bringIntoViewRequester(rowInView)
+                            .onFocusChanged { if (it.hasFocus) scope.launch { rowInView.bringIntoView() } }
+                            .padding(bottom = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = PaddingValues(horizontal = PillRowInset, vertical = 6.dp),
                     ) {
