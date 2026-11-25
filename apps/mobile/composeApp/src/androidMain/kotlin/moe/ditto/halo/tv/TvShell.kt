@@ -71,6 +71,7 @@ import moe.ditto.halo.tv.kit.TvAction
 import moe.ditto.halo.tv.kit.TvKeyMap
 import moe.ditto.halo.tv.kit.LocalTvFocusTracker
 import moe.ditto.halo.tv.kit.TvConfirmDialog
+import moe.ditto.halo.tv.kit.TvHaloMark
 import moe.ditto.halo.tv.kit.TvMetrics
 import moe.ditto.halo.tv.kit.TvSurface
 import moe.ditto.halo.tv.kit.TvSurfaceColors
@@ -306,15 +307,7 @@ private fun TvRail(
                 .focusGroup(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Box(
-                Modifier
-                    .padding(start = 8.dp, bottom = 20.dp)
-                    .size(40.dp)
-                    .background(HaloColors.Accent, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("H", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
-            }
+            TvHaloMark(40.dp, Modifier.padding(start = 8.dp, bottom = 20.dp))
             TvRailItems.forEach { item ->
                 RailEntry(
                     item = item,

@@ -9,9 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -47,6 +44,7 @@ import moe.ditto.halo.auth.PasswordSignInOutcome
 import moe.ditto.halo.auth.signInWithPassword
 import moe.ditto.halo.tv.kit.TvButton
 import moe.ditto.halo.tv.kit.TvButtonStyle
+import moe.ditto.halo.tv.kit.TvHaloMark
 import moe.ditto.halo.tv.kit.TvMetrics
 import moe.ditto.halo.tv.kit.TvRowSurface
 import moe.ditto.halo.tv.kit.TvTextField
@@ -210,12 +208,7 @@ internal fun TvSignInScreen(
 @Composable
 private fun Brand() {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        Box(
-            Modifier.size(44.dp).background(HaloColors.Accent, RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("H", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
-        }
+        TvHaloMark(44.dp)
         Text("Halo", color = HaloColors.Text, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
     }
 }
