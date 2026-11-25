@@ -36,6 +36,7 @@ import moe.ditto.halo.browse.isStandInPosterLink
 import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
+import moe.ditto.halo.ui.monoStyle
 
 private val CardColors = TvSurfaceColors(rest = HaloColors.Surface, focused = HaloColors.SurfaceHigh)
 
@@ -76,6 +77,8 @@ internal fun TvPosterCard(
     onMenu: (() -> Unit)? = null,
     width: Dp = TvMetrics.PosterWidth,
     onFocusChange: ((Boolean) -> Unit)? = null,
+    /** Labels the art with the title's type, where films and series share one list. */
+    showKind: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
     Column(modifier.width(width), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -101,6 +104,7 @@ internal fun TvPosterCard(
                 fallbackUrl = fallbackUrl,
                 failure = { ArtlessPoster(series = type == "series") },
             )
+            if (showKind) KindBadge(type, Modifier.align(Alignment.TopStart).padding(7.dp))
             if (progress != null && progress > 0f) {
                 TvProgressBar(progress, Modifier.align(Alignment.BottomCenter).padding(10.dp))
             }
@@ -117,6 +121,19 @@ internal fun TvPosterCard(
             if (subtitle != null) Text(subtitle, style = TvType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
+}
+
+/** "MOVIE" or "SERIES" on a dark tab over the art's corner. */
+@Composable
+private fun KindBadge(type: String, modifier: Modifier = Modifier) {
+    Text(
+        type.uppercase(),
+        modifier = modifier
+            .background(Color.Black.copy(alpha = 0.69f), RoundedCornerShape(3.dp))
+            .padding(horizontal = 5.dp, vertical = 2.dp),
+        style = monoStyle(10.sp, FontWeight.Bold, color = Color.White),
+        maxLines = 1,
+    )
 }
 
 /**
