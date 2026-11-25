@@ -3,6 +3,7 @@ package moe.ditto.halo.tv.kit
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,8 +33,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import moe.ditto.halo.browse.isStandInPosterLink
 import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
+import moe.ditto.halo.ui.HaloIcons
 
 private val CardColors = TvSurfaceColors(rest = HaloColors.Surface, focused = HaloColors.SurfaceHigh)
 
@@ -88,20 +92,13 @@ internal fun TvPosterCard(
             },
         ) {
             HaloAsyncImage(
-                url = posterUrl,
+                // A card an addon draws in place of art is no poster: the
+                // title's own stand-in reads better than its lettering.
+                url = posterUrl?.takeUnless(::isStandInPosterLink),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 fallbackUrl = fallbackUrl,
-                placeholder = {
-                    Text(
-                        title,
-                        modifier = Modifier.align(Alignment.Center).padding(12.dp),
-                        style = TvType.Caption,
-                        textAlign = TextAlign.Center,
-                        maxLines = 4,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
+                failure = { ArtlessPoster(title) },
             )
             if (progress != null && progress > 0f) {
                 TvProgressBar(progress, Modifier.align(Alignment.BottomCenter).padding(10.dp))
@@ -118,6 +115,35 @@ internal fun TvPosterCard(
             )
             if (subtitle != null) Text(subtitle, style = TvType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+    }
+}
+
+/**
+ * A poster for a title with no artwork, or whose artwork will not load: its
+ * name set on a quiet gradient under a film glyph, so the card still reads as
+ * that title rather than an empty slot.
+ */
+@Composable
+private fun BoxScope.ArtlessPoster(title: String) {
+    Column(
+        Modifier
+            .matchParentSize()
+            .background(Brush.linearGradient(listOf(HaloColors.SurfaceHigh, HaloColors.Surface)))
+            .padding(horizontal = 12.dp, vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+    ) {
+        Icon(HaloIcons.Movie, contentDescription = null, tint = HaloColors.TextMeta.copy(alpha = 0.45f), modifier = Modifier.size(26.dp))
+        Text(
+            title,
+            color = HaloColors.TextMeta,
+            fontSize = 15.sp,
+            lineHeight = 19.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

@@ -86,8 +86,16 @@ fun hasNoPoster(meta: MetaCard): Boolean {
     if (FileNameEntry.matches(meta.id)) return true
     val poster = meta.poster
     // Only an empty link is none: one of spaces is still a link, however poor.
-    return poster.isNullOrEmpty() || TmdbMissingImage.containsMatchIn(poster) || GeneratedPoster.containsMatchIn(poster)
+    return poster.isNullOrEmpty() || isStandInPosterLink(poster)
 }
+
+/**
+ * Whether a poster link, on its own, leads to no artwork: a link built from a
+ * missing image, or a card an addon draws in place of one. For a card that
+ * has only the link to go by; [hasNoPoster] also knows the title's id.
+ */
+fun isStandInPosterLink(poster: String): Boolean =
+    TmdbMissingImage.containsMatchIn(poster) || GeneratedPoster.containsMatchIn(poster)
 
 private val ReleaseYearDigits = Regex("""[0-9]{4}""")
 

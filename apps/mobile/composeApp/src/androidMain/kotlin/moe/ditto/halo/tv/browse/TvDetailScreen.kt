@@ -53,6 +53,7 @@ import moe.ditto.halo.browse.GenreCatalog
 import moe.ditto.halo.browse.creditsOf
 import moe.ditto.halo.browse.episodeTag
 import moe.ditto.halo.browse.episodesIn
+import moe.ditto.halo.browse.isStandInPosterLink
 import moe.ditto.halo.browse.lastWatchedSeason
 import moe.ditto.halo.browse.medal
 import moe.ditto.halo.browse.pickGenreCatalog
@@ -128,7 +129,7 @@ internal fun TvDetailScreen(
     val known = remember(graph, type, metaId) { graph.browse.knownTitle(type, metaId) }
 
     Box(Modifier.fillMaxSize().background(HaloColors.Background)) {
-        DetailBackdrop(meta?.background ?: known?.background ?: meta?.poster ?: known?.poster)
+        DetailBackdrop((meta?.background ?: known?.background ?: meta?.poster ?: known?.poster)?.takeUnless(::isStandInPosterLink))
         when {
             meta != null -> DetailBody(graph, meta, memory, navigation, menus)
             metaState.error != null -> Column(Modifier.padding(top = TvMetrics.VerticalMargin + 24.dp)) {

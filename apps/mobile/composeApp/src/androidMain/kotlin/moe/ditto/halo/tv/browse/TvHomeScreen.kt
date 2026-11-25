@@ -56,6 +56,7 @@ import moe.ditto.halo.browse.HomeShelves
 import moe.ditto.halo.browse.catalogExtra
 import moe.ditto.halo.browse.catalogRows
 import moe.ditto.halo.browse.homeShelves
+import moe.ditto.halo.browse.isStandInPosterLink
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.screens.MetaRef
 import moe.ditto.halo.screens.ShelfPaging
@@ -249,7 +250,7 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
 @Composable
 private fun HeroBackdrop(graph: SessionGraph, meta: MetaCard, heroHeight: Dp) {
     val full by remember(graph, meta.type, meta.id) { graph.browse.meta(meta.type, meta.id) }.collectAsState(QueryState())
-    val art = full.value?.background ?: meta.background ?: full.value?.poster ?: meta.poster
+    val art = (full.value?.background ?: meta.background ?: full.value?.poster ?: meta.poster)?.takeUnless(::isStandInPosterLink)
     Box(Modifier.fillMaxWidth().height(heroHeight + 60.dp)) {
         Crossfade(targetState = art, animationSpec = tween(400), label = "tv-hero-art") { url ->
             Row(Modifier.fillMaxSize()) {
@@ -578,7 +579,7 @@ private fun ContinueCard(
     }.collectAsState(QueryState())
     val meta = metaState.value
     val still = meta?.videos?.firstOrNull { it.id == entry.videoId }?.thumbnail
-        ?: meta?.background ?: entry.meta.background ?: meta?.poster ?: entry.meta.poster
+        ?: (meta?.background ?: entry.meta.background ?: meta?.poster ?: entry.meta.poster)?.takeUnless(::isStandInPosterLink)
     val tag = episodeTagOf(entry.videoId, entry.meta.id)
     TvWideCard(
         title = entry.meta.name,
