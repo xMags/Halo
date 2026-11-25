@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -31,6 +32,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.PlatformDependencies
@@ -100,14 +102,26 @@ internal fun TvSignInScreen(
     // The choices wait for the server's answer (briefly), so they do not
     // rearrange under the remote once it arrives.
     var offerChecked by remember { mutableStateOf(serverUrl.isBlank()) }
+    // The server did not answer at all, as when the TV starts before its
+    // network is up; the choices then say so and the check runs again.
+    var serverUnreachable by remember { mutableStateOf(false) }
+    var offerAttempt by remember { mutableIntStateOf(0) }
     val phoneLayout = !showForm && offerChecked && phoneOffer != null
     val localDeviceSignIn = remember { KtorLocalDeviceSignIn(HttpClient()) }
-    LaunchedEffect(serverUrl) {
+    LaunchedEffect(serverUrl, offerAttempt) {
         if (serverUrl.isBlank()) return@LaunchedEffect
-        phoneOffer = withTimeoutOrNull(OfferWaitMs) {
-            runCatching { dependencies.authConfigSource.fetch(serverUrl).deviceSignInOffer(localDeviceSignIn) }.getOrNull()
+        val answer = withTimeoutOrNull(OfferWaitMs) {
+            runCatching { dependencies.authConfigSource.fetch(serverUrl) }
         }
+        val config = answer?.getOrNull()
+        serverUnreachable = config == null
+        phoneOffer = config?.let { runCatching { it.deviceSignInOffer(localDeviceSignIn) }.getOrNull() }
         offerChecked = true
+        if (config != null) return@LaunchedEffect
+        // Keep asking while the screen is up; a found server brings the
+        // phone sign-in in without a press.
+        delay(OfferRetryMs)
+        offerAttempt += 1
     }
 
     fun submit() {
@@ -195,6 +209,8 @@ internal fun TvSignInScreen(
                         )
                     } else {
                         Choices(
+                            serverUnreachable = serverUnreachable,
+                            onRetry = { offerAttempt += 1 },
                             onUsePassword = { showForm = true },
                             onContinueWithoutAccount = onContinueWithoutAccount,
                         )
@@ -213,10 +229,34 @@ private fun Brand() {
     }
 }
 
+/**
+ * The ways in when the server offers no phone sign-in. When it could not be
+ * reached at all, that is said first, with a way to ask again: the phone
+ * sign-in may only be waiting for the network.
+ */
 @Composable
-private fun Choices(onUsePassword: () -> Unit, onContinueWithoutAccount: () -> Unit) {
+private fun Choices(
+    serverUnreachable: Boolean,
+    onRetry: () -> Unit,
+    onUsePassword: () -> Unit,
+    onContinueWithoutAccount: () -> Unit,
+) {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    if (serverUnreachable) {
+        Row(
+            Modifier.padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                "Couldn't reach your Halo server. Check this TV's network connection.",
+                style = TvType.Body,
+                modifier = Modifier.weight(1f),
+            )
+            TvButton("Try again", onClick = onRetry)
+        }
+    }
     TvRowSurface(
         title = "Use a username and password",
         hint = "For a Halo server that has its own accounts",
@@ -228,11 +268,13 @@ private fun Choices(onUsePassword: () -> Unit, onContinueWithoutAccount: () -> U
         hint = "Add your own addons. Sign in later from Settings.",
         onClick = onContinueWithoutAccount,
     )
-    Text(
-        "Signing in with your phone is coming to Halo on TV.",
-        style = TvType.Caption,
-        modifier = Modifier.padding(top = 8.dp, start = 4.dp),
-    )
+    if (!serverUnreachable) {
+        Text(
+            "This server doesn't offer signing in with your phone.",
+            style = TvType.Caption,
+            modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+        )
+    }
 }
 
 /** The other ways in, below the phone sign-in, in the same order as without it. */
@@ -247,6 +289,9 @@ private fun SecondaryChoices(onUsePassword: () -> Unit, onContinueWithoutAccount
 }
 
 private const val OfferWaitMs = 4_000L
+
+/** How long the screen waits before asking an unreachable server again. */
+private const val OfferRetryMs = 15_000L
 
 @Composable
 private fun PasswordForm(
