@@ -54,7 +54,7 @@ internal class TvPivotBringIntoViewSpec(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ProvidePivot(pivot: Dp, content: @Composable () -> Unit) {
+internal fun ProvidePivot(pivot: Dp, content: @Composable () -> Unit) {
     val pivotPx = with(LocalDensity.current) { pivot.toPx() }
     val spec = remember(pivotPx) { TvPivotBringIntoViewSpec(pivotPx) }
     CompositionLocalProvider(LocalBringIntoViewSpec provides spec, content = content)

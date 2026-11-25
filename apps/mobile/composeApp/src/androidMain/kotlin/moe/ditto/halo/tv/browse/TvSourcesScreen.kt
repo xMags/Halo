@@ -63,6 +63,7 @@ import moe.ditto.halo.screens.StreamsContentState
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.shell.StreamsRoute
 import moe.ditto.halo.sync.runtimeMinutes
+import moe.ditto.halo.tv.kit.ProvidePivot
 import moe.ditto.halo.tv.kit.defaultFocus
 import moe.ditto.halo.tv.kit.rememberFocus
 import moe.ditto.halo.tv.kit.rememberTvFocusMemory
@@ -306,28 +307,32 @@ private fun SourcesList(
             }
             item(key = "filters") {
                 // Scrolls sideways when the qualities and the sort do not fit
-                // the panel; the row keeps the focused pill in view.
-                LazyRow(
-                    Modifier.padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    // Room for the focused pill's ring and its scale at both ends.
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    SourceFilter.entries.forEach { option ->
-                        val count = counts[option] ?: 0
-                        if (option != SourceFilter.All && count == 0) return@forEach
-                        item(key = "filter/${option.name}") {
-                            FilterPill(
-                                label = option.label,
-                                count = count,
-                                selected = option == filter,
-                                onClick = { onFilter(option) },
-                                modifier = Modifier.rememberFocus(memory, "filter/${option.name}"),
-                            )
+                // the panel. The focused pill is held a fixed step in from the
+                // start rather than flush with an edge, where its ring and its
+                // focus growth would be cut; the end padding gives the last
+                // pill the same room.
+                ProvidePivot(PillRowInset) {
+                    LazyRow(
+                        Modifier.padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(horizontal = PillRowInset, vertical = 6.dp),
+                    ) {
+                        SourceFilter.entries.forEach { option ->
+                            val count = counts[option] ?: 0
+                            if (option != SourceFilter.All && count == 0) return@forEach
+                            item(key = "filter/${option.name}") {
+                                FilterPill(
+                                    label = option.label,
+                                    count = count,
+                                    selected = option == filter,
+                                    onClick = { onFilter(option) },
+                                    modifier = Modifier.rememberFocus(memory, "filter/${option.name}"),
+                                )
+                            }
                         }
-                    }
-                    item(key = "sort") {
-                        SortPill(label = sort.label, onClick = onOpenSort, modifier = Modifier.rememberFocus(memory, "sort"))
+                        item(key = "sort") {
+                            SortPill(label = sort.label, onClick = onOpenSort, modifier = Modifier.rememberFocus(memory, "sort"))
+                        }
                     }
                 }
             }
@@ -367,6 +372,9 @@ private fun listedEntries(listing: SourcesListing): List<SourceEntry> =
 private fun sourceFocusKey(entry: SourceEntry): String = "source/${entry.key}"
 
 private const val RetryFocusKey = "retry"
+
+/** Room at either end of the pill row for a focused pill's ring and growth. */
+private val PillRowInset = 14.dp
 
 @Composable
 private fun FilterPill(label: String, count: Int, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
