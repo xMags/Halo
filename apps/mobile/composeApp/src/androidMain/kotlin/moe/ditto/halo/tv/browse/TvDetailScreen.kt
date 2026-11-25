@@ -1,58 +1,68 @@
 package moe.ditto.halo.tv.browse
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.MetaDetail
 import moe.ditto.halo.api.MetaPreview
 import moe.ditto.halo.api.MetaVideo
-import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.api.movieVideoId
+import moe.ditto.halo.api.WatchState
 import moe.ditto.halo.browse.Credit
-import moe.ditto.halo.browse.GenreCatalog
 import moe.ditto.halo.browse.creditsOf
-import moe.ditto.halo.browse.episodeTag
 import moe.ditto.halo.browse.episodesIn
+import moe.ditto.halo.browse.episodeTag
+import moe.ditto.halo.browse.formatReleaseDate
+import moe.ditto.halo.browse.GenreCatalog
 import moe.ditto.halo.browse.isStandInPosterLink
 import moe.ditto.halo.browse.lastWatchedSeason
 import moe.ditto.halo.browse.medal
@@ -62,20 +72,24 @@ import moe.ditto.halo.browse.seasonLabel
 import moe.ditto.halo.browse.seasonNumbers
 import moe.ditto.halo.browse.summarizeAvailability
 import moe.ditto.halo.cache.QueryState
-import moe.ditto.halo.screens.MetaRef
-import moe.ditto.halo.screens.ShelfSnapshot
-import moe.ditto.halo.screens.TitleArt
-import moe.ditto.halo.screens.TitleMenus
 import moe.ditto.halo.screens.heroFacts
+import moe.ditto.halo.screens.MetaRef
 import moe.ditto.halo.screens.playTargetOf
 import moe.ditto.halo.screens.resumeStateOf
+import moe.ditto.halo.screens.ShelfSnapshot
 import moe.ditto.halo.screens.timeLeft
-import moe.ditto.halo.shell.PersonRoute
+import moe.ditto.halo.screens.TitleArt
+import moe.ditto.halo.screens.TitleMenus
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.shell.episodeSources
 import moe.ditto.halo.shell.movieSources
+import moe.ditto.halo.shell.PersonRoute
 import moe.ditto.halo.sync.LibraryRepository
-import moe.ditto.halo.sync.WatchMarkTarget
 import moe.ditto.halo.sync.runtimeMinutes
+import moe.ditto.halo.sync.WatchMarkTarget
+import moe.ditto.halo.tv.kit.defaultFocus
+import moe.ditto.halo.tv.kit.rememberFocus
+import moe.ditto.halo.tv.kit.rememberTvFocusMemory
 import moe.ditto.halo.tv.kit.TvButton
 import moe.ditto.halo.tv.kit.TvButtonStyle
 import moe.ditto.halo.tv.kit.TvFocusMemory
@@ -83,25 +97,27 @@ import moe.ditto.halo.tv.kit.TvMetrics
 import moe.ditto.halo.tv.kit.TvPosterCard
 import moe.ditto.halo.tv.kit.TvProgressBar
 import moe.ditto.halo.tv.kit.TvRow
+import moe.ditto.halo.tv.kit.TvRowSurface
+import moe.ditto.halo.tv.kit.TvSidePanel
 import moe.ditto.halo.tv.kit.TvSurface
 import moe.ditto.halo.tv.kit.TvSurfaceColors
 import moe.ditto.halo.tv.kit.TvType
-import moe.ditto.halo.tv.kit.TvWideCard
-import moe.ditto.halo.tv.kit.defaultFocus
-import moe.ditto.halo.tv.kit.rememberFocus
-import moe.ditto.halo.tv.kit.rememberTvFocusMemory
 import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
-import moe.ditto.halo.ui.MetaLine
 import moe.ditto.halo.ui.MedalSize
-import moe.ditto.halo.ui.QualityMedal
 import moe.ditto.halo.ui.metahubPosterUrl
+import moe.ditto.halo.ui.MetaLine
+import moe.ditto.halo.ui.QualityMedal
 
 private val DetailPosterWidth = 112.dp
 private val DetailLogoMaxWidth = 400.dp
 private val DetailLogoMaxHeight = 110.dp
 private val ResumeBarWidth = 160.dp
+
+/** More seasons than this and the pills give way to one button and a list. */
+private const val SeasonPillLimit = 6
+private val EpisodeSynopsisWidth = 720.dp
 
 /**
  * A title's own page on TV: its art, facts and the quality of the best source
@@ -208,6 +224,9 @@ private fun DetailBody(
     val activeSeason = chosenSeason ?: openOn ?: seasons.firstOrNull()
     val episodes = remember(meta, activeSeason) { episodesIn(meta.videos, activeSeason) }
     val progress = remember(watchStates.value) { watchStates.value.orEmpty().associateBy { it.videoId } }
+    val seasonList = remember(meta, seasons, progress) { seasonSummaries(meta.videos, seasons, progress) }
+    var pickingSeason by remember { mutableStateOf(false) }
+    val seasonButton = remember { FocusRequester() }
     val resumeState = remember(watchStates.value, meta, itemId) { resumeStateOf(meta, watchStates.value, itemId) }
     val targetVideo = if (isSeries) meta.videos.firstOrNull { it.id == resumeState?.videoId } ?: episodes.firstOrNull() else null
     val targetVideoId = targetVideo?.id ?: meta.movieVideoId
@@ -228,192 +247,390 @@ private fun DetailBody(
 
     val listState = rememberLazyListState()
     val heroInView = remember { BringIntoViewRequester() }
-    ProvideVerticalPivot(pivot = 56.dp) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = TvMetrics.VerticalMargin + 60.dp),
-            verticalArrangement = Arrangement.spacedBy(28.dp),
-        ) {
-            item(key = "hero") {
-                Column(
-                    Modifier
-                        // Back at the buttons, the page returns to its top, title and all.
-                        // Asked of the list as a request to show the whole hero rather
-                        // than a scroll of its own: a separate scroll and the focused
-                        // button's own request cancel each other, and the button's
-                        // (which leaves the title out of view) usually came last. The
-                        // list keeps the larger of two nested requests, and the hero,
-                        // first on the page, can only be shown from the top.
-                        .bringIntoViewRequester(heroInView)
-                        .onFocusChanged { if (it.hasFocus) scope.launch { heroInView.bringIntoView() } }
-                        .padding(start = TvMetrics.SideMargin + 8.dp, top = TvMetrics.VerticalMargin + 8.dp)
-                        .width(560.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    TitleArt(meta.name, meta.logo, logoMaxWidth = DetailLogoMaxWidth, logoMaxHeight = DetailLogoMaxHeight) {
-                        Text(meta.name, style = TvType.Hero, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        // Addons send blank fields as often as missing ones.
-                        val certificate = meta.ageRating?.takeIf { it.isNotBlank() }
-                        MetaLine(parts = heroFacts(meta, isSeries, seasons) + listOfNotNull(certificate), rating = ratedValue(meta.imdbRating))
-                        availability?.groups?.firstOrNull()?.let { best -> QualityMedal(best.medal, size = MedalSize.Compact) }
-                    }
-                    Text(
-                        meta.description.orEmpty(),
-                        style = TvType.Body.copy(fontSize = 16.sp, lineHeight = 24.sp),
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    meta.director.filter { it.isNotBlank() }.take(2).takeIf { it.isNotEmpty() }?.let { directors ->
-                        Text("Directed by ${directors.joinToString(" and ")}", style = TvType.Meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    playTarget.left?.let { left -> ResumeProgress(left, playTarget.progress) }
-                    Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        TvButton(
-                            playTarget.label,
-                            onClick = { openSources(targetVideo) },
-                            icon = HaloIcons.Play,
-                            style = TvButtonStyle.Primary,
-                            enabled = playTarget.enabled,
-                            modifier = Modifier.defaultFocus(memory, "play"),
+    Box(Modifier.fillMaxSize()) {
+        ProvideVerticalPivot(pivot = 56.dp) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = TvMetrics.VerticalMargin + 60.dp),
+                verticalArrangement = Arrangement.spacedBy(28.dp),
+            ) {
+                item(key = "hero") {
+                    Column(
+                        Modifier
+                            // Back at the buttons, the page returns to its top, title and all.
+                            // Asked of the list as a request to show the whole hero rather
+                            // than a scroll of its own: a separate scroll and the focused
+                            // button's own request cancel each other, and the button's
+                            // (which leaves the title out of view) usually came last. The
+                            // list keeps the larger of two nested requests, and the hero,
+                            // first on the page, can only be shown from the top.
+                            .bringIntoViewRequester(heroInView)
+                            .onFocusChanged { if (it.hasFocus) scope.launch { heroInView.bringIntoView() } }
+                            .padding(start = TvMetrics.SideMargin + 8.dp, top = TvMetrics.VerticalMargin + 8.dp)
+                            .width(560.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        TitleArt(meta.name, meta.logo, logoMaxWidth = DetailLogoMaxWidth, logoMaxHeight = DetailLogoMaxHeight) {
+                            Text(meta.name, style = TvType.Hero, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            // Addons send blank fields as often as missing ones.
+                            val certificate = meta.ageRating?.takeIf { it.isNotBlank() }
+                            MetaLine(parts = heroFacts(meta, isSeries, seasons) + listOfNotNull(certificate), rating = ratedValue(meta.imdbRating))
+                            availability?.groups?.firstOrNull()?.let { best -> QualityMedal(best.medal, size = MedalSize.Compact) }
+                        }
+                        Text(
+                            meta.description.orEmpty(),
+                            style = TvType.Body.copy(fontSize = 16.sp, lineHeight = 24.sp),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                        TvButton(
-                            if (inLibrary) "In library" else "Add to library",
-                            icon = if (inLibrary) HaloIcons.Check else HaloIcons.BookmarkOutline,
-                            onClick = {
-                                scope.launch {
-                                    // A rejected write marks the cache stale, which corrects the button.
-                                    runCatching { if (inLibrary) graph.library.remove(itemId) else graph.library.add(meta) }
-                                }
-                            },
-                            modifier = Modifier.rememberFocus(memory, "library"),
-                        )
-                        if (!isSeries) {
+                        meta.director.filter { it.isNotBlank() }.take(2).takeIf { it.isNotEmpty() }?.let { directors ->
+                            Text("Directed by ${directors.joinToString(" and ")}", style = TvType.Meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        playTarget.left?.let { left -> ResumeProgress(left, playTarget.progress) }
+                        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             TvButton(
-                                if (watched) "Mark as unwatched" else "Mark as watched",
-                                icon = if (watched) HaloIcons.Undo else HaloIcons.DoneAll,
+                                playTarget.label,
+                                onClick = { openSources(targetVideo) },
+                                icon = HaloIcons.Play,
+                                style = TvButtonStyle.Primary,
+                                enabled = playTarget.enabled,
+                                modifier = Modifier.defaultFocus(memory, "play"),
+                            )
+                            TvButton(
+                                if (inLibrary) "In library" else "Add to library",
+                                icon = if (inLibrary) HaloIcons.Check else HaloIcons.BookmarkOutline,
                                 onClick = {
-                                    val target = WatchMarkTarget(targetVideoId, itemId, meta.name, meta.poster)
                                     scope.launch {
-                                        runCatching {
-                                            if (watched) {
-                                                graph.watchStates.markUnwatched(target)
-                                            } else {
-                                                graph.watchStates.markWatched(listOf(target), runtimeMinutes(meta.runtime)?.times(60.0))
-                                            }
-                                        }
+                                        // A rejected write marks the cache stale, which corrects the button.
+                                        runCatching { if (inLibrary) graph.library.remove(itemId) else graph.library.add(meta) }
                                     }
                                 },
-                                modifier = Modifier.rememberFocus(memory, "watched"),
+                                modifier = Modifier.rememberFocus(memory, "library"),
                             )
+                            if (!isSeries) {
+                                TvButton(
+                                    if (watched) "Mark as unwatched" else "Mark as watched",
+                                    icon = if (watched) HaloIcons.Undo else HaloIcons.DoneAll,
+                                    onClick = {
+                                        val target = WatchMarkTarget(targetVideoId, itemId, meta.name, meta.poster)
+                                        scope.launch {
+                                            runCatching {
+                                                if (watched) {
+                                                    graph.watchStates.markUnwatched(target)
+                                                } else {
+                                                    graph.watchStates.markWatched(listOf(target), runtimeMinutes(meta.runtime)?.times(60.0))
+                                                }
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.rememberFocus(memory, "watched"),
+                                )
+                            }
                         }
                     }
                 }
-            }
-            if (isSeries) {
-                item(key = "episodes") {
-                    EpisodesSection(
-                        meta = meta,
-                        seasons = seasons,
-                        activeSeason = activeSeason,
-                        episodes = episodes,
-                        progress = progress,
-                        resumeVideoId = resumeState?.videoId,
-                        memory = memory,
-                        onSeason = { chosenSeason = it },
-                        onPlay = { openSources(it) },
-                        onMenu = { video -> menus.openEpisode(meta, video) { openSources(video) } },
-                    )
-                }
-            }
-            if (credits.isNotEmpty() && capabilities.capabilities.people) {
-                item(key = "cast") {
-                    CastRow(credits, memory) { credit ->
-                        navigation.openPerson(PersonRoute(credit.tmdbId ?: 0, credit.name, credit.photo?.takeIf { it.startsWith("https://") }))
+                if (isSeries) {
+                    item(key = "episodes") {
+                        EpisodesSection(
+                            meta = meta,
+                            seasons = seasonList,
+                            activeSeason = activeSeason,
+                            episodes = episodes,
+                            progress = progress,
+                            resumeVideoId = resumeState?.videoId,
+                            memory = memory,
+                            seasonButton = seasonButton,
+                            onSeason = { chosenSeason = it },
+                            onPickSeason = { pickingSeason = true },
+                            onPlay = { openSources(it) },
+                            onMenu = { video -> menus.openEpisode(meta, video) { openSources(video) } },
+                        )
                     }
                 }
-            } else if (credits.isNotEmpty()) {
-                item(key = "cast-names") {
-                    Text(
-                        "Cast: " + credits.take(8).joinToString(", ") { it.name },
-                        style = TvType.Meta,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = TvMetrics.ContentStart - 72.dp, end = TvMetrics.SideMargin),
-                    )
+                if (credits.isNotEmpty() && capabilities.capabilities.people) {
+                    item(key = "cast") {
+                        CastRow(credits, memory) { credit ->
+                            navigation.openPerson(PersonRoute(credit.tmdbId ?: 0, credit.name, credit.photo?.takeIf { it.startsWith("https://") }))
+                        }
+                    }
+                } else if (credits.isNotEmpty()) {
+                    item(key = "cast-names") {
+                        Text(
+                            "Cast: " + credits.take(8).joinToString(", ") { it.name },
+                            style = TvType.Meta,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = TvMetrics.ContentStart - 72.dp, end = TvMetrics.SideMargin),
+                        )
+                    }
+                }
+                similar?.let { source ->
+                    item(key = "similar") { SimilarRow(graph, meta, source, memory, navigation, menus) }
                 }
             }
-            similar?.let { source ->
-                item(key = "similar") { SimilarRow(graph, meta, source, memory, navigation, menus) }
-            }
+        }
+        if (pickingSeason) {
+            SeasonPanel(
+                seasons = seasonList,
+                activeSeason = activeSeason,
+                returnFocusTo = seasonButton,
+                onSelect = { season ->
+                    chosenSeason = season
+                    pickingSeason = false
+                },
+                onDismiss = { pickingSeason = false },
+            )
         }
     }
 }
 
+/** One season's line in the season list: how many episodes, and how many are watched. */
+private data class SeasonSummary(val season: Int, val episodes: Int, val watched: Int) {
+    val line: String
+        get() = buildString {
+            append(if (episodes == 1) "1 episode" else "$episodes episodes")
+            if (watched >= episodes && episodes > 0) append(" · watched") else if (watched > 0) append(" · $watched watched")
+        }
+}
+
+private fun seasonSummaries(videos: List<MetaVideo>, seasons: List<Int>, progress: Map<String, WatchState>): List<SeasonSummary> {
+    val bySeason = videos.groupBy { it.season }
+    return seasons.map { season ->
+        val inSeason = bySeason[season].orEmpty()
+        SeasonSummary(season, inSeason.size, inSeason.count { progress[it.id]?.watched == true })
+    }
+}
+
+/**
+ * A series' episodes: the season choice, a row of episode cards, and the
+ * focused episode's synopsis under them. A few seasons are pills a press
+ * apart; past [SeasonPillLimit] the pills would run off the screen, so one
+ * button opens the full list of seasons instead.
+ */
 @Composable
 private fun EpisodesSection(
     meta: MetaDetail,
-    seasons: List<Int>,
+    seasons: List<SeasonSummary>,
     activeSeason: Int?,
     episodes: List<MetaVideo>,
     progress: Map<String, WatchState>,
     resumeVideoId: String?,
     memory: TvFocusMemory,
+    seasonButton: FocusRequester,
     onSeason: (Int) -> Unit,
+    onPickSeason: () -> Unit,
     onPlay: (MetaVideo) -> Unit,
     onMenu: (MetaVideo) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (seasons.size > 1) {
-            TvRow(startPadding = TvMetrics.SideMargin + 8.dp) {
-                items(seasons, key = { it }) { season ->
+    val start = TvMetrics.SideMargin + 8.dp
+    val active = seasons.firstOrNull { it.season == activeSeason }
+    var focusedEpisode by remember(episodes) { mutableStateOf<MetaVideo?>(null) }
+    val described = focusedEpisode ?: episodes.firstOrNull { it.id == resumeVideoId } ?: episodes.firstOrNull()
+    val scope = rememberCoroutineScope()
+    val sectionInView = remember { BringIntoViewRequester() }
+
+    Column(
+        // Focus anywhere in it shows the whole section, synopsis included:
+        // the list would otherwise stop as soon as the focused card is in
+        // view, with the synopsis under the screen's edge.
+        Modifier
+            .bringIntoViewRequester(sectionInView)
+            .onFocusChanged { if (it.hasFocus) scope.launch { sectionInView.bringIntoView() } },
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        when {
+            seasons.size > SeasonPillLimit -> Row(
+                Modifier.padding(start = start),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                SeasonButton(
+                    label = activeSeason?.let(::seasonLabel) ?: "Season",
+                    onClick = onPickSeason,
+                    modifier = Modifier.focusRequester(seasonButton).rememberFocus(memory, "season-picker"),
+                )
+                active?.let { Text(it.line, style = TvType.Meta) }
+            }
+            seasons.size > 1 -> TvRow(startPadding = start) {
+                items(seasons, key = { it.season }) { summary ->
                     SeasonTab(
-                        label = seasonLabel(season),
-                        selected = season == activeSeason,
-                        onClick = { onSeason(season) },
-                        modifier = Modifier.rememberFocus(memory, "season/$season"),
+                        label = seasonLabel(summary.season),
+                        selected = summary.season == activeSeason,
+                        onClick = { onSeason(summary.season) },
+                        modifier = Modifier.rememberFocus(memory, "season/${summary.season}"),
                     )
                 }
                 item(key = "count") {
                     Box(Modifier.height(36.dp).padding(start = 8.dp), contentAlignment = Alignment.CenterStart) {
-                        Text("${episodes.size} episodes", style = TvType.Caption)
+                        Text(active?.line.orEmpty(), style = TvType.Caption)
                     }
                 }
             }
-        } else {
-            Text(
-                "${episodes.size} episodes",
-                style = TvType.Heading,
-                modifier = Modifier.padding(start = TvMetrics.SideMargin + 8.dp),
-            )
+            else -> Row(Modifier.padding(start = start), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("Episodes", style = TvType.Heading)
+                Text(active?.line ?: "${episodes.size} episodes", style = TvType.Meta)
+            }
         }
-        TvRow(startPadding = TvMetrics.SideMargin + 8.dp) {
+        TvRow(startPadding = start) {
             items(episodes, key = { it.id }) { video ->
-                val state = progress[video.id]
-                val fraction = state?.takeIf { it.durationSec > 0 }?.let { (it.positionSec / it.durationSec).toFloat() }
-                val number = video.episode?.let { "$it. " }.orEmpty()
-                val name = video.displayTitle?.takeIf { it != episodeTag(video) } ?: episodeTag(video)
-                TvWideCard(
-                    title = episodeTag(video),
-                    imageUrl = video.thumbnail ?: meta.background,
-                    line = "$number$name",
-                    detail = when {
-                        state?.watched == true -> "Watched"
-                        state != null && state.durationSec > 0 && state.positionSec > 0 ->
-                            "${timeLeft(state.positionSec, state.durationSec).lowercase()} left"
-                        else -> video.released?.take(10)
-                    },
-                    progress = fraction?.takeIf { state?.watched != true },
-                    badge = if (state?.watched == true) {
-                        { WatchedBadge() }
-                    } else {
-                        null
-                    },
+                EpisodeCard(
+                    meta = meta,
+                    video = video,
+                    state = progress[video.id],
                     onClick = { onPlay(video) },
                     onMenu = { onMenu(video) },
+                    onFocused = { focusedEpisode = video },
                     modifier = Modifier.rememberFocus(memory, "episode/${video.id}"),
+                )
+            }
+        }
+        // The synopsis of the episode in focus, or of the one to play next;
+        // its room is kept while the episodes change, so the page holds still.
+        Text(
+            described?.overview?.trim().orEmpty(),
+            style = TvType.Body.copy(fontSize = 15.sp, lineHeight = 22.sp, color = HaloColors.TextMeta),
+            maxLines = 3,
+            minLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = start).width(EpisodeSynopsisWidth),
+        )
+    }
+}
+
+/**
+ * An episode: its still with a small number tag, a watched mark or progress
+ * bar, then its name on up to two lines and when it aired or how much is left.
+ */
+@Composable
+private fun EpisodeCard(
+    meta: MetaDetail,
+    video: MetaVideo,
+    state: WatchState?,
+    onClick: () -> Unit,
+    onMenu: () -> Unit,
+    onFocused: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val watched = state?.watched == true
+    val fraction = state?.takeIf { it.durationSec > 0 && !watched }?.let { (it.positionSec / it.durationSec).toFloat() }
+    val tag = episodeTag(video)
+    val name = video.displayTitle?.takeIf { it.isNotBlank() && it != tag } ?: tag
+    Column(modifier.width(TvMetrics.WideCardWidth), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        TvSurface(
+            onClick = onClick,
+            onMenu = onMenu,
+            modifier = Modifier
+                .size(TvMetrics.WideCardWidth, TvMetrics.WideCardHeight)
+                .semantics { contentDescription = listOfNotNull(tag, name.takeIf { it != tag }).joinToString(", ") },
+            onFocusChange = { isFocused ->
+                focused = isFocused
+                if (isFocused) onFocused()
+            },
+        ) {
+            HaloAsyncImage(url = video.thumbnail ?: meta.background, contentDescription = null, modifier = Modifier.fillMaxSize())
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to Color(0xA6050709))))
+            video.episode?.let { number ->
+                OverlayTag("E$number", HaloColors.Text, Modifier.align(Alignment.TopStart).padding(8.dp))
+            }
+            if (watched) OverlayTag("Watched", HaloColors.Success, Modifier.align(Alignment.TopEnd).padding(8.dp))
+            if (fraction != null && fraction > 0f) {
+                TvProgressBar(fraction, Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = 10.dp))
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                name,
+                color = if (focused) HaloColors.Text else HaloColors.TextMeta,
+                fontSize = 15.sp,
+                lineHeight = 19.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val line = when {
+                watched -> null
+                state != null && state.durationSec > 0 && state.positionSec > 0 ->
+                    "${timeLeft(state.positionSec, state.durationSec).lowercase()} left"
+                else -> formatReleaseDate(video.released)
+            }
+            line?.let { Text(it, style = TvType.Caption, maxLines = 1) }
+        }
+    }
+}
+
+/** A short label on a dark pill over art: an episode's number, its watched mark. */
+@Composable
+private fun OverlayTag(text: String, color: Color, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        color = color,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(HaloColors.OverlayPill)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    )
+}
+
+/** The season in view, as a button that opens every season. */
+@Composable
+private fun SeasonButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    TvSurface(
+        onClick = onClick,
+        modifier = modifier.height(40.dp).semantics { contentDescription = "$label, choose a season" },
+        cornerRadius = 20.dp,
+        colors = TvSurfaceColors(HaloColors.FieldFill, HaloColors.Text),
+        contentAlignment = Alignment.Center,
+    ) { focused ->
+        Row(
+            Modifier.padding(start = 18.dp, end = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val ink = if (focused) HaloColors.OnPrimary else HaloColors.Text
+            Text(label, color = ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Icon(HaloIcons.ChevronDown, contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+/** Every season, each with its episode count and what is watched; opens on the one in view. */
+@Composable
+private fun SeasonPanel(
+    seasons: List<SeasonSummary>,
+    activeSeason: Int?,
+    returnFocusTo: FocusRequester,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val activeIndex = seasons.indexOfFirst { it.season == activeSeason }.coerceAtLeast(0)
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (activeIndex - 2).coerceAtLeast(0))
+    val activeFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        // After the panel's own first focus, which goes to its first row.
+        withFrameNanos { }
+        runCatching { activeFocus.requestFocus() }
+    }
+    TvSidePanel(title = "Seasons", onDismiss = onDismiss, returnFocusTo = returnFocusTo, width = 420.dp) {
+        LazyColumn(
+            Modifier.weight(1f),
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(vertical = 8.dp),
+        ) {
+            itemsIndexed(seasons, key = { _, summary -> summary.season }) { index, summary ->
+                TvRowSurface(
+                    title = seasonLabel(summary.season),
+                    hint = summary.line,
+                    onClick = { onSelect(summary.season) },
+                    modifier = (if (index == activeIndex) Modifier.focusRequester(activeFocus) else Modifier)
+                        .semantics { if (summary.season == activeSeason) stateDescription = "Selected" },
+                    trailing = { if (summary.season == activeSeason) Icon(HaloIcons.Check, contentDescription = null, tint = HaloColors.AccentLight) },
                 )
             }
         }
@@ -433,17 +650,6 @@ private fun ResumeProgress(left: String, progress: Float?) {
     }
 }
 
-@Composable
-private fun WatchedBadge() {
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(HaloColors.OverlayPill)
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-    ) {
-        Text("Watched", color = HaloColors.Success, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
 
 @Composable
 private fun SeasonTab(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
