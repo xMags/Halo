@@ -4,48 +4,45 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.AddonSource
 import moe.ditto.halo.api.Stream
-import moe.ditto.halo.browse.SourceDetails
-import moe.ditto.halo.browse.SourceEntry
-import moe.ditto.halo.browse.SourceFilter
-import moe.ditto.halo.browse.SourcesListing
-import moe.ditto.halo.browse.SourceSort
-import moe.ditto.halo.browse.SourceStatus
 import moe.ditto.halo.browse.buildListing
 import moe.ditto.halo.browse.detailsFor
 import moe.ditto.halo.browse.filterCounts
@@ -53,12 +50,22 @@ import moe.ditto.halo.browse.medalFor
 import moe.ditto.halo.browse.metaLine
 import moe.ditto.halo.browse.resolveSources
 import moe.ditto.halo.browse.sanitizeAddonName
+import moe.ditto.halo.browse.SourceDetails
+import moe.ditto.halo.browse.SourceEntry
+import moe.ditto.halo.browse.SourceFilter
+import moe.ditto.halo.browse.SourcesListing
+import moe.ditto.halo.browse.SourceSort
+import moe.ditto.halo.browse.SourceStatus
 import moe.ditto.halo.cache.QueryState
-import moe.ditto.halo.screens.StreamsContentState
 import moe.ditto.halo.screens.safeAddonFailure
 import moe.ditto.halo.screens.streamsContentState
+import moe.ditto.halo.screens.StreamsContentState
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.shell.StreamsRoute
 import moe.ditto.halo.sync.runtimeMinutes
+import moe.ditto.halo.tv.kit.defaultFocus
+import moe.ditto.halo.tv.kit.rememberFocus
+import moe.ditto.halo.tv.kit.rememberTvFocusMemory
 import moe.ditto.halo.tv.kit.TvButton
 import moe.ditto.halo.tv.kit.TvButtonStyle
 import moe.ditto.halo.tv.kit.TvFocusMemory
@@ -68,15 +75,13 @@ import moe.ditto.halo.tv.kit.TvSidePanel
 import moe.ditto.halo.tv.kit.TvSurface
 import moe.ditto.halo.tv.kit.TvSurfaceColors
 import moe.ditto.halo.tv.kit.TvType
-import moe.ditto.halo.tv.kit.defaultFocus
-import moe.ditto.halo.tv.kit.rememberFocus
-import moe.ditto.halo.tv.kit.rememberTvFocusMemory
 import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
+import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.HaloSkeleton
-import moe.ditto.halo.ui.QualityMedal
 import moe.ditto.halo.ui.MedalSize
 import moe.ditto.halo.ui.monoStyle
+import moe.ditto.halo.ui.QualityMedal
 
 private val PanelWidth = 540.dp
 
@@ -104,6 +109,8 @@ internal fun TvSourcesScreen(
         answer?.let { resolveSources(it.groups, it.failures, runtimeSeconds) }
     }
     var filter by remember { mutableStateOf(SourceFilter.All) }
+    var sort by remember { mutableStateOf(SourceSort.Recommended) }
+    var sortOpen by remember { mutableStateOf(false) }
     var revealAll by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf<Pair<SourceEntry, SourceDetails>?>(null) }
     val retry: () -> Unit = { scope.launch { runCatching { graph.browse.retryStreams(route.type, route.videoId) } } }
@@ -168,25 +175,37 @@ internal fun TvSourcesScreen(
                         if (result == null || result.pool.isEmpty()) {
                             Failure(NoSourcesMessage, memory, retry)
                         } else {
-                            val listing = remember(result, filter, revealAll) {
-                                buildListing(result, filter, SourceSort.Recommended, revealAll)
+                            val listing = remember(result, filter, sort, revealAll) {
+                                buildListing(result, filter, sort, revealAll)
                             }
                             val entries = remember(listing) { listedEntries(listing) }
                             val counts = remember(result) { filterCounts(result.pool) }
                             val heaviest = remember(result) { result.pool.maxOfOrNull { it.neededMbps } ?: 0.0 }
+                            // Some addons failed while others answered: said once,
+                            // above the list, with a way to ask them again.
+                            val failureText = state.refreshFailure ?: when (state.failures.size) {
+                                0 -> null
+                                1 -> safeAddonFailure(state.failures.single())
+                                else -> "${state.failures.size} addons could not load sources."
+                            }
                             SourcesList(
                                 entries = entries,
                                 hiddenCount = listing.hiddenCount,
                                 empty = listing.empty,
                                 filter = filter,
                                 counts = counts,
+                                sort = sort,
+                                failureText = failureText,
+                                retrying = state.isFetching,
                                 memory = memory,
                                 onFilter = { filter = it },
+                                onOpenSort = { sortOpen = true },
+                                onRetry = retry,
                                 onReveal = {
                                     // The button goes away with the press, so focus moves to
                                     // the first source it brings into view.
                                     val shown = entries.mapTo(HashSet()) { it.key }
-                                    listedEntries(buildListing(result, filter, SourceSort.Recommended, revealAll = true))
+                                    listedEntries(buildListing(result, filter, sort, revealAll = true))
                                         .firstOrNull { it.key !in shown }
                                         ?.let { memory.focusWhenShown(sourceFocusKey(it)) }
                                     revealAll = true
@@ -204,6 +223,47 @@ internal fun TvSourcesScreen(
         details?.let { (entry, facts) ->
             SourceDetailsPanel(entry, facts, onPlay = { details = null; onPlay(entry.addon, entry.stream) }, onDismiss = { details = null })
         }
+        if (sortOpen) {
+            SortPanel(
+                selected = sort,
+                onSelect = {
+                    sort = it
+                    sortOpen = false
+                },
+                onDismiss = { sortOpen = false },
+            )
+        }
+    }
+}
+
+/** The orders the list can take, the current one checked. */
+@Composable
+private fun SortPanel(selected: SourceSort, onSelect: (SourceSort) -> Unit, onDismiss: () -> Unit) {
+    TvSidePanel(title = "Sort sources", onDismiss = onDismiss, width = 400.dp) {
+        SourceSort.entries.forEach { option ->
+            TvRowSurface(
+                title = option.label,
+                onClick = { onSelect(option) },
+                modifier = Modifier.semantics { if (option == selected) stateDescription = "Selected" },
+                trailing = { if (option == selected) Icon(HaloIcons.Check, contentDescription = null, tint = HaloColors.AccentLight) },
+            )
+        }
+    }
+}
+
+/** Addons that failed while others answered, with a way to ask them again. */
+@Composable
+private fun PartialFailure(text: String, retrying: Boolean, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(HaloColors.Gold.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(text, style = TvType.Meta.copy(color = HaloColors.Gold), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        TvButton(if (retrying) "Trying…" else "Try again", onClick = onRetry, enabled = !retrying, modifier = modifier)
     }
 }
 
@@ -222,8 +282,13 @@ private fun SourcesList(
     empty: Boolean,
     filter: SourceFilter,
     counts: Map<SourceFilter, Int>,
+    sort: SourceSort,
+    failureText: String?,
+    retrying: Boolean,
     memory: TvFocusMemory,
     onFilter: (SourceFilter) -> Unit,
+    onOpenSort: () -> Unit,
+    onRetry: () -> Unit,
     onReveal: () -> Unit,
     onPlay: (SourceEntry) -> Unit,
     onDetails: (SourceEntry) -> Unit,
@@ -234,18 +299,35 @@ private fun SourcesList(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(top = 6.dp, bottom = 12.dp, start = 6.dp, end = 6.dp),
         ) {
+            failureText?.let { text ->
+                item(key = "failures") {
+                    PartialFailure(text, retrying, onRetry, Modifier.rememberFocus(memory, "partial-retry"))
+                }
+            }
             item(key = "filters") {
-                Row(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Scrolls sideways when the qualities and the sort do not fit
+                // the panel; the row keeps the focused pill in view.
+                LazyRow(
+                    Modifier.padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    // Room for the focused pill's ring and its scale at both ends.
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
                     SourceFilter.entries.forEach { option ->
                         val count = counts[option] ?: 0
                         if (option != SourceFilter.All && count == 0) return@forEach
-                        FilterPill(
-                            label = option.label,
-                            count = count,
-                            selected = option == filter,
-                            onClick = { onFilter(option) },
-                            modifier = Modifier.rememberFocus(memory, "filter/${option.name}"),
-                        )
+                        item(key = "filter/${option.name}") {
+                            FilterPill(
+                                label = option.label,
+                                count = count,
+                                selected = option == filter,
+                                onClick = { onFilter(option) },
+                                modifier = Modifier.rememberFocus(memory, "filter/${option.name}"),
+                            )
+                        }
+                    }
+                    item(key = "sort") {
+                        SortPill(label = sort.label, onClick = onOpenSort, modifier = Modifier.rememberFocus(memory, "sort"))
                     }
                 }
             }
@@ -298,6 +380,23 @@ private fun FilterPill(label: String, count: Int, selected: Boolean, onClick: ()
         Row(Modifier.padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(label, color = if (selected) HaloColors.OnPrimary else HaloColors.TextMeta, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Text("$count", color = if (selected) HaloColors.OnPrimary.copy(alpha = 0.6f) else HaloColors.TextDim, fontSize = 14.sp)
+        }
+    }
+}
+
+/** The list's order, as a pill after the quality filters; opens the orders. */
+@Composable
+private fun SortPill(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    TvSurface(
+        onClick = onClick,
+        modifier = modifier.height(34.dp).semantics { contentDescription = "Sort: $label" },
+        cornerRadius = 17.dp,
+        colors = TvSurfaceColors(HaloColors.FieldFill, HaloColors.SurfaceHigh),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(Modifier.padding(start = 14.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Sort: $label", color = HaloColors.TextMeta, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Icon(HaloIcons.ChevronDown, contentDescription = null, tint = HaloColors.TextDim, modifier = Modifier.size(16.dp))
         }
     }
 }
