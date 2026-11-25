@@ -61,6 +61,7 @@ import moe.ditto.halo.browse.summarizeAvailability
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.screens.MetaRef
 import moe.ditto.halo.screens.ShelfSnapshot
+import moe.ditto.halo.screens.TitleArt
 import moe.ditto.halo.screens.TitleMenus
 import moe.ditto.halo.screens.heroFacts
 import moe.ditto.halo.screens.playTargetOf
@@ -77,6 +78,7 @@ import moe.ditto.halo.tv.kit.TvButtonStyle
 import moe.ditto.halo.tv.kit.TvFocusMemory
 import moe.ditto.halo.tv.kit.TvMetrics
 import moe.ditto.halo.tv.kit.TvPosterCard
+import moe.ditto.halo.tv.kit.TvProgressBar
 import moe.ditto.halo.tv.kit.TvRow
 import moe.ditto.halo.tv.kit.TvSurface
 import moe.ditto.halo.tv.kit.TvSurfaceColors
@@ -93,6 +95,9 @@ import moe.ditto.halo.ui.QualityMedal
 import moe.ditto.halo.ui.metahubPosterUrl
 
 private val DetailPosterWidth = 112.dp
+private val DetailLogoMaxWidth = 400.dp
+private val DetailLogoMaxHeight = 110.dp
+private val ResumeBarWidth = 160.dp
 
 /**
  * A title's own page on TV: its art, facts and the quality of the best source
@@ -234,9 +239,13 @@ private fun DetailBody(
                         .width(560.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(meta.name, style = TvType.Hero, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    TitleArt(meta.name, meta.logo, logoMaxWidth = DetailLogoMaxWidth, logoMaxHeight = DetailLogoMaxHeight) {
+                        Text(meta.name, style = TvType.Hero, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        MetaLine(parts = heroFacts(meta, isSeries, seasons), rating = ratedValue(meta.imdbRating))
+                        // Addons send blank fields as often as missing ones.
+                        val certificate = meta.ageRating?.takeIf { it.isNotBlank() }
+                        MetaLine(parts = heroFacts(meta, isSeries, seasons) + listOfNotNull(certificate), rating = ratedValue(meta.imdbRating))
                         availability?.groups?.firstOrNull()?.let { best -> QualityMedal(best.medal) }
                     }
                     Text(
@@ -245,7 +254,10 @@ private fun DetailBody(
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    playTarget.left?.let { Text(it.lowercase().replaceFirstChar { c -> c.uppercase() }, style = TvType.Caption) }
+                    meta.director.filter { it.isNotBlank() }.take(2).takeIf { it.isNotEmpty() }?.let { directors ->
+                        Text("Directed by ${directors.joinToString(" and ")}", style = TvType.Meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    playTarget.left?.let { left -> ResumeProgress(left, playTarget.progress) }
                     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         TvButton(
                             playTarget.label,
@@ -269,6 +281,7 @@ private fun DetailBody(
                         if (!isSeries) {
                             TvButton(
                                 if (watched) "Mark as unwatched" else "Mark as watched",
+                                icon = if (watched) HaloIcons.Undo else HaloIcons.DoneAll,
                                 onClick = {
                                     val target = WatchMarkTarget(targetVideoId, itemId, meta.name, meta.poster)
                                     scope.launch {
@@ -395,6 +408,19 @@ private fun EpisodesSection(
     }
 }
 
+/** How far into the title the viewer is: a short bar and the time left beside it. */
+@Composable
+private fun ResumeProgress(left: String, progress: Float?) {
+    Row(
+        Modifier.padding(top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (progress != null) TvProgressBar(progress, Modifier.width(ResumeBarWidth))
+        Text(left.lowercase().replaceFirstChar { it.uppercase() }, style = TvType.Caption)
+    }
+}
+
 @Composable
 private fun WatchedBadge() {
     Box(
@@ -475,7 +501,8 @@ private fun SimilarRow(
         state.value.orEmpty().filter { seen.add("${it.type}:${it.id}") }.take(SimilarLimit)
     }
     if (titles.isEmpty()) return
-    TvRow(title = "More like this", startPadding = TvMetrics.SideMargin + 8.dp) {
+    // Named by the genre it comes from, as the phone and desktop rows are.
+    TvRow(title = "More like this · ${source.genre}", startPadding = TvMetrics.SideMargin + 8.dp) {
         items(titles, key = { "${it.type}:${it.id}" }) { title ->
             TvPosterCard(
                 title = title.name,
