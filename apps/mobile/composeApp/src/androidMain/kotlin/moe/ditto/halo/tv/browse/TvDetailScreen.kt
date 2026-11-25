@@ -116,7 +116,7 @@ private val DetailLogoMaxHeight = 110.dp
 private val ResumeBarWidth = 160.dp
 
 /** More seasons than this and the pills give way to one button and a list. */
-private const val SeasonPillLimit = 6
+private const val SeasonPillLimit = 3
 private val EpisodeSynopsisWidth = 720.dp
 
 /**
