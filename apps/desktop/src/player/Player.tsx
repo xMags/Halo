@@ -2,14 +2,18 @@ import {
   languageCodeVariants,
   languageLabel,
   languageMatches,
+  probeStatusVideo,
+  STATUS_VIDEO_COPY,
   type MetaVideo,
   type NextEpisodeResult,
   type SettingsPayload,
+  type StatusVideoKind,
   type Subtitle,
   type WatchState,
 } from '@halo/core'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
 import { currentBackend, getClient } from '../api'
 import { ArtImage } from '../components/ArtImage'
 import { Icon } from '../components/Icon'
@@ -40,7 +44,7 @@ import {
   upNextCancelAction,
   videoTopMarginRatio,
 } from './playerLogic'
-import { headerLines, playbackHeaders } from './requestHeaders'
+import { fetchWithHeaders, headerLines, playbackHeaders } from './requestHeaders'
 import { closeScrubPreview, openScrubPreview } from './scrubPreview'
 import { resumeWatchState, withinTimeout } from './resumePoint'
 import { pendingWatchStates, stageWatchStates } from './watchOutbox'
@@ -73,6 +77,12 @@ const STAGE_INTERVAL_MS = 2_000
 const WATCHED_THRESHOLD = 0.9
 const CONTROLS_HIDE_DELAY_MS = 3_000
 const NEXT_EPISODE_TIMEOUT_MS = 15_000
+/**
+ * How long the not-ready check may hold a stream back before mpv opens it
+ * anyway. An addon's play link resolves through the debrid service, so this
+ * covers a slow first answer; past it the check gives up and plays.
+ */
+const STATUS_PROBE_TIMEOUT_MS = 8_000
 const UP_NEXT_COUNTDOWN_SEC = 8
 const VIDEO_CLICK_DELAY_MS = 220
 
@@ -227,6 +237,10 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   const [controlsVisible, setControlsVisible] = useState(true)
   const { fullscreen, setFullscreen, toggleFullscreen: toggleNativeFullscreen } = windowFullscreen
   const [playerError, setPlayerError] = useState<string | null>(null)
+  /** The source answered with its debrid addon's status clip, so it was never opened. */
+  const [notReady, setNotReady] = useState<StatusVideoKind | null>(null)
+  /** Bumped by "Try again" to run the whole load once more. */
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [controlNotice, setControlNotice] = useState<string | null>(null)
   const [endReached, setEndReached] = useState(false)
   /** Loads and restarts of this file, and whether it has ended: what Discord
@@ -294,7 +308,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   // Every playback change is reported; Rust drops the ones Discord would not
   // show differently. While playing, a report every 15s keeps Discord's timer
   // on the real position, the native service's refresh interval.
-  const presenceEnded = fileEnded || playerError !== null
+  const presenceEnded = fileEnded || playerError !== null || notReady !== null
   useEffect(() => {
     if (!recordsHistory) return
     const report = () =>
@@ -401,6 +415,19 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       setFileEnded(true)
       onEndRef.current()
     }
+
+    // A debrid addon that can't hand over the file yet answers with a clip
+    // that says so; mpv would play it as the title. Asked first and in
+    // parallel with the rest of the setup, so a ready source loses little
+    // time to it. Downloads play from disk and need no asking.
+    const statusProbe =
+      params.sourceKind === 'download'
+        ? Promise.resolve(null)
+        : probeStatusVideo(params.url, fetchWithHeaders(nativeFetch, params.headers), {
+            // A pasted link may really be a short clip; only known status links count there.
+            bySize: recordsHistory,
+            timeoutMs: STATUS_PROBE_TIMEOUT_MS,
+          })
 
     const setup = async () => {
       await priorTeardown
@@ -601,6 +628,12 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       for (const line of streamHeaders) {
         await mpvCmd('change-list', 'http-header-fields', 'append', line).catch(() => undefined)
       }
+      const status = await statusProbe
+      if (disposed) return
+      if (status) {
+        setNotReady(status)
+        return
+      }
       await mpvSet('pause', 'no')
       if (disposed) return
       await mpvCmd('loadfile', sourceUrl)
@@ -629,7 +662,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       document.body.classList.remove('player-active')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.url, params.videoId, params.sourceKind, params.downloadId])
+  }, [params.url, params.videoId, params.sourceKind, params.downloadId, loadAttempt])
 
   // The shell keeps the title bar's strip in step with every resize
   // (main.rs, on_window_event); this sets it for the player's first frame and
@@ -668,7 +701,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
   // yet live. A paused player is never stalled, and a drag waits for its one
   // seek on release. (Native: IsPlaybackStalled.)
   const stalled =
-    (!firstFrameReady || buffering || seekPending) && !paused && dragValue === null && !playerError
+    (!firstFrameReady || buffering || seekPending) && !paused && dragValue === null && !playerError && !notReady
   const loadingVisible = useLoadingIndicator(stalled, firstFrameReady)
 
   const togglePause = useCallback(() => void mpvCmd('cycle', 'pause'), [])
@@ -1212,6 +1245,32 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
             </button>
           </div>
         )}
+        {notReady && (
+          <div className="player-error-card" role="alert">
+            <Icon name="warning" size={22} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="player-error-title">{STATUS_VIDEO_COPY[notReady].title}</div>
+              <div className="player-error-copy">{STATUS_VIDEO_COPY[notReady].text}</div>
+            </div>
+            <div className="player-error-actions">
+              {notReady !== 'failed' && (
+                <button
+                  type="button"
+                  className="btn h36"
+                  onClick={() => {
+                    setNotReady(null)
+                    setLoadAttempt((attempt) => attempt + 1)
+                  }}
+                >
+                  Try again
+                </button>
+              )}
+              <button type="button" className="btn-accent h36" onClick={back}>
+                Choose another source
+              </button>
+            </div>
+          </div>
+        )}
         {controlNotice && (
           <div className="player-notice" role="status">
             <span>{controlNotice}</span>
@@ -1221,7 +1280,7 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
           </div>
         )}
         {loadingVisible && <LoadingIndicator firstFrameReady={firstFrameReady} fullscreen={fullscreen} />}
-        {paused && !playerError && <div className="paused-chip">Paused</div>}
+        {paused && !playerError && !notReady && <div className="paused-chip">Paused</div>}
 
         {/* ── Top bar ───────────────────────────────────────────────────── */}
         <div className={`player-top player-chrome ${chromeVisible ? '' : 'player-hidden'}`}>

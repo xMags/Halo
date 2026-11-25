@@ -33,6 +33,13 @@ export type { AddonFetchOptions } from './addon/client'
 
 export { CINEMETA_URL, DEFAULT_ADDON_URLS, OPENSUBTITLES_URL } from './addon/constants'
 export { nextVideo } from './addon/nextVideo'
+export {
+  probeStatusVideo,
+  STATUS_VIDEO_COPY,
+  STATUS_VIDEO_MAX_BYTES,
+  statusVideoKind,
+} from './addon/statusVideo'
+export type { PlaybackAnswer, StatusVideoKind, StatusVideoOptions } from './addon/statusVideo'
 export { parseManifest } from './addon/manifest'
 export {
   addonError,
