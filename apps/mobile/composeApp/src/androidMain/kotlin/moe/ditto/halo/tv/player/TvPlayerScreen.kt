@@ -10,12 +10,12 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
@@ -24,20 +24,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -47,35 +46,38 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
+import coil3.compose.LocalPlatformContext
+import coil3.SingletonImageLoader
+import kotlin.math.abs
+import kotlin.math.round
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.math.abs
-import kotlin.math.round
+import moe.ditto.halo.browse.Medal
 import moe.ditto.halo.NativePlayerSurface
 import moe.ditto.halo.PlaybackHost
-import moe.ditto.halo.SessionGraph
-import moe.ditto.halo.browse.Medal
+import moe.ditto.halo.player.classifyVideoQuality
 import moe.ditto.halo.player.PlaybackStatus
 import moe.ditto.halo.player.PlayerSystemPort
-import moe.ditto.halo.player.classifyVideoQuality
+import moe.ditto.halo.screens.player.clampedDelay
 import moe.ditto.halo.screens.player.EpisodeChoice
+import moe.ditto.halo.screens.player.formatRate
+import moe.ditto.halo.screens.player.formatTimecode
 import moe.ditto.halo.screens.player.PlaybackContext
 import moe.ditto.halo.screens.player.PlayerScreenController
 import moe.ditto.halo.screens.player.PlayerSession
-import moe.ditto.halo.screens.player.clampedDelay
-import moe.ditto.halo.screens.player.formatRate
-import moe.ditto.halo.screens.player.formatTimecode
 import moe.ditto.halo.screens.player.rememberPlayerSession
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.tv.kit.TvAction
 import moe.ditto.halo.tv.kit.TvButton
 import moe.ditto.halo.tv.kit.TvButtonStyle
@@ -151,6 +153,13 @@ internal fun TvPlayerScreen(
     val barFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
     val upNextFocus = remember { FocusRequester() }
+
+    // The posters and backdrops of the screens behind sit in the image cache,
+    // in the same memory the video's GPU work needs; on a 2 GB box that is
+    // the margin between a picture and none. Nothing on screen now shows
+    // them, and they load again from disk when the viewer comes back.
+    val platformContext = LocalPlatformContext.current
+    LaunchedEffect(Unit) { SingletonImageLoader.get(platformContext).memoryCache?.clear() }
 
     // A TV never sleeps mid-film, and no system bar shows over it.
     DisposableEffect(system) {
