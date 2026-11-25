@@ -124,6 +124,33 @@ internal class SettingsSession(
         }
     }
 
+    /**
+     * Moves an addon one place earlier ([earlier]) or later in its own list.
+     * Order is priority: the first addon that can answer a request is asked
+     * first. The move is made on the list as the server has it now.
+     */
+    fun moveAddon(entry: AddonEntry, ownership: AddonOwnership, earlier: Boolean) {
+        val addons = addons.value ?: return
+        val entries = if (ownership == AddonOwnership.User) addons.user else addons.global
+        currentUrls(entries) ?: run {
+            mutationError = "This addon list cannot be edited safely until it is refreshed."
+            return
+        }
+        val url = entry.transportUrl ?: run {
+            mutationError = "This addon does not expose an editable manifest URL."
+            return
+        }
+        val key = "${ownership.name.lowercase()}-move-${entry.id}"
+        launchMutation(key, "The new addon order could not be saved. Try again.") {
+            val move = { current: List<String> -> addonMoved(current, url, earlier) }
+            if (ownership == AddonOwnership.User) {
+                graph.addons.editUserAddons(move)
+            } else {
+                graph.addons.editGlobalAddons(move)
+            }
+        }
+    }
+
     fun toggleCatalogs(entry: AddonEntry, ownership: AddonOwnership) {
         val key = "${ownership.name.lowercase()}-catalogs-${entry.id}"
         launchMutation(key, "Could not update catalog visibility. Try again.") {
@@ -158,6 +185,21 @@ internal class SettingsSession(
         launchMutation("autoplay", "Could not save the autoplay preference. Try again.") {
             graph.settings.update { it.withAutoplayNextEpisode(enabled) }
         }
+    }
+}
+
+/**
+ * [current] with [url] swapped with its neighbour, one place earlier or
+ * later; unchanged when it is already at that end or not in the list.
+ */
+internal fun addonMoved(current: List<String>, url: String, earlier: Boolean): List<String> {
+    val index = current.indexOf(url)
+    if (index < 0) return current
+    val target = if (earlier) index - 1 else index + 1
+    if (target !in current.indices) return current
+    return current.toMutableList().apply {
+        this[index] = current[target]
+        this[target] = url
     }
 }
 

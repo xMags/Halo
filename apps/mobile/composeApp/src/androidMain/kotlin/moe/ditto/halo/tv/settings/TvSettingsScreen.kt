@@ -221,8 +221,14 @@ internal fun TvSettingsScreen(
             is TvSettingsPanel.Addon -> AddonPanel(
                 entry = open.entry,
                 ownership = open.ownership,
-                canChange = state.pendingAction == null && (open.ownership == AddonOwnership.User || state.account?.isAdmin == true),
+                editable = open.ownership == AddonOwnership.User || state.account?.isAdmin == true,
+                busy = state.pendingAction != null,
                 removable = open.removable,
+                position = state.addons?.let { addons ->
+                    val list = if (open.ownership == AddonOwnership.User) addons.user else addons.global
+                    list.indexOfFirst { it.id == open.entry.id }.takeIf { it >= 0 }?.let { it to list.size }
+                },
+                onMove = { earlier -> session.moveAddon(open.entry, open.ownership, earlier) },
                 onToggleCatalogs = {
                     panel = null
                     session.toggleCatalogs(open.entry, open.ownership)
@@ -308,8 +314,14 @@ private fun ChoicePanel(
 private fun AddonPanel(
     entry: AddonEntry,
     ownership: AddonOwnership,
-    canChange: Boolean,
+    /** False for an addon for everyone when the viewer is not an admin. */
+    editable: Boolean,
+    /** A change is saving; presses wait for it. */
+    busy: Boolean,
     removable: Boolean,
+    /** Where it stands in its list and how long that list is; null while unknown. */
+    position: Pair<Int, Int>?,
+    onMove: (earlier: Boolean) -> Unit,
     onToggleCatalogs: () -> Unit,
     onRemove: () -> Unit,
     onDismiss: () -> Unit,
@@ -319,19 +331,44 @@ private fun AddonPanel(
         subtitle = if (ownership == AddonOwnership.Global) "For everyone on this server" else "Yours",
         onDismiss = onDismiss,
     ) {
-        if (!canChange) {
-            Text(
-                if (ownership == AddonOwnership.Global) "Only an admin can change addons for everyone." else "Wait for the last change to finish.",
-                style = TvType.Body,
-            )
+        if (!editable) {
+            Text("Only an admin can change addons for everyone.", style = TvType.Body)
             return@TvSidePanel
         }
+        // The rows stay while a change saves, so the one in focus keeps it;
+        // presses then wait for the save instead of piling up.
+        fun whenIdle(action: () -> Unit): () -> Unit = { if (!busy) action() }
         TvRowSurface(
             title = if (entry.hideCatalogs) "Show its catalogs on Home" else "Hide its catalogs on Home",
-            onClick = onToggleCatalogs,
+            onClick = whenIdle(onToggleCatalogs),
         )
+        // Order is priority: earlier addons are asked first. The panel stays
+        // open, so several presses walk an addon up or down the list. Both
+        // rows always show (a row vanishing under focus would drop it); at an
+        // end the row says so.
+        position?.let { (index, size) ->
+            if (size > 1) {
+                TvRowSurface(
+                    title = "Move up",
+                    hint = if (index == 0) "Already asked first" else "Asked before the addon above it",
+                    titleColor = if (index == 0) HaloColors.TextDim else HaloColors.Text,
+                    onClick = whenIdle { if (index > 0) onMove(true) },
+                )
+                TvRowSurface(
+                    title = "Move down",
+                    hint = if (index == size - 1) "Already asked last" else "Asked after the addon below it",
+                    titleColor = if (index == size - 1) HaloColors.TextDim else HaloColors.Text,
+                    onClick = whenIdle { if (index < size - 1) onMove(false) },
+                )
+            }
+            Text(
+                if (busy) "Saving…" else "Position ${index + 1} of $size",
+                style = TvType.Caption,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
         if (removable) {
-            TvRowSurface(title = "Remove addon", titleColor = HaloColors.Danger, onClick = onRemove)
+            TvRowSurface(title = "Remove addon", titleColor = HaloColors.Danger, onClick = whenIdle(onRemove))
         }
     }
 }
