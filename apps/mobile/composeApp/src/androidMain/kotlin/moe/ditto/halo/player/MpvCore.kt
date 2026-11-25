@@ -23,6 +23,8 @@ internal class MpvCore private constructor(
     private val mpv: MPVLib,
     val id: String,
     private val callbackExecutor: Executor?,
+    /** The video output switched on when a surface attaches ([MpvProfile.vo]). */
+    private val videoOutput: String,
 ) {
     interface Listener {
         fun onReady(durationSeconds: Double?)
@@ -245,7 +247,7 @@ internal class MpvCore private constructor(
         mpv.attachSurface(surface)
         mpv.setOptionString("force-window", "yes")
         mpv.setPropertyString("android-surface-size", "${width}x$height")
-        mpv.setOptionString("vo", VO)
+        mpv.setOptionString("vo", videoOutput)
     }
 
     fun setSurfaceSize(width: Int, height: Int) {
@@ -530,7 +532,6 @@ internal class MpvCore private constructor(
 
     companion object {
         const val LOG_TAG = "HALO_MPV"
-        private const val VO = "gpu"
 
         /** What "no particular font" means to the renderer. */
         private const val DefaultSubtitleFont = "sans-serif"
@@ -546,6 +547,10 @@ internal class MpvCore private constructor(
             mpv.setOptionString("hwdec", profile.hwdec) // falls back to software
             profile.demuxerMaxBytes?.let { mpv.setOptionString("demuxer-max-bytes", it) }
             profile.demuxerMaxBackBytes?.let { mpv.setOptionString("demuxer-max-back-bytes", it) }
+            // The profile first, so the options after it override what it sets.
+            profile.renderProfile?.let { mpv.setOptionString("profile", it) }
+            if (!profile.hdrComputePeak) mpv.setOptionString("hdr-compute-peak", "no")
+            profile.eglOutputFormat?.let { mpv.setOptionString("egl-output-format", it) }
             mpv.setOptionString("ao", "audiotrack")
             mpv.setOptionString("keep-open", "yes") // so eof-reached fires
             // mpv's default is to hand a URL it could not open to youtube-dl.
@@ -564,7 +569,7 @@ internal class MpvCore private constructor(
             // Pre-init: libass builds its font provider during initialisation.
             SubtitleFontLibrary.prepare(context)?.let { mpv.setOptionString("sub-fonts-dir", it) }
 
-            val core = MpvCore(mpv, id, callbackExecutor)
+            val core = MpvCore(mpv, id, callbackExecutor, profile.vo)
             mpv.addLogObserver(core.logObserver)
             mpv.addObserver(core.eventObserver)
             mpv.init()
