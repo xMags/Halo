@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -30,6 +31,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -44,6 +47,7 @@ import moe.ditto.halo.tv.kit.TvConfirmDialog
 import moe.ditto.halo.tv.kit.TvMetrics
 import moe.ditto.halo.tv.kit.TvRowSurface
 import moe.ditto.halo.tv.kit.TvSidePanel
+import moe.ditto.halo.tv.kit.TvSurfaceColors
 import moe.ditto.halo.tv.kit.TvType
 import moe.ditto.halo.tv.kit.defaultFocus
 import moe.ditto.halo.tv.kit.rememberFocus
@@ -55,13 +59,17 @@ import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.LanguageOptions
 
 /** The parts of Settings, listed down the left. */
-internal enum class TvSettingsSection(val label: String) {
-    Account("Account"),
-    Addons("Addons"),
-    Home("Home"),
-    Playback("Playback"),
-    About("About"),
+internal enum class TvSettingsSection(val label: String, val icon: ImageVector) {
+    Account("Account", HaloIcons.Person),
+    Addons("Addons", HaloIcons.Extension),
+    Home("Home", HaloIcons.Home),
+    Playback("Playback", HaloIcons.Play),
+    About("About", HaloIcons.Info),
 }
+
+/** A section's name rests bare; the open one keeps a quiet fill while focus is in its pane. */
+private val SectionColors = TvSurfaceColors(rest = Color.Transparent, focused = HaloColors.SurfaceHigh)
+private val OpenSectionColors = TvSurfaceColors(rest = HaloColors.Surface, focused = HaloColors.SurfaceHigh)
 
 /** What a choice list in a side panel is choosing. */
 private sealed interface TvSettingsPanel {
@@ -111,15 +119,25 @@ internal fun TvSettingsScreen(
                     // focus, so landing elsewhere would swap the pane.
                     .focusRestorer(sectionFocus.getValue(section))
                     .focusGroup(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text("Settings", style = TvType.Hero, modifier = Modifier.padding(bottom = 16.dp))
                 sections.forEachIndexed { index, item ->
                     val focusKey = "section/${item.name}"
+                    val open = item == section
                     TvRowSurface(
                         title = item.label,
                         onClick = { section = item },
-                        titleColor = if (item == section) HaloColors.Text else HaloColors.TextDim,
+                        titleColor = if (open) HaloColors.Text else HaloColors.TextDim,
+                        colors = if (open) OpenSectionColors else SectionColors,
+                        leading = { focused ->
+                            Icon(
+                                item.icon,
+                                contentDescription = null,
+                                tint = if (open || focused) HaloColors.AccentLight else HaloColors.TextDim,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        },
                         // The section follows focus, so the pane is always the
                         // one beside the highlighted name.
                         modifier = Modifier

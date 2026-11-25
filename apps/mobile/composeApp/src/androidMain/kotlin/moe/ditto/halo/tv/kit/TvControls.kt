@@ -109,6 +109,9 @@ internal fun TvRowSurface(
     hint: String? = null,
     titleColor: Color = HaloColors.Text,
     onMenu: (() -> Unit)? = null,
+    colors: TvSurfaceColors = RowColors,
+    /** An icon or picture before the title. */
+    leading: (@Composable (focused: Boolean) -> Unit)? = null,
     trailing: @Composable (focused: Boolean) -> Unit = {},
 ) {
     TvSurface(
@@ -116,7 +119,7 @@ internal fun TvRowSurface(
         modifier = modifier.fillMaxWidth().height(if (hint == null) 56.dp else 68.dp),
         onMenu = onMenu,
         cornerRadius = 14.dp,
-        colors = RowColors,
+        colors = colors,
         focusScale = TvMetrics.RowFocusScale,
     ) { focused ->
         Row(
@@ -124,6 +127,7 @@ internal fun TvRowSurface(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            leading?.invoke(focused)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, color = titleColor, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 if (hint != null) {
