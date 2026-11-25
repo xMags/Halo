@@ -4,7 +4,7 @@ import moe.ditto.halo.api.MetaVideo
 import moe.ditto.halo.api.WatchState
 
 /** Specials, which every media centre lists after the numbered seasons. */
-private const val SpecialsSeason = 0
+internal const val SpecialsSeason = 0
 
 /**
  * The seasons a title has, ascending, with specials last regardless of their

@@ -310,7 +310,10 @@ private fun ContinueCard(graph: SessionGraph, entry: ContinueEntry, onClick: () 
         ) {
             HaloAsyncImage(url = still, contentDescription = null, modifier = Modifier.fillMaxSize())
             episode?.let { Chip(it, Modifier.align(Alignment.TopStart).padding(8.dp)) }
-            Chip("${timeLeft(0.0, entry.remainingSec)} LEFT", Modifier.align(Alignment.BottomEnd).padding(8.dp))
+            Chip(
+                if (entry.upNext) "NEXT EPISODE" else "${timeLeft(0.0, entry.remainingSec)} LEFT",
+                Modifier.align(Alignment.BottomEnd).padding(8.dp),
+            )
             Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.Black.copy(alpha = 0.45f))) {
                 Box(Modifier.fillMaxWidth(entry.progress.coerceIn(0.02f, 1f)).fillMaxHeight().background(HaloColors.Accent))
             }

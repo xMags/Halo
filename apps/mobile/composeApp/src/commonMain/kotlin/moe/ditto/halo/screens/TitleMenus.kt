@@ -126,7 +126,9 @@ internal class TitleMenus(
         val meta = entry.meta
         val tag = episodeTagOf(entry.videoId, meta.id)
         val target = WatchMarkTarget(entry.videoId, entry.itemId, meta.name, meta.poster)
-        val resume = MenuAction(if (tag != null) "Resume $tag" else "Resume", HaloIcons.Play) {
+        // The next episode of a finished one was never started: it plays.
+        val verb = if (entry.upNext) "Play" else "Resume"
+        val resume = MenuAction(if (tag != null) "$verb $tag" else verb, HaloIcons.Play) {
             navigation.openSources(resumeRoute(meta.type, meta.id, entry.videoId, meta.name, meta.poster))
         }
         val remove = graph.watchStates.cached()?.let {

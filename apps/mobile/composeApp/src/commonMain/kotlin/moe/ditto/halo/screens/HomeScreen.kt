@@ -137,9 +137,13 @@ internal fun HomeScreen(
     val rows = remember(allRows, filter) {
         allRows.filter { matchesTypeFilter(filter.type, it.type) }
     }
-    val shelves = remember(watchStates.value, library.value, filter) {
-        homeShelves(watchStates.value, library.value, filter.type)
+    // A finished series moves on to its next episode once that is looked up.
+    val nextEpisodes = rememberNextEpisodeAnswers(graph)
+    val knownNextEpisodes = nextEpisodes.toMap()
+    val shelves = remember(watchStates.value, library.value, filter, knownNextEpisodes) {
+        homeShelves(watchStates.value, library.value, filter.type, nextEpisodes::lookup)
     }
+    LookUpNextEpisodes(graph, nextEpisodes, shelves.nextEpisodeRequests)
 
     // The featured titles are the head of the first visible row, then the full
     // meta of whichever is showing, for wide art and a rating. That catalog

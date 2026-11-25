@@ -61,8 +61,11 @@ import moe.ditto.halo.browse.isStandInPosterLink
 import moe.ditto.halo.browse.matchesTypeFilter
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.screens.episodeTagOf
+import moe.ditto.halo.screens.lookup
+import moe.ditto.halo.screens.LookUpNextEpisodes
 import moe.ditto.halo.screens.MediaTypeFilter
 import moe.ditto.halo.screens.MetaRef
+import moe.ditto.halo.screens.rememberNextEpisodeAnswers
 import moe.ditto.halo.screens.resumeRoute
 import moe.ditto.halo.screens.ShelfPaging
 import moe.ditto.halo.screens.ShelfSnapshot
@@ -133,7 +136,13 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
     val rows = remember(allRows, filter) { allRows.filter { matchesTypeFilter(filter.type, it.type) } }
     val personalReady = (watchStates.value != null || watchStates.error != null) &&
         (library.value != null || library.error != null)
-    val shelves = remember(watchStates.value, library.value, filter) { homeShelves(watchStates.value, library.value, filter.type) }
+    // A finished series moves on to its next episode once that is looked up.
+    val nextEpisodes = rememberNextEpisodeAnswers(graph)
+    val known = nextEpisodes.toMap()
+    val shelves = remember(watchStates.value, library.value, filter, known) {
+        homeShelves(watchStates.value, library.value, filter.type, nextEpisodes::lookup)
+    }
+    LookUpNextEpisodes(graph, nextEpisodes, shelves.nextEpisodeRequests)
 
     // Until a card has focus, the hero takes turns through the first catalog's
     // lead titles, wide art first, as the phone's featured banner does.
@@ -340,6 +349,7 @@ private fun HeroInfo(
     val resume = title.resume
     val kind = if (meta.type == SeriesType) "SERIES" else "MOVIE"
     val overline = when {
+        resume?.upNext == true -> "$kind · UP NEXT"
         resume != null -> "$kind · CONTINUE WATCHING"
         featured -> "FEATURED"
         else -> kind
@@ -399,7 +409,8 @@ private fun HeroActions(
         )
         Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             val (label, action) = when {
-                resume != null -> (if (tag != null) "Resume $tag" else "Resume") to {
+                // The next episode of a finished one was never started: it plays.
+                resume != null -> (if (resume.upNext) "Play" else "Resume").let { verb -> if (tag != null) "$verb $tag" else verb } to {
                     navigation.openSources(resumeRoute(meta.type, meta.id, resume.videoId, meta.name, meta.poster))
                 }
                 meta.type == MovieType && card.playableFromPreview -> "Play" to { navigation.playMovie(card) }
@@ -628,7 +639,7 @@ private fun ContinueCard(
         imageUrl = still,
         // A film gets no line of its own: the hero above already says what it is.
         line = tag,
-        detail = "${timeLeft(0.0, entry.remainingSec).lowercase()} left",
+        detail = if (entry.upNext) "Next episode" else "${timeLeft(0.0, entry.remainingSec).lowercase()} left",
         progress = entry.progress,
         onClick = onClick,
         onMenu = onMenu,
