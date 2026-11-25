@@ -138,7 +138,7 @@ internal fun TvShell(
                 }
                 composable<PersonRoute> { entry ->
                     val route = entry.toRoute<PersonRoute>()
-                    TvPersonScreen(graph, route.tmdbId, route.name, route.photo, navigation)
+                    TvPersonScreen(graph, route.tmdbId, route.name, route.photo, navigation, titleMenus.menus)
                 }
                 composable<StreamsRoute> { entry ->
                     val route = entry.toRoute<StreamsRoute>()

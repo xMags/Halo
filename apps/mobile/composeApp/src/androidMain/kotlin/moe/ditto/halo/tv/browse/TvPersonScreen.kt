@@ -1,50 +1,57 @@
 package moe.ditto.halo.tv.browse
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CancellationException
-import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.HaloApiException
-import moe.ditto.halo.people.FilmographyFilter
-import moe.ditto.halo.people.PersonDetail
+import moe.ditto.halo.api.MetaPreview
 import moe.ditto.halo.people.creditLine
 import moe.ditto.halo.people.departmentLabel
 import moe.ditto.halo.people.exactNamePerson
 import moe.ditto.halo.people.filmography
+import moe.ditto.halo.people.FilmographyFilter
 import moe.ditto.halo.people.filmographyFilters
+import moe.ditto.halo.people.PersonCredit
+import moe.ditto.halo.people.PersonDetail
 import moe.ditto.halo.screens.MetaRef
-import moe.ditto.halo.tv.kit.TvButton
-import moe.ditto.halo.tv.kit.TvButtonStyle
-import moe.ditto.halo.tv.kit.TvMetrics
-import moe.ditto.halo.tv.kit.TvPosterCard
-import moe.ditto.halo.tv.kit.TvType
+import moe.ditto.halo.screens.TitleMenus
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.tv.kit.defaultFocus
 import moe.ditto.halo.tv.kit.rememberFocus
 import moe.ditto.halo.tv.kit.rememberTvFocusMemory
+import moe.ditto.halo.tv.kit.TvButton
+import moe.ditto.halo.tv.kit.TvButtonStyle
+import moe.ditto.halo.tv.kit.TvFocusMemory
+import moe.ditto.halo.tv.kit.TvMetrics
+import moe.ditto.halo.tv.kit.TvPosterCard
+import moe.ditto.halo.tv.kit.TvReadingPanel
+import moe.ditto.halo.tv.kit.TvType
 import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.metahubPosterUrl
@@ -65,8 +72,17 @@ private val CreditPosterWidth = 112.dp
  * cannot open the web search the phone falls back on.
  */
 @Composable
-internal fun TvPersonScreen(graph: SessionGraph, tmdbId: Long, name: String, photo: String?, navigation: TvBrowseNavigation) {
+internal fun TvPersonScreen(
+    graph: SessionGraph,
+    tmdbId: Long,
+    name: String,
+    photo: String?,
+    navigation: TvBrowseNavigation,
+    menus: TitleMenus,
+) {
     val memory = rememberTvFocusMemory()
+    var biographyOpen by remember { mutableStateOf(false) }
+    var biographyCut by remember { mutableStateOf(false) }
     val capabilitiesState by graph.capabilities.state.collectAsState()
     var attempt by remember { mutableIntStateOf(0) }
     var load by remember(tmdbId, name) { mutableStateOf<PersonLoad>(PersonLoad.Loading) }
@@ -104,6 +120,51 @@ internal fun TvPersonScreen(graph: SessionGraph, tmdbId: Long, name: String, pho
     val shownFilter = if (filter in filters) filter else FilmographyFilter.All
     val shown = filmography(credits, shownFilter)
 
+    Box(Modifier.fillMaxSize()) {
+        PersonBody(
+            detail = detail,
+            load = load,
+            shownName = shownName,
+            photo = photo,
+            filters = filters,
+            shownFilter = shownFilter,
+            shown = shown,
+            memory = memory,
+            menus = menus,
+            navigation = navigation,
+            biographyCut = biographyCut,
+            onBiographyCut = { biographyCut = it },
+            onReadMore = { biographyOpen = true },
+            onFilter = { filter = it },
+            onRetry = { attempt += 1 },
+        )
+        val biography = detail?.person?.biography
+        if (biographyOpen && biography != null) {
+            TvReadingPanel(title = shownName, onDismiss = { biographyOpen = false }) {
+                Text(biography, style = TvType.Body.copy(fontSize = 17.sp, lineHeight = 26.sp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PersonBody(
+    detail: PersonDetail?,
+    load: PersonLoad,
+    shownName: String,
+    photo: String?,
+    filters: List<FilmographyFilter>,
+    shownFilter: FilmographyFilter,
+    shown: List<PersonCredit>,
+    memory: TvFocusMemory,
+    menus: TitleMenus,
+    navigation: TvBrowseNavigation,
+    biographyCut: Boolean,
+    onBiographyCut: (Boolean) -> Unit,
+    onReadMore: () -> Unit,
+    onFilter: (FilmographyFilter) -> Unit,
+    onRetry: () -> Unit,
+) {
     ProvideVerticalPivot(pivot = 40.dp) {
         LazyColumn(
             state = rememberLazyListState(),
@@ -121,7 +182,19 @@ internal fun TvPersonScreen(graph: SessionGraph, tmdbId: Long, name: String, pho
                     Column(Modifier.width(620.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         departmentLabel(detail?.person?.knownFor).takeIf { it.isNotEmpty() }?.let { Text(it.uppercase(), style = TvType.Overline) }
                         Text(shownName, style = TvType.Hero)
-                        detail?.person?.biography?.let { Text(it, style = TvType.Body.copy(lineHeight = TvType.Body.lineHeight), maxLines = 4, overflow = TextOverflow.Ellipsis) }
+                        detail?.person?.biography?.let { biography ->
+                            Text(
+                                biography,
+                                style = TvType.Body.copy(lineHeight = TvType.Body.lineHeight),
+                                maxLines = 4,
+                                overflow = TextOverflow.Ellipsis,
+                                onTextLayout = { onBiographyCut(it.hasVisualOverflow) },
+                            )
+                            // Only when the four lines cut it short.
+                            if (biographyCut) {
+                                TvButton("Read more", onClick = onReadMore, modifier = Modifier.rememberFocus(memory, "biography"))
+                            }
+                        }
                     }
                 }
             }
@@ -133,11 +206,20 @@ internal fun TvPersonScreen(graph: SessionGraph, tmdbId: Long, name: String, pho
                         retryModifier = Modifier.defaultFocus(memory, "retry"),
                         // Nothing else on the page can take focus, so a failure
                         // that cannot be retried offers the way back instead.
-                        onRetry = if (state.canRetry) ({ attempt += 1 }) else navigation.back,
+                        onRetry = if (state.canRetry) onRetry else navigation.back,
                         actionLabel = if (state.canRetry) "Try again" else "Go back",
                     )
                 }
                 is PersonLoad.Loaded -> {
+                    if (state.detail.partial) {
+                        item(key = "partial") {
+                            Text(
+                                "Still gathering this filmography. Some titles may be missing; open the page again in a moment.",
+                                style = TvType.Meta.copy(color = HaloColors.Gold),
+                                modifier = Modifier.padding(start = TvMetrics.SideMargin + 8.dp),
+                            )
+                        }
+                    }
                     if (filters.size > 1) {
                         item(key = "filters") {
                             Row(Modifier.padding(start = TvMetrics.SideMargin + 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -145,7 +227,7 @@ internal fun TvPersonScreen(graph: SessionGraph, tmdbId: Long, name: String, pho
                                     val key = "filter/${option.name}"
                                     TvButton(
                                         option.label,
-                                        onClick = { filter = option },
+                                        onClick = { onFilter(option) },
                                         style = if (option == shownFilter) TvButtonStyle.Primary else TvButtonStyle.Secondary,
                                         modifier = if (index == 0) Modifier.defaultFocus(memory, key) else Modifier.rememberFocus(memory, key),
                                     )
@@ -176,6 +258,12 @@ internal fun TvPersonScreen(graph: SessionGraph, tmdbId: Long, name: String, pho
                                     subtitle = creditLine(credit),
                                     width = CreditPosterWidth,
                                     onClick = { navigation.openDetail(MetaRef(credit.type, credit.imdbId)) },
+                                    // The same title menu every other poster opens.
+                                    onMenu = {
+                                        menus.openPoster(
+                                            MetaPreview(id = credit.imdbId, type = credit.type, name = credit.name, poster = credit.poster, releaseInfo = credit.year),
+                                        )
+                                    },
                                     // With no role filter to start on, the first title takes focus.
                                     modifier = if (credit == shown.first() && filters.size <= 1) {
                                         Modifier.defaultFocus(memory, key)
