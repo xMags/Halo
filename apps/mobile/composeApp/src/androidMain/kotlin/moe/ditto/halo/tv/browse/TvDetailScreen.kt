@@ -57,8 +57,10 @@ import moe.ditto.halo.api.MetaPreview
 import moe.ditto.halo.api.MetaVideo
 import moe.ditto.halo.api.movieVideoId
 import moe.ditto.halo.api.WatchState
+import moe.ditto.halo.browse.aboutRows
 import moe.ditto.halo.browse.Credit
 import moe.ditto.halo.browse.creditsOf
+import moe.ditto.halo.browse.episodePages
 import moe.ditto.halo.browse.episodesIn
 import moe.ditto.halo.browse.episodeTag
 import moe.ditto.halo.browse.formatReleaseDate
@@ -66,6 +68,7 @@ import moe.ditto.halo.browse.GenreCatalog
 import moe.ditto.halo.browse.isStandInPosterLink
 import moe.ditto.halo.browse.lastWatchedSeason
 import moe.ditto.halo.browse.medal
+import moe.ditto.halo.browse.pageContaining
 import moe.ditto.halo.browse.pickGenreCatalog
 import moe.ditto.halo.browse.ratedValue
 import moe.ditto.halo.browse.seasonLabel
@@ -93,9 +96,11 @@ import moe.ditto.halo.tv.kit.rememberTvFocusMemory
 import moe.ditto.halo.tv.kit.TvButton
 import moe.ditto.halo.tv.kit.TvButtonStyle
 import moe.ditto.halo.tv.kit.TvFocusMemory
+import moe.ditto.halo.tv.kit.TvIconButton
 import moe.ditto.halo.tv.kit.TvMetrics
 import moe.ditto.halo.tv.kit.TvPosterCard
 import moe.ditto.halo.tv.kit.TvProgressBar
+import moe.ditto.halo.tv.kit.TvReadingPanel
 import moe.ditto.halo.tv.kit.TvRow
 import moe.ditto.halo.tv.kit.TvRowSurface
 import moe.ditto.halo.tv.kit.TvSidePanel
@@ -227,7 +232,16 @@ private fun DetailBody(
     val seasonList = remember(meta, seasons, progress) { seasonSummaries(meta.videos, seasons, progress) }
     var pickingSeason by remember { mutableStateOf(false) }
     val seasonButton = remember { FocusRequester() }
+    var aboutOpen by remember { mutableStateOf(false) }
     val resumeState = remember(watchStates.value, meta, itemId) { resumeStateOf(meta, watchStates.value, itemId) }
+    // A long season (a daily show, an anime run) in pages, as on the phone:
+    // otherwise episode 400 is four hundred presses along one row. Opens on
+    // the page holding the episode to resume.
+    val pages = remember(episodes) { episodePages(episodes) }
+    var page by remember(meta.id, activeSeason) { mutableIntStateOf(pageContaining(pages, resumeState?.videoId)) }
+    val shownPage = page.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+    var pickingPage by remember { mutableStateOf(false) }
+    val pageButton = remember { FocusRequester() }
     val targetVideo = if (isSeries) meta.videos.firstOrNull { it.id == resumeState?.videoId } ?: episodes.firstOrNull() else null
     val targetVideoId = targetVideo?.id ?: meta.movieVideoId
     val playTarget = playTargetOf(isSeries, targetVideo, resumeState, progress[targetVideoId])
@@ -268,7 +282,8 @@ private fun DetailBody(
                             .bringIntoViewRequester(heroInView)
                             .onFocusChanged { if (it.hasFocus) scope.launch { heroInView.bringIntoView() } }
                             .padding(start = TvMetrics.SideMargin + 8.dp, top = TvMetrics.VerticalMargin + 8.dp)
-                            .width(560.dp),
+                            // Room for a film's three labelled buttons and the About icon.
+                            .width(640.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         TitleArt(meta.name, meta.logo, logoMaxWidth = DetailLogoMaxWidth, logoMaxHeight = DetailLogoMaxHeight) {
@@ -329,6 +344,15 @@ private fun DetailBody(
                                     modifier = Modifier.rememberFocus(memory, "watched"),
                                 )
                             }
+                            // The synopsis in full and every fact the addon sent;
+                            // the lines above are cut to keep the buttons in view.
+                            // An icon: the row is full with a film's three labelled buttons.
+                            TvIconButton(
+                                icon = HaloIcons.Info,
+                                contentDescription = "About this title",
+                                onClick = { aboutOpen = true },
+                                modifier = Modifier.rememberFocus(memory, "about"),
+                            )
                         }
                     }
                 }
@@ -338,13 +362,16 @@ private fun DetailBody(
                             meta = meta,
                             seasons = seasonList,
                             activeSeason = activeSeason,
-                            episodes = episodes,
+                            episodes = pages.getOrNull(shownPage)?.episodes ?: episodes,
+                            pageLabel = pages.getOrNull(shownPage)?.label?.takeIf { pages.size > 1 },
                             progress = progress,
                             resumeVideoId = resumeState?.videoId,
                             memory = memory,
                             seasonButton = seasonButton,
+                            pageButton = pageButton,
                             onSeason = { chosenSeason = it },
                             onPickSeason = { pickingSeason = true },
+                            onPickPage = { pickingPage = true },
                             onPlay = { openSources(it) },
                             onMenu = { video -> menus.openEpisode(meta, video) { openSources(video) } },
                         )
@@ -384,6 +411,76 @@ private fun DetailBody(
                 onDismiss = { pickingSeason = false },
             )
         }
+        if (pickingPage) {
+            PagePanel(
+                labels = pages.map { it.label },
+                selected = shownPage,
+                returnFocusTo = pageButton,
+                onSelect = { index ->
+                    page = index
+                    pickingPage = false
+                },
+                onDismiss = { pickingPage = false },
+            )
+        }
+        if (aboutOpen) AboutPanel(meta, isSeries, onDismiss = { aboutOpen = false })
+    }
+}
+
+/** The title's full synopsis and its facts: who made it, when, where, in what language. */
+@Composable
+private fun AboutPanel(meta: MetaDetail, isSeries: Boolean, onDismiss: () -> Unit) {
+    val facts = remember(meta, isSeries) { aboutRows(meta, isSeries) }
+    TvReadingPanel(title = meta.name, onDismiss = onDismiss) {
+        meta.description?.trim()?.takeIf { it.isNotEmpty() }?.let { synopsis ->
+            Text(synopsis, style = TvType.Body.copy(fontSize = 17.sp, lineHeight = 26.sp))
+        }
+        if (facts.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                facts.forEach { (label, value) ->
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(label.uppercase(), style = TvType.Overline)
+                        Text(value, style = TvType.Body.copy(fontSize = 16.sp, lineHeight = 23.sp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A long season's pages, the one in view checked. */
+@Composable
+private fun PagePanel(
+    labels: List<String>,
+    selected: Int,
+    returnFocusTo: FocusRequester,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (selected - 2).coerceAtLeast(0))
+    val selectedFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        // After the panel's own first focus, which goes to its first row.
+        withFrameNanos { }
+        runCatching { selectedFocus.requestFocus() }
+    }
+    TvSidePanel(title = "Episodes", onDismiss = onDismiss, returnFocusTo = returnFocusTo, width = 380.dp) {
+        LazyColumn(
+            Modifier.weight(1f),
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(vertical = 8.dp),
+        ) {
+            itemsIndexed(labels) { index, label ->
+                TvRowSurface(
+                    title = label,
+                    onClick = { onSelect(index) },
+                    modifier = (if (index == selected) Modifier.focusRequester(selectedFocus) else Modifier)
+                        .semantics { if (index == selected) stateDescription = "Selected" },
+                    trailing = { if (index == selected) Icon(HaloIcons.Check, contentDescription = null, tint = HaloColors.AccentLight) },
+                )
+            }
+        }
     }
 }
 
@@ -420,8 +517,12 @@ private fun EpisodesSection(
     resumeVideoId: String?,
     memory: TvFocusMemory,
     seasonButton: FocusRequester,
+    /** The page of a long season in view ("Episodes 1–25"); null when it fits one page. */
+    pageLabel: String?,
+    pageButton: FocusRequester,
     onSeason: (Int) -> Unit,
     onPickSeason: () -> Unit,
+    onPickPage: () -> Unit,
     onPlay: (MetaVideo) -> Unit,
     onMenu: (MetaVideo) -> Unit,
 ) {
@@ -449,9 +550,11 @@ private fun EpisodesSection(
             ) {
                 SeasonButton(
                     label = activeSeason?.let(::seasonLabel) ?: "Season",
+                    description = "choose a season",
                     onClick = onPickSeason,
                     modifier = Modifier.focusRequester(seasonButton).rememberFocus(memory, "season-picker"),
                 )
+                pageLabel?.let { PageButton(it, pageButton, memory, onPickPage) }
                 active?.let { Text(it.line, style = TvType.Meta) }
             }
             seasons.size > 1 -> TvRow(startPadding = start) {
@@ -463,14 +566,16 @@ private fun EpisodesSection(
                         modifier = Modifier.rememberFocus(memory, "season/${summary.season}"),
                     )
                 }
+                pageLabel?.let { label -> item(key = "page") { PageButton(label, pageButton, memory, onPickPage) } }
                 item(key = "count") {
                     Box(Modifier.height(36.dp).padding(start = 8.dp), contentAlignment = Alignment.CenterStart) {
                         Text(active?.line.orEmpty(), style = TvType.Caption)
                     }
                 }
             }
-            else -> Row(Modifier.padding(start = start), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            else -> Row(Modifier.padding(start = start), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("Episodes", style = TvType.Heading)
+                pageLabel?.let { PageButton(it, pageButton, memory, onPickPage) }
                 Text(active?.line ?: "${episodes.size} episodes", style = TvType.Meta)
             }
         }
@@ -577,12 +682,23 @@ private fun OverlayTag(text: String, color: Color, modifier: Modifier = Modifier
     )
 }
 
-/** The season in view, as a button that opens every season. */
+/** The page of episodes in view, as a button that opens every page. */
 @Composable
-private fun SeasonButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun PageButton(label: String, focus: FocusRequester, memory: TvFocusMemory, onClick: () -> Unit) {
+    SeasonButton(
+        label = label,
+        description = "choose a page of episodes",
+        onClick = onClick,
+        modifier = Modifier.focusRequester(focus).rememberFocus(memory, "page-picker"),
+    )
+}
+
+/** What is in view (a season, a page of episodes), as a button that opens every choice. */
+@Composable
+private fun SeasonButton(label: String, description: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     TvSurface(
         onClick = onClick,
-        modifier = modifier.height(40.dp).semantics { contentDescription = "$label, choose a season" },
+        modifier = modifier.height(40.dp).semantics { contentDescription = "$label, $description" },
         cornerRadius = 20.dp,
         colors = TvSurfaceColors(HaloColors.FieldFill, HaloColors.Text),
         contentAlignment = Alignment.Center,

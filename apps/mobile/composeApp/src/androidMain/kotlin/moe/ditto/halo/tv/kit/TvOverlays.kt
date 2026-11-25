@@ -1,6 +1,19 @@
 package moe.ditto.halo.tv.kit
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -141,6 +154,46 @@ internal fun TvConfirmDialog(
         }
     }
 }
+
+/**
+ * A side panel of text to read: a synopsis, a biography, a title's facts.
+ * Text takes no focus, so the panel holds it itself and turns Up and Down
+ * into scrolling, a screenful at a time less a line of overlap.
+ */
+@Composable
+internal fun TvReadingPanel(
+    title: String,
+    onDismiss: () -> Unit,
+    width: Dp = 560.dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    TvSidePanel(title = title, onDismiss = onDismiss, width = width) {
+        val stepPx = with(LocalDensity.current) { ReadingStep.toPx() }
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .onKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                    val delta = when (event.key) {
+                        Key.DirectionDown -> stepPx
+                        Key.DirectionUp -> -stepPx
+                        else -> return@onKeyEvent false
+                    }
+                    scope.launch { scroll.animateScrollBy(delta) }
+                    true
+                }
+                .focusable()
+                .verticalScroll(scroll),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            content = content,
+        )
+    }
+}
+
+private val ReadingStep = 220.dp
 
 /**
  * A panel sliding over the right side of the screen, for choices that keep
