@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -99,6 +100,29 @@ internal fun TvMetaLine(meta: MetaCard, modifier: Modifier = Modifier, extra: Li
         rating = ratedValue(meta.imdbRating),
         modifier = modifier,
     )
+}
+
+/** A filter choice, filled when it is the one in force. */
+@Composable
+internal fun TvFilterPill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    TvSurface(
+        onClick = onClick,
+        modifier = modifier.height(36.dp).semantics {
+            contentDescription = label
+            this.selected = selected
+        },
+        cornerRadius = 18.dp,
+        colors = if (selected) TvSurfaceColors(HaloColors.Text, HaloColors.Primary) else TvSurfaceColors(HaloColors.FieldFill, HaloColors.SurfaceHigh),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = if (selected) HaloColors.OnPrimary else HaloColors.TextMeta,
+            fontSize = 15.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+    }
 }
 
 /** The last card of a row: opens everything the row holds. */

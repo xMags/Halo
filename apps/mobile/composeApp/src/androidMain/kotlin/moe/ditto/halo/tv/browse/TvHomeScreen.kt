@@ -1,83 +1,87 @@
 package moe.ditto.halo.tv.browse
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.MetaCard
 import moe.ditto.halo.api.playableFromPreview
+import moe.ditto.halo.browse.catalogExtra
 import moe.ditto.halo.browse.CatalogPageSource
+import moe.ditto.halo.browse.catalogRows
 import moe.ditto.halo.browse.CatalogRowSpec
 import moe.ditto.halo.browse.ContinueEntry
-import moe.ditto.halo.browse.HomeShelves
-import moe.ditto.halo.browse.catalogExtra
-import moe.ditto.halo.browse.catalogRows
 import moe.ditto.halo.browse.homeShelves
+import moe.ditto.halo.browse.HomeShelves
 import moe.ditto.halo.browse.isStandInPosterLink
+import moe.ditto.halo.browse.matchesTypeFilter
 import moe.ditto.halo.cache.QueryState
+import moe.ditto.halo.screens.episodeTagOf
+import moe.ditto.halo.screens.MediaTypeFilter
 import moe.ditto.halo.screens.MetaRef
+import moe.ditto.halo.screens.resumeRoute
 import moe.ditto.halo.screens.ShelfPaging
 import moe.ditto.halo.screens.ShelfSnapshot
-import moe.ditto.halo.screens.TitleMenus
-import moe.ditto.halo.screens.episodeTagOf
-import moe.ditto.halo.screens.resumeRoute
 import moe.ditto.halo.screens.timeLeft
+import moe.ditto.halo.screens.TitleMenus
+import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.sync.LibraryRepository
+import moe.ditto.halo.tv.kit.defaultFocus
+import moe.ditto.halo.tv.kit.rememberFocus
+import moe.ditto.halo.tv.kit.rememberTvFocusMemory
 import moe.ditto.halo.tv.kit.TvButton
 import moe.ditto.halo.tv.kit.TvButtonStyle
 import moe.ditto.halo.tv.kit.TvFocusMemory
 import moe.ditto.halo.tv.kit.TvMetrics
 import moe.ditto.halo.tv.kit.TvPosterCard
 import moe.ditto.halo.tv.kit.TvRow
+import moe.ditto.halo.tv.kit.tvRowHeadingRoom
 import moe.ditto.halo.tv.kit.TvType
 import moe.ditto.halo.tv.kit.TvWideCard
-import moe.ditto.halo.tv.kit.defaultFocus
-import moe.ditto.halo.tv.kit.rememberFocus
-import moe.ditto.halo.tv.kit.rememberTvFocusMemory
-import moe.ditto.halo.tv.kit.tvRowHeadingRoom
 import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
@@ -122,10 +126,14 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
     val settingsReady = settings.value != null || settings.error != null
     val catalogLanguage = settings.value?.catalogLanguage
 
-    val rows = remember(addons.value) { catalogRows(addons.value.orEmpty()) }
+    // All, Movies or Series: narrows the catalog rows, Recently watched and My
+    // library, as on the phone. Continue watching ignores it there too.
+    var filter by rememberSaveable { mutableStateOf(MediaTypeFilter.All) }
+    val allRows = remember(addons.value) { catalogRows(addons.value.orEmpty()) }
+    val rows = remember(allRows, filter) { allRows.filter { matchesTypeFilter(filter.type, it.type) } }
     val personalReady = (watchStates.value != null || watchStates.error != null) &&
         (library.value != null || library.error != null)
-    val shelves = remember(watchStates.value, library.value) { homeShelves(watchStates.value, library.value, null) }
+    val shelves = remember(watchStates.value, library.value, filter) { homeShelves(watchStates.value, library.value, filter.type) }
 
     // Until a card has focus, the hero takes turns through the first catalog's
     // lead titles, wide art first, as the phone's featured banner does.
@@ -196,6 +204,32 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
                         navigation = navigation,
                     )
                 }
+                // Above the hero's buttons, Up from them, rather than a stop
+                // between the buttons and the first row. Named in full: inside
+                // the Column the ColumnScope overload would be picked.
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = expanded && allRows.isNotEmpty(),
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.TopEnd).padding(top = TvMetrics.VerticalMargin, end = TvMetrics.SideMargin),
+                ) {
+                    // On a dark backing: the hero's art behind can be bright.
+                    Row(
+                        Modifier
+                            .background(HaloColors.Background.copy(alpha = 0.7f), RoundedCornerShape(24.dp))
+                            .padding(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        MediaTypeFilter.entries.forEach { option ->
+                            TvFilterPill(
+                                option.label,
+                                selected = option == filter,
+                                onClick = { filter = option },
+                                modifier = Modifier.rememberFocus(memory, "home-filter/${option.name}"),
+                            )
+                        }
+                    }
+                }
             }
             when {
                 addons.value == null && (addons.error != null || addonsFailed) -> TvBodyMessage(
@@ -207,6 +241,13 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
                 // for history and library: a list that showed the catalogs
                 // first would keep its place on them when the rows above arrive.
                 addons.value == null || !personalReady -> TvSkeletonRow(6, HomePosterWidth, HomePosterWidth * 1.5f)
+                // A filter that leaves nothing: said, with the way back to All.
+                allRows.isNotEmpty() && rows.isEmpty() && shelves.continueWatching.isEmpty() -> TvBodyMessage(
+                    "None of your catalogs list ${filter.label.lowercase()}.",
+                    retryModifier = Modifier.defaultFocus(memory, "filter-all"),
+                    onRetry = { filter = MediaTypeFilter.All },
+                    actionLabel = "Show all",
+                )
                 rows.isEmpty() && shelves.continueWatching.isEmpty() -> TvBodyMessage(
                     "No catalogs to show. Add an addon that publishes them, such as Cinemeta, in Settings.",
                     retryModifier = Modifier.defaultFocus(memory, "settings"),

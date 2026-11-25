@@ -174,23 +174,8 @@ internal fun TvLibraryScreen(
 }
 
 @Composable
-private fun Pill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    TvSurface(
-        onClick = onClick,
-        modifier = modifier.height(36.dp).semantics { contentDescription = label },
-        cornerRadius = 18.dp,
-        colors = if (selected) TvSurfaceColors(HaloColors.Text, HaloColors.Primary) else TvSurfaceColors(HaloColors.FieldFill, HaloColors.SurfaceHigh),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            label,
-            color = if (selected) HaloColors.OnPrimary else HaloColors.TextMeta,
-            fontSize = 15.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-    }
-}
+private fun Pill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) =
+    TvFilterPill(label, selected, onClick, modifier)
 
 @Composable
 private fun SavedGrid(
