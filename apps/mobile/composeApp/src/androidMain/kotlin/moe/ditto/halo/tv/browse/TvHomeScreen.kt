@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.PaddingValues
@@ -120,8 +122,10 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
         (library.value != null || library.error != null)
     val shelves = remember(watchStates.value, library.value) { homeShelves(watchStates.value, library.value, null) }
 
-    // Until a card has focus, the hero shows the first catalog's lead title
-    // with wide art, as the phone's featured banner does.
+    // Until a card has focus, the hero takes turns through the first catalog's
+    // lead titles, wide art first, as the phone's featured banner does.
+    // Continue watching has its own row below, so it leads only when there is
+    // no catalog to feature.
     val lead = rows.firstOrNull()
     val leadCatalog by remember(graph, lead?.key) {
         graph.browse.catalog(
@@ -132,8 +136,12 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
         )
     }.collectAsState(QueryState())
     val featured = remember(leadCatalog.value) {
-        leadCatalog.value.orEmpty().sortedBy { it.background.isNullOrBlank() }.firstOrNull()
+        leadCatalog.value.orEmpty().sortedBy { it.background.isNullOrBlank() }.take(FeaturedCount)
     }
+    // Still loading the lead catalog: show nothing rather than a fallback
+    // that the featured titles would replace a moment later.
+    val featuredSettled = lead == null || leadCatalog.value != null || leadCatalog.error != null
+    var featuredIndex by remember(featured) { mutableIntStateOf(0) }
     var focusedTitle by remember { mutableStateOf<HeroTitle?>(null) }
     var hero by remember { mutableStateOf<HeroTitle?>(null) }
     // A short pause, so moving across a row does not flicker the hero.
@@ -142,7 +150,17 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
         delay(HeroFollowMs)
         hero = next
     }
-    val shown = hero ?: shelves.continueWatching.firstOrNull()?.let { HeroTitle(it.meta, it) } ?: featured?.let { HeroTitle(it) }
+    // The featured titles take turns until a card takes the hero over.
+    if (hero == null && featured.size > 1) {
+        LaunchedEffect(featured, featuredIndex) {
+            delay(FeaturedDwellMs)
+            featuredIndex = (featuredIndex + 1) % featured.size
+        }
+    }
+    val shown = hero
+        ?: featured.getOrNull(featuredIndex)?.let { HeroTitle(it) }
+        ?: shelves.continueWatching.firstOrNull()?.takeIf { featuredSettled }?.let { HeroTitle(it.meta, it) }
+    val featuredPosition = if (hero == null && featured.size > 1) featuredIndex to featured.size else null
 
     // At the top of the rows the hero is full size, with its buttons there for
     // the remote to reach from the first row; anywhere lower it is compact.
@@ -165,6 +183,7 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
                         graph = graph,
                         title = title,
                         expanded = expanded,
+                        featuredPosition = featuredPosition,
                         memory = memory,
                         inLibrary = library.value.orEmpty().any {
                             it.id == LibraryRepository.itemId(title.meta.type, title.meta.id) && !it.isRemoved
@@ -247,6 +266,8 @@ private fun HeroInfo(
     graph: SessionGraph,
     title: HeroTitle,
     expanded: Boolean,
+    /** Which featured title this is and of how many, while they take turns. */
+    featuredPosition: Pair<Int, Int>?,
     memory: TvFocusMemory,
     inLibrary: Boolean,
     navigation: TvBrowseNavigation,
@@ -256,6 +277,11 @@ private fun HeroInfo(
     val card: MetaCard = full.value?.takeIf { it.id == meta.id } ?: meta
     val resume = title.resume
     val kind = if (meta.type == SeriesType) "SERIES" else "MOVIE"
+    val overline = when {
+        resume != null -> "$kind · CONTINUE WATCHING"
+        featuredPosition != null -> "FEATURED · $kind"
+        else -> kind
+    }
 
     Column(
         Modifier
@@ -263,14 +289,30 @@ private fun HeroInfo(
             .width(470.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            if (resume != null) "$kind · CONTINUE WATCHING" else kind,
-            style = TvType.Overline,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text(overline, style = TvType.Overline)
+            featuredPosition?.let { (index, count) -> FeaturedDots(index, count) }
+        }
         Text(card.name, style = TvType.Hero, maxLines = 1, overflow = TextOverflow.Ellipsis)
         TvMetaLine(card)
         AnimatedVisibility(visible = expanded, label = "tv-hero-actions") {
             HeroActions(graph, title, card, memory, inLibrary, navigation)
+        }
+    }
+}
+
+/** Which featured title is showing: the current one is a longer, brighter dash. */
+@Composable
+private fun FeaturedDots(index: Int, count: Int) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        repeat(count) { i ->
+            val current = i == index
+            val width by animateDpAsState(if (current) 18.dp else 6.dp, tween(HeroResizeMs), label = "tv-featured-dot")
+            Box(
+                Modifier
+                    .size(width, 6.dp)
+                    .background(if (current) HaloColors.Text else HaloColors.TextMeta.copy(alpha = 0.5f), CircleShape),
+            )
         }
     }
 }
@@ -536,3 +578,7 @@ private fun ContinueCard(
 
 private const val HeroFollowMs = 350L
 private const val HeroResizeMs = 250
+private const val FeaturedCount = 5
+
+/** How long each featured title stays; longer than the phone's, read from across a room. */
+private const val FeaturedDwellMs = 8_000L
