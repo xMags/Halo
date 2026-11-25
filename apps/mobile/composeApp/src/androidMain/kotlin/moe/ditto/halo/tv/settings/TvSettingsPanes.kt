@@ -360,6 +360,14 @@ internal fun LazyListScope.playbackPane(
         )
     }
     item(key = "tv-only") { GroupLabel("On this TV only") }
+    item(key = "resume") {
+        TvSwitchRow(
+            title = "Resume where I left off",
+            hint = "Off: every video starts from the beginning.",
+            checked = preferences.resumePlayback,
+            onCheckedChange = preferences::updateResumePlayback,
+        )
+    }
     item(key = "frame-rate") {
         TvSwitchRow(
             title = "Match frame rate",
@@ -374,6 +382,19 @@ internal fun LazyListScope.playbackPane(
             value = if (preferences.surroundSound == SurroundSound.Auto) "Auto" else "Off",
             hint = "Auto sends Dolby and DTS to a receiver that plays them.",
             onClick = onOpenSurround,
+        )
+    }
+    item(key = "hardware-decoding") {
+        TvSwitchRow(
+            title = "Hardware decoding",
+            // The player is built when Halo starts, so a change waits for that.
+            hint = if (preferences.hardwareDecoding != preferences.hardwareDecodingAtStart) {
+                "Takes effect the next time Halo starts."
+            } else {
+                "Turn off only if videos stutter or show a green or black picture."
+            },
+            checked = preferences.hardwareDecoding,
+            onCheckedChange = preferences::updateHardwareDecoding,
         )
     }
 }

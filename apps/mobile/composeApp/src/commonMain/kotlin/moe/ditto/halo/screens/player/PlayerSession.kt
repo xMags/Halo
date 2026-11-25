@@ -94,6 +94,8 @@ internal class PlayerSession internal constructor(
     val item: MediaItem,
     private val onSelectEpisode: (EpisodeChoice) -> Unit,
     private val onBack: () -> Unit,
+    /** Whether a video opens where it was left; false starts every video from the beginning. */
+    private val resumes: Boolean = true,
 ) {
     /** The engine's state, as of the latest composition. */
     var state: PlayerState = playback.state.value
@@ -176,7 +178,7 @@ internal class PlayerSession internal constructor(
             // video only when it differs and the viewer has not moved it
             // since. A stream of unknown length opens with no duration, which
             // resumePosition accepts.
-            if (context.recordsHistory) {
+            if (context.recordsHistory && resumes) {
                 resumeSettled = false
                 launch {
                     try {
@@ -392,6 +394,8 @@ internal fun rememberPlayerSession(
     onBack: () -> Unit,
     /** How far the caption steps up while the chrome shows, in percent of the picture. */
     captionLiftPercent: Int = ChromeCaptionLiftPercent,
+    /** Whether videos open where they were left (a TV setting; the phone always resumes). */
+    resumes: Boolean = true,
 ): PlayerSession {
     val state by playback.state.collectAsState()
     // The video is the item, so the video id names it. The URL is one way to
@@ -408,7 +412,7 @@ internal fun rememberPlayerSession(
         )
     }
     val session = remember(item) {
-        PlayerSession(graph, playback, scope, controller, context, item, onSelectEpisode, onBack)
+        PlayerSession(graph, playback, scope, controller, context, item, onSelectEpisode, onBack, resumes)
     }
     session.state = state
     var fitModeRestored by remember(item) { mutableStateOf(false) }

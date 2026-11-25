@@ -130,6 +130,7 @@ internal fun TvPlayerScreen(
         onBack = onBack,
         // The TV's controls stand taller than the phone's.
         captionLiftPercent = CaptionLiftPercent,
+        resumes = preferences.resumePlayback,
     )
     TvPlaybackSystem(playback = playback, session = session, scope = scope, onPausedFromOutside = controller::showChrome)
     val state = session.state

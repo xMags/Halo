@@ -7,7 +7,9 @@ import moe.ditto.halo.AndroidActivityHosts
 import moe.ditto.halo.downloads.NoDownloadStorage
 import moe.ditto.halo.player.MpvProfile
 import moe.ditto.halo.player.NoVideoFrameSource
+import moe.ditto.halo.storage.AndroidPreferencesStore
 import moe.ditto.halo.tv.player.TvAudioOutput
+import moe.ditto.halo.tv.player.TvPlaybackPreferences
 
 /**
  * The TV entry point, listed by TV launchers (`LEANBACK_LAUNCHER`) while phone
@@ -25,7 +27,10 @@ class TvActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        hosts = AndroidActivityHosts(this, playerProfile = MpvProfile.Tv)
+        // The player is built here, before any screen, so the decoding
+        // setting is read straight from the device's store.
+        val hardwareDecoding = TvPlaybackPreferences.hardwareDecodingIn(AndroidPreferencesStore(applicationContext))
+        hosts = AndroidActivityHosts(this, playerProfile = if (hardwareDecoding) MpvProfile.Tv else MpvProfile.TvSoftware)
         val dependencies = hosts.dependencies(
             intent = intent,
             downloadStorage = NoDownloadStorage,

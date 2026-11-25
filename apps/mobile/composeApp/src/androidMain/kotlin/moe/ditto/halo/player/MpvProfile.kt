@@ -23,5 +23,11 @@ internal data class MpvProfile(
             demuxerMaxBytes = "64MiB",
             demuxerMaxBackBytes = "16MiB",
         )
+
+        /**
+         * The TV with its video chip left out, for a device whose decoder
+         * misbehaves: slower and hotter, but it plays.
+         */
+        val TvSoftware = Tv.copy(hwdec = "no")
     }
 }
