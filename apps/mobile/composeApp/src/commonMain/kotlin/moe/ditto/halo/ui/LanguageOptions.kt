@@ -54,7 +54,15 @@ private val LanguageLabels = mapOf(
     "vie" to "Vietnamese",
 )
 
-fun languageLabel(code: String): String = LanguageLabels[code.trim().lowercase()] ?: code
+/**
+ * A language's name for a code. Files tag tracks with the two-letter form or
+ * a region (`en`, `pt-BR`) as often as the three-letter one, so those are
+ * folded onto the code the table knows before giving up on the raw tag.
+ */
+fun languageLabel(code: String): String {
+    val key = code.trim().lowercase()
+    return LanguageLabels[key] ?: LanguageLabels[languageIdentity(key)] ?: code
+}
 
 /**
  * Whether two language codes name the same language.

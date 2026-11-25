@@ -15,6 +15,17 @@ class LanguageOptionsTest {
     }
 
     @Test
+    fun labelsTwoLetterAndRegionTagsAsFilesWriteThem() {
+        assertEquals("English", languageLabel("en"))
+        assertEquals("Russian", languageLabel("ru"))
+        assertEquals("English", languageLabel("en-US"))
+        assertEquals("Portuguese (BR)", languageLabel("pt-BR"))
+        assertEquals("Portuguese", languageLabel("pt"))
+        // A tag no rule knows is shown as it came.
+        assertEquals("xx", languageLabel("xx"))
+    }
+
+    @Test
     fun aTrackTaggedWithARegionMatchesTheLanguagePreference() {
         assertTrue(languageMatches("en-US", "eng"))
         assertTrue(languageMatches("EN_gb", "eng"))
