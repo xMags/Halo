@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -84,6 +87,7 @@ private data class HeroTitle(val meta: MetaCard, val resume: ContinueEntry? = nu
 
 private val HomePosterWidth = 112.dp
 private val HeroHeight = 262.dp
+private val HeroTextWidth = 470.dp
 
 /** The hero once the rows are scrolled: its title and facts only. */
 private val HeroCompactHeight = 140.dp
@@ -183,7 +187,7 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
                         graph = graph,
                         title = title,
                         expanded = expanded,
-                        featuredPosition = featuredPosition,
+                        featured = featuredPosition != null,
                         memory = memory,
                         inLibrary = library.value.orEmpty().any {
                             it.id == LibraryRepository.itemId(title.meta.type, title.meta.id) && !it.isRemoved
@@ -221,6 +225,22 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
                     onFocusTitle = { focusedTitle = it },
                     libraryCount = library.value.orEmpty().count { !it.isRemoved },
                 )
+            }
+        }
+        // On the first row's heading line, ending where the hero's text does:
+        // the hero leaves no room of its own, and the heading is short.
+        AnimatedVisibility(
+            visible = expanded && featuredPosition != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .padding(start = TvMetrics.ContentStart, top = heroHeight)
+                .width(HeroTextWidth)
+                .height(with(LocalDensity.current) { TvType.Heading.lineHeight.toDp() }),
+            label = "tv-featured-dots",
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
+                featuredPosition?.let { (index, count) -> FeaturedDots(index, count) }
             }
         }
     }
@@ -266,8 +286,8 @@ private fun HeroInfo(
     graph: SessionGraph,
     title: HeroTitle,
     expanded: Boolean,
-    /** Which featured title this is and of how many, while they take turns. */
-    featuredPosition: Pair<Int, Int>?,
+    /** One of the featured titles taking turns, not a focused card. */
+    featured: Boolean,
     memory: TvFocusMemory,
     inLibrary: Boolean,
     navigation: TvBrowseNavigation,
@@ -279,20 +299,17 @@ private fun HeroInfo(
     val kind = if (meta.type == SeriesType) "SERIES" else "MOVIE"
     val overline = when {
         resume != null -> "$kind · CONTINUE WATCHING"
-        featuredPosition != null -> "FEATURED · $kind"
+        featured -> "FEATURED"
         else -> kind
     }
 
     Column(
         Modifier
             .padding(start = TvMetrics.ContentStart, top = TvMetrics.VerticalMargin, end = TvMetrics.SideMargin)
-            .width(470.dp),
+            .width(HeroTextWidth),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(overline, style = TvType.Overline)
-            featuredPosition?.let { (index, count) -> FeaturedDots(index, count) }
-        }
+        Text(overline, style = TvType.Overline)
         Text(card.name, style = TvType.Hero, maxLines = 1, overflow = TextOverflow.Ellipsis)
         TvMetaLine(card)
         AnimatedVisibility(visible = expanded, label = "tv-hero-actions") {
