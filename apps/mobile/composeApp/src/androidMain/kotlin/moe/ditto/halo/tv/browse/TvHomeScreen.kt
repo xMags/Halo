@@ -543,7 +543,8 @@ private fun PosterRow(
     onSeeAll: () -> Unit,
 ) {
     TvRow(title = title) {
-        items(metas, key = { "${it.type}:${it.id}" }) { meta ->
+        // Short enough that See all is a few presses away; it opens the rest.
+        items(metas.take(PosterRowLimit), key = { "${it.type}:${it.id}" }) { meta ->
             TvPosterCard(
                 title = meta.name,
                 posterUrl = meta.poster,
@@ -596,6 +597,9 @@ private fun ContinueCard(
 private const val HeroFollowMs = 350L
 private const val HeroResizeMs = 250
 private const val FeaturedCount = 5
+
+/** Titles in a Home poster row before its See all card: about two screens across. */
+private const val PosterRowLimit = 12
 
 /** How long each featured title stays; longer than the phone's, read from across a room. */
 private const val FeaturedDwellMs = 8_000L
