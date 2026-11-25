@@ -82,8 +82,8 @@ import moe.ditto.halo.ui.HaloIcons
 internal class TvRailItem(val route: Any, val label: String, val icon: ImageVector)
 
 internal val TvRailItems = listOf(
-    TvRailItem(SearchRoute, "Search", HaloIcons.Search),
     TvRailItem(HomeRoute, "Home", HaloIcons.Home),
+    TvRailItem(SearchRoute, "Search", HaloIcons.Search),
     TvRailItem(LibraryRoute, "Library", HaloIcons.Bookmark),
     TvRailItem(SettingsRoute, "Settings", HaloIcons.Settings),
 )
