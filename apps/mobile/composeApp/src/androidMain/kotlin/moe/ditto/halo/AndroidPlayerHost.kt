@@ -15,9 +15,16 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
+import moe.ditto.halo.player.AppSubtitleState
+import moe.ditto.halo.player.DirectVideoFrame
+import moe.ditto.halo.player.DirectVideoSurface
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.MpvCore
 import moe.ditto.halo.player.MpvProfile
@@ -78,6 +85,19 @@ internal class AndroidMpvPlayerHost(
     private val channel = Channel<PlayerEvent>(Channel.UNLIMITED)
     val playerEvents: Flow<PlayerEvent> = channel.receiveAsFlow()
 
+    /** True when the surface sizes the video and draws subtitles itself on the direct path. */
+    val offersDirectVideo: Boolean get() = profile.directVideo
+
+    // What the direct path's surface and subtitle overlay show. Written only
+    // on [coreExecutor], and only on a direct-video profile; read by Compose
+    // on the main thread. Each value is immutable and replaced whole by an
+    // atomic [MutableStateFlow.update], so a reader always sees one complete
+    // value and never a half-written one.
+    private val directFrame = MutableStateFlow(DirectVideoFrame(direct = profile.directVideo))
+    private val appSubtitles = MutableStateFlow(AppSubtitleState())
+    val videoFrame: StateFlow<DirectVideoFrame> = directFrame.asStateFlow()
+    val subtitleOverlay: StateFlow<AppSubtitleState> = appSubtitles.asStateFlow()
+
     init {
         coreExecutor.execute {
             if (acceptingWork.get()) installFreshCore()
@@ -94,6 +114,9 @@ internal class AndroidMpvPlayerHost(
         coreGeneration = generation
         currentCoreId = created.id
         created.setListener(listenerFor(generation))
+        // A fresh core starts on the direct path with no file.
+        updateDirectFrame { DirectVideoFrame(direct = true, fillsScreen = it.fillsScreen) }
+        updateAppSubtitles { it.copy(text = "") }
         // This property read is deliberately performed on the executor. The
         // instrumentation seam returns only this cached result on the caller.
         cachedMutedForTest = created.isMutedForTest()
@@ -126,17 +149,45 @@ internal class AndroidMpvPlayerHost(
         override fun onBufferedPosition(positionSeconds: Double) =
             emitFromCore(generation, PlayerEvent.BufferedPositionChanged(positionSeconds))
 
-        override fun onVideoFormat(format: VideoFormat) =
+        override fun onVideoFormat(format: VideoFormat) {
             emitFromCore(generation, PlayerEvent.VideoFormatChanged(format))
+            if (!isCurrentCore(generation)) return
+            updateDirectFrame { it.copy(videoWidth = format.width, videoHeight = format.height) }
+        }
 
         override fun onEnded() = emitFromCore(generation, PlayerEvent.NaturalEnd)
         override fun onEndCleared() = emitFromCore(generation, PlayerEvent.EndCleared)
         override fun onError(message: String) = emitFromCore(generation, PlayerEvent.Error(message))
+
+        override fun onVideoPath(direct: Boolean) {
+            if (!isCurrentCore(generation)) return
+            updateDirectFrame { it.copy(direct = direct) }
+            if (!direct) updateAppSubtitles { it.copy(text = "") }
+        }
+
+        override fun onSubtitleText(text: String) {
+            if (!isCurrentCore(generation)) return
+            updateAppSubtitles { it.copy(text = text) }
+        }
     }
 
     private fun emitFromCore(generation: Long, event: PlayerEvent) {
-        if (!acceptingWork.get() || activeCoreGeneration != generation) return
+        if (!isCurrentCore(generation)) return
         channel.trySend(event)
+    }
+
+    private fun isCurrentCore(generation: Long): Boolean = acceptingWork.get() && activeCoreGeneration == generation
+
+    /** Executor only, and a no-op on a profile without the direct path. */
+    private fun updateDirectFrame(change: (DirectVideoFrame) -> DirectVideoFrame) {
+        if (!profile.directVideo) return
+        directFrame.update(change)
+    }
+
+    /** Executor only, and a no-op on a profile without the direct path. */
+    private fun updateAppSubtitles(change: (AppSubtitleState) -> AppSubtitleState) {
+        if (!profile.directVideo) return
+        appSubtitles.update(change)
     }
 
     private fun enqueueAsync(operation: String, action: (MpvCore) -> Unit) {
@@ -257,23 +308,45 @@ internal class AndroidMpvPlayerHost(
     suspend fun setPlaybackRate(rate: Double) = enqueue("playback-rate") { it.setPlaybackRate(rate) }
     suspend fun setAudioDelay(seconds: Double) = enqueue("audio-delay") { it.setAudioDelay(seconds) }
     suspend fun setAudioPassthrough(codecs: String?) = enqueue("audio-spdif") { it.setAudioPassthrough(codecs) }
-    suspend fun setVideoFillsScreen(fills: Boolean) = enqueue("video-fill") { it.setVideoFillsScreen(fills) }
+    // Fill and the caption style also reach the direct path's view and
+    // overlay, which mpv does not draw for; on other profiles that is a no-op.
+    suspend fun setVideoFillsScreen(fills: Boolean) = enqueue("video-fill") {
+        it.setVideoFillsScreen(fills)
+        updateDirectFrame { frame -> frame.copy(fillsScreen = fills) }
+    }
+
     suspend fun setSubtitleDelay(seconds: Double) = enqueue("subtitle-delay") { it.setSubtitleDelay(seconds) }
-    suspend fun setSubtitleScale(scale: Double) = enqueue("subtitle-scale") { it.setSubtitleScale(scale) }
-    suspend fun setSubtitleFont(font: String?) = enqueue("subtitle-font") { it.setSubtitleFont(font) }
+    suspend fun setSubtitleScale(scale: Double) = enqueue("subtitle-scale") {
+        it.setSubtitleScale(scale)
+        updateAppSubtitles { state -> state.copy(scale = scale) }
+    }
+
+    suspend fun setSubtitleFont(font: String?) = enqueue("subtitle-font") {
+        it.setSubtitleFont(font)
+        updateAppSubtitles { state -> state.copy(font = font) }
+    }
+
     suspend fun setSubtitleTrackStyling(keepScript: Boolean) =
         enqueue("subtitle-style") { it.setSubtitleTrackStyling(keepScript) }
 
-    suspend fun setSubtitleOutline(widthPixels: Double) =
-        enqueue("subtitle-outline") { it.setSubtitleOutline(widthPixels) }
+    suspend fun setSubtitleOutline(widthPixels: Double) = enqueue("subtitle-outline") {
+        it.setSubtitleOutline(widthPixels)
+        updateAppSubtitles { state -> state.copy(outlineUnits = widthPixels) }
+    }
 
-    suspend fun setSubtitleShadow(offsetPixels: Double) =
-        enqueue("subtitle-shadow") { it.setSubtitleShadow(offsetPixels) }
+    suspend fun setSubtitleShadow(offsetPixels: Double) = enqueue("subtitle-shadow") {
+        it.setSubtitleShadow(offsetPixels)
+        updateAppSubtitles { state -> state.copy(shadowUnits = offsetPixels) }
+    }
 
     suspend fun setPreferredAudioLanguages(codes: List<String>) =
         enqueue("audio-languages") { it.setPreferredAudioLanguages(codes) }
 
-    suspend fun setSubtitleLift(percent: Int) = enqueue("subtitle-lift") { it.setSubtitleLift(percent) }
+    /** mpv's `sub-pos` is `100 - percent`; see [MpvCore.setSubtitleLift]. */
+    suspend fun setSubtitleLift(percent: Int) = enqueue("subtitle-lift") {
+        it.setSubtitleLift(percent)
+        updateAppSubtitles { state -> state.copy(position = 100 - percent) }
+    }
     suspend fun addSubtitle(url: String, title: String?, lang: String?) =
         enqueue("subtitle-add") { it.addSubtitle(url, title, lang) }
 
@@ -328,6 +401,7 @@ internal class AndroidMpvPlayerHost(
                 }
                 currentCoreId = "closed"
                 cachedMutedForTest = null
+                updateAppSubtitles { it.copy(text = "") }
                 coreExecutor.shutdown()
             }
         } catch (_: RejectedExecutionException) {
@@ -436,15 +510,26 @@ internal class AndroidNativePlayerSurface(
 ) : NativePlayerSurface {
     @Composable
     override fun Content(modifier: Modifier) {
+        if (host.offersDirectVideo) {
+            DirectVideoSurface(
+                frame = host.videoFrame,
+                subtitles = host.subtitleOverlay,
+                surface = ::longLivedSurface,
+                modifier = modifier,
+            )
+            return
+        }
         AndroidView(
-            factory = {
-                host.composeSurface().also { view ->
-                    (view.parent as? ViewGroup)?.removeView(view)
-                }
-            },
+            factory = { longLivedSurface() },
             modifier = modifier,
         )
     }
+
+    /** The host's one SurfaceView, taken from wherever it was last shown. */
+    private fun longLivedSurface(): SurfaceView =
+        host.composeSurface().also { view ->
+            (view.parent as? ViewGroup)?.removeView(view)
+        }
 }
 
 internal class AndroidNativeHostDiagnostics(

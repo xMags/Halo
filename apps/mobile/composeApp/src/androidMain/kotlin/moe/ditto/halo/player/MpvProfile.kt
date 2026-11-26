@@ -20,21 +20,50 @@ internal data class MpvProfile(
     val hdrComputePeak: Boolean = true,
     /** mpv's `egl-output-format`: the pixel format of the surface it draws on, or null for mpv's choice. */
     val eglOutputFormat: String? = null,
+    /**
+     * Whether files start on the direct path ([VideoPath.Direct]: [DirectVo]
+     * with [DirectHwdec]) and fall back to [vo] with [hwdec] only when that
+     * path cannot show them. False keeps [vo] and [hwdec] for everything.
+     */
+    val directVideo: Boolean = false,
 ) {
     companion object {
+        /** The direct path's output: the decoder renders onto the surface itself. */
+        const val DirectVo = "mediacodec_embed"
+
+        /** The direct path's decoder: hardware with surface output, no copy back. */
+        const val DirectHwdec = VideoPathPolicy.DirectDecoder
+
         val Phone = MpvProfile(hwdec = "mediacodec-copy")
 
         val Tv = MpvProfile(
+            // The composed path's decoders. On the direct path this is
+            // [DirectHwdec] instead: under a GPU output, TV chips cap the
+            // buffers a decoder may render into, so `mediacodec` fails to
+            // start and mpv falls back to `mediacodec-copy`, whose frames
+            // these decoders hand back shrunk to 1920x1080.
             hwdec = "mediacodec,mediacodec-copy",
+            // The composed path's output, used when a file needs mpv to draw
+            // (picture subtitles, styled scripts) or the hardware decoder
+            // will not take it.
             // On a Fire TV Cube (Mali-G52) the `gpu` output draws nothing at
             // all: frames decode, sound plays, mpv reports every frame shown,
             // and the surface holds only its background. `gpu-next`, mpv's
             // libplacebo renderer, draws the same frames on the same surface.
             vo = "gpu-next",
+            // Files start on [DirectVo] instead. TV chips whose decoders only
+            // output full size to a surface keep their true resolution and
+            // HDR that way: the decoder renders straight onto the TV's video
+            // layer, with its HDR metadata, and the weak GPU does no work.
+            // The app sizes the view and draws text subtitles itself, since
+            // mpv draws nothing over the picture on that output.
+            directVideo = true,
             // mpv's defaults (150 MiB ahead, 50 MiB behind) are sized for a
             // computer; a 1 GB stick runs out of memory long before that.
             demuxerMaxBytes = "64MiB",
             demuxerMaxBackBytes = "16MiB",
+            // The GPU options below only matter on the composed path; the
+            // direct output ignores them, so they stay set for both.
             // Bilinear scaling and no dithering: measured on the Cube, a 4K
             // HDR film dropped half as many frames as with the default
             // high-quality scalers, and nothing else plays any worse.
@@ -50,8 +79,9 @@ internal data class MpvProfile(
 
         /**
          * The TV with its video chip left out, for a device whose decoder
-         * misbehaves: slower and hotter, but it plays.
+         * misbehaves: slower and hotter, but it plays. Never direct, since
+         * the direct output cannot show software-decoded frames.
          */
-        val TvSoftware = Tv.copy(hwdec = "no")
+        val TvSoftware = Tv.copy(hwdec = "no", directVideo = false)
     }
 }

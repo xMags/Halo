@@ -35,6 +35,9 @@ internal object SubtitleFontLibrary {
 
     private const val DirectoryName = "subtitle-fonts"
 
+    /** How a bundled file names its upright, normal-weight face. */
+    private const val RegularSuffix = "_regular"
+
     /**
      * Unpacks the bundled fonts and returns the directory, or null when none
      * could be unpacked, in which case the caller leaves mpv on the system
@@ -57,6 +60,20 @@ internal object SubtitleFontLibrary {
 
     /** The families [prepare] can actually supply, for the UI to offer honestly. */
     fun bundledFamilies(): Set<String> = BundledFonts.values.toSet()
+
+    /**
+     * The unpacked regular face of [family], the same file libass reads for
+     * it, or null when the family is not bundled or [prepare] has not
+     * unpacked it. Only reads the filesystem; call it off the main thread.
+     */
+    fun regularFace(context: Context, family: String): File? {
+        val fileName = BundledFonts.entries
+            .filter { it.value == family }
+            .map { it.key.substringAfterLast('/') }
+            .firstOrNull { it.substringBeforeLast('.').endsWith(RegularSuffix) }
+            ?: return null
+        return File(File(context.filesDir, DirectoryName), fileName).takeIf { it.isFile }
+    }
 
     private fun copyAsset(context: Context, assetPath: String, target: File): Boolean = try {
         context.assets.open(assetPath).use { source ->
