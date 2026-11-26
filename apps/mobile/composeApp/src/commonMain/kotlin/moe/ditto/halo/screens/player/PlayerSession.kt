@@ -170,7 +170,14 @@ internal class PlayerSession internal constructor(
      */
     internal suspend fun CoroutineScope.openItem(onOpened: () -> Unit = {}) {
         openFollowUps?.cancel()
-        playback.play(item)
+        val resuming = context.recordsHistory && resumes
+        // Where the engine can open a file at a place, it opens at the cached
+        // one (a cache read, no network), so the file is not started from the
+        // top and then started again there. The length is not known yet; once
+        // it is, a place past the end is corrected below as before.
+        val cached = if (resuming) graph.watchStates.progressFor(context.videoId) else null
+        val startedAt = if (playback.opensAtStartPosition) resumePosition(cached, durationSeconds = null) else null
+        playback.play(item, startedAt)
         openFollowUps = launch {
             // Back to where this video was left, once its file is open. Playback
             // is not held for it: the cached place is used at once, and the
@@ -178,15 +185,15 @@ internal class PlayerSession internal constructor(
             // video only when it differs and the viewer has not moved it
             // since. A stream of unknown length opens with no duration, which
             // resumePosition accepts.
-            if (context.recordsHistory && resumes) {
+            if (resuming) {
                 resumeSettled = false
                 launch {
                     try {
-                        val cached = graph.watchStates.progressFor(context.videoId)
                         val fresh = async { graph.watchStates.freshProgressFor(context.videoId, ResumeHistoryWaitMillis) }
                         val opened = playback.state.first { it.current == item && it.opened }
                         val placed = resumePosition(cached, opened.durationSeconds)
-                        placed?.let { playback.seekTo(it) }
+                        // Opened there already, unless the place proved to be past the end.
+                        if (placed != startedAt) playback.seekTo(placed ?: 0.0)
                         val placedAt = TimeSource.Monotonic.markNow()
                         val answer = fresh.await() as? FreshProgress.Answered ?: return@launch
                         val target = resumePosition(answer.state, opened.durationSeconds)

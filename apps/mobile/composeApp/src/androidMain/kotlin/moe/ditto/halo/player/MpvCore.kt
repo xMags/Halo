@@ -9,6 +9,7 @@ import android.view.Surface
 import dev.jdtech.mpv.MPVLib
 import moe.ditto.halo.browse.VideoDecoderSupport
 import moe.ditto.halo.storage.LineSpeedStore
+import java.util.Locale
 import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
 
@@ -132,6 +133,10 @@ internal class MpvCore private constructor(
      */
     var loadGeneration = 0L
         private set
+
+    // True from [stop] until the next [load]: no file, so nothing about the
+    // subtitles can call for a path change. Executor only.
+    private var stopped = false
     // Whether the selected video track states a Dolby Vision profile, read
     // at file load. Part of [videoFormat]'s Dolby Vision flag, so the same
     // executor-only rule applies.
@@ -268,15 +273,11 @@ internal class MpvCore private constructor(
             // where it reshapes it; the track's profile says so everywhere.
             VideoColorMatrix -> {
                 updateVideoFormat(videoFormat.copy(dolbyVision = value == DolbyVisionMatrix || trackDolbyVision))
-                judgeDolbyVisionProcessing(value)
+                judgeDolbyVisionProcessing()
             }
             HwdecCurrent -> {
-                // The composed path's own decoder is up; the next picture it
-                // reports is the one the processing is judged on.
-                if (dolbyVisionJudgement == DolbyVisionJudgement.AwaitingComposedPicture && videoPaths?.path == VideoPath.Composed) {
-                    dolbyVisionJudgement = DolbyVisionJudgement.Pending
-                }
                 if (!checkUnsupportedVideo()) checkDirectVideo()
+                judgeDolbyVisionProcessing()
             }
             SubText -> onSubtitleText(value)
             AudioDecoder -> listener?.onAudioDecoder(value.ifEmpty { null })
@@ -328,7 +329,11 @@ internal class MpvCore private constructor(
         when (eventId) {
             MPVLib.MpvEvent.MPV_EVENT_START_FILE -> fileLifecycle.onFileStarted()
             MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED -> onFileLoaded()
-            MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> lineSampler?.playbackStarted()
+            MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> {
+                lineSampler?.playbackStarted()
+                // A picture is up by now on whatever path the file is on.
+                judgeDolbyVisionProcessing()
+            }
             MPVLib.MpvEvent.MPV_EVENT_SEEK -> lineSampler?.seeked(SystemClock.elapsedRealtime())
             MPVLib.MpvEvent.MPV_EVENT_END_FILE ->
                 fileLifecycle.endFileFailure()?.let { listener?.onError(it) }
@@ -424,7 +429,7 @@ internal class MpvCore private constructor(
      * one item, which takes the value as it is; setting the whole list would
      * split a value at its commas.
      */
-    fun load(url: String, headerLines: List<String> = emptyList()) {
+    fun load(url: String, headerLines: List<String> = emptyList(), startSeconds: Double? = null) {
         if (destroyed) return
         // A chosen audio track is a track number, and mpv keeps it as its
         // setting: the number picked for the last file would select the same
@@ -437,6 +442,7 @@ internal class MpvCore private constructor(
         }
         unsupportedReported = false
         loadGeneration += 1
+        stopped = false
         setTrackDolbyVision(false)
         startFileOnDirectPath()
         // The file being replaced is done with; only a network stream says
@@ -444,12 +450,13 @@ internal class MpvCore private constructor(
         finishLineSession()
         if (isNetworkUrl(url)) startLineSession()
         fileLifecycle.onLoadRequested()
-        mpv.command(arrayOf("loadfile", url))
+        mpv.command(loadfileArguments(url, startSeconds).toTypedArray())
     }
 
     fun stop() {
         if (destroyed) return
         loadGeneration += 1
+        stopped = true
         finishLineSession()
         setTrackDolbyVision(false)
         if (videoPaths != null) {
@@ -469,6 +476,24 @@ internal class MpvCore private constructor(
     fun seekTo(positionSeconds: Double) {
         if (destroyed) return
         mpv.command(arrayOf("seek", positionSeconds.toString(), "absolute"))
+    }
+
+    /**
+     * To the keyframe nearest [positionSeconds] in the direction of travel:
+     * a relative keyframe seek, which mpv rounds forward for a positive step
+     * and back for a negative one, so it never lands behind where it started.
+     * Decoding starts at that keyframe, with none of an exact seek's decoding
+     * up to the target.
+     */
+    fun seekNearKeyframe(positionSeconds: Double, forward: Boolean) {
+        if (destroyed) return
+        val now = mpv.getPropertyDouble("time-pos")?.takeIf { it.isFinite() }
+        val step = if (now == null) null else positionSeconds - now
+        if (step == null || (step > 0) != forward) {
+            mpv.command(arrayOf("seek", positionSeconds.toString(), "absolute+keyframes"))
+            return
+        }
+        mpv.command(arrayOf("seek", step.toString(), "relative+keyframes"))
     }
 
     /** mpv's `alang`: the languages to prefer when a file's audio track is picked automatically. */
@@ -693,7 +718,7 @@ internal class MpvCore private constructor(
         }
         val paths = videoPaths
         if (paths == null) {
-            judgeDolbyVisionProcessing(mpv.getPropertyString(VideoColorMatrix))
+            judgeDolbyVisionProcessing()
             return
         }
         paths.onFileLoaded()
@@ -705,12 +730,11 @@ internal class MpvCore private constructor(
         // switches here.
         if (paths.onVideoTrack(dolbyVisionProfile) && paths.wantsSwitch()) {
             cancelSubtitleSettle()
-            // The direct decoder's picture is about to go; only the composed
-            // path's own counts.
-            if (dolbyVisionJudgement == DolbyVisionJudgement.Pending) dolbyVisionJudgement = DolbyVisionJudgement.AwaitingComposedPicture
+            // Judged once the composed path has a picture: by the next
+            // decoder or picture report, or at the latest its playback restart.
             applyVideoPath(paths.decision())
         } else {
-            judgeDolbyVisionProcessing(mpv.getPropertyString(VideoColorMatrix))
+            judgeDolbyVisionProcessing()
         }
         checkDirectVideo()
     }
@@ -718,20 +742,29 @@ internal class MpvCore private constructor(
     /**
      * Decides, once, whether the engine applies the Dolby Vision processing
      * the current file needs, from the colour system it reports for the
-     * frames it draws ([matrix], mpv's `video-params/colormatrix`): it names
-     * Dolby Vision only when the frames came with the data and the processing
-     * is applied. Judged on the composed output only, where the engine draws;
-     * null [matrix] means no picture yet. The answer goes out with the
-     * picture's format ([VideoFormat.dolbyVisionProcessed]).
+     * frames it draws (mpv's `video-params/colormatrix`): it names Dolby
+     * Vision only when the frames came with the data and the processing is
+     * applied. Judged on the composed output only, where the engine draws.
+     *
+     * Asked after every report that can follow the picture coming up (the
+     * decoder, the colour matrix, the playback restart) and read back from
+     * mpv each time, never taken from the report that asked: mpv sends
+     * changed values in the order they were observed, so the colour matrix
+     * can arrive before the decoder it came from, and an unchanged one does
+     * not arrive at all. The playback restart always follows a picture, so
+     * the verdict is reached whatever order the rest came in.
      */
-    private fun judgeDolbyVisionProcessing(matrix: String?) {
-        if (dolbyVisionJudgement != DolbyVisionJudgement.Pending) return
-        if (videoPaths != null && videoPaths.path != VideoPath.Composed) return
-        if (!videoEnabled || matrix.isNullOrEmpty()) return
-        val processed = matrix == DolbyVisionMatrix
+    private fun judgeDolbyVisionProcessing() {
+        if (dolbyVisionJudgement != DolbyVisionJudgement.Pending || destroyed) return
+        val verdict = dolbyVisionVerdict(
+            onComposedOutput = videoPaths == null || videoPaths.path == VideoPath.Composed,
+            videoEnabled = videoEnabled,
+            decoder = mpv.getPropertyString(HwdecCurrent),
+            matrix = mpv.getPropertyString(VideoColorMatrix),
+        ) ?: return
         dolbyVisionJudgement = DolbyVisionJudgement.Done
-        Log.i(LOG_TAG, "[$id] Dolby Vision processing ${if (processed) "applied" else "not applied"}: colour matrix $matrix")
-        updateVideoFormat(videoFormat.copy(dolbyVisionProcessed = processed))
+        Log.i(LOG_TAG, "[$id] Dolby Vision processing ${if (verdict) "applied" else "not applied"}: colour matrix ${mpv.getPropertyString(VideoColorMatrix)}")
+        updateVideoFormat(videoFormat.copy(dolbyVisionProcessed = verdict))
     }
 
     /**
@@ -868,6 +901,9 @@ internal class MpvCore private constructor(
         val paths = videoPaths ?: return
         val handler = settleHandler ?: return
         cancelSubtitleSettle()
+        // A stopped file's track list empties on its way out; that is no
+        // subtitle choice, and the next load picks its own path anyway.
+        if (stopped) return
         if (!paths.wantsSwitch()) return
         val delayMs = when (paths.settle()) {
             SubtitleSettle.Provisional -> ProvisionalSubtitleSettleMs
@@ -1183,9 +1219,6 @@ private enum class DolbyVisionJudgement {
     /** The file needs none, or nothing is loaded. */
     None,
 
-    /** Moved to the composed path for it; that path's decoder is not up yet. */
-    AwaitingComposedPicture,
-
     /** The next picture the engine draws decides. */
     Pending,
 
@@ -1281,6 +1314,31 @@ private const val SourceLostMessage = "The connection to this source was lost."
 
 /** One line-speed sample a second while a network stream plays. */
 private const val LineSampleIntervalMs = 1_000L
+
+/**
+ * mpv's `loadfile` for [url], opening at [startSeconds] when given: the
+ * per-file `start` option (`loadfile <url> replace -1 start=<s>`), which mpv
+ * sets for this file only and restores when it ends, so the next file opens
+ * at its own start. The index must be -1 for the options to be read.
+ */
+internal fun loadfileArguments(url: String, startSeconds: Double?): List<String> {
+    val start = startSeconds?.takeIf { it.isFinite() && it > 0.0 } ?: return listOf("loadfile", url)
+    return listOf("loadfile", url, "replace", "-1", "start=${String.format(Locale.ROOT, "%.3f", start)}")
+}
+
+/**
+ * Whether mpv applies Dolby Vision processing to the picture it draws, read
+ * from its state at one moment: null while that cannot be told yet (not on
+ * the composed output, video off, no decoder, or no picture), else whether
+ * the colour matrix names Dolby Vision. Taking the values as they are now,
+ * not as some report carried them, is what makes the order of reports
+ * irrelevant.
+ */
+internal fun dolbyVisionVerdict(onComposedOutput: Boolean, videoEnabled: Boolean, decoder: String?, matrix: String?): Boolean? {
+    if (!onComposedOutput || !videoEnabled) return null
+    if (decoder.isNullOrEmpty() || matrix.isNullOrEmpty()) return null
+    return matrix == DolbyVisionMatrix
+}
 
 /** Only these reach the line over the network; a file path or `file://` is a download on disk. */
 internal fun isNetworkUrl(url: String): Boolean =

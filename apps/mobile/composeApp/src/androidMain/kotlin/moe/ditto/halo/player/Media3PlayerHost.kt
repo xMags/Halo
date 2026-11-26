@@ -27,14 +27,15 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.analytics.AnalyticsListener
-import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import java.io.File
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -77,7 +78,15 @@ internal class Media3PlayerHost(private val appContext: Context) {
     val videoFrame: StateFlow<DirectVideoFrame> = frame.asStateFlow()
     val subtitleOverlay: StateFlow<AppSubtitleState> = subtitles.asStateFlow()
 
+    /** Decides each file's pass-through; null (the default) decodes every track. Set once by the TV activity. */
+    @Volatile var soundPolicy: Media3SoundPolicy? = null
+
+    // The sound sent on untouched for the file playing; null while decoded here.
+    private val sound = MutableStateFlow<Media3SoundState?>(null)
+    val soundPassthrough: StateFlow<Media3SoundState?> = sound.asStateFlow()
+
     private var player: ExoPlayer? = null
+    private var gate: PassthroughGate? = null
     private var file: FileState? = null
     private var surfaceView: SurfaceView? = null
     private var closed = false
@@ -99,6 +108,11 @@ internal class Media3PlayerHost(private val appContext: Context) {
         }.getOrDefault(emptySet())
     }
 
+    /** Reads this device's Dolby Vision decoders now; blocking, so off the main thread, before a file loads. */
+    fun prefetchDecoders() {
+        dolbyVisionDecoders
+    }
+
     /** One file's player and what has been reported about it. */
     private class FileState(
         val generation: Long,
@@ -118,27 +132,43 @@ internal class Media3PlayerHost(private val appContext: Context) {
         var failed = false
         var hasVideo = false
         var firstReadyAt = 0L
+
+        // What this file may send on untouched, and what it is sending now.
+        var allowedSound: Set<Int> = emptySet()
+        var soundEncoding: Int? = null
+        var soundStarts = 0
     }
 
     private suspend fun <T> onMain(block: () -> T): T = withContext(Dispatchers.Main.immediate) { block() }
 
     // --- The contract, through [Media3PlayerPort] ---
 
-    suspend fun load(item: MediaItem) = onMain {
+    /**
+     * [knownFrameRate] is the file's rate as already seen (mpv's, for a
+     * hand-over, or as this TV remembered it): reported at once, so the
+     * display mode is right before the first picture, and never replaced by
+     * one measured here.
+     */
+    suspend fun load(item: MediaItem, startSeconds: Double? = null, knownFrameRate: Double? = null) = onMain {
         if (closed) return@onMain
         releasePlayer()
         val generation = ++loadGeneration
         val media = Media3Item.fromUri(item.url)
         val state = FileState(generation, item, media)
         file = state
-        updateFormat(state, VideoFormat(), always = true)
+        updateFormat(state, VideoFormat(frameRate = knownFrameRate?.takeIf { it.isFinite() && it > 0 }), always = true)
+        if (knownFrameRate != null) Log.i(LogTag, "second engine: frame rate $knownFrameRate as already seen for this file")
         subtitles.update { it.copy(text = "") }
+        sound.value = null
+        // Sound sent on untouched cannot be sped up, so another speed decodes it.
+        state.allowedSound = if (playbackRate == 1.0) soundPolicy?.passthroughEncodings().orEmpty() else emptySet()
         val built = buildPlayer(item.headers)
+        gate?.allowed = state.allowedSound
         player = built
         val listener = FileListener(state)
         built.addListener(listener)
         built.addAnalyticsListener(FileAnalytics(state))
-        built.setVideoFrameMetadataListener(OutputLog(generation))
+        built.setVideoFrameMetadataListener(OutputLog(state))
         built.trackSelectionParameters = built.trackSelectionParameters.buildUpon()
             .setPreferredAudioLanguages(*preferredAudioLanguages.toTypedArray())
             // mpv's own pick before the app chooses: an English track if any.
@@ -147,7 +177,9 @@ internal class Media3PlayerHost(private val appContext: Context) {
         built.setPlaybackSpeed(playbackRate.toFloat())
         surfaceView?.let { built.setVideoSurfaceView(it) }
         Log.i(LogTag, "second engine: opening ${hostOf(item.url)} with ${item.headers.size} request headers")
-        built.setMediaItem(media)
+        // Opened at the place it starts from, so nothing is decoded from the top first.
+        val startMs = startSeconds?.takeIf { it.isFinite() && it > 0.0 }?.let { (it * 1000).toLong() }
+        if (startMs != null) built.setMediaItem(media, startMs) else built.setMediaItem(media)
         built.prepare()
         scheduleTick(generation)
     }
@@ -155,12 +187,84 @@ internal class Media3PlayerHost(private val appContext: Context) {
     suspend fun setPaused(paused: Boolean) = onMain { player?.playWhenReady = !paused }
 
     suspend fun seekTo(positionSeconds: Double) = onMain<Unit> {
-        player?.seekTo((positionSeconds * 1000).toLong().coerceAtLeast(0L))
+        val current = player ?: return@onMain
+        current.setSeekParameters(SeekParameters.EXACT)
+        current.seekTo((positionSeconds * 1000).toLong().coerceAtLeast(0L))
+    }
+
+    /** To the nearest keyframe at or past [positionSeconds] the way the seek goes; see [PlayerPort.seekNearKeyframe]. */
+    suspend fun seekNearKeyframe(positionSeconds: Double, forward: Boolean) = onMain<Unit> {
+        val current = player ?: return@onMain
+        current.setSeekParameters(if (forward) SeekParameters.NEXT_SYNC else SeekParameters.PREVIOUS_SYNC)
+        current.seekTo((positionSeconds * 1000).toLong().coerceAtLeast(0L))
     }
 
     suspend fun setPlaybackRate(rate: Double) = onMain<Unit> {
         playbackRate = rate
+        val state = file
+        if (rate != 1.0 && state != null && state.allowedSound.isNotEmpty() && current(state)) {
+            Log.i(LogTag, "second engine: speed $rate cannot apply to sound sent on untouched; decoding it here")
+            decodeSoundHere(state)
+        }
         player?.setPlaybackSpeed(rate.toFloat())
+    }
+
+    /** This file's sound right now, for the TV's pass-through watch; null once the player is gone. */
+    suspend fun audioStartSample(): AudioStartSample? = onMain {
+        val state = file ?: return@onMain null
+        val current = player ?: return@onMain null
+        if (!current(state)) return@onMain null
+        // Media3 keeps time by the audio output while there is sound, so the
+        // position moves only while that output takes the stream.
+        val position = current.currentPosition / 1000.0
+        AudioStartSample(
+            PlaybackFile(core = 0, load = state.generation),
+            AudioStartReading(
+                paused = !current.playWhenReady,
+                pausedForCache = state.buffering || current.playbackState == Player.STATE_BUFFERING,
+                pictureReady = state.firstFrame || !state.hasVideo,
+                audioPts = position.takeIf { state.soundEncoding != null },
+                positionSeconds = position,
+                cachedAheadSeconds = ((current.bufferedPosition - current.currentPosition).coerceAtLeast(0L)) / 1000.0,
+                audioOutput = state.soundEncoding?.let { "pass-through encoding $it" },
+            ),
+        )
+    }
+
+    /**
+     * Decodes [file]'s sound here from now on, keeping the picture going,
+     * while it is still the file playing. True when it changed anything.
+     */
+    suspend fun decodeAudioHere(file: PlaybackFile): Boolean = onMain {
+        val state = this.file ?: return@onMain false
+        if (state.generation != file.load || !current(state) || state.allowedSound.isEmpty()) return@onMain false
+        decodeSoundHere(state)
+        true
+    }
+
+    /**
+     * No more pass-through for this file: the gate refuses compressed sound
+     * and the sound renderer is set up again (off and on), which reopens the
+     * output decoded while the picture plays on. Costs a short gap in the sound.
+     */
+    private fun decodeSoundHere(state: FileState) {
+        state.allowedSound = emptySet()
+        state.soundEncoding = null
+        gate?.allowed = emptySet()
+        sound.value = null
+        val current = player ?: return
+        current.trackSelectionParameters = current.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+            .build()
+        // Back on once the player has acted on the first change; set at once,
+        // the two could be taken as one, which reopens nothing.
+        main.postDelayed({
+            if (!current(state)) return@postDelayed
+            val again = player ?: return@postDelayed
+            again.trackSelectionParameters = again.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .build()
+        }, SoundReopenMs)
     }
 
     suspend fun setPreferredAudioLanguages(codes: List<String>) = onMain {
@@ -268,12 +372,15 @@ internal class Media3PlayerHost(private val appContext: Context) {
         // Files on the device too: the app's cached addon subtitles.
         val data = DefaultDataSource.Factory(appContext, http)
         val renderers = object : DefaultRenderersFactory(appContext) {
-            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
-                DefaultAudioSink.Builder(context)
-                    // Nothing compressed goes to the output: every track is
-                    // decoded here, to as many channels as its decoder gives.
-                    .setAudioCapabilities(AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
-                    .build()
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink {
+                // Media3's own reading of the output, kept up to date by it as
+                // the output changes; the gate lets through only what this
+                // device was allowed for the file. Everything else is decoded
+                // here, to as many channels as its decoder gives.
+                val sink = PassthroughGate(DefaultAudioSink.Builder(context).build())
+                gate = sink
+                return sink
+            }
         }
         return ExoPlayer.Builder(appContext, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(data))
@@ -291,6 +398,8 @@ internal class Media3PlayerHost(private val appContext: Context) {
         current.clearVideoSurface()
         // Blocks until the decoders are let go, within Media3's own bound.
         current.release()
+        gate = null
+        sound.value = null
         subtitles.update { it.copy(text = "") }
         frame.update { it.copy(videoWidth = 0, videoHeight = 0) }
         Log.i(LogTag, "second engine: released")
@@ -559,6 +668,20 @@ internal class Media3PlayerHost(private val appContext: Context) {
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            // The output would not open or take the stream sent on untouched:
+            // decoded here from the same place instead, remembered for the output.
+            if (current(state) && error.errorCode in SoundOutputErrors && state.allowedSound.isNotEmpty()) {
+                val encoding = state.soundEncoding ?: state.allowedSound.first()
+                Log.i(LogTag, "second engine: sound output failed (${error.errorCodeName}) sending encoding $encoding on; decoding it here")
+                soundPolicy?.onPassthroughFailed(encoding)
+                state.allowedSound = emptySet()
+                state.soundEncoding = null
+                gate?.allowed = emptySet()
+                sound.value = null
+                // The error stopped the player; preparing again resumes at its place, picture included.
+                player?.prepare()
+                return
+            }
             val videoRenderer = (error as? ExoPlaybackException)?.let {
                 it.type == ExoPlaybackException.TYPE_RENDERER && it.rendererFormat?.sampleMimeType?.startsWith("video/") == true
             } == true
@@ -576,6 +699,29 @@ internal class Media3PlayerHost(private val appContext: Context) {
 
     /** The decoder facts only the analytics callbacks carry; same rule as [FileListener]. */
     private inner class FileAnalytics(private val state: FileState) : AnalyticsListener {
+        override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: AudioSink.AudioTrackConfig) {
+            if (!current(state)) return
+            val encoding = audioTrackConfig.encoding
+            if (Media3Encodings.isPassthrough(encoding)) {
+                // Every opening counts as a new start: an HDMI re-plug opens
+                // the output again, and only the latest one is watched.
+                state.soundEncoding = encoding
+                state.soundStarts += 1
+                sound.value = Media3SoundState(state.item, encoding, state.soundStarts)
+                Log.i(LogTag, "second engine: sound sent on untouched, output opened for encoding $encoding at ${audioTrackConfig.sampleRate} Hz")
+            } else {
+                state.soundEncoding = null
+                sound.value = null
+                Log.i(LogTag, "second engine: sound decoded here, output opened for PCM encoding $encoding at ${audioTrackConfig.sampleRate} Hz, channel mask ${audioTrackConfig.channelConfig}")
+            }
+        }
+
+        override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
+            if (!current(state)) return
+            // Media3 retries these itself; the watch decides if sound never comes.
+            Log.w(LogTag, "second engine: sound output error ${audioSinkError.javaClass.simpleName}: ${audioSinkError.message}")
+        }
+
         override fun onVideoDecoderInitialized(
             eventTime: AnalyticsListener.EventTime,
             decoderName: String,
@@ -602,15 +748,23 @@ internal class Media3PlayerHost(private val appContext: Context) {
                     gamma = Media3Mapping.gamma(format.colorInfo?.colorTransfer?.takeIf { it != Format.NO_VALUE }),
                     dolbyVision = format.sampleMimeType == DolbyVisionMime || profile != null,
                     dolbyVisionProfile = profile,
-                    frameRate = format.frameRate.toDouble().takeIf { it.isFinite() && it > 0 },
+                    // The track's own rate, else the one measured from the frames ([OutputLog]).
+                    frameRate = format.frameRate.toDouble().takeIf { it.isFinite() && it > 0 } ?: state.format.frameRate,
                 ),
             )
         }
     }
 
-    /** The decoder's output colour, logged when it changes: it says what the device turned the picture into. */
-    private inner class OutputLog(private val generation: Long) : VideoFrameMetadataListener {
+    /**
+     * Each frame about to be shown, on the playback thread: the decoder's
+     * output colour, logged when it changes (it says what the device turned
+     * the picture into), and the frame rate measured from the first frames'
+     * times, for a track that states none, so the display can match it.
+     */
+    private inner class OutputLog(private val state: FileState) : VideoFrameMetadataListener {
+        private val generation = state.generation
         @Volatile private var last: String? = null
+        private val frameTimes = ArrayList<Long>(MeasuredFrames)
 
         override fun onVideoFrameAboutToBeRendered(
             presentationTimeUs: Long,
@@ -618,6 +772,7 @@ internal class Media3PlayerHost(private val appContext: Context) {
             format: Format,
             mediaFormat: MediaFormat?,
         ) {
+            measureRate(presentationTimeUs)
             val output = mediaFormat ?: return
             fun int(key: String): Int? = if (output.containsKey(key)) runCatching { output.getInteger(key) }.getOrNull() else null
             val described = "colour standard ${int(MediaFormat.KEY_COLOR_STANDARD)}, " +
@@ -627,6 +782,32 @@ internal class Media3PlayerHost(private val appContext: Context) {
             // Called on the playback thread; only logs.
             if (generation == loadGeneration) Log.i(LogTag, "second engine: decoder output $described")
         }
+
+        @Volatile private var measured = false
+
+        /**
+         * Collects the frames' times until [Media3Mapping.measuredFrameRate]
+         * can tell the rate, starting over after any jump (a seek), and posts
+         * it once. Skipped while the file already has a rate.
+         */
+        private fun measureRate(presentationTimeUs: Long) {
+            if (measured || state.format.frameRate != null) return
+            val previous = frameTimes.lastOrNull()
+            if (previous != null && presentationTimeUs - previous !in 1..MaxFrameGapUs) frameTimes.clear()
+            frameTimes += presentationTimeUs
+            if (frameTimes.size < MeasuredFrames) return
+            measured = true
+            val fps = Media3Mapping.measuredFrameRate(frameTimes)
+            if (fps == null) {
+                Log.i(LogTag, "second engine: frame rate not measurable from the frames; the display mode stays as it is")
+                return
+            }
+            main.post {
+                if (!current(state) || state.format.frameRate != null) return@post
+                Log.i(LogTag, "second engine: frame rate ${"%.3f".format(Locale.ROOT, fps)} measured from the frames")
+                updateFormat(state, state.format.copy(frameRate = fps))
+            }
+        }
     }
 
     private companion object {
@@ -634,6 +815,20 @@ internal class Media3PlayerHost(private val appContext: Context) {
         const val DolbyVisionMime = "video/dolby-vision"
         const val TickMs = 500L
         const val NoPictureTimeoutMs = 10_000L
+        const val SoundReopenMs = 300L
+
+        /**
+         * About five seconds of a film's frames, unbroken: with timestamps in
+         * whole milliseconds the span is off by at most 1 ms in 5 s (0.02%),
+         * a fifth of the gap between 23.976 and 24.
+         */
+        const val MeasuredFrames = Media3Mapping.MinMeasuredFrames
+
+        /** Wider than any frame gap: a larger one, or a step back, is a seek and starts the count again. */
+        const val MaxFrameGapUs = 200_000L
+
+        /** Media3's `PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED` and `ERROR_CODE_AUDIO_TRACK_WRITE_FAILED`. */
+        val SoundOutputErrors = setOf(5001, 5002)
         val TickToken = Any()
         val DefaultTextLanguages = arrayOf("en")
         const val SourceLostMessage = "The connection to this source was lost."
@@ -646,9 +841,12 @@ internal class Media3PlayerHost(private val appContext: Context) {
 /** The second engine behind the shared contract; the TV's engine router hands it the files it takes. */
 internal class Media3PlayerPort(private val host: Media3PlayerHost) : PlayerPort {
     override suspend fun load(item: MediaItem) = host.load(item)
+    override val opensAtStartPosition: Boolean get() = true
+    override suspend fun load(item: MediaItem, startPositionSeconds: Double?) = host.load(item, startPositionSeconds)
     override suspend fun setPreferredAudioLanguages(codes: List<String>) = host.setPreferredAudioLanguages(codes)
     override suspend fun setPaused(paused: Boolean) = host.setPaused(paused)
     override suspend fun seekTo(positionSeconds: Double) = host.seekTo(positionSeconds)
+    override suspend fun seekNearKeyframe(positionSeconds: Double, forward: Boolean) = host.seekNearKeyframe(positionSeconds, forward)
     override suspend fun selectAudioTrack(id: String?) = host.selectAudioTrack(id)
     override suspend fun selectSubtitleTrack(id: String?) = host.selectSubtitleTrack(id)
     override suspend fun setPlaybackRate(rate: Double) = host.setPlaybackRate(rate)

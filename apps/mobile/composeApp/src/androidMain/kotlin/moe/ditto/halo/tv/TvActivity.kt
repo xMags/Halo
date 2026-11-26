@@ -3,10 +3,14 @@ package moe.ditto.halo.tv
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import moe.ditto.halo.AndroidActivityHosts
 import moe.ditto.halo.AndroidNativePlayerSurface
 import moe.ditto.halo.AndroidPlayerPort
 import moe.ditto.halo.downloads.NoDownloadStorage
+import moe.ditto.halo.player.DeviceVideoDecoders
 import moe.ditto.halo.player.Media3PlayerHost
 import moe.ditto.halo.player.Media3PlayerPort
 import moe.ditto.halo.player.MpvProfile
@@ -73,6 +77,17 @@ class TvActivity : ComponentActivity() {
         val audioOutput = TvAudioOutput(applicationContext, hosts.playerHost, deviceStore)
         // Before any screen, so every load asks it for its passthrough list.
         hosts.playerHost.passthroughForLoad = audioOutput
+        // The second engine asks the same output what it may send on untouched.
+        secondEngine.soundPolicy = audioOutput.secondEngine
+        // The codec lists, read once each and slow to read (about 150 ms on a
+        // TV box): read now, off the main thread, so neither the first source
+        // list nor the first file waits on them there. Bound to the activity.
+        lifecycleScope.launch(Dispatchers.IO) {
+            DeviceVideoDecoders.current
+            dolbyVision.prefetchDecoders()
+            secondEngine.prefetchDecoders()
+            audioOutput.secondEngine.prefetchDecoders()
+        }
         setContent {
             TvApp(dependencies, audioOutput = audioOutput, dolbyVision = dolbyVision, engines = engines, onExitApp = { finish() }, showKitGallery = showKitGallery)
         }

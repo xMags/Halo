@@ -3,6 +3,7 @@ package moe.ditto.halo.tv.player
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import moe.ditto.halo.api.AddonSource
 import moe.ditto.halo.api.Stream
 import moe.ditto.halo.player.PlaybackFailure
@@ -52,10 +53,10 @@ internal fun TvDolbyVisionPlayback(
         when (step) {
             DolbyVisionStep.Wait -> Unit
             DolbyVisionStep.HandOver -> {
-                dolbyVision.remember(context.url, seen)
+                dolbyVision.remember(context.url, seen, ownFormat.frameRate)
                 val reason = if (ownFormat.dolbyVisionProcessed == false) "mpv showed it wrongly" else "the second engine shows these here"
                 Log.i(LogTag, "second engine: Dolby Vision profile $seen, $reason; handing the file over")
-                engines.chooseForNextLoad(context.url, PlaybackEngine.Media3)
+                engines.chooseForNextLoad(context.url, PlaybackEngine.Media3, SecondEngineReason.DolbyVision, ownFormat.frameRate)
                 session.retry()
             }
             DolbyVisionStep.MoveOn -> {
@@ -78,7 +79,9 @@ internal fun TvDolbyVisionPlayback(
         if (secondEngineShows) dolbyVision.secondEngineWorked()
     }
 
-    val secondEngineFailed = engine == PlaybackEngine.Media3 && session.ownState &&
+    // Only for a file taken for its picture; one taken for its sound goes back to mpv (TvSurroundPlayback).
+    val takenForPicture = engines.secondEngineReason.collectAsState().value == SecondEngineReason.DolbyVision
+    val secondEngineFailed = engine == PlaybackEngine.Media3 && takenForPicture && session.ownState &&
         state.status == PlaybackStatus.Failed && state.failure == PlaybackFailure.UnsupportedVideo
     LaunchedEffect(session.item, secondEngineFailed) {
         if (!secondEngineFailed) return@LaunchedEffect

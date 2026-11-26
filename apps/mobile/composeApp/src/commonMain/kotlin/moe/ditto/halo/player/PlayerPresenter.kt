@@ -59,7 +59,10 @@ class PlayerPresenter(
      * call), and until a caller republishes, observers would keep seeing the
      * previous item's state and act on it on the new item's behalf.
      */
-    suspend fun start(item: MediaItem, onLoading: () -> Unit = {}) {
+    /** Whether [start] can open a file at a place ([PlayerPort.opensAtStartPosition]). */
+    val opensAtStartPosition: Boolean get() = player.opensAtStartPosition
+
+    suspend fun start(item: MediaItem, startPositionSeconds: Double? = null, onLoading: () -> Unit = {}) {
         if (state.status == PlaybackStatus.Released) return
         state = PlayerState(
             current = item,
@@ -75,7 +78,11 @@ class PlayerPresenter(
             subtitleTrackStyling = state.subtitleTrackStyling,
         )
         onLoading()
-        player.load(item)
+        if (startPositionSeconds != null && player.opensAtStartPosition) {
+            player.load(item, startPositionSeconds)
+        } else {
+            player.load(item)
+        }
     }
 
     suspend fun setPaused(paused: Boolean) {
@@ -86,6 +93,11 @@ class PlayerPresenter(
     suspend fun seekTo(positionSeconds: Double) {
         if (state.status == PlaybackStatus.Released || !positionSeconds.isFinite()) return
         player.seekTo(positionSeconds.coerceAtLeast(0.0))
+    }
+
+    suspend fun seekNearKeyframe(positionSeconds: Double, forward: Boolean) {
+        if (state.status == PlaybackStatus.Released || !positionSeconds.isFinite()) return
+        player.seekNearKeyframe(positionSeconds.coerceAtLeast(0.0), forward)
     }
 
     suspend fun selectAudioTrack(id: String?) {

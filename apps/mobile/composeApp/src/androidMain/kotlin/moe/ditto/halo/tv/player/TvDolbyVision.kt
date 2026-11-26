@@ -1,6 +1,7 @@
 package moe.ditto.halo.tv.player
 
 import java.security.MessageDigest
+import java.util.Locale
 import moe.ditto.halo.api.Stream
 import moe.ditto.halo.browse.resolveSummary
 import moe.ditto.halo.browse.SourceEntry
@@ -204,6 +205,8 @@ internal data class DolbyVisionRecord(
     val wrong: Map<String, Int>,
     val secondEngine: SecondEngineState = SecondEngineState.Untried,
     val failed: Set<String> = emptySet(),
+    /** The frame rate a remembered source was seen playing at, by fingerprint; only for those known. */
+    val frameRates: Map<String, Double> = emptyMap(),
 )
 
 private val Fingerprint = Regex("^[0-9a-f]{64}$")
@@ -219,24 +222,27 @@ private const val ProfileOfFirstRecords = 5
  * <profile>` or `failed <fp>` line each.
  */
 internal fun encodeDolbyVisionRecord(record: DolbyVisionRecord): String = buildList {
-    add("v2")
+    add("v3")
     add(record.setup)
     add(record.learnedAt.toString())
     add("engine ${record.secondEngine.name.lowercase()}")
     record.wrong.forEach { (fingerprint, profile) -> add("wrong $fingerprint $profile") }
     record.failed.forEach { add("failed $it") }
+    record.frameRates.forEach { (fingerprint, fps) -> add("rate $fingerprint ${String.format(Locale.ROOT, "%.4f", fps)}") }
 }.joinToString("\n")
 
 /**
  * Null for nothing stored or a record that is not well formed; it is then
  * ignored as a whole. A `v1` record (sources only) reads as sources mpv
- * showed wrongly, with the second engine untried.
+ * showed wrongly, with the second engine untried; a `v2` one as written,
+ * with no frame rates (`v3` adds `rate <fp> <fps>` lines).
  */
 internal fun decodeDolbyVisionRecord(text: String?): DolbyVisionRecord? {
     val lines = text?.split('\n') ?: return null
     return when (lines.firstOrNull()) {
         "v1" -> decodeFirstRecord(lines)
-        "v2" -> decodeSecondRecord(lines)
+        "v2" -> decodeSecondRecord(lines, withRates = false)
+        "v3" -> decodeSecondRecord(lines, withRates = true)
         else -> null
     }
 }
@@ -250,7 +256,7 @@ private fun decodeFirstRecord(lines: List<String>): DolbyVisionRecord? {
     return DolbyVisionRecord(setup, learnedAt, fingerprints.associateWith { ProfileOfFirstRecords })
 }
 
-private fun decodeSecondRecord(lines: List<String>): DolbyVisionRecord? {
+private fun decodeSecondRecord(lines: List<String>, withRates: Boolean): DolbyVisionRecord? {
     if (lines.size < 4) return null
     val setup = lines[1].takeIf { it.isNotBlank() } ?: return null
     val learnedAt = lines[2].toLongOrNull()?.takeIf { it > 0 } ?: return null
@@ -259,17 +265,20 @@ private fun decodeSecondRecord(lines: List<String>): DolbyVisionRecord? {
     val engine = SecondEngineState.entries.firstOrNull { it.name.lowercase() == engineLine[1] } ?: return null
     val wrong = LinkedHashMap<String, Int>()
     val failed = LinkedHashSet<String>()
+    val rates = LinkedHashMap<String, Double>()
     for (line in lines.drop(4)) {
         val parts = line.split(' ')
         when {
             parts.size == 3 && parts[0] == "wrong" && Fingerprint.matches(parts[1]) ->
                 wrong[parts[1]] = parts[2].toIntOrNull()?.takeIf { it in 0..20 } ?: return null
             parts.size == 2 && parts[0] == "failed" && Fingerprint.matches(parts[1]) -> failed += parts[1]
+            withRates && parts.size == 3 && parts[0] == "rate" && Fingerprint.matches(parts[1]) ->
+                rates[parts[1]] = parts[2].toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 && it < 1000 } ?: return null
             else -> return null
         }
     }
     if (wrong.isEmpty()) return null
-    return DolbyVisionRecord(setup, learnedAt, wrong, engine, failed)
+    return DolbyVisionRecord(setup, learnedAt, wrong, engine, failed, rates.filterKeys { it in wrong })
 }
 
 /**

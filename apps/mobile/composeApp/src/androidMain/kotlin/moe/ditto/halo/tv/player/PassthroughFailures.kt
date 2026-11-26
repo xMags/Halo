@@ -92,6 +92,16 @@ internal class PassthroughFailures(
         return usable
     }
 
+    /**
+     * What failed on [output], without changing anything: a different known
+     * output has no failures yet (they are forgotten only by [usable]), and an
+     * output that is momentarily not identified reads as the one remembered.
+     */
+    fun failedOn(output: String?): Set<PassthroughFormat> = synchronized(lock) {
+        loadAndExpire()
+        if (output != null && this.output != null && output != this.output) emptySet() else failed.keys.toSet()
+    }
+
     /** Recorded against the output the last [usable] call identified; in memory only if none was. */
     fun record(formats: Set<PassthroughFormat>) {
         if (formats.isEmpty()) return

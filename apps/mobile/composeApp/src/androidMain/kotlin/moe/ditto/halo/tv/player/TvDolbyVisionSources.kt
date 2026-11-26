@@ -41,6 +41,11 @@ internal class TvDolbyVisionSources(
 
     private val decoders: List<DolbyVisionDecoder> by lazy { readDolbyVisionDecoders() }
 
+    /** Reads this device's Dolby Vision decoders now; blocking, so off the main thread, before any screen asks. */
+    fun prefetchDecoders() {
+        decoders
+    }
+
     private fun current(): DolbyVisionRecord? {
         if (!loaded) {
             loaded = true
@@ -82,14 +87,19 @@ internal class TvDolbyVisionSources(
     override fun engineFor(item: MediaItem): PlaybackEngine =
         engineForSource(sourceFingerprint(item.url), current(), ::usable)
 
-    /** Records [url] as a file of [profile] that mpv shows wrongly here. */
-    fun remember(url: String, profile: Int) {
+    /** The rate a remembered source played at, so its display mode is set before its first picture. */
+    override fun frameRateFor(item: MediaItem): Double? = current()?.frameRates?.get(sourceFingerprint(item.url))
+
+    /** Records [url] as a file of [profile] that mpv shows wrongly here, played at [frameRate] when known. */
+    fun remember(url: String, profile: Int, frameRate: Double? = null) {
         val fingerprint = sourceFingerprint(url)
         val known = current()
         val wrong = LinkedHashMap(known?.wrong.orEmpty())
         wrong.remove(fingerprint)
         wrong[fingerprint] = profile
         while (wrong.size > MaxKept) wrong.remove(wrong.keys.first())
+        val rates = LinkedHashMap(known?.frameRates.orEmpty().filterKeys { it in wrong })
+        frameRate?.takeIf { it.isFinite() && it > 0 }?.let { rates[fingerprint] = it }
         write(
             DolbyVisionRecord(
                 setup = setup,
@@ -97,6 +107,7 @@ internal class TvDolbyVisionSources(
                 wrong = wrong,
                 secondEngine = known?.secondEngine ?: SecondEngineState.Untried,
                 failed = known?.failed.orEmpty().filterTo(LinkedHashSet()) { it in wrong },
+                frameRates = rates,
             ),
         )
         Log.i(LogTag, "remembered this source as Dolby Vision profile $profile, shown wrongly by mpv on this TV (${wrong.size} known)")

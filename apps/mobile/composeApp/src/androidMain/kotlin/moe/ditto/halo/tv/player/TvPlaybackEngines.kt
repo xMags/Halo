@@ -15,8 +15,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import moe.ditto.halo.AndroidMpvPlayerHost
 import moe.ditto.halo.NativePlayerSurface
+import moe.ditto.halo.player.DirectVideoFrame
 import moe.ditto.halo.player.DirectVideoSurface
 import moe.ditto.halo.player.Media3PlayerHost
+import moe.ditto.halo.player.Media3SoundState
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerPort
@@ -24,9 +26,21 @@ import moe.ditto.halo.player.PlayerPort
 /** Which engine plays a file on the TV. mpv is the first choice for everything. */
 internal enum class PlaybackEngine { Mpv, Media3 }
 
+/** Why the second engine plays a file: what it does there that mpv did not on this device. */
+internal enum class SecondEngineReason {
+    /** A Dolby Vision picture mpv shows wrongly here. */
+    DolbyVision,
+
+    /** Dolby surround mpv could not send on untouched here. */
+    Sound,
+}
+
 /** Picks the engine for a file about to load; see [TvDolbyVisionSources.engineFor]. */
 internal fun interface EngineChooser {
     fun engineFor(item: MediaItem): PlaybackEngine
+
+    /** The frame rate this device saw for [item]'s file before, null when it knows none. */
+    fun frameRateFor(item: MediaItem): Double? = null
 }
 
 /**
@@ -48,18 +62,32 @@ internal fun interface EngineChooser {
 internal class TvPlaybackEngines(
     private val mpvHost: AndroidMpvPlayerHost,
     private val mpv: PlayerPort,
-    private val media3Host: Media3PlayerHost,
+    /** The second engine itself, for the pass-through watch that reads and corrects its sound. */
+    val media3Host: Media3PlayerHost,
     private val media3: PlayerPort,
     private val chooser: EngineChooser,
 ) : PlayerPort {
     private val activeEngine = MutableStateFlow(PlaybackEngine.Mpv)
     val active: StateFlow<PlaybackEngine> = activeEngine.asStateFlow()
 
+    private val reason = MutableStateFlow<SecondEngineReason?>(null)
+
+    /** Why the second engine plays the current file; null while mpv plays. */
+    val secondEngineReason: StateFlow<SecondEngineReason?> = reason.asStateFlow()
+
+    /** The sound the second engine sends on untouched, for the screen's one view of pass-through. */
+    val secondEngineSound: StateFlow<Media3SoundState?> get() = media3Host.soundPassthrough
+
+    /** mpv's picture: whether its direct path (the device's hardware decoder) shows the file. */
+    val mpvVideoFrame: StateFlow<DirectVideoFrame> get() = mpvHost.videoFrame
+
     private val loads = Mutex()
+
+    private class NextChoice(val url: String, val engine: PlaybackEngine, val reason: SecondEngineReason?, val frameRate: Double?)
 
     // A one-time choice for the next load of a URL: the screen's hand-over
     // to the second engine, or back to mpv after the second engine failed.
-    @Volatile private var nextChoice: Pair<String, PlaybackEngine>? = null
+    @Volatile private var nextChoice: NextChoice? = null
 
     /** Each engine's events, passed on only while that engine plays. */
     val events: Flow<PlayerEvent> = merge(
@@ -67,17 +95,28 @@ internal class TvPlaybackEngines(
         media3Host.playerEvents.filter { activeEngine.value == PlaybackEngine.Media3 },
     )
 
-    /** The next load of [url] goes to [engine], whatever the chooser says; once. */
-    fun chooseForNextLoad(url: String, engine: PlaybackEngine) {
-        nextChoice = url to engine
+    /**
+     * The next load of [url] goes to [engine] (for [why], with the second
+     * engine), whatever the chooser says; once. [frameRate] is the rate the
+     * file was already seen at (mpv's, for a hand-over of the same file),
+     * which the second engine then uses rather than measuring a rougher one.
+     */
+    fun chooseForNextLoad(url: String, engine: PlaybackEngine, why: SecondEngineReason? = null, frameRate: Double? = null) {
+        nextChoice = NextChoice(url, engine, why, frameRate)
     }
 
     private fun current(): PlayerPort = if (activeEngine.value == PlaybackEngine.Media3) media3 else mpv
 
-    override suspend fun load(item: MediaItem) = loads.withLock {
-        val once = nextChoice?.takeIf { it.first == item.url }?.second
+    // Both engines open a file at its start place: mpv by its per-file
+    // `start`, the second engine by the media item's start position.
+    override val opensAtStartPosition: Boolean get() = true
+
+    override suspend fun load(item: MediaItem) = load(item, startPositionSeconds = null)
+
+    override suspend fun load(item: MediaItem, startPositionSeconds: Double?) = loads.withLock {
+        val once = nextChoice?.takeIf { it.url == item.url }
         nextChoice = null
-        val engine = once ?: chooser.engineFor(item)
+        val engine = once?.engine ?: chooser.engineFor(item)
         val previous = activeEngine.value
         if (engine != previous) {
             when (previous) {
@@ -86,16 +125,34 @@ internal class TvPlaybackEngines(
             }
             activeEngine.value = engine
         }
+        // The chooser takes a file only for its picture.
+        reason.value = if (engine == PlaybackEngine.Media3) once?.reason ?: SecondEngineReason.DolbyVision else null
         when {
-            engine == PlaybackEngine.Media3 -> Log.i(LogTag, "second engine: plays this file (${if (once != null) "handed over" else "remembered on this TV"})")
+            engine == PlaybackEngine.Media3 -> Log.i(
+                LogTag,
+                "second engine: plays this file (${if (once != null) "handed over" else "remembered on this TV"}, for its ${if (reason.value == SecondEngineReason.Sound) "sound" else "picture"})",
+            )
             previous == PlaybackEngine.Media3 -> Log.i(LogTag, "second engine: done; mpv plays this file")
         }
-        current().load(item)
+        if (engine == PlaybackEngine.Media3) {
+            // The same file's rate as mpv reported it, else as remembered on
+            // this TV; measuring is only for a file known by neither.
+            val knownRate = once?.frameRate ?: chooser.frameRateFor(item)
+            media3Host.load(item, startPositionSeconds, knownRate)
+        } else {
+            mpvHost.load(item, startPositionSeconds)
+        }
     }
 
     // The file playing.
     override suspend fun setPaused(paused: Boolean) = current().setPaused(paused)
     override suspend fun seekTo(positionSeconds: Double) = current().seekTo(positionSeconds)
+    override suspend fun seekNearKeyframe(positionSeconds: Double, forward: Boolean) =
+        if (activeEngine.value == PlaybackEngine.Media3) {
+            media3.seekNearKeyframe(positionSeconds, forward)
+        } else {
+            mpvHost.seekNearKeyframe(positionSeconds, forward)
+        }
     override suspend fun selectAudioTrack(id: String?) = current().selectAudioTrack(id)
     override suspend fun selectSubtitleTrack(id: String?) = current().selectSubtitleTrack(id)
     override suspend fun addSubtitle(url: String, title: String?, lang: String?) = current().addSubtitle(url, title, lang)

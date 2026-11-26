@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -42,11 +43,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.ditto.halo.api.MetaCard
@@ -90,6 +93,17 @@ import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.metahubPosterUrl
+
+/**
+ * A fixed height read while laying out, so an animated one moves the layout
+ * without composing anything again. Capped to what the parent allows.
+ */
+private fun Modifier.heightOf(height: () -> Dp): Modifier = layout { measurable, constraints ->
+    val wanted = height().roundToPx().coerceAtLeast(0)
+    val px = if (constraints.hasBoundedHeight) wanted.coerceAtMost(constraints.maxHeight) else wanted
+    val placeable = measurable.measure(constraints.copy(minHeight = px, maxHeight = px))
+    layout(placeable.width, px) { placeable.place(0, 0) }
+}
 
 /** What the hero shows: a title, and the video to resume when it came from Continue watching. */
 private data class HeroTitle(val meta: MetaCard, val resume: ContinueEntry? = null)
@@ -192,19 +206,21 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
     // scroll position alone decides this.
     val listState = rememberLazyListState()
     val expanded by remember(listState) { derivedStateOf { !listState.canScrollBackward } }
-    val heroHeight by animateDpAsState(
+    // Read only while laying out (heightOf, offset), never while composing:
+    // read here, every frame of the resize would compose the whole screen again.
+    val heroHeight = animateDpAsState(
         targetValue = if (expanded) HeroHeight else HeroCompactHeight,
         animationSpec = tween(HeroResizeMs),
         label = "tv-hero-height",
     )
 
     Box(Modifier.fillMaxSize()) {
-        shown?.let { HeroBackdrop(graph, it.meta, heroHeight) }
+        shown?.let { HeroBackdrop(graph, it.meta) { heroHeight.value } }
         Column(Modifier.fillMaxSize()) {
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(heroHeight)
+                    .heightOf { heroHeight.value }
                     .clipToBounds()
                     // Back above the rows, the hero is the featured banner
                     // again: a card only holds it while a card has focus.
@@ -301,7 +317,8 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier
-                .padding(start = TvMetrics.ContentStart, top = heroHeight)
+                .offset { IntOffset(0, heroHeight.value.roundToPx()) }
+                .padding(start = TvMetrics.ContentStart)
                 .width(HeroTextWidth)
                 .height(with(LocalDensity.current) { TvType.Heading.lineHeight.toDp() }),
             label = "tv-featured-dots",
@@ -314,10 +331,10 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
 }
 
 @Composable
-private fun HeroBackdrop(graph: SessionGraph, meta: MetaCard, heroHeight: Dp) {
+private fun HeroBackdrop(graph: SessionGraph, meta: MetaCard, heroHeight: () -> Dp) {
     val full by remember(graph, meta.type, meta.id) { graph.browse.meta(meta.type, meta.id) }.collectAsState(QueryState())
     val art = (full.value?.background ?: meta.background ?: full.value?.poster ?: meta.poster)?.takeUnless(::isStandInPosterLink)
-    Box(Modifier.fillMaxWidth().height(heroHeight + 60.dp)) {
+    Box(Modifier.fillMaxWidth().heightOf { heroHeight() + 60.dp }) {
         Crossfade(targetState = art, animationSpec = tween(400), label = "tv-hero-art") { url ->
             Row(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(0.38f))

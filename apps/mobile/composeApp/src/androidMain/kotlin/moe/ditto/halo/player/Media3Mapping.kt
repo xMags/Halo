@@ -1,5 +1,7 @@
 package moe.ditto.halo.player
 
+import kotlin.math.abs
+
 /**
  * The second engine's facts in the shapes the rest of the app already reads
  * from mpv: codec names as mpv's `track-list` spells them, the colour
@@ -112,6 +114,40 @@ internal object Media3Mapping {
      */
     fun failure(errorCode: Int, videoRenderer: Boolean): PlaybackFailure =
         if (videoRenderer && errorCode in DecodingErrorCodes) PlaybackFailure.UnsupportedVideo else PlaybackFailure.Source
+
+    /** The rates films and video are made at, which a measured rate is taken to be. */
+    val StandardFrameRates = listOf(24_000.0 / 1001, 24.0, 25.0, 30_000.0 / 1001, 30.0, 48.0, 50.0, 60_000.0 / 1001, 60.0)
+
+    /**
+     * Frames a second from an unbroken run of frames' presentation times in
+     * microseconds, for a track that states no rate. Container timestamps are
+     * often whole milliseconds, so one frame's gap (41 or 42 ms at 24) says
+     * little; the whole run's span does: over [MinMeasuredFrames] frames
+     * (five seconds at 24) the error is at most 0.02%, against 0.1% between
+     * 23.976 and 24. The result is the nearest [StandardFrameRates] entry,
+     * or null when the run is too short, is broken (a seek inside it), or
+     * fits no standard rate within [SnapTolerance].
+     */
+    fun measuredFrameRate(presentationTimesUs: List<Long>): Double? {
+        if (presentationTimesUs.size < MinMeasuredFrames) return null
+        if (presentationTimesUs.zipWithNext { a, b -> b - a }.any { it !in 1..MaxFrameGapUs }) return null
+        val span = presentationTimesUs.last() - presentationTimesUs.first()
+        if (span <= 0) return null
+        return snapFrameRate((presentationTimesUs.size - 1) * 1_000_000.0 / span)
+    }
+
+    /** The standard rate [raw] is, within [SnapTolerance]; null for none. */
+    fun snapFrameRate(raw: Double): Double? {
+        if (!raw.isFinite() || raw <= 0) return null
+        val nearest = StandardFrameRates.minBy { abs(it - raw) / it }
+        return nearest.takeIf { abs(nearest - raw) / nearest <= SnapTolerance }
+    }
+
+    const val MinMeasuredFrames = 121
+    private const val MaxFrameGapUs = 200_000L
+
+    /** 0.5%: far wider than the measurement's error, far narrower than the gap between any two standard rates but 23.976 and 24, which the error tells apart. */
+    private const val SnapTolerance = 0.005
 
     /** The width a picture shows at: its stored width stretched by its pixel aspect ratio. */
     fun displayWidth(width: Int, pixelWidthHeightRatio: Float): Int {

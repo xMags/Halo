@@ -148,6 +148,20 @@ interface PlayerPort {
     suspend fun load(item: MediaItem)
 
     /**
+     * True when [load] with a start position opens the file there, so the
+     * session need not seek once it is open. False keeps the session's own
+     * seek after opening, which is how every host worked before this existed.
+     */
+    val opensAtStartPosition: Boolean get() = false
+
+    /**
+     * Loads [item] to start at [startPositionSeconds], or at its beginning
+     * when null. Only called where [opensAtStartPosition]; otherwise a plain
+     * [load].
+     */
+    suspend fun load(item: MediaItem, startPositionSeconds: Double?) = load(item)
+
+    /**
      * The audio languages to prefer when a file loads, most wanted first, as
      * every spelling a file might tag them with. Empty leaves the choice to
      * the file's own default track. Set before [load]; it holds for every
@@ -159,6 +173,14 @@ interface PlayerPort {
     suspend fun setPreferredAudioLanguages(codes: List<String>) = Unit
     suspend fun setPaused(paused: Boolean)
     suspend fun seekTo(positionSeconds: Double)
+
+    /**
+     * A quick seek for remote presses: to the nearest keyframe at or past
+     * [positionSeconds] in the direction of travel ([forward]), so a press
+     * never lands short of where it was or behind it. A host without one
+     * seeks exactly, as [seekTo].
+     */
+    suspend fun seekNearKeyframe(positionSeconds: Double, forward: Boolean) = seekTo(positionSeconds)
     suspend fun selectAudioTrack(id: String?)
     suspend fun selectSubtitleTrack(id: String?)
 

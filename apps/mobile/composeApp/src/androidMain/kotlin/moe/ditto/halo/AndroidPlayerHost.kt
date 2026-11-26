@@ -333,7 +333,7 @@ internal class AndroidMpvPlayerHost(
      * whose decision takes longer can never be queued after a later one and
      * end up as the file that plays.
      */
-    suspend fun load(item: MediaItem) = loadOrder.withLock {
+    suspend fun load(item: MediaItem, startSeconds: Double? = null) = loadOrder.withLock {
         val decider = passthroughForLoad
         val codecs = try {
             decider?.spdifCodecsForNextFile()
@@ -350,7 +350,7 @@ internal class AndroidMpvPlayerHost(
                 passthrough.value = AudioPassthroughState(item, codecs)
             }
             it.setVideoEnabled(true)
-            it.load(item.url, headerLines(item.headers))
+            it.load(item.url, headerLines(item.headers), startSeconds)
         }
     }
 
@@ -374,6 +374,8 @@ internal class AndroidMpvPlayerHost(
 
     suspend fun setPaused(paused: Boolean) = enqueue("pause") { it.setPaused(paused) }
     suspend fun seekTo(positionSeconds: Double) = enqueue("seek") { it.seekTo(positionSeconds) }
+    suspend fun seekNearKeyframe(positionSeconds: Double, forward: Boolean) =
+        enqueue("seek-keyframe") { it.seekNearKeyframe(positionSeconds, forward) }
     suspend fun selectAudioTrack(id: String?) = enqueue("audio-track") { it.selectAudioTrack(id) }
     suspend fun selectSubtitleTrack(id: String?) = enqueue("subtitle-track") { it.selectSubtitleTrack(id) }
     suspend fun setPlaybackRate(rate: Double) = enqueue("playback-rate") { it.setPlaybackRate(rate) }

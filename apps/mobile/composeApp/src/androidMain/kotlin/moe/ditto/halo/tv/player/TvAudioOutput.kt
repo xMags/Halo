@@ -121,6 +121,9 @@ internal class TvAudioOutput(
     private val failures = PassthroughFailures(store)
     private val watchdog = TvPassthroughWatchdog(host, failures::record)
 
+    /** Dolby surround through the second engine where mpv's pass-through failed on this output. */
+    val secondEngine = TvSecondEngineSound(context, this, SecondEngineSoundMemory(store))
+
     /** What the file last loaded plays with; see [AudioPassthroughState]. */
     val passthroughState: StateFlow<AudioPassthroughState?> get() = host.audioPassthrough
 
@@ -186,6 +189,16 @@ internal class TvAudioOutput(
      * [TvPassthroughWatchdog]; a fallback shows in [passthroughState].
      */
     suspend fun guardStart(spdifCodecs: String, codec: String?) = watchdog.watch(spdifCodecs, codec)
+
+    /** The viewer's Surround setting is Auto and the system's own switch is not set to never. */
+    fun surroundAllowed(): Boolean =
+        TvPlaybackPreferences.surroundSoundIn(store) == SurroundSound.Auto && encodedSurroundOutput() != EncodedSurroundNever
+
+    /** The sound output as [outputIdentity] names it now; null while no HDMI output is listed (as mid re-plug). */
+    fun outputIdentityNow(): String? = runCatching { outputIdentity(hdmiDevices()) }.getOrNull()
+
+    /** The formats mpv's pass-through was seen to fail for on the output in use. */
+    fun mpvFailedFormats(output: String?): Set<PassthroughFormat> = failures.failedOn(output)
 
     /** The system's surround switch, where the device has one; null otherwise. */
     private fun encodedSurroundOutput(): Int? = runCatching {

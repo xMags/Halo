@@ -28,6 +28,7 @@ import moe.ditto.halo.shell.playbackContext
 import moe.ditto.halo.shell.sourcesRoute
 import moe.ditto.halo.shell.withContext
 import moe.ditto.halo.tv.player.TvAudioOutput
+import moe.ditto.halo.tv.player.TvDisplayModeHold
 import moe.ditto.halo.tv.player.TvDolbyVisionSources
 import moe.ditto.halo.tv.player.TvPlaybackEngines
 import moe.ditto.halo.tv.settings.TvSettingsScreen
@@ -94,6 +95,8 @@ internal fun TvShell(
     }
     // Read when a fallback ranks, so a display mode change since is honoured.
     val screenHeight by rememberUpdatedState(rememberScreenShortSidePixels())
+    // The film's display mode, held while one player follows another.
+    val displayMode = remember { TvDisplayModeHold() }
     val sourceFallback = remember(graph, playbackPreferences, dolbyVision) {
         TvSourceFallback(graph, playbackPreferences.hardwareDecodingAtStart, screenHeight = { screenHeight }, dolbyVision = dolbyVision)
     }
@@ -186,13 +189,18 @@ internal fun TvShell(
                         audioOutput = audioOutput,
                         dolbyVision = dolbyVision,
                         engines = engines,
+                        displayMode = displayMode,
                         context = route.playbackContext(),
                         // Both replace the player rather than stacking on it, so
                         // Back still returns to the title.
                         onSelectEpisode = { choice ->
                             when (choice) {
-                                is EpisodeChoice.Resolved -> navController.navigate(route.withContext(choice.context)) {
-                                    popUpTo<PlayerRoute> { inclusive = true }
+                                is EpisodeChoice.Resolved -> {
+                                    // Another player follows: the film's display mode stays for it.
+                                    displayMode.expectNext()
+                                    navController.navigate(route.withContext(choice.context)) {
+                                        popUpTo<PlayerRoute> { inclusive = true }
+                                    }
                                 }
                                 is EpisodeChoice.NeedsSource -> navController.navigate(route.episodeSources(choice)) {
                                     popUpTo<PlayerRoute> { inclusive = true }
@@ -212,6 +220,8 @@ internal fun TvShell(
                         onPlaySource = { addon, stream ->
                             val url = stream.url
                             if (url != null) {
+                                // Another player follows: the film's display mode stays for it.
+                                displayMode.expectNext()
                                 navController.navigate(route.sourcesRoute().playerRoute(addon, stream, url)) {
                                     popUpTo<PlayerRoute> { inclusive = true }
                                 }

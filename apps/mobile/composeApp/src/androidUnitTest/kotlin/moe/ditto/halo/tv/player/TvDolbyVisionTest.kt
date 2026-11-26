@@ -133,7 +133,10 @@ class TvDolbyVisionTest {
             null,
             "",
             "v1\napp:1;hardware:true\n5",
-            "v3\napp:1;hardware:true\n5\nengine works\nwrong $print 5",
+            "v4\napp:1;hardware:true\n5\nengine works\nwrong $print 5",
+            // A rate line is new in v3: a v2 record carrying one is not well formed.
+            "v2\napp:1;hardware:true\n5\nengine works\nwrong $print 5\nrate $print 24.0",
+            "v3\napp:1;hardware:true\n5\nengine works\nwrong $print 5\nrate $print fast",
             "v1\n \n5\n$print",
             "v1\napp:1;hardware:true\nsoon\n$print",
             "v1\napp:1;hardware:true\n5\nnot-a-fingerprint",
@@ -145,12 +148,23 @@ class TvDolbyVisionTest {
     }
 
     @Test
+    fun aRememberedRateIsKeptAndASecondRecordStillReads() {
+        val record = DolbyVisionRecord("s", 5L, mapOf(print to 5), SecondEngineState.Works, frameRates = mapOf(print to 23.976))
+        assertEquals(record, decodeDolbyVisionRecord(encodeDolbyVisionRecord(record)))
+        // As the previous version wrote it: no rates.
+        val second = decodeDolbyVisionRecord("v2\ns\n5\nengine works\nwrong $print 5")
+        assertEquals(DolbyVisionRecord("s", 5L, mapOf(print to 5), SecondEngineState.Works), second)
+        // A rate for a source no longer remembered is dropped.
+        assertEquals(emptyMap(), decodeDolbyVisionRecord("v3\ns\n5\nengine works\nwrong $print 5\nrate $other 24.0000")!!.frameRates)
+    }
+
+    @Test
     fun aFirstRecordReadsAsSourcesMpvShowedWronglyWithTheSecondEngineUntried() {
         // As the first version wrote it: version, setup, time, fingerprints.
         val record = decodeDolbyVisionRecord("v1\napp:1;hardware:true\n5\n$print\n$other")
         assertEquals(DolbyVisionRecord("app:1;hardware:true", 5L, mapOf(print to 5, other to 5), SecondEngineState.Untried), record)
         // Written back in the new form.
-        assertTrue(encodeDolbyVisionRecord(record!!).startsWith("v2\n"))
+        assertTrue(encodeDolbyVisionRecord(record!!).startsWith("v3\n"))
     }
 
     @Test

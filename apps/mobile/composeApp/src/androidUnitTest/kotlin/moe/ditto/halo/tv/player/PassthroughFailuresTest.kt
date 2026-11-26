@@ -103,6 +103,22 @@ class PassthroughFailuresTest {
     }
 
     @Test
+    fun readingWhatFailedChangesNothing() {
+        val store = RecordingStore()
+        val failures = failures(store)
+        failures.usable(receiver, monitor)
+        failures.record(setOf(PassthroughFormat.Eac3))
+        val stored = store.values[StorageKeys.TvPassthroughFailures]
+        assertEquals(setOf(PassthroughFormat.Eac3), failures.failedOn(monitor))
+        // Mid re-plug: the remembered output's.
+        assertEquals(setOf(PassthroughFormat.Eac3), failures.failedOn(null))
+        // Another output has none, and asking does not forget this one's.
+        assertEquals(emptySet(), failures.failedOn(soundbar))
+        assertEquals(stored, store.values[StorageKeys.TvPassthroughFailures])
+        assertEquals(setOf(PassthroughFormat.Eac3), failures.failedOn(monitor))
+    }
+
+    @Test
     fun theStoredTextRoundTrips() {
         val record = StoredPassthroughFailures(monitor, mapOf(PassthroughFormat.Eac3 to 5L, PassthroughFormat.DtsHd to 7L))
         assertEquals(record, decodePassthroughFailures(encodePassthroughFailures(record)))

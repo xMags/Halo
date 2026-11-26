@@ -114,11 +114,13 @@ internal fun TvAudioPanel(
     delaySeconds: Double,
     /** False while the sound is passed through to a receiver, which no delay reaches. */
     delayAvailable: Boolean,
+    /** True while the selected track goes to the TV or sound system as it is, in either engine. */
+    passedThrough: Boolean,
     onSelect: (String) -> Unit,
     onDelay: (Double) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    TvSidePanel(title = "Audio", onDismiss = onDismiss) {
+    TvSidePanel(title = "Audio", subtitle = if (passedThrough) PassedThroughNote else null, onDismiss = onDismiss) {
         LazyColumn(Modifier.weight(1f), contentPadding = FocusRoom, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (tracks.audio.isEmpty()) item { Text("This video has no audio tracks.", style = TvType.Body) }
             items(tracks.audio, key = { it.id }) { track ->
@@ -583,6 +585,9 @@ private fun formatDelay(seconds: Double): String {
 
 /** Room above and below a list for a focused row's enlarged ring. */
 private val FocusRoom = PaddingValues(vertical = 8.dp)
+
+/** Said over the audio tracks while the sound goes on as it is. */
+private const val PassedThroughNote = "Sent as it is to your TV or sound system"
 
 private const val DelayStep = 0.1
 private const val ScaleStep = 10

@@ -110,6 +110,40 @@ class Media3MappingTest {
         assertEquals(PlaybackFailure.Source, Media3Mapping.failure(PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED, videoRenderer = true))
     }
 
+    /** Frames at [fps] whose times are rounded to whole milliseconds, as a Matroska file stores them. */
+    private fun millisecondFrames(fps: Double, count: Int = Media3Mapping.MinMeasuredFrames, fromMs: Long = 81_000L) =
+        (0 until count).map { (fromMs + Math.round(it * 1000.0 / fps)) * 1000L }
+
+    @Test
+    fun aRateIsMeasuredOverTheWholeRunAndTakenToBeAStandardOne() {
+        assertEquals(24_000.0 / 1001, Media3Mapping.measuredFrameRate(millisecondFrames(24_000.0 / 1001)))
+        assertEquals(24.0, Media3Mapping.measuredFrameRate(millisecondFrames(24.0)))
+        assertEquals(25.0, Media3Mapping.measuredFrameRate(millisecondFrames(25.0)))
+        assertEquals(30_000.0 / 1001, Media3Mapping.measuredFrameRate(millisecondFrames(30_000.0 / 1001)))
+        assertEquals(50.0, Media3Mapping.measuredFrameRate(millisecondFrames(50.0)))
+        assertEquals(60_000.0 / 1001, Media3Mapping.measuredFrameRate(millisecondFrames(60_000.0 / 1001)))
+    }
+
+    @Test
+    fun oneMillisecondGapIsNoRate() {
+        // 41 and 42 ms gaps alone read as 23.81 or 24.39: the run tells 24.
+        val gapAlone = 1_000_000.0 / 42_000
+        assertEquals(null, Media3Mapping.snapFrameRate(gapAlone))
+        assertEquals(24.0, Media3Mapping.measuredFrameRate(millisecondFrames(24.0)))
+    }
+
+    @Test
+    fun aShortBrokenOrStrangeRunMeasuresNothing() {
+        assertNull(Media3Mapping.measuredFrameRate(millisecondFrames(24.0, count = 60)))
+        // A seek inside the run.
+        val sought = millisecondFrames(24.0).toMutableList().apply { for (i in 60 until size) this[i] = this[i] + 30_000_000L }
+        assertNull(Media3Mapping.measuredFrameRate(sought))
+        assertNull(Media3Mapping.measuredFrameRate(List(Media3Mapping.MinMeasuredFrames) { 1_000L }))
+        // A rate that is none of the standard ones.
+        assertNull(Media3Mapping.snapFrameRate(27.0))
+        assertNull(Media3Mapping.snapFrameRate(Double.NaN))
+    }
+
     @Test
     fun theShownWidthFollowsThePixelAspect() {
         assertEquals(3840, Media3Mapping.displayWidth(3840, 1f))

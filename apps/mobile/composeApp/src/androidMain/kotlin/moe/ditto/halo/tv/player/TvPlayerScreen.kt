@@ -64,6 +64,8 @@ import coil3.SingletonImageLoader
 import kotlin.math.abs
 import kotlin.math.round
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.api.AddonSource
@@ -126,6 +128,8 @@ internal fun TvPlayerScreen(
     dolbyVision: TvDolbyVisionSources,
     /** Which engine plays, and the hand-over between them. */
     engines: TvPlaybackEngines,
+    /** Keeps the film's display mode while one player follows another. */
+    displayMode: TvDisplayModeHold,
     context: PlaybackContext,
     onSelectEpisode: (EpisodeChoice) -> Unit,
     /** Null for a pasted link, which has no list to pick another source from. */
@@ -156,7 +160,13 @@ internal fun TvPlayerScreen(
     TvPlaybackSystem(playback = playback, session = session, scope = scope, onPausedFromOutside = controller::showChrome)
     val state = session.state
     val paused = state.status != PlaybackStatus.Playing
-    TvFrameRateMatching(frameRate = state.videoFormat.frameRate, enabled = preferences.matchFrameRate)
+    // From whichever engine shows the file: both report the rate and the picture the same way.
+    TvFrameRateMatching(
+        frameRate = state.videoFormat.frameRate,
+        pictureShown = state.videoFormat.width > 0 && state.videoFormat.height > 0,
+        enabled = preferences.matchFrameRate,
+        hold = displayMode,
+    )
     // mpv, or the second engine for a file it took; the second engine has no
     // sound pass-through and no sound or subtitle delay.
     val engine by engines.active.collectAsState()
@@ -170,16 +180,19 @@ internal fun TvPlayerScreen(
     val audioTrack = state.tracks.audio.firstOrNull { it.id == (state.tracks.selectedAudioId ?: state.tracks.audio.firstOrNull()?.id) }
     // Sound sent on untouched cannot be delayed or sped up here. The engine's
     // own decoder says whether it is, once this file has one.
-    val passthrough = inMpv && passthroughActive(
+    val mpvPassthrough = inMpv && passthroughActive(
         decoder = ownPassthrough?.decoder?.takeIf { session.ownState && state.opened },
         spdifCodecs = spdifCodecs,
         codec = audioTrack?.codec,
     )
+    // One answer for both engines: the second engine says what its output opened for.
+    val secondEnginePassing by engines.secondEngineSound.collectAsState()
+    val passthrough = mpvPassthrough || (!inMpv && secondEnginePassing?.item == session.item)
     // An output can accept a format and still never start it, which would
     // hold the first frame forever; this file's start is watched, and decoded
     // here if it does not come. Only with a track actually selected: none
     // selected plays no sound, and the first track is only a stand-in above.
-    val watchStart = session.ownState && state.opened && passthrough && state.tracks.selectedAudioId != null
+    val watchStart = session.ownState && state.opened && mpvPassthrough && state.tracks.selectedAudioId != null
     LaunchedEffect(session.item, watchStart, spdifCodecs, audioTrack?.id) {
         if (!watchStart) return@LaunchedEffect
         val codecs = spdifCodecs ?: return@LaunchedEffect
@@ -231,6 +244,7 @@ internal fun TvPlayerScreen(
     }
 
     TvDolbyVisionPlayback(session, state, engine, engines, dolbyVision, context, sourceFallback, onPlaySource)
+    TvSurroundPlayback(session, state, engine, engines, engines.media3Host, audioOutput.secondEngine, context, spdifCodecs)
 
     // The posters and backdrops of the screens behind sit in the image cache,
     // in the same memory the video's GPU work needs; on a 2 GB box that is
@@ -271,13 +285,33 @@ internal fun TvPlayerScreen(
         controller.showChrome()
     }
 
+    // A remote press's seek waits [SeekSettleMs] for the next press, which
+    // builds on its target, so presses in a row fetch only the last place;
+    // it then goes to the nearest keyframe that way, which starts at once
+    // instead of decoding up to an exact frame. The bubble shows the target
+    // meanwhile. The seek bar's Select stays exact.
+    var pendingSeek by remember { mutableStateOf<Job?>(null) }
+
     fun commitSeek() {
+        pendingSeek?.cancel()
+        pendingSeek = scope.launch {
+            delay(SeekSettleMs)
+            val from = playback.state.value.positionSeconds
+            val target = seek.commit() ?: return@launch
+            seekShown = null
+            playback.seekNearKeyframe(target, forward = target >= from)
+        }
+    }
+
+    fun commitExactSeek() {
+        pendingSeek?.cancel()
         val target = seek.commit() ?: return
         seekShown = null
         scope.launch { playback.seekTo(target) }
     }
 
     fun nudge(forward: Boolean, repeatCount: Int) {
+        pendingSeek?.cancel()
         val step = TvSeekSteps.stepFor(repeatCount)
         seekShown = seek.nudge(state.positionSeconds, if (forward) step else -step, state.durationSeconds)
     }
@@ -287,6 +321,7 @@ internal fun TvPlayerScreen(
             session.leaving -> Unit
             controller.upNextSecondsRemaining != null -> controller.dismissUpNext()
             seek.target != null -> {
+                pendingSeek?.cancel()
                 seek.cancel()
                 seekShown = null
             }
@@ -354,11 +389,12 @@ internal fun TvPlayerScreen(
                             .focusProperties { down = playFocus }
                             .onFocusChanged {
                                 if (!it.isFocused && seek.target != null) {
+                                    pendingSeek?.cancel()
                                     seek.cancel()
                                     seekShown = null
                                 }
                             }
-                            .onKeyEvent { event -> handleBarKey(event, controller, ::nudge, ::commitSeek) }
+                            .onKeyEvent { event -> handleBarKey(event, controller, ::nudge, ::commitExactSeek) }
                             .focusable(),
                     )
                     Row(
@@ -456,6 +492,7 @@ internal fun TvPlayerScreen(
                 delaySeconds = state.audioDelaySeconds,
                 // As for speed: a delay set before passthrough began can still be undone.
                 delayAvailable = inMpv && (!passthrough || state.audioDelaySeconds != 0.0),
+                passedThrough = passthrough,
                 onSelect = { id -> scope.launch { playback.selectAudioTrack(id) } },
                 onDelay = { seconds -> scope.launch { playback.setAudioDelay(clampedDelay(seconds)) } },
                 onDismiss = ::closePanel,
@@ -805,6 +842,13 @@ private fun UnsupportedVideoCard(onPickAnotherSource: (() -> Unit)?, onBack: () 
 private const val SwitchingSourceNotice = "That source isn't supported on this TV. Trying another one."
 
 private const val FadeMs = 180
+
+/**
+ * How long a remote press's seek waits for another press. Presses a tap
+ * apart (a quarter to a half second) join; a single press costs this much
+ * before its keyframe seek, which itself starts at once.
+ */
+private const val SeekSettleMs = 400L
 
 /** How long a control keeps asking for focus while it fades in. */
 private const val FocusClaimMs = 600L

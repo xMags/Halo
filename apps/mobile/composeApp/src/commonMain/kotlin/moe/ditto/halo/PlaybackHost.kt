@@ -53,10 +53,13 @@ internal class PlaybackHost(private val playerPort: PlayerPort) {
      * presenter and, on iOS, terminal on the core as well, so a player screen
      * that tore down on the way out would work exactly once per launch.
      */
-    suspend fun play(item: MediaItem) {
+    /** Whether [play] can open a file where it was left, with no seek after it opens. */
+    val opensAtStartPosition: Boolean get() = playerPresenter.opensAtStartPosition
+
+    suspend fun play(item: MediaItem, startPositionSeconds: Double? = null) {
         // Published before the load is awaited, so a screen for the new item
         // never reads the previous one's position, tracks or end as its own.
-        playerPresenter.start(item, onLoading = ::publish)
+        playerPresenter.start(item, onLoading = ::publish, startPositionSeconds = startPositionSeconds)
         // `pause` belongs to the core, not to the file: whatever paused the
         // previous source is still in force when the next one loads, and the
         // iOS core additionally loads paused on purpose so automation is not
@@ -86,6 +89,12 @@ internal class PlaybackHost(private val playerPort: PlayerPort) {
 
     suspend fun seekTo(positionSeconds: Double) {
         playerPresenter.seekTo(positionSeconds)
+        publish()
+    }
+
+    /** A remote press's seek: the nearest keyframe that way; see [PlayerPort.seekNearKeyframe]. */
+    suspend fun seekNearKeyframe(positionSeconds: Double, forward: Boolean) {
+        playerPresenter.seekNearKeyframe(positionSeconds, forward)
         publish()
     }
 
