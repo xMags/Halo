@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A TV home screen that has no banner for the app draws this icon as a square
+  in the middle of its own wide tile. The mark alone, with nothing behind it,
+  sits on that tile instead of showing as a dark square inside it.
+-->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/halo_icon_foreground" />
