@@ -317,6 +317,10 @@ internal fun TvSubtitleStylePanel(
     outline: SubtitleOutline,
     shadow: Boolean,
     trackStyling: Boolean,
+    /** False where the engine playing cannot shift cues; the row is then left out. */
+    delayAvailable: Boolean,
+    /** False where the engine playing draws every cue as plain text, so a script's own styling cannot be kept. */
+    keepsTrackStyling: Boolean,
     onScale: (Double) -> Unit,
     onDelay: (Double) -> Unit,
     onFont: (String?) -> Unit,
@@ -327,7 +331,7 @@ internal fun TvSubtitleStylePanel(
 ) {
     val format = subtitleFormat(tracks.subtitles.firstOrNull { it.id == tracks.selectedSubtitleId }?.codec)
     val bitmap = format == SubtitleFormat.Bitmap
-    val looksInert = bitmap || (format == SubtitleFormat.Ass && trackStyling)
+    val looksInert = bitmap || (format == SubtitleFormat.Ass && trackStyling && keepsTrackStyling)
     val inertHint = if (bitmap) "Not for picture subtitles" else "The track's own styling is in use"
     TvSidePanel(title = "Subtitle style", onDismiss = onDismiss, width = 480.dp) {
         LazyColumn(Modifier.weight(1f), contentPadding = FocusRoom, verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -342,15 +346,17 @@ internal fun TvSubtitleStylePanel(
                     onMore = { onScale(((percent + ScaleStep).coerceAtMost(MaxSubtitleScalePercent)) / 100.0) },
                 )
             }
-            item(key = "delay") {
-                StepRow(
-                    label = "Delay",
-                    value = formatDelay(delaySeconds),
-                    less = "Earlier",
-                    more = "Later",
-                    onLess = { onDelay(delaySeconds - DelayStep) },
-                    onMore = { onDelay(delaySeconds + DelayStep) },
-                )
+            if (delayAvailable) {
+                item(key = "delay") {
+                    StepRow(
+                        label = "Delay",
+                        value = formatDelay(delaySeconds),
+                        less = "Earlier",
+                        more = "Later",
+                        onLess = { onDelay(delaySeconds - DelayStep) },
+                        onMore = { onDelay(delaySeconds + DelayStep) },
+                    )
+                }
             }
             item(key = "outline") {
                 val index = SubtitleOutlineChoices.indexOfFirst { it.second == outline }.coerceAtLeast(0)
@@ -380,7 +386,7 @@ internal fun TvSubtitleStylePanel(
             }
             // Meaningful only for styled scripts; a plain or picture track has
             // no styling of its own to keep.
-            if (format != SubtitleFormat.Bitmap && format != SubtitleFormat.Text) {
+            if (keepsTrackStyling && format != SubtitleFormat.Bitmap && format != SubtitleFormat.Text) {
                 item(key = "track-styling") {
                     TvSwitchRow(
                         title = "Keep the track's own styling",

@@ -448,6 +448,16 @@ internal class AndroidMpvPlayerHost(
     /** [MpvCore.showDolbyVisionAsIs]: the current file plays on without the processing it was found not to get. */
     suspend fun showDolbyVisionAsIs() = enqueue("dolby-vision-as-is") { it.showDolbyVisionAsIs() }
 
+    /**
+     * Gives the device's decoders to another engine: the video decoder is
+     * destroyed before this returns ([MpvCore.setVideoEnabled]), and the file
+     * is stopped so nothing plays on. The next [load] restores video.
+     */
+    suspend fun stopForOtherEngine() = enqueue("stop-for-other-engine") {
+        it.setVideoEnabled(false)
+        it.stop()
+    }
+
     suspend fun teardown() = enqueue("teardown") {
         teardownCount += 1
         it.stop()

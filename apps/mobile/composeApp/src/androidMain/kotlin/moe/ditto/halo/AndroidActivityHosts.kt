@@ -15,6 +15,8 @@ import moe.ditto.halo.auth.NoBrowserSignIn
 import moe.ditto.halo.downloads.DownloadStoragePort
 import moe.ditto.halo.player.AndroidPlayerSystemPort
 import moe.ditto.halo.player.MpvProfile
+import moe.ditto.halo.player.PlayerEvent
+import moe.ditto.halo.player.PlayerPort
 import moe.ditto.halo.player.SubtitleFontLibrary
 import moe.ditto.halo.player.VideoFrameSource
 import moe.ditto.halo.storage.AndroidPreferencesStore
@@ -72,6 +74,11 @@ internal class AndroidActivityHosts(
         downloadStorage: DownloadStoragePort,
         videoFrameSource: VideoFrameSource,
         openDownloadsEvents: Flow<Unit> = emptyFlow(),
+        // The engine the session drives, its events and its surface: this
+        // host's mpv unless the activity routes between engines (the TV).
+        playerPort: PlayerPort = AndroidPlayerPort(playerHost),
+        playerEvents: Flow<PlayerEvent> = playerHost.playerEvents,
+        nativePlayerSurface: NativePlayerSurface = AndroidNativePlayerSurface(playerHost),
     ): PlatformDependencies {
         val serverUrlExtra = intent?.getStringExtra("serverUrl")
         val resetSessionExtra = intent?.getBooleanExtra("resetSession", false) ?: false
@@ -95,16 +102,16 @@ internal class AndroidActivityHosts(
             downloadStorage = downloadStorage,
             downloadRuntime = application.downloadRuntime,
             diagnosticsEnabled = diagnosticsEnabled,
-            playerPort = AndroidPlayerPort(playerHost),
+            playerPort = playerPort,
             playerSystemPort = playerSystemPort,
             videoFrameSource = videoFrameSource,
             bundledSubtitleFonts = SubtitleFontLibrary.bundledFamilies(),
-            playerEvents = playerHost.playerEvents,
+            playerEvents = playerEvents,
             oidcSessionPort = authHost,
             browserSignIn = browserSignIn,
             authEvents = authHost.events,
             openDownloadsEvents = openDownloadsEvents,
-            nativePlayerSurface = AndroidNativePlayerSurface(playerHost),
+            nativePlayerSurface = nativePlayerSurface,
             nativeHostDiagnostics = AndroidNativeHostDiagnostics(authHost, playerHost),
             initialServerUrl = launch.serverUrl,
             mediaHttpBase = launch.mediaHttpBase,

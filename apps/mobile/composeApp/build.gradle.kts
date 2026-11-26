@@ -235,6 +235,11 @@ kotlin {
             // QR codes for signing in on a TV with a phone. Encoder only at run
             // time; no dependencies of its own.
             implementation("com.google.zxing:core:3.5.3")
+            // The TV's second engine (player/Media3PlayerHost.kt), only for
+            // files mpv was seen to show wrongly on the device and the
+            // device's own decoders take. Brings the extractors, the subtitle
+            // parsers and the HTTP data source with it.
+            implementation("androidx.media3:media3-exoplayer:1.11.1")
         }
         // Instrumented Compose UI tests — the Android parallel to the iOS
         // XCUITests. Drive the real MainActivity (real libmpv core) by semantics,

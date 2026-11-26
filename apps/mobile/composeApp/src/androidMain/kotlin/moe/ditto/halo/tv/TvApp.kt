@@ -20,6 +20,7 @@ import moe.ditto.halo.tv.kit.TvFocusTracker
 import moe.ditto.halo.tv.kit.TvKitGallery
 import moe.ditto.halo.tv.player.TvAudioOutput
 import moe.ditto.halo.tv.player.TvDolbyVisionSources
+import moe.ditto.halo.tv.player.TvPlaybackEngines
 import moe.ditto.halo.tv.player.TvPlaybackPreferences
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloTheme
@@ -35,6 +36,8 @@ internal fun TvApp(
     audioOutput: TvAudioOutput,
     /** What this TV learned about Dolby Vision sources it shows wrongly. */
     dolbyVision: TvDolbyVisionSources,
+    /** The TV's player: mpv, or the second engine for the files it takes. */
+    engines: TvPlaybackEngines,
     /** Closes the app; the TV root confirms first. */
     onExitApp: () -> Unit,
     /** Debug builds only: opens the TV kit gallery instead of the app. */
@@ -48,7 +51,7 @@ internal fun TvApp(
     val focusTracker = remember { TvFocusTracker() }
     HaloTheme {
         CompositionLocalProvider(LocalTvFocusTracker provides focusTracker) {
-            if (showKitGallery) TvKitGallery() else TvRoot(dependencies, audioOutput, dolbyVision, onExitApp)
+            if (showKitGallery) TvKitGallery() else TvRoot(dependencies, audioOutput, dolbyVision, engines, onExitApp)
         }
     }
 }
@@ -58,6 +61,7 @@ private fun TvRoot(
     dependencies: PlatformDependencies,
     audioOutput: TvAudioOutput,
     dolbyVision: TvDolbyVisionSources,
+    engines: TvPlaybackEngines,
     onExitApp: () -> Unit,
 ) {
     var screen by remember { mutableStateOf(TvScreen.SignIn) }
@@ -100,6 +104,7 @@ private fun TvRoot(
                     playbackPreferences = playbackPreferences,
                     audioOutput = audioOutput,
                     dolbyVision = dolbyVision,
+                    engines = engines,
                     onSignOut = { session.sessionController.signOut() },
                     onSignIn = { session.sessionController.startSignIn() },
                     onExitApp = onExitApp,

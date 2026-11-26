@@ -1,6 +1,5 @@
 package moe.ditto.halo.tv.player
 
-import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -125,6 +124,8 @@ internal fun TvPlayerScreen(
     audioOutput: TvAudioOutput,
     /** Where a source found to be Dolby Vision this TV shows wrongly is remembered. */
     dolbyVision: TvDolbyVisionSources,
+    /** Which engine plays, and the hand-over between them. */
+    engines: TvPlaybackEngines,
     context: PlaybackContext,
     onSelectEpisode: (EpisodeChoice) -> Unit,
     /** Null for a pasted link, which has no list to pick another source from. */
@@ -156,6 +157,10 @@ internal fun TvPlayerScreen(
     val state = session.state
     val paused = state.status != PlaybackStatus.Playing
     TvFrameRateMatching(frameRate = state.videoFormat.frameRate, enabled = preferences.matchFrameRate)
+    // mpv, or the second engine for a file it took; the second engine has no
+    // sound pass-through and no sound or subtitle delay.
+    val engine by engines.active.collectAsState()
+    val inMpv = engine == PlaybackEngine.Mpv
     // Surround formats the receiver takes as they are: decided for every file
     // as the player loads it (TvAudioOutput), and read back here only for this
     // item's own file; the previous one's lingers until the load lands.
@@ -165,7 +170,7 @@ internal fun TvPlayerScreen(
     val audioTrack = state.tracks.audio.firstOrNull { it.id == (state.tracks.selectedAudioId ?: state.tracks.audio.firstOrNull()?.id) }
     // Sound sent on untouched cannot be delayed or sped up here. The engine's
     // own decoder says whether it is, once this file has one.
-    val passthrough = passthroughActive(
+    val passthrough = inMpv && passthroughActive(
         decoder = ownPassthrough?.decoder?.takeIf { session.ownState && state.opened },
         spdifCodecs = spdifCodecs,
         codec = audioTrack?.codec,
@@ -202,8 +207,11 @@ internal fun TvPlayerScreen(
     // itself, and only when there is none does the viewer see a card. Gated on
     // this item's own state, since the previous player's failure is still in
     // the shared state for a moment after this one takes over.
-    val unsupported = session.ownState && state.status == PlaybackStatus.Failed &&
+    // Shown the same in either engine; the moving on is mpv's here, and the
+    // second engine's own failure is handled with its hand-over.
+    val pictureUnsupported = session.ownState && state.status == PlaybackStatus.Failed &&
         state.failure == PlaybackFailure.UnsupportedVideo
+    val unsupported = inMpv && pictureUnsupported
     var unsupportedCard by remember { mutableStateOf(false) }
     LaunchedEffect(unsupported) {
         if (!unsupported) return@LaunchedEffect
@@ -216,33 +224,13 @@ internal fun TvPlayerScreen(
     }
     val switchingSource = sourceFallback?.switching == true
     LaunchedEffect(session.ownState, state.opened, state.status) {
-        val settled = state.opened || (state.status == PlaybackStatus.Failed && !unsupported)
+        val settled = state.opened || (state.status == PlaybackStatus.Failed && !pictureUnsupported)
         // A player on its way out to the next source has not settled anything:
         // its pause on the way out must not take the notice down early.
         if (session.ownState && settled && !session.leaving) sourceFallback?.settled()
     }
 
-    // A Dolby Vision picture the engine was seen not to process on this TV
-    // ([dolbyVisionShownWrongly]): remembered on this device, so its list
-    // leaves it out from now on, and moved on from like any picture this TV
-    // cannot play. With no other source it plays on as it is, back at full
-    // size on the direct path, which is better than nothing. Where the engine
-    // does process it, none of this happens and the file plays.
-    val ownFormat = if (session.ownState && state.opened) state.videoFormat else VideoFormat()
-    val wrongColours = dolbyVisionShownWrongly(ownFormat)
-    LaunchedEffect(session.item, wrongColours) {
-        val profile = ownFormat.dolbyVisionProfile
-        if (!wrongColours || profile == null) return@LaunchedEffect
-        dolbyVision.remember(context.url, profile)
-        val next = sourceFallback?.next(context)
-        if (next == null) {
-            Log.i(LogTag, "Dolby Vision profile $profile is not processed on this TV; no other source, playing it as it is")
-            dolbyVision.playOnAsIs()
-            return@LaunchedEffect
-        }
-        Log.i(LogTag, "Dolby Vision profile $profile is not processed on this TV; moving to another source")
-        session.leaveTo { onPlaySource(next.first, next.second) }
-    }
+    TvDolbyVisionPlayback(session, state, engine, engines, dolbyVision, context, sourceFallback, onPlaySource)
 
     // The posters and backdrops of the screens behind sit in the image cache,
     // in the same memory the video's GPU work needs; on a 2 GB box that is
@@ -426,7 +414,7 @@ internal fun TvPlayerScreen(
         }
 
         when {
-            switchingSource || (unsupported && !unsupportedCard) -> StatusPill(SwitchingSourceNotice, Modifier.align(Alignment.Center))
+            switchingSource || (pictureUnsupported && !unsupportedCard) -> StatusPill(SwitchingSourceNotice, Modifier.align(Alignment.Center))
             state.status == PlaybackStatus.Loading -> StatusPill("Loading…", Modifier.align(Alignment.Center))
             state.buffering != null -> StatusPill("Buffering ${state.buffering?.percent ?: 0}%", Modifier.align(Alignment.Center))
         }
@@ -445,7 +433,7 @@ internal fun TvPlayerScreen(
             )
         }
 
-        if (unsupported) {
+        if (pictureUnsupported) {
             if (unsupportedCard) {
                 UnsupportedVideoCard(
                     onPickAnotherSource = onPickAnotherSource?.let { pick -> { session.leaveTo(pick) } },
@@ -467,7 +455,7 @@ internal fun TvPlayerScreen(
                 tracks = state.tracks,
                 delaySeconds = state.audioDelaySeconds,
                 // As for speed: a delay set before passthrough began can still be undone.
-                delayAvailable = !passthrough || state.audioDelaySeconds != 0.0,
+                delayAvailable = inMpv && (!passthrough || state.audioDelaySeconds != 0.0),
                 onSelect = { id -> scope.launch { playback.selectAudioTrack(id) } },
                 onDelay = { seconds -> scope.launch { playback.setAudioDelay(clampedDelay(seconds)) } },
                 onDismiss = ::closePanel,
@@ -494,6 +482,9 @@ internal fun TvPlayerScreen(
                 outline = session.subtitleOutline,
                 shadow = session.subtitleShadow,
                 trackStyling = state.subtitleTrackStyling,
+                // The second engine draws every cue as plain text, with no delay.
+                delayAvailable = inMpv,
+                keepsTrackStyling = inMpv,
                 onScale = { scale -> scope.launch { playback.setSubtitleScale(scale) } },
                 onDelay = { seconds -> scope.launch { playback.setSubtitleDelay(clampedDelay(seconds)) } },
                 onFont = { font -> scope.launch { playback.setSubtitleFont(font) } },
@@ -818,4 +809,3 @@ private const val FadeMs = 180
 /** How long a control keeps asking for focus while it fades in. */
 private const val FocusClaimMs = 600L
 private const val CaptionLiftPercent = 30
-private const val LogTag = "HALO_TV"

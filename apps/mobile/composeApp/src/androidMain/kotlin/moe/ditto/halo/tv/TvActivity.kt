@@ -4,12 +4,18 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import moe.ditto.halo.AndroidActivityHosts
+import moe.ditto.halo.AndroidNativePlayerSurface
+import moe.ditto.halo.AndroidPlayerPort
 import moe.ditto.halo.downloads.NoDownloadStorage
+import moe.ditto.halo.player.Media3PlayerHost
+import moe.ditto.halo.player.Media3PlayerPort
 import moe.ditto.halo.player.MpvProfile
 import moe.ditto.halo.player.NoVideoFrameSource
 import moe.ditto.halo.storage.AndroidPreferencesStore
 import moe.ditto.halo.tv.player.TvAudioOutput
 import moe.ditto.halo.tv.player.TvDolbyVisionSources
+import moe.ditto.halo.tv.player.TvEngineSurface
+import moe.ditto.halo.tv.player.TvPlaybackEngines
 import moe.ditto.halo.tv.player.TvPlaybackPreferences
 
 /**
@@ -25,6 +31,7 @@ import moe.ditto.halo.tv.player.TvPlaybackPreferences
 class TvActivity : ComponentActivity() {
 
     private lateinit var hosts: AndroidActivityHosts
+    private var media3Host: Media3PlayerHost? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,15 +40,30 @@ class TvActivity : ComponentActivity() {
         val deviceStore = AndroidPreferencesStore(applicationContext)
         val hardwareDecoding = TvPlaybackPreferences.hardwareDecodingIn(deviceStore)
         hosts = AndroidActivityHosts(this, playerProfile = if (hardwareDecoding) MpvProfile.Tv else MpvProfile.TvSoftware)
-        val dependencies = hosts.dependencies(
-            intent = intent,
-            downloadStorage = NoDownloadStorage,
-            videoFrameSource = NoVideoFrameSource,
-        )
         val dolbyVision = TvDolbyVisionSources(
             store = deviceStore,
             setup = dolbyVisionSetup(hardwareDecoding),
             showAsIs = { hosts.playerHost.showDolbyVisionAsIs() },
+            hardwareDecoding = hardwareDecoding,
+        )
+        // The second engine, for the files mpv was seen to show wrongly here;
+        // mpv plays everything else. The session drives both through one port.
+        val secondEngine = Media3PlayerHost(applicationContext)
+        media3Host = secondEngine
+        val engines = TvPlaybackEngines(
+            mpvHost = hosts.playerHost,
+            mpv = AndroidPlayerPort(hosts.playerHost),
+            media3Host = secondEngine,
+            media3 = Media3PlayerPort(secondEngine),
+            chooser = dolbyVision,
+        )
+        val dependencies = hosts.dependencies(
+            intent = intent,
+            downloadStorage = NoDownloadStorage,
+            videoFrameSource = NoVideoFrameSource,
+            playerPort = engines,
+            playerEvents = engines.events,
+            nativePlayerSurface = TvEngineSurface(AndroidNativePlayerSurface(hosts.playerHost), secondEngine, engines),
         )
 
         // Debug-only, like every launch extra: any app can start this activity.
@@ -52,11 +74,13 @@ class TvActivity : ComponentActivity() {
         // Before any screen, so every load asks it for its passthrough list.
         hosts.playerHost.passthroughForLoad = audioOutput
         setContent {
-            TvApp(dependencies, audioOutput = audioOutput, dolbyVision = dolbyVision, onExitApp = { finish() }, showKitGallery = showKitGallery)
+            TvApp(dependencies, audioOutput = audioOutput, dolbyVision = dolbyVision, engines = engines, onExitApp = { finish() }, showKitGallery = showKitGallery)
         }
     }
 
     override fun onDestroy() {
+        // The second engine first: it holds no core of the mpv host's.
+        media3Host?.close()
         if (::hosts.isInitialized) hosts.close()
         super.onDestroy()
     }

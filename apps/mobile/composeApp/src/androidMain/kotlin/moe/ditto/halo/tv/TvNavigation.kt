@@ -29,6 +29,7 @@ import moe.ditto.halo.shell.sourcesRoute
 import moe.ditto.halo.shell.withContext
 import moe.ditto.halo.tv.player.TvAudioOutput
 import moe.ditto.halo.tv.player.TvDolbyVisionSources
+import moe.ditto.halo.tv.player.TvPlaybackEngines
 import moe.ditto.halo.tv.settings.TvSettingsScreen
 import moe.ditto.halo.tv.player.TvPlaybackPreferences
 import moe.ditto.halo.tv.player.TvPlayerScreen
@@ -75,6 +76,8 @@ internal fun TvShell(
     audioOutput: TvAudioOutput,
     /** Dolby Vision sources this TV shows wrongly, for the sources page, the fallback and the player. */
     dolbyVision: TvDolbyVisionSources,
+    /** The TV's player: which engine plays, and the hand-over between them. */
+    engines: TvPlaybackEngines,
     onSignOut: () -> Unit,
     /** Halo without an account: back to the sign-in screen. */
     onSignIn: () -> Unit,
@@ -182,6 +185,7 @@ internal fun TvShell(
                         preferences = playbackPreferences,
                         audioOutput = audioOutput,
                         dolbyVision = dolbyVision,
+                        engines = engines,
                         context = route.playbackContext(),
                         // Both replace the player rather than stacking on it, so
                         // Back still returns to the title.
