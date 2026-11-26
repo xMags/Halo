@@ -118,6 +118,13 @@ internal class MpvCore private constructor(
     private var videoEnabled = true
     // Whether the current file was already stopped as unsupported. Executor only.
     private var unsupportedReported = false
+
+    /**
+     * Counts every [load] and [stop], so work meant for one file can tell it
+     * is still that file ([PlaybackFile]). Executor only.
+     */
+    var loadGeneration = 0L
+        private set
     // Whether the selected video track states a Dolby Vision profile, read
     // at file load. Part of [videoFormat]'s Dolby Vision flag, so the same
     // executor-only rule applies.
@@ -407,6 +414,7 @@ internal class MpvCore private constructor(
             mpv.command(arrayOf("change-list", "http-header-fields", "append", line))
         }
         unsupportedReported = false
+        loadGeneration += 1
         setTrackDolbyVision(false)
         startFileOnDirectPath()
         // The file being replaced is done with; only a network stream says
@@ -419,6 +427,7 @@ internal class MpvCore private constructor(
 
     fun stop() {
         if (destroyed) return
+        loadGeneration += 1
         finishLineSession()
         setTrackDolbyVision(false)
         if (videoPaths != null) {
@@ -486,6 +495,44 @@ internal class MpvCore private constructor(
     fun setAudioPassthrough(codecs: String?) {
         if (destroyed) return
         mpv.setPropertyString("audio-spdif", codecs.orEmpty())
+    }
+
+    /** Whether the current file's sound has started; read, not observed, and only while someone is waiting for it. */
+    fun audioStart(): AudioStartReading? {
+        if (destroyed) return null
+        val vid = mpv.getPropertyString("vid")
+        return AudioStartReading(
+            paused = mpv.getPropertyBoolean("pause") == true,
+            pausedForCache = mpv.getPropertyBoolean("paused-for-cache") == true,
+            pictureReady = vid == null || vid == "no" || mpv.getPropertyBoolean("vo-configured") == true,
+            audioPts = mpv.getPropertyDouble("audio-pts")?.takeIf { it.isFinite() },
+            positionSeconds = mpv.getPropertyDouble("time-pos")?.takeIf { it.isFinite() },
+            cachedAheadSeconds = mpv.getPropertyDouble("demuxer-cache-duration")?.takeIf { it.isFinite() },
+            audioOutput = mpv.getPropertyString("current-ao")?.ifEmpty { null },
+        )
+    }
+
+    /**
+     * Stops sending sound on untouched and decodes the selected audio track
+     * here instead, keeping the place. False when no track is selected, so
+     * there was nothing to rebuild.
+     *
+     * Setting `audio-spdif` alone does not do it: mpv applies a change to it
+     * by reloading the audio output, and does nothing when no output is open,
+     * which is exactly the case of a passthrough start that never opened one.
+     * The decoder only reads the setting when the audio chain is built, so
+     * the track is deselected and selected again; selecting the track that is
+     * already current is a no-op in mpv. mpv syncs the rebuilt chain to the
+     * picture's position by itself, as for a viewer's track switch.
+     */
+    fun decodeAudioHere(): Boolean {
+        if (destroyed) return false
+        val aid = mpv.getPropertyString("aid")
+        if (aid == null || aid == "no") return false
+        mpv.setPropertyString("audio-spdif", "")
+        mpv.setPropertyString("aid", "no")
+        mpv.setPropertyString("aid", aid)
+        return true
     }
 
     // Live subtitle controls — the exact capability libVLC lacked on mobile:

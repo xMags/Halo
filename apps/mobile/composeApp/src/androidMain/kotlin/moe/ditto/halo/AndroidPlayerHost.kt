@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.player.AppSubtitleState
+import moe.ditto.halo.player.AudioStartSample
 import moe.ditto.halo.player.DeviceVideoDecoders
 import moe.ditto.halo.player.DirectVideoFrame
 import moe.ditto.halo.player.DirectVideoSurface
@@ -30,6 +31,7 @@ import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.MpvCore
 import moe.ditto.halo.player.MpvProfile
 import moe.ditto.halo.player.PlaybackFailure
+import moe.ditto.halo.player.PlaybackFile
 import moe.ditto.halo.player.PlayerBuffering
 import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerPort
@@ -325,6 +327,30 @@ internal class AndroidMpvPlayerHost(
     suspend fun setPlaybackRate(rate: Double) = enqueue("playback-rate") { it.setPlaybackRate(rate) }
     suspend fun setAudioDelay(seconds: Double) = enqueue("audio-delay") { it.setAudioDelay(seconds) }
     suspend fun setAudioPassthrough(codecs: String?) = enqueue("audio-spdif") { it.setAudioPassthrough(codecs) }
+
+    /** The current file's sound start, as [MpvCore.audioStart] reads it; null once the player has shut down. */
+    suspend fun audioStartSample(): AudioStartSample? {
+        var sample: AudioStartSample? = null
+        enqueue("audio-start") { target ->
+            val reading = target.audioStart() ?: return@enqueue
+            sample = AudioStartSample(PlaybackFile(activeCoreGeneration, target.loadGeneration), reading)
+        }
+        return sample
+    }
+
+    /**
+     * [MpvCore.decodeAudioHere], only while [file] is still the one playing:
+     * the check and the change run in one executor task, so a load queued in
+     * between can never be the file this acts on. True when it rebuilt the sound.
+     */
+    suspend fun decodeAudioHere(file: PlaybackFile): Boolean {
+        var rebuilt = false
+        enqueue("audio-decode-here") { target ->
+            if (activeCoreGeneration != file.core || target.loadGeneration != file.load) return@enqueue
+            rebuilt = target.decodeAudioHere()
+        }
+        return rebuilt
+    }
     // Fill and the caption style also reach the direct path's view and
     // overlay, which mpv does not draw for; on other profiles that is a no-op.
     suspend fun setVideoFillsScreen(fills: Boolean) = enqueue("video-fill") {

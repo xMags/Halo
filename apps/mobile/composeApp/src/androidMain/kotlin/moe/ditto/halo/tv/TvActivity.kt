@@ -29,7 +29,8 @@ class TvActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // The player is built here, before any screen, so the decoding
         // setting is read straight from the device's store.
-        val hardwareDecoding = TvPlaybackPreferences.hardwareDecodingIn(AndroidPreferencesStore(applicationContext))
+        val deviceStore = AndroidPreferencesStore(applicationContext)
+        val hardwareDecoding = TvPlaybackPreferences.hardwareDecodingIn(deviceStore)
         hosts = AndroidActivityHosts(this, playerProfile = if (hardwareDecoding) MpvProfile.Tv else MpvProfile.TvSoftware)
         val dependencies = hosts.dependencies(
             intent = intent,
@@ -38,7 +39,9 @@ class TvActivity : ComponentActivity() {
         )
         // Debug-only, like every launch extra: any app can start this activity.
         val showKitGallery = hosts.diagnosticsEnabled && intent?.getBooleanExtra("tvKitGallery", false) == true
-        val audioOutput = TvAudioOutput(applicationContext, hosts.playerHost)
+        // The same device-local store as the setting above: what this TV's
+        // sound output failed to start is never synced.
+        val audioOutput = TvAudioOutput(applicationContext, hosts.playerHost, deviceStore)
         setContent {
             TvApp(dependencies, audioOutput = audioOutput, onExitApp = { finish() }, showKitGallery = showKitGallery)
         }

@@ -57,4 +57,11 @@ object StorageKeys {
 
     /** URL-free job identities reused if v1 migration is interrupted before v2 is durable. */
     const val DownloadsMigration = "halo.downloads.migration.v1"
+
+    /**
+     * The surround formats a TV's sound output accepted but never started,
+     * with the output they failed on and when. Not synced: it describes this
+     * device's HDMI chain. See the TV's `PassthroughFailures`.
+     */
+    const val TvPassthroughFailures = "halo.tv.passthroughFailures.v1"
 }

@@ -155,6 +155,16 @@ internal fun TvPlayerScreen(
     val audioTrack = state.tracks.audio.firstOrNull { it.id == (state.tracks.selectedAudioId ?: state.tracks.audio.firstOrNull()?.id) }
     // Sound sent on untouched cannot be delayed or sped up here.
     val passthrough = passesThrough(spdifCodecs, audioTrack?.codec)
+    // An output can accept a format and still never start it, which would
+    // hold the first frame forever; this file's start is watched, and decoded
+    // here if it does not come. Only with a track actually selected: none
+    // selected plays no sound, and the first track is only a stand-in above.
+    val watchStart = session.ownState && state.opened && passthrough && state.tracks.selectedAudioId != null
+    LaunchedEffect(session.item, watchStart, spdifCodecs, audioTrack?.id) {
+        if (!watchStart) return@LaunchedEffect
+        val codecs = spdifCodecs ?: return@LaunchedEffect
+        audioOutput.guardStart(codecs, audioTrack?.codec) { fallback -> spdifCodecs = fallback.spdifCodecs }
+    }
     // The chosen source's medal until the decoder reports the picture. Only
     // this item's own picture counts: the previous file's lingers for a moment.
     val sourceInfo = remember(context) { context.sourceInfo() }
