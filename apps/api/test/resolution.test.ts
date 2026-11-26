@@ -35,6 +35,99 @@ describe('GET /streams', () => {
     expect(body.results[0]!.streams).toHaveLength(1)
     expect(body.errors.map((e) => e.id)).toEqual([cId])
   })
+
+  type RankedBody = {
+    results: Array<{ addon: { id: string }; streams: Array<{ url: string; halo?: { rank: number; fit: string } }> }>
+  }
+
+  const rankingSetup = async () => {
+    const { app, db } = mount({
+      'https://a.test': {
+        'stream/movie/tt1': {
+          streams: [
+            { url: 'https://cdn.test/remux.mkv', title: 'Film.2160p.Remux [RD+] 60 GB' },
+            { url: 'https://cdn.test/hd.mkv', title: 'Film.720p 1 GB' },
+          ],
+        },
+      },
+      'https://b.test': {
+        'stream/movie/tt1': {
+          streams: [
+            { url: 'https://cdn.test/web.mkv', title: 'Film.2160p.WEB [RD+] 10 GB' },
+            { url: 'https://cdn.test/fhd.mkv', title: 'Film.1080p [RD+] 5 GB' },
+          ],
+        },
+      },
+    })
+    const token = await adminToken()
+    const aId = installUserAddon(db, 'admin', 'https://a.test/manifest.json', manifest('A', ['stream']), 0)
+    const bId = installUserAddon(db, 'admin', 'https://b.test/manifest.json', manifest('B', ['stream']), 1)
+    return { app, token, aId, bId }
+  }
+
+  it('ranks every stream across addons for the device described, keeping the grouping as it was', async () => {
+    const { app, token, aId, bId } = await rankingSetup()
+    // Two hours on a 20 Mbps line: a 14 Mbps budget the 60 GB remux exceeds.
+    const res = await app.request('/streams?type=movie&videoId=tt1&lineMbps=20&screenHeight=2160&runtimeSeconds=7200', authed(token))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as RankedBody
+    expect(body.results.map((group) => [group.addon.id, group.streams.map((stream) => stream.url)])).toEqual([
+      [aId, ['https://cdn.test/remux.mkv', 'https://cdn.test/hd.mkv']],
+      [bId, ['https://cdn.test/web.mkv', 'https://cdn.test/fhd.mkv']],
+    ])
+    expect(body.results.flatMap((group) => group.streams.map((stream) => stream.halo))).toEqual([
+      { rank: 2, fit: 'overBudget' },
+      { rank: 3, fit: 'fits' },
+      { rank: 0, fit: 'fits' },
+      { rank: 1, fit: 'fits' },
+    ])
+  })
+
+  it('ranks with every bitrate and screen unknown when the parameters are left out', async () => {
+    const { app, token } = await rankingSetup()
+    const body = (await (await app.request('/streams?type=movie&videoId=tt1', authed(token))).json()) as RankedBody
+    expect(body.results.flatMap((group) => group.streams.map((stream) => stream.halo))).toEqual([
+      { rank: 0, fit: 'fits' },
+      { rank: 3, fit: 'fits' },
+      { rank: 1, fit: 'fits' },
+      { rank: 2, fit: 'fits' },
+    ])
+  })
+
+  it('demotes a picture far larger than the screen', async () => {
+    const { app, token } = await rankingSetup()
+    const body = (await (await app.request('/streams?type=movie&videoId=tt1&screenHeight=1080', authed(token))).json()) as RankedBody
+    expect(body.results.flatMap((group) => group.streams.map((stream) => stream.halo))).toEqual([
+      { rank: 1, fit: 'exceedsScreen' },
+      { rank: 3, fit: 'fits' },
+      { rank: 2, fit: 'exceedsScreen' },
+      { rank: 0, fit: 'fits' },
+    ])
+  })
+
+  it('rejects ranking parameters that are not plain non-negative numbers within bounds', async () => {
+    const { app, token } = await rankingSetup()
+    const status = async (query: string) => (await app.request(`/streams?type=movie&videoId=tt1&${query}`, authed(token))).status
+    for (const query of [
+      'lineMbps=-1',
+      'lineMbps=abc',
+      'lineMbps=',
+      'lineMbps=NaN',
+      'lineMbps=Infinity',
+      'lineMbps=1e3',
+      'lineMbps=0x10',
+      'lineMbps=100001',
+      `lineMbps=${'1'.repeat(25)}`,
+      'screenHeight=100001',
+      'screenHeight=%201080',
+      'runtimeSeconds=604801',
+      'runtimeSeconds=-5',
+    ]) {
+      expect(await status(query), query).toBe(400)
+    }
+    expect(await status('lineMbps=0&screenHeight=0&runtimeSeconds=0')).toBe(200)
+    expect(await status('lineMbps=87.5&screenHeight=1440&runtimeSeconds=604800')).toBe(200)
+  })
 })
 
 describe('personal copies of global addons', () => {

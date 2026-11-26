@@ -1,0 +1,239 @@
+{
+  "about": "Source ranking and line speed rules, shared by the TypeScript tests (packages/core, src/sources/ranking.ts) and the Kotlin commonTest (apps/mobile). Budget = (lineMbps > 0 ? lineMbps : 40) * 0.7. Fit: overBudget when neededMbps > 0 and > budget; else exceedsScreen when screenHeight > 0, quality is known and its nominal height (2160p 2160, 1440p 1440, 1080p 1080, 720p 720, 480p 480, SD 480) > screenHeight * 1.25; else fits. Order: cached === true first; then fits, exceedsScreen, overBudget; inside fits and exceedsScreen higher quality first (2160p, 1440p, 1080p, 720p, 480p, SD, then null), then larger sizeBytes (null as 0); inside overBudget lower neededMbps first, then higher quality; full ties keep input order. Qualities use the parser's vocabulary, so SD is upper case. Line speed: a peak that is not a positive finite number keeps previous (0 stays 0); previous <= 0 takes the peak; a higher peak replaces previous; a stall takes the peak; otherwise previous; results other than 0 are clamped to [0.5, 100000].",
+  "ranking": [
+    {
+      "name": "an unmeasured line uses 40 Mbps, a budget of 28",
+      "device": { "lineMbps": 0, "screenHeight": 0 },
+      "sources": [
+        { "id": "remux", "cached": null, "quality": "2160p", "sizeBytes": 60000000000, "neededMbps": 29 },
+        { "id": "web", "cached": null, "quality": "2160p", "sizeBytes": 20000000000, "neededMbps": 27 }
+      ],
+      "order": ["web", "remux"],
+      "fit": { "remux": "overBudget", "web": "fits" }
+    },
+    {
+      "name": "a measured 50 Mbps line carries both, so the larger file leads",
+      "device": { "lineMbps": 50, "screenHeight": 0 },
+      "sources": [
+        { "id": "web", "cached": null, "quality": "2160p", "sizeBytes": 20000000000, "neededMbps": 27 },
+        { "id": "remux", "cached": null, "quality": "2160p", "sizeBytes": 60000000000, "neededMbps": 29 }
+      ],
+      "order": ["remux", "web"],
+      "fit": { "remux": "fits", "web": "fits" }
+    },
+    {
+      "name": "a 4K remux over budget drops below a 4K file and a 1080p file that fit",
+      "device": { "lineMbps": 20, "screenHeight": 0 },
+      "sources": [
+        { "id": "remux", "cached": true, "quality": "2160p", "sizeBytes": 70000000000, "neededMbps": 60 },
+        { "id": "fhd", "cached": true, "quality": "1080p", "sizeBytes": 6000000000, "neededMbps": 5 },
+        { "id": "web", "cached": true, "quality": "2160p", "sizeBytes": 15000000000, "neededMbps": 12 }
+      ],
+      "order": ["web", "fhd", "remux"],
+      "fit": { "remux": "overBudget", "fhd": "fits", "web": "fits" }
+    },
+    {
+      "name": "when nothing fits, the lightest file leads, then the higher quality",
+      "device": { "lineMbps": 10, "screenHeight": 0 },
+      "sources": [
+        { "id": "uhd", "cached": null, "quality": "2160p", "sizeBytes": 50000000000, "neededMbps": 40 },
+        { "id": "hd", "cached": null, "quality": "720p", "sizeBytes": 4000000000, "neededMbps": 9 },
+        { "id": "fhdLight", "cached": null, "quality": "1080p", "sizeBytes": 4000000000, "neededMbps": 9 },
+        { "id": "fhdHeavy", "cached": null, "quality": "1080p", "sizeBytes": 9000000000, "neededMbps": 20 }
+      ],
+      "order": ["fhdLight", "hd", "fhdHeavy", "uhd"],
+      "fit": { "uhd": "overBudget", "hd": "overBudget", "fhdLight": "overBudget", "fhdHeavy": "overBudget" }
+    },
+    {
+      "name": "an unknown bitrate counts as fitting",
+      "device": { "lineMbps": 10, "screenHeight": 0 },
+      "sources": [
+        { "id": "unsized", "cached": null, "quality": "2160p", "sizeBytes": null, "neededMbps": 0 },
+        { "id": "heavy", "cached": null, "quality": "1080p", "sizeBytes": 9000000000, "neededMbps": 20 },
+        { "id": "noRuntime", "cached": null, "quality": "2160p", "sizeBytes": 50000000000, "neededMbps": 0 }
+      ],
+      "order": ["noRuntime", "unsized", "heavy"],
+      "fit": { "unsized": "fits", "heavy": "overBudget", "noRuntime": "fits" }
+    },
+    {
+      "name": "a cached source beats every uncached one, whatever its fit",
+      "device": { "lineMbps": 10, "screenHeight": 1080 },
+      "sources": [
+        { "id": "uncachedFits", "cached": false, "quality": "1080p", "sizeBytes": 2000000000, "neededMbps": 5 },
+        { "id": "cachedOver", "cached": true, "quality": "720p", "sizeBytes": 9000000000, "neededMbps": 30 },
+        { "id": "cachedExceeds", "cached": true, "quality": "2160p", "sizeBytes": 2000000000, "neededMbps": 5 }
+      ],
+      "order": ["cachedExceeds", "cachedOver", "uncachedFits"],
+      "fit": { "uncachedFits": "fits", "cachedOver": "overBudget", "cachedExceeds": "exceedsScreen" }
+    },
+    {
+      "name": "cached null ranks the same as cached false",
+      "device": { "lineMbps": 0, "screenHeight": 0 },
+      "sources": [
+        { "id": "falseHd", "cached": false, "quality": "720p", "sizeBytes": 1000000000, "neededMbps": 0 },
+        { "id": "nullFhd", "cached": null, "quality": "1080p", "sizeBytes": 3000000000, "neededMbps": 0 },
+        { "id": "falseFhd", "cached": false, "quality": "1080p", "sizeBytes": 4000000000, "neededMbps": 0 },
+        { "id": "nullTie", "cached": null, "quality": "720p", "sizeBytes": 1000000000, "neededMbps": 0 }
+      ],
+      "order": ["falseFhd", "nullFhd", "falseHd", "nullTie"],
+      "fit": { "falseHd": "fits", "nullFhd": "fits", "falseFhd": "fits", "nullTie": "fits" }
+    },
+    {
+      "name": "a 1080-pixel screen demotes 2160p and 1440p below 1080p and 720p",
+      "device": { "lineMbps": 0, "screenHeight": 1080 },
+      "sources": [
+        { "id": "uhd", "cached": null, "quality": "2160p", "sizeBytes": 20000000000, "neededMbps": 0 },
+        { "id": "qhd", "cached": null, "quality": "1440p", "sizeBytes": 10000000000, "neededMbps": 0 },
+        { "id": "fhd", "cached": null, "quality": "1080p", "sizeBytes": 5000000000, "neededMbps": 0 },
+        { "id": "hd", "cached": null, "quality": "720p", "sizeBytes": 2000000000, "neededMbps": 0 }
+      ],
+      "order": ["fhd", "hd", "uhd", "qhd"],
+      "fit": { "uhd": "exceedsScreen", "qhd": "exceedsScreen", "fhd": "fits", "hd": "fits" }
+    },
+    {
+      "name": "a 1200-pixel screen keeps 1440p but demotes 2160p",
+      "device": { "lineMbps": 0, "screenHeight": 1200 },
+      "sources": [
+        { "id": "uhd", "cached": null, "quality": "2160p", "sizeBytes": 20000000000, "neededMbps": 0 },
+        { "id": "qhd", "cached": null, "quality": "1440p", "sizeBytes": 10000000000, "neededMbps": 0 },
+        { "id": "fhd", "cached": null, "quality": "1080p", "sizeBytes": 5000000000, "neededMbps": 0 }
+      ],
+      "order": ["qhd", "fhd", "uhd"],
+      "fit": { "uhd": "exceedsScreen", "qhd": "fits", "fhd": "fits" }
+    },
+    {
+      "name": "screenHeight 0 means no cap on the picture",
+      "device": { "lineMbps": 0, "screenHeight": 0 },
+      "sources": [
+        { "id": "fhd", "cached": null, "quality": "1080p", "sizeBytes": 5000000000, "neededMbps": 0 },
+        { "id": "uhd", "cached": null, "quality": "2160p", "sizeBytes": 20000000000, "neededMbps": 0 },
+        { "id": "qhd", "cached": null, "quality": "1440p", "sizeBytes": 10000000000, "neededMbps": 0 }
+      ],
+      "order": ["uhd", "qhd", "fhd"],
+      "fit": { "uhd": "fits", "qhd": "fits", "fhd": "fits" }
+    },
+    {
+      "name": "an unknown quality ranks last in its tier, and 480p ranks above SD",
+      "device": { "lineMbps": 0, "screenHeight": 0 },
+      "sources": [
+        { "id": "unknown", "cached": null, "quality": null, "sizeBytes": 90000000000, "neededMbps": 0 },
+        { "id": "sd", "cached": null, "quality": "SD", "sizeBytes": 700000000, "neededMbps": 0 },
+        { "id": "p480", "cached": null, "quality": "480p", "sizeBytes": 700000000, "neededMbps": 0 },
+        { "id": "hd", "cached": null, "quality": "720p", "sizeBytes": 1000000000, "neededMbps": 0 }
+      ],
+      "order": ["hd", "p480", "sd", "unknown"],
+      "fit": { "unknown": "fits", "sd": "fits", "p480": "fits", "hd": "fits" }
+    },
+    {
+      "name": "an unknown quality is never demoted by the screen",
+      "device": { "lineMbps": 0, "screenHeight": 480 },
+      "sources": [
+        { "id": "unknown", "cached": null, "quality": null, "sizeBytes": 90000000000, "neededMbps": 0 },
+        { "id": "fhd", "cached": null, "quality": "1080p", "sizeBytes": 5000000000, "neededMbps": 0 },
+        { "id": "sd", "cached": null, "quality": "SD", "sizeBytes": 700000000, "neededMbps": 0 }
+      ],
+      "order": ["sd", "unknown", "fhd"],
+      "fit": { "unknown": "fits", "fhd": "exceedsScreen", "sd": "fits" }
+    },
+    {
+      "name": "neededMbps equal to the budget fits, a little more does not",
+      "device": { "lineMbps": 10, "screenHeight": 0 },
+      "sources": [
+        { "id": "over", "cached": null, "quality": "2160p", "sizeBytes": 6750000000, "neededMbps": 7.5 },
+        { "id": "exact", "cached": null, "quality": "1080p", "sizeBytes": 6300000000, "neededMbps": 7 }
+      ],
+      "order": ["exact", "over"],
+      "fit": { "over": "overBudget", "exact": "fits" }
+    },
+    {
+      "name": "on an unmeasured line, exactly 28 Mbps fits",
+      "device": { "lineMbps": 0, "screenHeight": 0 },
+      "sources": [
+        { "id": "over", "cached": null, "quality": "2160p", "sizeBytes": 30000000000, "neededMbps": 28.5 },
+        { "id": "exact", "cached": null, "quality": "2160p", "sizeBytes": 25200000000, "neededMbps": 28 }
+      ],
+      "order": ["exact", "over"],
+      "fit": { "over": "overBudget", "exact": "fits" }
+    },
+    {
+      "name": "a picture exactly screenHeight times 1.25 tall does not exceed the screen",
+      "device": { "lineMbps": 0, "screenHeight": 1152 },
+      "sources": [
+        { "id": "uhd", "cached": null, "quality": "2160p", "sizeBytes": 20000000000, "neededMbps": 0 },
+        { "id": "qhd", "cached": null, "quality": "1440p", "sizeBytes": 10000000000, "neededMbps": 0 }
+      ],
+      "order": ["qhd", "uhd"],
+      "fit": { "uhd": "exceedsScreen", "qhd": "fits" }
+    },
+    {
+      "name": "a 1728-pixel screen is exactly tall enough for 2160p",
+      "device": { "lineMbps": 0, "screenHeight": 1728 },
+      "sources": [
+        { "id": "qhd", "cached": null, "quality": "1440p", "sizeBytes": 10000000000, "neededMbps": 0 },
+        { "id": "uhd", "cached": null, "quality": "2160p", "sizeBytes": 20000000000, "neededMbps": 0 }
+      ],
+      "order": ["uhd", "qhd"],
+      "fit": { "uhd": "fits", "qhd": "fits" }
+    },
+    {
+      "name": "a too-large picture ranks below every fit but above anything over budget",
+      "device": { "lineMbps": 10, "screenHeight": 1080 },
+      "sources": [
+        { "id": "over", "cached": null, "quality": "1080p", "sizeBytes": 9000000000, "neededMbps": 20 },
+        { "id": "exceeds", "cached": null, "quality": "2160p", "sizeBytes": 2000000000, "neededMbps": 5 },
+        { "id": "fits", "cached": null, "quality": "720p", "sizeBytes": 1000000000, "neededMbps": 3 }
+      ],
+      "order": ["fits", "exceeds", "over"],
+      "fit": { "over": "overBudget", "exceeds": "exceedsScreen", "fits": "fits" }
+    },
+    {
+      "name": "too-large pictures rank by quality, then by the larger file",
+      "device": { "lineMbps": 0, "screenHeight": 720 },
+      "sources": [
+        { "id": "fhdSmall", "cached": null, "quality": "1080p", "sizeBytes": 5000000000, "neededMbps": 0 },
+        { "id": "uhd", "cached": null, "quality": "2160p", "sizeBytes": 10000000000, "neededMbps": 0 },
+        { "id": "fhdLarge", "cached": null, "quality": "1080p", "sizeBytes": 8000000000, "neededMbps": 0 }
+      ],
+      "order": ["uhd", "fhdLarge", "fhdSmall"],
+      "fit": { "fhdSmall": "exceedsScreen", "uhd": "exceedsScreen", "fhdLarge": "exceedsScreen" }
+    },
+    {
+      "name": "full ties keep their input order",
+      "device": { "lineMbps": 0, "screenHeight": 0 },
+      "sources": [
+        { "id": "first", "cached": null, "quality": "1080p", "sizeBytes": 5000000000, "neededMbps": 0 },
+        { "id": "second", "cached": false, "quality": "1080p", "sizeBytes": 5000000000, "neededMbps": 0 },
+        { "id": "third", "cached": null, "quality": "1080p", "sizeBytes": 5000000000, "neededMbps": 0 }
+      ],
+      "order": ["first", "second", "third"],
+      "fit": { "first": "fits", "second": "fits", "third": "fits" }
+    },
+    {
+      "name": "over budget at the same bitrate and quality keeps input order",
+      "device": { "lineMbps": 10, "screenHeight": 0 },
+      "sources": [
+        { "id": "first", "cached": null, "quality": "2160p", "sizeBytes": 40000000000, "neededMbps": 30 },
+        { "id": "second", "cached": null, "quality": "2160p", "sizeBytes": 40000000000, "neededMbps": 30 }
+      ],
+      "order": ["first", "second"],
+      "fit": { "first": "overBudget", "second": "overBudget" }
+    }
+  ],
+  "lineSpeed": [
+    { "name": "a session that measured nothing keeps the reading", "previous": 50, "sessionPeak": 0, "stalled": false, "expect": 50 },
+    { "name": "a negative peak keeps the reading, stall or not", "previous": 50, "sessionPeak": -3, "stalled": true, "expect": 50 },
+    { "name": "nothing measured, ever, stays unmeasured", "previous": 0, "sessionPeak": 0, "stalled": false, "expect": 0 },
+    { "name": "the first reading is taken as it is", "previous": 0, "sessionPeak": 30, "stalled": false, "expect": 30 },
+    { "name": "a broken previous reading is replaced", "previous": -1, "sessionPeak": 30, "stalled": false, "expect": 30 },
+    { "name": "a faster peak replaces the reading", "previous": 30, "sessionPeak": 80, "stalled": false, "expect": 80 },
+    { "name": "a faster peak replaces the reading after a stall too", "previous": 30, "sessionPeak": 80, "stalled": true, "expect": 80 },
+    { "name": "a stall takes the slower peak", "previous": 80, "sessionPeak": 20, "stalled": true, "expect": 20 },
+    { "name": "a slower peak without a stall keeps the reading", "previous": 80, "sessionPeak": 20, "stalled": false, "expect": 80 },
+    { "name": "an equal peak keeps the reading", "previous": 50, "sessionPeak": 50, "stalled": false, "expect": 50 },
+    { "name": "a tiny first reading is raised to the lower bound", "previous": 0, "sessionPeak": 0.2, "stalled": false, "expect": 0.5 },
+    { "name": "a stall below the lower bound is raised to it", "previous": 80, "sessionPeak": 0.1, "stalled": true, "expect": 0.5 },
+    { "name": "a huge first reading is lowered to the upper bound", "previous": 0, "sessionPeak": 250000, "stalled": false, "expect": 100000 },
+    { "name": "a kept reading above the upper bound is lowered to it", "previous": 200000, "sessionPeak": 10, "stalled": false, "expect": 100000 },
+    { "name": "a kept reading below the lower bound is raised to it", "previous": 0.25, "sessionPeak": 0.1, "stalled": false, "expect": 0.5 }
+  ]
+}

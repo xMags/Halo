@@ -12,6 +12,7 @@ import {
   type PeopleSearch,
   type PersonDetail,
 } from '../people/readers'
+import { normalizeRankingInput, type StreamRankingInput } from '../sources/ranking'
 import type {
   AddonEntry,
   AddonsResponse,
@@ -253,9 +254,23 @@ export class HaloClient {
     return this.request<MetaResponse>('GET', `/meta?${qs.toString()}`, undefined, opts)
   }
 
-  /** Fans out to every effective addon; playable streams grouped by addon. */
-  async getStreams(type: string, videoId: string, opts?: RequestOptions): Promise<StreamsResult> {
+  /**
+   * Fans out to every effective addon; playable streams grouped by addon. The
+   * ranking input describes this device and title, which the server ranks the
+   * streams for (`halo` on each stream). Unknown values are left out, and
+   * the server reads a missing one as unknown.
+   */
+  async getStreams(
+    type: string,
+    videoId: string,
+    ranking?: Partial<StreamRankingInput>,
+    opts?: RequestOptions,
+  ): Promise<StreamsResult> {
     const qs = new URLSearchParams({ type, videoId })
+    const device = normalizeRankingInput(ranking)
+    if (device.lineMbps > 0) qs.set('lineMbps', String(device.lineMbps))
+    if (device.screenHeight > 0) qs.set('screenHeight', String(device.screenHeight))
+    if (device.runtimeSeconds > 0) qs.set('runtimeSeconds', String(device.runtimeSeconds))
     const response = await this.request<StreamsResult>('GET', `/streams?${qs.toString()}`, undefined, opts)
     return {
       ...response,

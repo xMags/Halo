@@ -6,7 +6,9 @@ import {
   type ManifestCatalog,
   type MetaDetail,
   type MetaPreview,
-  type Stream,
+  normalizeRankingInput,
+  type ResultStream,
+  type StreamRankingInput,
   type Subtitle,
   type WatchState,
 } from '@halo/core'
@@ -210,21 +212,29 @@ export function useMeta(type: string, id: string, opts?: { enabled?: boolean }) 
 export interface AddonStreams {
   addonId: string
   addonName: string
-  streams: Stream[]
+  streams: ResultStream[]
 }
 
-/** Playable streams per addon, fanned out server-side. */
-export function useStreams(type: string, videoId: string) {
+/**
+ * Playable streams per addon, fanned out server-side and ranked there for
+ * `ranking` (this device's line and screen, and the title's runtime). The
+ * key leaves the ranking out on purpose: the detail page and the sheet share
+ * one answer, and a new line reading must not ask every addon again. The
+ * answer says what it was ranked for (`rankedFor`), so a reader whose
+ * ranking has since changed ranks the streams itself.
+ */
+export function useStreams(type: string, videoId: string, ranking?: Partial<StreamRankingInput>) {
   return useQuery({
     queryKey: ['streams', type, videoId],
     queryFn: async () => {
-      const { results, errors } = await getClient().getStreams(type, videoId)
+      const rankedFor = normalizeRankingInput(ranking)
+      const { results, errors } = await getClient().getStreams(type, videoId, rankedFor)
       const groups: AddonStreams[] = results.map((r) => ({
         addonId: r.addon.id,
         addonName: r.addon.name,
         streams: r.streams,
       }))
-      return { groups, errors }
+      return { groups, errors, rankedFor }
     },
   })
 }

@@ -1,4 +1,19 @@
-import type { AddonError, Stream } from '@halo/core'
+import {
+  hasIdentifyingFilename,
+  neededMbps,
+  normalizeRankingInput,
+  parseStreamInfo,
+  rankSources,
+  readSourceRank,
+  sameRankingInput,
+  type AddonError,
+  type RankingDevice,
+  type ResultStream,
+  type SourceFit,
+  type SourceRank,
+  type StreamInfo,
+  type StreamRankingInput,
+} from '@halo/core'
 import type { Medal } from '../components/medal'
 import type { DownloadStatus } from '../downloads/downloadsLogic'
 import {
@@ -21,7 +36,6 @@ import {
   type SourceEntry,
   type SourceStatus,
 } from './sourcePresentation'
-import { compareStreams, hasIdentifyingFilename, parseStreamInfo, type StreamInfo } from './streamInfo'
 
 /**
  * The sources sheet's model, ported from the native WinUI Halo Desktop's
@@ -41,14 +55,15 @@ export type SourceSort = (typeof SORTS)[number]
 export interface AddonStreamGroup {
   addonId: string
   addonName: string
-  streams: Stream[]
+  /** Each may carry the server's `halo` rank; an older server sends none. */
+  streams: ResultStream[]
 }
 
 /** What playing or saving a source needs; the display entry carries none of it. */
 export interface SourceRecord {
   key: string
   addonId: string
-  stream: Stream
+  stream: ResultStream
   info: StreamInfo
 }
 
@@ -106,7 +121,8 @@ function makeEntry(
   providerId: string,
   provider: string,
   rank: number,
-  durationSeconds: number,
+  fit: SourceFit,
+  runtimeSeconds: number,
 ): SourceEntry {
   const { info } = record
   const quality = info.quality ?? NOT_PARSED
@@ -131,16 +147,46 @@ function makeEntry(
     speed: speedOf(status),
     sizeBytes,
     rank,
-    neededMbps: sizeBytes > 0 && durationSeconds > 0 ? (sizeBytes * 8) / durationSeconds / 1_000_000 : 0,
+    fit,
+    neededMbps: neededMbps(info.sizeBytes, runtimeSeconds),
   }
 }
 
-/** Ranking runs across the whole resolve, not within each addon. */
+/**
+ * The server's ranks, when they can stand for this device: every source
+ * carries a well-formed one and the server ranked for the same line, screen
+ * and runtime as this sheet would. Otherwise null, and the sheet ranks itself.
+ */
+function servedRanks(
+  records: SourceRecord[],
+  annotatedFor: StreamRankingInput | null | undefined,
+  ranking: StreamRankingInput,
+): SourceRank[] | null {
+  if (!annotatedFor || !sameRankingInput(normalizeRankingInput(annotatedFor), ranking)) return null
+  const ranks: SourceRank[] = []
+  for (const record of records) {
+    const rank = readSourceRank(record.stream.halo)
+    if (!rank) return null
+    ranks.push(rank)
+  }
+  return ranks
+}
+
+/**
+ * Ranking runs across the whole resolve, not within each addon, by the one
+ * rule in `@halo/core` (`rankSources`): from the server's annotations when
+ * they apply, else computed here from the same facts.
+ */
 export function resolveSources(input: {
   groups: AddonStreamGroup[]
   errors: AddonError[]
   durationSeconds: number
+  /** This device's line and screen; omitted or zero means unknown. */
+  device?: RankingDevice
+  /** What the server ranked these streams for; null or omitted when nobody said. */
+  annotatedFor?: StreamRankingInput | null
 }): Resolve {
+  const ranking = normalizeRankingInput({ ...input.device, runtimeSeconds: input.durationSeconds })
   const records = new Map<string, SourceRecord>()
   const groupRecords: SourceRecord[][] = input.groups.map((group) => {
     const kept: SourceRecord[] = []
@@ -158,8 +204,26 @@ export function resolveSources(input: {
     return kept
   })
 
-  const ranked = groupRecords.flat().sort((left, right) => compareStreams(left.info, right.info))
-  const rankOf = new Map(ranked.map((record, position) => [record.key, position]))
+  const flat = groupRecords.flat()
+  const ranks =
+    servedRanks(flat, input.annotatedFor, ranking) ??
+    rankSources(
+      flat.map(({ info }) => ({
+        cached: info.cached,
+        quality: info.quality,
+        sizeBytes: info.sizeBytes,
+        neededMbps: neededMbps(info.sizeBytes, ranking.runtimeSeconds),
+      })),
+      ranking,
+    )
+  // Positions 0..n-1 in rank order, whatever gaps the server's ranks have
+  // (it ranked streams this sheet may not list).
+  const ordered = flat
+    .map((record, index) => ({ record, index, rank: ranks[index]! }))
+    .sort((left, right) => left.rank.rank - right.rank.rank || left.index - right.index)
+  const rankOf = new Map(
+    ordered.map(({ record, rank }, position) => [record.key, { position, fit: rank.fit }] as const),
+  )
 
   const pool: SourceEntry[] = []
   const providers: ProviderRow[] = []
@@ -167,7 +231,8 @@ export function resolveSources(input: {
     const name = sanitizeAddonName(group.addonName)
     const kept = groupRecords[index]!
     for (const record of kept) {
-      pool.push(makeEntry(record, group.addonId || name, name, rankOf.get(record.key)!, input.durationSeconds))
+      const { position, fit } = rankOf.get(record.key)!
+      pool.push(makeEntry(record, group.addonId || name, name, position, fit, ranking.runtimeSeconds))
     }
     providers.push({ name, value: countLabel(kept.length, 'source', 'sources'), answered: true })
   })
@@ -290,7 +355,7 @@ export function buildListing(
         entry,
         status: statusLabel(entry.status),
         meta: metaLine(entry),
-        warning: bitrateWarning(entry, device.lineMbps),
+        warning: bitrateWarning(entry),
         details: detailsFor(entry, device),
       })
     }
@@ -308,7 +373,7 @@ export function buildListing(
         entry: pickEntry,
         status: statusLabel(pickEntry.status),
         meta: metaLine(pickEntry),
-        warning: bitrateWarning(pickEntry, device.lineMbps),
+        warning: bitrateWarning(pickEntry),
         details: detailsFor(pickEntry, device),
       }
     : null

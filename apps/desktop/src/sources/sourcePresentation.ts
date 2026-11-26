@@ -10,6 +10,7 @@
  * rather than guess at.
  */
 
+import type { SourceFit } from '@halo/core'
 import type { Medal, MedalFinish } from '../components/medal'
 
 /** How the sheet talks about picture: coarser than the parsed resolution. */
@@ -55,7 +56,10 @@ export interface SourceEntry {
   speed: StartSpeed
   /** Zero when unknown. */
   sizeBytes: number
+  /** Place in the best-first order across the whole resolve; 0 is the pick. */
   rank: number
+  /** How the source sits on this device's line and screen (`@halo/core`'s rule). */
+  fit: SourceFit
   /** Megabits per second the file needs; zero when size or runtime is unknown. */
   neededMbps: number
 }
@@ -280,10 +284,12 @@ export function formatStreamSize(bytes: number | null): string {
   return `${gib.toFixed(gib >= 10 ? 1 : 2)} GB`
 }
 
-export function bitrateWarning(entry: SourceEntry, lineMbps: number): string {
-  if (entry.neededMbps <= 0 || lineMbps <= 0) return ''
-  if (entry.neededMbps <= lineMbps) return ''
-  return `Needs ${whole(entry.neededMbps)} Mbps, more than your line`
+/**
+ * Said only of a source that needs more than the line's safe share. A picture
+ * larger than the screen is ranked lower but not warned about: it plays fine.
+ */
+export function bitrateWarning(entry: Pick<SourceEntry, 'fit'>): string {
+  return entry.fit === 'overBudget' ? 'May buffer on this connection' : ''
 }
 
 /**

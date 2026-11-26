@@ -234,8 +234,10 @@ describe('third-party payload normalization', () => {
             response: { 'X-Playback': 'allowed' },
           },
         },
+        // The server's own rank, added to every stream; see rankStreamResults.
+        halo: { rank: 0, fit: 'fits' },
       },
-      { url: 'http://cdn.test/minimal.mp4' },
+      { url: 'http://cdn.test/minimal.mp4', halo: { rank: 1, fit: 'fits' } },
     ])
   })
 

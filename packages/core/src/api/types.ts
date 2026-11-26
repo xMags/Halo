@@ -1,4 +1,5 @@
 import type { Manifest, MetaVideo, Stream, Subtitle } from '../addon/types'
+import type { SourceRank } from '../sources/ranking'
 
 /** DTOs shared between the Halo API and both clients. Timestamps are Unix ms. */
 
@@ -130,9 +131,16 @@ export interface AddonError {
   message: string
 }
 
+/**
+ * One stream of GET /streams. `halo` is where it ranks across the whole
+ * answer for the device the request described (`rankStreamResults`); an
+ * older server sends none, and a client then ranks the streams itself.
+ */
+export type ResultStream = Stream & { halo?: SourceRank }
+
 /** Response of GET /streams: playable streams per addon plus per-addon errors. */
 export interface StreamsResult {
-  results: Array<{ addon: AddonSource; streams: Stream[] }>
+  results: Array<{ addon: AddonSource; streams: ResultStream[] }>
   errors: AddonError[]
 }
 

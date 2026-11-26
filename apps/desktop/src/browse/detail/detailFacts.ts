@@ -1,8 +1,7 @@
-import type { MetaDetail, MetaPerson, Stream } from '@halo/core'
+import { parseStreamInfo, qualityRank, qualityTier, type MetaDetail, type MetaPerson, type Stream } from '@halo/core'
 import { runtimeMinutes } from '../../format'
 import type { Medal } from '../../components/medal'
 import { medalFor, NOT_PARSED } from '../../sources/sourcePresentation'
-import { parseStreamInfo, qualityRank, qualityTier } from '../../sources/streamInfo'
 
 /** One quality the addons offer, as the source picker names it. */
 export interface QualityGroup {

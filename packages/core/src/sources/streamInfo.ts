@@ -1,4 +1,4 @@
-import type { Stream } from '@halo/core'
+import type { Stream } from '../addon/types'
 
 /**
  * Stremio's stream objects carry no structured technical metadata — addons put
@@ -250,18 +250,4 @@ export function qualityResolution(quality: Quality | null): string | null {
 export function qualityRank(quality: Quality | null): number {
   const index = quality ? QUALITY_ORDER.indexOf(quality) : -1
   return index === -1 ? QUALITY_ORDER.length : index
-}
-
-/**
- * Best-first ordering: a file that plays now beats a better file that has to
- * be fetched, then resolution, then the larger file at equal resolution
- * (bitrate is the only quality signal left once the labels match).
- */
-export function compareStreams(a: StreamInfo, b: StreamInfo): number {
-  const cachedRank = (info: StreamInfo) => (info.cached === true ? 0 : 1)
-  return (
-    cachedRank(a) - cachedRank(b) ||
-    qualityRank(a.quality) - qualityRank(b.quality) ||
-    (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0)
-  )
 }

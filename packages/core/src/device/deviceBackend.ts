@@ -28,6 +28,7 @@ import type {
   WatchState,
 } from '../api/types'
 import { lookupAnswer, peopleSearchAnswer, personAnswer, type RouteAnswer } from '../people/answers'
+import { rankStreamResults, type StreamRankingInput } from '../sources/ranking'
 import {
   readIdLookup,
   readPeopleSearch,
@@ -218,11 +219,17 @@ export class DeviceBackend implements HaloBackend {
     return meta
   }
 
-  async getStreams(type: string, videoId: string, opts?: RequestOptions): Promise<StreamsResult> {
+  /** Ranked by the same rule, and the same function, as the API's answer. */
+  async getStreams(
+    type: string,
+    videoId: string,
+    ranking?: Partial<StreamRankingInput>,
+    opts?: RequestOptions,
+  ): Promise<StreamsResult> {
     if (!type || !videoId) throw apiError(400, 'type and videoId are required')
     const result = await resolveStreams(await this.readAddons(), type, videoId, this.context(opts))
     throwIfCancelled(opts)
-    return result
+    return rankStreamResults(result, ranking)
   }
 
   async getNextEpisode(

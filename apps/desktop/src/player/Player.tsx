@@ -1,4 +1,5 @@
 import {
+  foldLineSpeed,
   languageCodeVariants,
   languageLabel,
   languageMatches,
@@ -48,6 +49,7 @@ import { fetchWithHeaders, headerLines, playbackHeaders } from './requestHeaders
 import { closeScrubPreview, openScrubPreview } from './scrubPreview'
 import { resumeWatchState, withinTimeout } from './resumePoint'
 import { pendingWatchStates, stageWatchStates } from './watchOutbox'
+import { PlaybackLineSampler } from './lineSampler'
 import { LoadingIndicator, useLoadingIndicator } from './LoadingIndicator'
 import { ScrubPreviewCard, useScrubPreview } from './ScrubPreviewCard'
 import { SubtitlePreview } from './SubtitlePreview'
@@ -74,6 +76,8 @@ import type { WindowFullscreenController } from '../window'
 const REPORT_INTERVAL_MS = 15_000
 /** How often the position is saved locally between reports (see watchOutbox.ts). */
 const STAGE_INTERVAL_MS = 2_000
+/** One line-speed sample a second while a stream plays (see PlaybackLineSampler). */
+const LINE_SAMPLE_MS = 1_000
 const WATCHED_THRESHOLD = 0.9
 const CONTROLS_HIDE_DELAY_MS = 3_000
 const NEXT_EPISODE_TIMEOUT_MS = 15_000
@@ -395,6 +399,10 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
     let localSubtitlePath: string | undefined
     const unlisteners: Array<() => void> = []
     const priorTeardown = previousPlayerTeardown
+    // A network stream measures the line as it plays; a download plays from
+    // disk and says nothing about it.
+    const lineSampler = params.sourceKind === 'download' ? null : new PlaybackLineSampler()
+    const lineTimer = lineSampler ? setInterval(() => lineSampler.tick(), LINE_SAMPLE_MS) : null
 
     const keepListener = async (listener: Promise<() => void>): Promise<boolean> => {
       const unlisten = await listener
@@ -448,6 +456,12 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
               setPaused(value)
             } else if (name === 'paused-for-cache' && typeof value === 'boolean') {
               setBuffering(value)
+              lineSampler?.pausedForCache(value, Date.now())
+            } else if (name === 'cache-speed') {
+              lineSampler?.cacheSpeed(typeof value === 'number' ? value : null)
+            } else if (name === 'demuxer-cache-idle') {
+              // mpv reports nothing (null) without a cache, which is no filling cache either.
+              lineSampler?.cacheIdleChanged(value !== false)
             } else if (name === 'volume' && typeof value === 'number') {
               setVolume(value)
             } else if (name === 'mute' && typeof value === 'boolean') {
@@ -482,7 +496,9 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
           onMpvEvent((kind) => {
             if (kind === 'seek') {
               setSeekPending(true)
+              lineSampler?.seeked(Date.now())
             } else if (kind === 'playback-restart') {
+              lineSampler?.playbackStarted()
               setSeekSerial((serial) => serial + 1)
               setSeekPending(false)
               setFirstFrameReady(true)
@@ -563,6 +579,14 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
         ['video-params/colormatrix', 'string'],
         // Where a played-out file stops, under keep-open (see handleEnd).
         ['eof-reached', 'flag'],
+        // How fast the cache fills, and whether it is filling: the line
+        // measurement (see PlaybackLineSampler). Network streams only.
+        ...(lineSampler
+          ? ([
+              ['cache-speed', 'double'],
+              ['demuxer-cache-idle', 'flag'],
+            ] as const)
+          : []),
       ] as const
       for (const [name, format] of observations) {
         await mpvObserve(name, format)
@@ -652,6 +676,14 @@ export function Player({ windowFullscreen, ...params }: PlayerProps) {
       disposed = true
       clearInterval(interval)
       clearInterval(staging)
+      if (lineTimer !== null) clearInterval(lineTimer)
+      if (lineSampler) {
+        // The file is done with: what it showed of the line joins the reading.
+        const { peakMbps, stalled } = lineSampler.session()
+        const previous = getLocalPrefs().measuredLineMbps
+        const next = foldLineSpeed(previous, peakMbps, stalled)
+        if (next !== previous) setLocalPrefs({ measuredLineMbps: next })
+      }
       reportNow()
       for (const unlisten of unlisteners) unlisten()
       previousPlayerTeardown = (async () => {

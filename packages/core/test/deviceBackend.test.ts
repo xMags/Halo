@@ -202,7 +202,10 @@ test('streams: every capable addon is asked; unplayable streams are dropped and 
   await backend.putAddons([STREAM_A, STREAM_B, hanging, invalid, CATALOG_ADDON])
   const result = await backend.getStreams('movie', 'tt1')
   assert.deepEqual(result.results, [
-    { addon: { id: 'id-1', name: 'stream-a' }, streams: [{ url: 'https://cdn.test/a.mkv', name: 'A', behaviorHints: { bingeGroup: 'a' } }] },
+    {
+      addon: { id: 'id-1', name: 'stream-a' },
+      streams: [{ url: 'https://cdn.test/a.mkv', name: 'A', behaviorHints: { bingeGroup: 'a' }, halo: { rank: 0, fit: 'fits' } }],
+    },
   ])
   assert.deepEqual(
     result.errors.map((e) => [e.name, e.code, e.status]),
@@ -266,13 +269,33 @@ test('next episode: same addon and exact bingeGroup, otherwise no stream; unknow
   await rejectsWithStatus(backend.getNextEpisode({ type: 'series', metaId: 'tt404', videoId: 'tt404:1:1' }), 404)
 })
 
+test('streams are ranked for the device the call describes, as the API ranks them', async () => {
+  const { backend } = makeBackend({
+    'https://stream-a.test/stream/movie/tt1.json': {
+      streams: [
+        { url: 'https://cdn.test/remux.mkv', title: 'Film.2160p.Remux 60 GB' },
+        { url: 'https://cdn.test/web.mkv', title: 'Film.1080p.WEB 5 GB' },
+      ],
+    },
+  })
+  await backend.putAddons([STREAM_A])
+  const ranked = await backend.getStreams('movie', 'tt1', { lineMbps: 20, screenHeight: 1080, runtimeSeconds: 7200 })
+  assert.deepEqual(
+    ranked.results[0]!.streams.map((stream) => stream.halo),
+    [
+      { rank: 1, fit: 'overBudget' },
+      { rank: 0, fit: 'fits' },
+    ],
+  )
+})
+
 test('a cancelled request rejects with the caller’s own abort reason', async () => {
   const { backend } = makeBackend({
     'https://stream-a.test/stream/movie/tt1.json': hangUntilAborted,
   })
   await backend.putAddons([STREAM_A])
   const controller = new AbortController()
-  const pending = backend.getStreams('movie', 'tt1', { signal: controller.signal })
+  const pending = backend.getStreams('movie', 'tt1', undefined, { signal: controller.signal })
   const reason = new Error('left the screen')
   controller.abort(reason)
   await assert.rejects(pending, (err) => err === reason)

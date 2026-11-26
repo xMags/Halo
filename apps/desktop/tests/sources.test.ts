@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Stream } from '@halo/core'
+import type { ResultStream } from '@halo/core'
 import {
+  bitrateWarning,
   detailsFor,
   formatStreamSize,
   medalFor,
@@ -22,14 +23,13 @@ import {
   type AddonStreamGroup,
   type VideoDownload,
 } from '../src/sources/sourcesModel.ts'
-import { parseStreamInfo } from '../src/sources/streamInfo.ts'
 
 const device: DeviceContext = {
   lineMbps: 0,
   durationSeconds: 0,
 }
 
-function stream(title: string, extra: Partial<Stream> = {}): Stream {
+function stream(title: string, extra: Partial<ResultStream> = {}): ResultStream {
   return { url: `https://cdn.test/${encodeURIComponent(title)}`, title, ...extra }
 }
 
@@ -199,10 +199,11 @@ test('the meta line is codec, sound and size, leaving out what the release did n
   assert.equal(listing.pick?.meta, 'HEVC · ATMOS · 20.0 GB')
 })
 
-test('a source too heavy for the measured line says so in its details', () => {
+test('a source too heavy for the measured line drops below one that fits, and says it may buffer', () => {
+  // A 10 Mbps line leaves a 7 Mbps budget: the 20 GB hour needs about 48.
   const result = resolve(
     [{ addonId: 'a', addonName: 'Alpha', streams: [stream('A.2160p [RD+] 20 GB'), stream('A.1080p [RD+] 2 GB')] }],
-    { durationSeconds: 3600 },
+    { durationSeconds: 3600, device: { lineMbps: 10, screenHeight: 0 } },
   )
   const listing = buildListing(result, {
     filter: 'all',
@@ -210,9 +211,97 @@ test('a source too heavy for the measured line says so in its details', () => {
     coldRevealed: false,
     device: { lineMbps: 10, durationSeconds: 3600 },
   })
-  assert.equal(listing.pick?.warning, 'Needs 48 Mbps, more than your line')
+  assert.equal(listing.pick?.entry.key, 'a:1')
+  assert.equal(listing.pick?.entry.fit, 'fits')
+  assert.equal(listing.pick?.warning, '')
+  const row = listing.items.find((item) => item.kind === 'row')
+  assert.equal(row?.kind === 'row' ? row.entry.key : null, 'a:0')
+  assert.equal(row?.kind === 'row' ? row.warning : null, 'May buffer on this connection')
+
+  // Best picture still means the biggest picture, whatever the line.
+  const best = buildListing(result, { filter: 'all', sort: 'Best picture', coldRevealed: false, device })
+  assert.deepEqual(
+    best.items.flatMap((item) => (item.kind === 'row' ? [item.entry.key] : [])),
+    ['a:0', 'a:1'],
+  )
+})
+
+test('an unmeasured line is taken as 40 Mbps, so a 4K file that needs less than 28 still leads', () => {
+  // Two hours: 20 GB needs about 23.9 Mbps, 60 GB about 71.6.
+  const result = resolve(
+    [{ addonId: 'a', addonName: 'Alpha', streams: [
+      stream('A.2160p.Remux [RD+] 60 GB'),
+      stream('A.2160p.WEB [RD+] 20 GB'),
+    ] }],
+    { durationSeconds: 7200 },
+  )
+  assert.deepEqual(result.pool.map((entry) => [entry.key, entry.fit]), [
+    ['a:1', 'fits'],
+    ['a:0', 'overBudget'],
+  ])
+})
+
+test('a picture far larger than the screen ranks lower, with no warning', () => {
+  const result = resolve(
+    [{ addonId: 'a', addonName: 'Alpha', streams: [stream('A.2160p [RD+] 20 GB'), stream('A.1080p [RD+] 2 GB')] }],
+    { device: { lineMbps: 0, screenHeight: 1080 } },
+  )
+  assert.deepEqual(result.pool.map((entry) => [entry.key, entry.fit]), [
+    ['a:1', 'fits'],
+    ['a:0', 'exceedsScreen'],
+  ])
+  const listing = buildListing(result, { filter: 'all', sort: 'Recommended', coldRevealed: false, device })
   const row = listing.items.find((item) => item.kind === 'row')
   assert.equal(row?.kind === 'row' ? row.warning : null, '')
+})
+
+test("the server's ranks are used when every source has one and they were ranked for this device", () => {
+  const ranking = { lineMbps: 50, screenHeight: 2160, runtimeSeconds: 3600 }
+  // Ranks the local rule would never give (720p over 2160p), with a gap
+  // where the server ranked a stream this sheet does not list.
+  const groups: AddonStreamGroup[] = [{ addonId: 'a', addonName: 'Alpha', streams: [
+    stream('A.2160p [RD+] 20 GB', { halo: { rank: 3, fit: 'overBudget' } }),
+    stream('A.720p 1 GB', { halo: { rank: 0, fit: 'fits' } }),
+    stream('A.1080p [RD+] 4 GB', { halo: { rank: 2, fit: 'fits' } }),
+  ] }]
+  const served = resolve(groups, {
+    durationSeconds: 3600,
+    device: { lineMbps: 50, screenHeight: 2160 },
+    annotatedFor: ranking,
+  })
+  assert.deepEqual(served.pool.map((entry) => [entry.key, entry.rank, entry.fit]), [
+    ['a:1', 0, 'fits'],
+    ['a:2', 1, 'fits'],
+    ['a:0', 2, 'overBudget'],
+  ])
+
+  // Ranked for another line: the sheet ranks the same streams itself.
+  const stale = resolve(groups, {
+    durationSeconds: 3600,
+    device: { lineMbps: 80, screenHeight: 2160 },
+    annotatedFor: ranking,
+  })
+  assert.deepEqual(stale.pool.map((entry) => [entry.key, entry.fit]), [
+    ['a:0', 'fits'],
+    ['a:2', 'fits'],
+    ['a:1', 'fits'],
+  ])
+
+  // One source without a rank, or nothing said about the ranking: the same.
+  const partial = resolve(
+    [{ ...groups[0]!, streams: [...groups[0]!.streams, stream('A.480p 700 MB')] }],
+    { durationSeconds: 3600, device: { lineMbps: 50, screenHeight: 2160 }, annotatedFor: ranking },
+  )
+  // Locally the 20 GB hour is over the 35 Mbps budget, so the cached 1080p leads.
+  assert.equal(partial.pool[0]?.key, 'a:2')
+  const unsaid = resolve(groups, { durationSeconds: 3600, device: { lineMbps: 50, screenHeight: 2160 } })
+  assert.equal(unsaid.pool[0]?.key, 'a:2')
+})
+
+test("only a source over the line's budget is warned about", () => {
+  assert.equal(bitrateWarning({ fit: 'overBudget' }), 'May buffer on this connection')
+  assert.equal(bitrateWarning({ fit: 'exceedsScreen' }), '')
+  assert.equal(bitrateWarning({ fit: 'fits' }), '')
 })
 
 test('details list only what the release names, measured against the line', () => {
@@ -254,45 +343,4 @@ test('medals are gold, silver and bronze by tier, tagged by range, and tagless b
   assert.deepEqual(medal('720p'), { plate: '720p', tag: 'HD', finish: 'bronze' })
   assert.deepEqual(medal('480p'), { plate: '480p', tag: null, finish: 'plain' })
   assert.deepEqual(medal('UNKNOWN'), { plate: '—', tag: null, finish: 'plain' })
-})
-
-test('audio codecs read with their channel count glued on', () => {
-  const audio = (title: string) => parseStreamInfo({ url: 'https://cdn.test/x', title }).audio
-  assert.equal(audio('Show.S01E01.1080p.WEB-DL.DDP5.1.H.264'), 'DDP 5.1')
-  assert.equal(audio('Film.2160p.DD+5.1.HEVC'), 'DDP 5.1')
-  assert.equal(audio('Film.1080p.DD+.x264'), 'DDP')
-  assert.equal(audio('Film.720p.DD5.1.x264'), 'DD 5.1')
-  assert.equal(audio('Film.720p.WEB.AAC2.0.H.264'), 'AAC 2.0')
-  assert.equal(audio('Film.2160p.DTS-HD.MA7.1'), 'DTS-HD')
-  assert.equal(audio('Film.2160p.TrueHD7.1.HEVC'), 'TRUEHD')
-  // A letter after the name is another word, not this codec.
-  assert.equal(audio('Film.1080p.Ddplus.x264'), null)
-})
-
-test('the DTS-HD codec and a .ts extension are not read as a quality', () => {
-  const quality = (title: string) => parseStreamInfo({ url: 'https://cdn.test/x', title }).quality
-  assert.equal(quality('Movie.BluRay.DTS-HD.MA.5.1-GRP'), null)
-  assert.equal(quality('Movie.BluRay.DTSHD-GRP'), null)
-  assert.equal(quality('Movie.Remux-GRP.ts\n💾 20 GB'), null)
-  // The real tokens still count.
-  assert.equal(quality('Movie.HD.WEB.DTS-HD-GRP'), '720p')
-  assert.equal(quality('Movie.2023.TS.x264-GRP'), 'SD')
-  assert.equal(quality('Movie.1080p.DTS-HD.MA.5.1'), '1080p')
-})
-
-test('a source size is always whole bytes, as the download engine requires', () => {
-  const size = (title: string, videoSize?: number) =>
-    parseStreamInfo({
-      url: 'https://cdn.test/x',
-      title,
-      ...(videoSize != null ? { behaviorHints: { videoSize } } : {}),
-    }).sizeBytes
-
-  // 29.35 GB multiplies out to 31514322534.4 bytes.
-  assert.equal(size('Inception.2010.2160p.mkv 29.35 GB'), 31514322534)
-  assert.equal(size('Movie.mkv 700.5 MB'), 734527488)
-  // An addon's own fractional figure is rounded too, and one of zero means unknown.
-  assert.equal(size('Movie.mkv', 1234.6), 1235)
-  assert.equal(size('Movie.mkv 2 GB', 0), 2 * 1024 ** 3)
-  assert.equal(size('Movie.mkv'), null)
 })

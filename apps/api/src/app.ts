@@ -12,6 +12,10 @@ import {
   fetchCatalog,
   fetchManifests,
   MAX_BINGE_GROUP_LENGTH,
+  MAX_LINE_MBPS,
+  MAX_RUNTIME_SECONDS,
+  MAX_SCREEN_HEIGHT,
+  rankStreamResults,
   resolveMetaWithCast,
   resolveNextEpisode,
   resolveStreams,
@@ -180,6 +184,26 @@ const watchStatesSchema = z.array(
 )
 
 const addonPatchSchema = z.object({ hideCatalogs: z.boolean() })
+
+/**
+ * One optional numeric query value: plain decimal digits only (no sign,
+ * exponent, hex or blank), within `max`. Missing reads as unknown (0).
+ */
+const rankingNumber = (max: number) =>
+  z
+    .string()
+    .max(24)
+    .regex(/^\d+(\.\d+)?$/)
+    .transform(Number)
+    .pipe(z.number().finite().min(0).max(max))
+    .optional()
+    .transform((value) => value ?? 0)
+
+const streamRankingQuerySchema = z.object({
+  lineMbps: rankingNumber(MAX_LINE_MBPS),
+  screenHeight: rankingNumber(MAX_SCREEN_HEIGHT),
+  runtimeSeconds: rankingNumber(MAX_RUNTIME_SECONDS),
+})
 
 /**
  * A synced row's `updatedAt` may not be later than this server's clock. Sync
@@ -800,11 +824,20 @@ export function createApp(config: AppConfig) {
     return c.json(result)
   })
 
+  // Streams come back as the addons grouped them, each annotated with its
+  // rank for the device the optional query describes (see rankStreamResults).
   authed.get('/streams', async (c) => {
     const type = c.req.query('type')
     const videoId = c.req.query('videoId')
     if (!type || !videoId) return c.json({ error: 'type and videoId are required' }, 400)
-    return c.json(await resolveStreams(effectiveAddons(c.get('user').id), type, videoId, resolveContext))
+    const ranking = streamRankingQuerySchema.safeParse({
+      lineMbps: c.req.query('lineMbps'),
+      screenHeight: c.req.query('screenHeight'),
+      runtimeSeconds: c.req.query('runtimeSeconds'),
+    })
+    if (!ranking.success) return c.json({ error: 'invalid ranking parameters' }, 400)
+    const result = await resolveStreams(effectiveAddons(c.get('user').id), type, videoId, resolveContext)
+    return c.json(rankStreamResults(result, ranking.data))
   })
 
   authed.get('/subtitles', async (c) => {

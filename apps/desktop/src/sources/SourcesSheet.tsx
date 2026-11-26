@@ -1,4 +1,4 @@
-import { computeVideoHash, languageMatches } from '@halo/core'
+import { computeVideoHash, languageMatches, normalizeRankingInput, type StreamRankingInput } from '@halo/core'
 import { fetchWithHeaders, playbackHeaders } from '../player/requestHeaders'
 import { useQueryClient } from '@tanstack/react-query'
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http'
@@ -20,6 +20,7 @@ import { useNav, type StreamsParams } from '../nav'
 import { useStreams, useWatchStates } from '../queries'
 import { useSettings } from '../settings/syncedSettings'
 import { revealSettingsSection, type SettingsSection } from '../settings/settingsSection'
+import { screenShortSidePixels } from './screenSize'
 import { formatStreamSize, languageName, type DeviceContext } from './sourcePresentation'
 import {
   SORTS,
@@ -64,7 +65,6 @@ const SELECTION_LEAD = 28
 export function SourcesSheet({ params }: { params: StreamsParams }) {
   const { push, setRoot, closeSheet } = useNav()
   const queryClient = useQueryClient()
-  const query = useStreams(params.type, params.videoId)
   // A magnet pasted in Search that the server matched to this very video.
   const magnetFile = useMagnetFileFor(params.type, params.videoId)
   const { data: watchStates } = useWatchStates()
@@ -89,9 +89,6 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const cardRefs = useRef(new Map<string, HTMLDivElement>())
 
-  const loading = query.isPending
-  const failed = query.isError
-
   // The engine keeps one download per video; a finished one is the saved copy.
   const ready = useMemo(
     () => downloads.find((item) => item.status === 'done' && item.media.video_id === params.videoId) ?? null,
@@ -108,20 +105,36 @@ export function SourcesSheet({ params }: { params: StreamsParams }) {
     const row = (watchStates ?? []).find((state) => state.videoId === params.videoId)
     const tracked = row && row.durationSec > 0
     return {
-      // Zero until a download has measured the line; the sheet says so outright.
+      // Zero until a download or a stream has measured the line.
       lineMbps: localPrefs.measuredLineMbps,
       durationSeconds: tracked ? row.durationSec : (params.runtimeMinutes ?? 0) * 60,
     }
   }, [watchStates, params.videoId, params.runtimeMinutes, localPrefs.measuredLineMbps])
+  // What the sources are ranked for, asked of the server and used again here
+  // when its answer was ranked for something else (see useStreams).
+  const ranking = useMemo<StreamRankingInput>(
+    () =>
+      normalizeRankingInput({
+        lineMbps: device.lineMbps,
+        screenHeight: screenShortSidePixels(),
+        runtimeSeconds: device.durationSeconds,
+      }),
+    [device],
+  )
+  const query = useStreams(params.type, params.videoId, ranking)
+  const loading = query.isPending
+  const failed = query.isError
 
   const resolve = useMemo(
     () =>
       resolveSources({
         groups: failed ? [] : (query.data?.groups ?? []),
         errors: failed ? [] : (query.data?.errors ?? []),
-        durationSeconds: device.durationSeconds,
+        durationSeconds: ranking.runtimeSeconds,
+        device: { lineMbps: ranking.lineMbps, screenHeight: ranking.screenHeight },
+        annotatedFor: query.data?.rankedFor ?? null,
       }),
-    [failed, query.data, device.durationSeconds],
+    [failed, query.data, ranking],
   )
   const listing = useMemo(
     () =>

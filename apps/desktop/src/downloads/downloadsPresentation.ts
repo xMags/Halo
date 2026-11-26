@@ -1,4 +1,4 @@
-import { languageLabel } from '@halo/core'
+import { languageLabel, parseStreamInfo } from '@halo/core'
 import type { DownloadView } from './downloadsStore'
 import {
   downloadEtaSeconds,
@@ -10,7 +10,6 @@ import {
 import { metahubLogoUrl } from '../components/artworkUrl'
 import type { Medal } from '../components/medal'
 import { medalFor, NOT_PARSED } from '../sources/sourcePresentation'
-import { parseStreamInfo } from '../sources/streamInfo'
 
 /**
  * What the Downloads page says about each download and about the page as a
