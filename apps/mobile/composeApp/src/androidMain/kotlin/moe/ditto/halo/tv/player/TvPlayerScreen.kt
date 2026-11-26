@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
@@ -95,6 +97,7 @@ import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.QualityMedal
+import moe.ditto.halo.ui.QualityMedalWidth
 
 /**
  * Playback on a TV, driven by the remote. The same [PlayerSession] as the
@@ -177,11 +180,15 @@ internal fun TvPlayerScreen(
         val codecs = spdifCodecs ?: return@LaunchedEffect
         audioOutput.guardStart(codecs, audioTrack?.codec)
     }
-    // The chosen source's medal until the decoder reports the picture. Only
-    // this item's own picture counts: the previous file's lingers for a moment.
+    // The medal of the picture playing, once the decoder reports it, and none
+    // before: it stays on screen the whole time, so a guess from the source's
+    // name would be shown as fact. Only this item's own picture counts: the
+    // previous file's lingers for a moment.
     val sourceInfo = remember(context) { context.sourceInfo() }
     val decodedFormat = if (session.ownState) state.videoFormat else VideoFormat()
-    val medal = remember(decodedFormat, sourceInfo) { playerQualityMedal(decodedFormat, sourceInfo) }
+    val medal = remember(decodedFormat, sourceInfo) {
+        decodedFormat.takeIf { it.width > 0 && it.height > 0 }?.let { playerQualityMedal(it, sourceInfo) }
+    }
     var panel by remember { mutableStateOf<TvPlayerPanel?>(null) }
     val seek = remember(session.item) { TvSeekTarget() }
     // The target shown in the bubble while a seek is built; mirrors [seek].
@@ -342,7 +349,7 @@ internal fun TvPlayerScreen(
                         Brush.verticalGradient(0f to Color.Transparent, 0.5f to Color(0xD1040508), 1f to Color(0xE6040508)),
                     ),
                 )
-                TopBar(session, medal)
+                TopBar(session, leaveRoomForMedal = medal != null)
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)
@@ -410,6 +417,9 @@ internal fun TvPlayerScreen(
                 }
             }
         }
+
+        // Above the controls' shade, below every notice, card and panel.
+        medal?.let { PlayerMedal(it) }
 
         seekShown?.takeIf { !controller.chromeVisible }?.let { target ->
             SeekBubble(target, delta = target - state.positionSeconds, modifier = Modifier.align(Alignment.Center))
@@ -604,10 +614,10 @@ private fun handleBarKey(
 }
 
 @Composable
-private fun TopBar(session: PlayerSession, medal: Medal?) {
+private fun TopBar(session: PlayerSession, leaveRoomForMedal: Boolean) {
     val context = session.context
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = TvMetrics.SideMargin, vertical = TvMetrics.VerticalMargin + 4.dp),
+        Modifier.fillMaxWidth().padding(TopBarPadding),
         verticalAlignment = Alignment.Top,
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -616,9 +626,26 @@ private fun TopBar(session: PlayerSession, medal: Medal?) {
                 Text(it.joinToString(" · "), style = TvType.Meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        medal?.let { QualityMedal(it) }
+        // The medal itself is drawn outside the controls ([PlayerMedal]), in
+        // this spot; the title only keeps clear of it.
+        if (leaveRoomForMedal) Spacer(Modifier.width(QualityMedalWidth))
     }
 }
+
+/**
+ * The picture's medal, on screen the whole time and not only with the
+ * controls: where the top bar puts it, at the same size, so it does not move
+ * when they fade in or out. It holds no focus. Its metal and dark plate are
+ * opaque, so it reads over a bright picture without the controls' shade.
+ */
+@Composable
+private fun PlayerMedal(medal: Medal) {
+    Box(Modifier.fillMaxWidth().padding(TopBarPadding), contentAlignment = Alignment.TopEnd) {
+        QualityMedal(medal)
+    }
+}
+
+private val TopBarPadding = PaddingValues(horizontal = TvMetrics.SideMargin, vertical = TvMetrics.VerticalMargin + 4.dp)
 
 @Composable
 private fun SeekBar(position: Double, duration: Double?, buffered: Double?, target: Double?, modifier: Modifier = Modifier) {
