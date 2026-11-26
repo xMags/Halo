@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -18,6 +19,7 @@ import androidx.navigation.toRoute
 import moe.ditto.halo.NativePlayerSurface
 import moe.ditto.halo.PlaybackHost
 import moe.ditto.halo.SessionGraph
+import moe.ditto.halo.browse.VideoDecoderSupport
 import moe.ditto.halo.player.PlayerSystemPort
 import moe.ditto.halo.screens.player.EpisodeChoice
 import moe.ditto.halo.shell.episodeSources
@@ -28,6 +30,8 @@ import moe.ditto.halo.tv.player.TvAudioOutput
 import moe.ditto.halo.tv.settings.TvSettingsScreen
 import moe.ditto.halo.tv.player.TvPlaybackPreferences
 import moe.ditto.halo.tv.player.TvPlayerScreen
+import moe.ditto.halo.tv.player.TvSourceFallback
+import moe.ditto.halo.tv.player.tvVideoDecoders
 import moe.ditto.halo.screens.ShelfSnapshots
 import moe.ditto.halo.screens.TitleNavigation
 import moe.ditto.halo.screens.rememberTitleMenuHost
@@ -75,6 +79,14 @@ internal fun TvShell(
     val shelves = remember { ShelfSnapshots() }
     // Home's "See all" on Recently watched opens Library on its History view.
     var libraryHistory by remember { mutableStateOf(false) }
+    // What this TV's decoders play, read once off the main thread; the
+    // sources page waits on it, and the player's fallback reads the same cache.
+    val decoders by produceState<VideoDecoderSupport?>(null, playbackPreferences) {
+        value = tvVideoDecoders(playbackPreferences.hardwareDecodingAtStart)
+    }
+    val sourceFallback = remember(graph, playbackPreferences) {
+        TvSourceFallback(graph, playbackPreferences.hardwareDecodingAtStart)
+    }
 
     val titleMenus = rememberTitleMenuHost(
         graph = graph,
@@ -142,8 +154,10 @@ internal fun TvShell(
                 }
                 composable<StreamsRoute> { entry ->
                     val route = entry.toRoute<StreamsRoute>()
-                    TvSourcesScreen(graph, route) { addon, stream ->
+                    TvSourcesScreen(graph, route, decoders) { addon, stream ->
                         val url = stream.url ?: return@TvSourcesScreen
+                        // The viewer's own choice starts a new run of automatic switches.
+                        sourceFallback.reset()
                         // The picker is replaced rather than stacked, so
                         // leaving the player returns to the title.
                         navController.navigate(route.playerRoute(addon, stream, url)) {
@@ -181,6 +195,15 @@ internal fun TvShell(
                             }
                         } else {
                             null
+                        },
+                        sourceFallback = if (route.recordsHistory) sourceFallback else null,
+                        onPlaySource = { addon, stream ->
+                            val url = stream.url
+                            if (url != null) {
+                                navController.navigate(route.sourcesRoute().playerRoute(addon, stream, url)) {
+                                    popUpTo<PlayerRoute> { inclusive = true }
+                                }
+                            }
                         },
                         onBack = { navController.popBackStack() },
                     )

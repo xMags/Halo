@@ -31,6 +31,8 @@ data class PlayerState(
     /** The decoded picture; empty until the engine has one. */
     val videoFormat: VideoFormat = VideoFormat(),
     val error: String? = null,
+    /** Set with [error]: which kind of failure it is. */
+    val failure: PlaybackFailure? = null,
     // Local echoes of the last requested live controls. The core is the source
     // of truth; these exist so the shell can display what it asked for without
     // waiting for a property observation that some platform hosts cannot emit.
@@ -198,6 +200,7 @@ class PlayerPresenter(
                 opened = true,
                 durationSeconds = event.durationSeconds?.takeIf { it.isFinite() && it >= 0.0 },
                 error = null,
+                failure = null,
             )
             is PlayerEvent.PositionChanged -> state.copy(
                 positionSeconds = event.positionSeconds.takeIf { it.isFinite() }?.coerceAtLeast(0.0)
@@ -223,6 +226,7 @@ class PlayerPresenter(
             is PlayerEvent.Error -> state.copy(
                 status = PlaybackStatus.Failed,
                 error = event.message,
+                failure = event.failure,
                 buffering = null,
             )
             PlayerEvent.Teardown -> state.copy(status = PlaybackStatus.Released)

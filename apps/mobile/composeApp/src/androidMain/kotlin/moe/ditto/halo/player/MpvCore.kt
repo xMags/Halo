@@ -6,6 +6,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.Surface
 import dev.jdtech.mpv.MPVLib
+import moe.ditto.halo.browse.VideoDecoderSupport
 import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
 
@@ -31,6 +32,11 @@ internal class MpvCore private constructor(
      * [MpvProfile.directVideo], the current [VideoPath] picks it instead.
      */
     private val profile: MpvProfile,
+    /**
+     * This device's hardware decoders, asked only when a picture falls to
+     * software decoding; null on a profile that never stops a file for that.
+     */
+    private val videoDecoders: (() -> VideoDecoderSupport)?,
 ) {
     interface Listener {
         fun onReady(durationSeconds: Double?)
@@ -57,6 +63,13 @@ internal class MpvCore private constructor(
          * the direct path; it is cleared when that path ends.
          */
         fun onSubtitleText(text: String) {}
+
+        /**
+         * The file was stopped because its picture cannot play on this device
+         * ([UnsupportedVideoPolicy]). Reported once per file, instead of an
+         * error and in place of any end.
+         */
+        fun onVideoUnsupported() {}
     }
 
     @Volatile private var listener: Listener? = null
@@ -95,6 +108,12 @@ internal class MpvCore private constructor(
     // mpv's own starting `vid=auto`; [setVideoEnabled] keeps it current so a
     // path switch never turns on video that the host turned off.
     private var videoEnabled = true
+    // Whether the current file was already stopped as unsupported. Executor only.
+    private var unsupportedReported = false
+    // Whether the selected video track states a Dolby Vision profile, read
+    // at file load. Part of [videoFormat]'s Dolby Vision flag, so the same
+    // executor-only rule applies.
+    private var trackDolbyVision = false
 
     // The subtitle debounce. The main looper only times it: the callback is
     // dispatched onto the executor, and the token makes a callback that was
@@ -185,7 +204,7 @@ internal class MpvCore private constructor(
             VideoWidth -> updateVideoFormat(videoFormat.copy(width = 0))
             VideoHeight -> updateVideoFormat(videoFormat.copy(height = 0))
             VideoGamma -> updateVideoFormat(videoFormat.copy(gamma = null))
-            VideoColorMatrix -> updateVideoFormat(videoFormat.copy(dolbyVision = false))
+            VideoColorMatrix -> updateVideoFormat(videoFormat.copy(dolbyVision = trackDolbyVision))
             ContainerFps, EstimatedFps -> handleFrameRate(property, null)
         }
     }
@@ -207,10 +226,10 @@ internal class MpvCore private constructor(
     private fun handleProperty(property: String, value: String) {
         when (property) {
             VideoGamma -> updateVideoFormat(videoFormat.copy(gamma = value.ifEmpty { null }))
-            // mpv names a Dolby Vision stream through its colour matrix; there
-            // is no profile property to read on this path.
-            VideoColorMatrix -> updateVideoFormat(videoFormat.copy(dolbyVision = value == "dolbyvision"))
-            HwdecCurrent -> checkDirectVideo()
+            // mpv names a Dolby Vision picture through its colour matrix only
+            // where it reshapes it; the track's profile says so everywhere.
+            VideoColorMatrix -> updateVideoFormat(videoFormat.copy(dolbyVision = value == DolbyVisionMatrix || trackDolbyVision))
+            HwdecCurrent -> if (!checkUnsupportedVideo()) checkDirectVideo()
             SubText -> onSubtitleText(value)
         }
     }
@@ -358,6 +377,8 @@ internal class MpvCore private constructor(
         headerLines.forEach { line ->
             mpv.command(arrayOf("change-list", "http-header-fields", "append", line))
         }
+        unsupportedReported = false
+        setTrackDolbyVision(false)
         startFileOnDirectPath()
         fileLifecycle.onLoadRequested()
         mpv.command(arrayOf("loadfile", url))
@@ -365,6 +386,7 @@ internal class MpvCore private constructor(
 
     fun stop() {
         if (destroyed) return
+        setTrackDolbyVision(false)
         if (videoPaths != null) {
             cancelSubtitleSettle()
             videoPaths.onStopped()
@@ -546,8 +568,73 @@ internal class MpvCore private constructor(
         // Tracks are selected and the video chain is set up by now. A decoder
         // report that arrived before this event was skipped, and mpv will not
         // repeat an unchanged value, so the direct path is judged here too.
-        videoPaths?.onFileLoaded()
+        val dolbyVisionProfile = selectedVideoTrack()?.dolbyVisionProfile
+        if (dolbyVisionProfile != null) Log.i(LOG_TAG, "[$id] video track states Dolby Vision profile $dolbyVisionProfile")
+        setTrackDolbyVision(dolbyVisionProfile != null)
+        val paths = videoPaths ?: return
+        paths.onFileLoaded()
+        if (checkUnsupportedVideo()) return
+        // The earliest point the selected track is known. A picture that needs
+        // Dolby Vision processing goes composed now, not debounced, so it
+        // shows wrong colours for as short a time as possible.
+        // A pending subtitle switch keeps its own debounce: only this input
+        // switches here.
+        if (paths.onVideoTrack(dolbyVisionProfile) && paths.wantsSwitch()) {
+            cancelSubtitleSettle()
+            applyVideoPath(paths.decision())
+        }
         checkDirectVideo()
+    }
+
+    /**
+     * Stops the file when its picture fell to software decoding and cannot
+     * play at a usable speed here ([UnsupportedVideoPolicy]), and says so once.
+     * True when it did. Judged only once the file's tracks are selected.
+     */
+    private fun checkUnsupportedVideo(): Boolean {
+        val decoders = videoDecoders ?: return false
+        val paths = videoPaths ?: return false
+        if (unsupportedReported || !paths.fileLoaded || !videoEnabled) return false
+        val hwdec = mpv.getPropertyString(HwdecCurrent)
+        if (hwdec != UnsupportedVideoPolicy.SoftwareDecoder) return false
+        val track = selectedVideoTrack() ?: return false
+        // The decoded size once there is one; the container's until then.
+        val width = videoFormat.width.takeIf { it > 0 } ?: track.width
+        val height = videoFormat.height.takeIf { it > 0 } ?: track.height
+        if (!UnsupportedVideoPolicy.isUnsupported(hwdec, track.codec, width, height, decoders())) return false
+        Log.i(LOG_TAG, "[$id] stopping: ${track.codec} ${width}x$height has no hardware decoder here")
+        unsupportedReported = true
+        stop()
+        listener?.onVideoUnsupported()
+        return true
+    }
+
+    /**
+     * Records whether the selected video track states a Dolby Vision profile
+     * and folds it into the reported picture with the colour matrix's own
+     * signal, read back here. Cleared for every load and stop.
+     */
+    private fun setTrackDolbyVision(dolbyVision: Boolean) {
+        trackDolbyVision = dolbyVision
+        val matrixSays = !destroyed && mpv.getPropertyString(VideoColorMatrix) == DolbyVisionMatrix
+        updateVideoFormat(videoFormat.copy(dolbyVision = dolbyVision || matrixSays))
+    }
+
+    private class SelectedVideoTrack(val codec: String?, val width: Int, val height: Int, val dolbyVisionProfile: Int?)
+
+    private fun selectedVideoTrack(): SelectedVideoTrack? {
+        val count = mpv.getPropertyInt("track-list/count") ?: return null
+        for (i in 0 until count) {
+            if (mpv.getPropertyString("track-list/$i/type") != "video") continue
+            if (mpv.getPropertyBoolean("track-list/$i/selected") != true) continue
+            return SelectedVideoTrack(
+                codec = mpv.getPropertyString("track-list/$i/codec"),
+                width = mpv.getPropertyInt("track-list/$i/demux-w") ?: 0,
+                height = mpv.getPropertyInt("track-list/$i/demux-h") ?: 0,
+                dolbyVisionProfile = mpv.getPropertyInt("track-list/$i/dolby-vision-profile"),
+            )
+        }
+        return null
     }
 
     // --- Video path: direct (decoder onto the surface) or composed (mpv draws) ---
@@ -773,8 +860,21 @@ internal class MpvCore private constructor(
         /** What "no particular font" means to the renderer. */
         private const val DefaultSubtitleFont = "sans-serif"
 
-        /** Create + configure + initialize a fresh core with a stable [id]. */
-        fun create(context: Context, id: String, profile: MpvProfile, callbackExecutor: Executor? = null): MpvCore {
+        /**
+         * Create + configure + initialize a fresh core with a stable [id].
+         *
+         * [videoDecoders] is asked only on a direct-video profile, the TV's
+         * hardware one: there a picture that falls to software decoding is
+         * stopped when this device has no decoder for it. A profile that
+         * decodes in software on purpose never stops a file for that.
+         */
+        fun create(
+            context: Context,
+            id: String,
+            profile: MpvProfile,
+            callbackExecutor: Executor? = null,
+            videoDecoders: (() -> VideoDecoderSupport)? = null,
+        ): MpvCore {
             // The direct path switches outputs from mpv callbacks and a timer,
             // which must run on the caller's executor, never on mpv's thread.
             require(!profile.directVideo || callbackExecutor != null) { "direct video needs a callback executor" }
@@ -809,7 +909,7 @@ internal class MpvCore private constructor(
             // Pre-init: libass builds its font provider during initialisation.
             SubtitleFontLibrary.prepare(context)?.let { mpv.setOptionString("sub-fonts-dir", it) }
 
-            val core = MpvCore(mpv, id, callbackExecutor, profile)
+            val core = MpvCore(mpv, id, callbackExecutor, profile, videoDecoders.takeIf { profile.directVideo })
             mpv.addLogObserver(core.logObserver)
             mpv.addObserver(core.eventObserver)
             mpv.init()
@@ -939,6 +1039,7 @@ private const val VideoWidth = "video-params/dw"
 private const val VideoHeight = "video-params/dh"
 private const val VideoGamma = "video-params/gamma"
 private const val VideoColorMatrix = "video-params/colormatrix"
+private const val DolbyVisionMatrix = "dolbyvision"
 private const val ContainerFps = "container-fps"
 private const val EstimatedFps = "estimated-vf-fps"
 private const val HwdecCurrent = "hwdec-current"

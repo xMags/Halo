@@ -23,11 +23,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.player.AppSubtitleState
+import moe.ditto.halo.player.DeviceVideoDecoders
 import moe.ditto.halo.player.DirectVideoFrame
 import moe.ditto.halo.player.DirectVideoSurface
 import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.MpvCore
 import moe.ditto.halo.player.MpvProfile
+import moe.ditto.halo.player.PlaybackFailure
 import moe.ditto.halo.player.PlayerBuffering
 import moe.ditto.halo.player.PlayerEvent
 import moe.ditto.halo.player.PlayerPort
@@ -107,7 +109,14 @@ internal class AndroidMpvPlayerHost(
     private fun installFreshCore(): MpvCore? {
         if (!acceptingWork.get()) return null
         val generation = coreGeneration + 1
-        val created = MpvCore.create(appContext, "core-${++coreSequence}", profile, coreExecutor)
+        val created = MpvCore.create(
+            appContext,
+            "core-${++coreSequence}",
+            profile,
+            coreExecutor,
+            // Read on this executor, and only when a picture falls to software.
+            videoDecoders = { DeviceVideoDecoders.current },
+        )
         coreCreationCount += 1
         core = created
         activeCoreGeneration = generation
@@ -158,6 +167,10 @@ internal class AndroidMpvPlayerHost(
         override fun onEnded() = emitFromCore(generation, PlayerEvent.NaturalEnd)
         override fun onEndCleared() = emitFromCore(generation, PlayerEvent.EndCleared)
         override fun onError(message: String) = emitFromCore(generation, PlayerEvent.Error(message))
+        override fun onVideoUnsupported() = emitFromCore(
+            generation,
+            PlayerEvent.Error(UnsupportedVideoMessage, PlaybackFailure.UnsupportedVideo),
+        )
 
         override fun onVideoPath(direct: Boolean) {
             if (!isCurrentCore(generation)) return
@@ -469,6 +482,9 @@ internal class AndroidMpvPlayerHost(
     companion object {
         private const val LOG_TAG = "HALO_MPV"
         private const val RELEASE_TIMEOUT_MS = 1_500L
+
+        /** The error text behind [PlaybackFailure.UnsupportedVideo]; screens show their own copy for it. */
+        private const val UnsupportedVideoMessage = "This video's picture format can't play on this device."
 
         /**
          * Emergency ceiling for the surface detach, not an expected cost: half a

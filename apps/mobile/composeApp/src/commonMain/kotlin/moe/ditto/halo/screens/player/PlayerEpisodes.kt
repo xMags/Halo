@@ -29,6 +29,9 @@ internal data class PlayerEpisode(
     val thumbnail: String?,
     val progress: Float,
     val downloaded: Boolean,
+    /** The addon's season and episode numbers, null when it numbers nothing. */
+    val season: Int? = null,
+    val episode: Int? = null,
 )
 
 /** The episodes of the season the current video belongs to, with their progress. */
@@ -53,6 +56,8 @@ internal fun playerEpisodes(
             // Nothing on this platform downloads yet, and a tick that always
             // showed would be a claim about the device that is not true.
             downloaded = false,
+            season = video.season,
+            episode = video.episode,
         )
     }
 }

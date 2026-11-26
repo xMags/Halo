@@ -2,6 +2,8 @@ package moe.ditto.halo.player
 
 import moe.ditto.halo.browse.Medal
 import moe.ditto.halo.browse.MedalFinish
+import moe.ditto.halo.browse.SourceInfo
+import moe.ditto.halo.browse.medalFor
 
 private class QualityStep(val minimumPixels: Long, val medal: Medal)
 
@@ -31,4 +33,32 @@ fun classifyVideoQuality(format: VideoFormat): Medal? {
         format.gamma == "hlg" -> medal.copy(tag = "HLG")
         else -> medal
     }
+}
+
+/** Tags [classifyVideoQuality] gives a picture whose dynamic range it recognised. */
+private val DecodedRangeTags = setOf("DV", "HDR", "HLG")
+
+/**
+ * The medal for what is playing, never blank while anything is known.
+ *
+ * Until the decoder reports a picture it is the medal the sources list gave
+ * the chosen [source], from its name; with no resolution in the name there is
+ * nothing to show, rather than a plate with no number. Once the picture is
+ * decoded its resolution wins. Its dynamic range wins too when it found one;
+ * when it found none the name's still counts, since a picture can be HDR in
+ * ways the decoder does not report (a Dolby Vision base layer marked as SDR).
+ */
+fun playerQualityMedal(format: VideoFormat, source: SourceInfo?): Medal? {
+    val decoded = classifyVideoQuality(format)
+    if (decoded == null) return source?.takeIf { it.quality != null }?.let(::medalFor)
+    if (decoded.tag in DecodedRangeTags) return decoded
+    val range = source?.dynamicRange ?: return decoded
+    return decoded.copy(tag = rangeTag(range))
+}
+
+/** A named range as the player's tag: the transfer's own name for HLG, `HDR` for the rest. */
+private fun rangeTag(range: String): String = when (range) {
+    "DV" -> "DV"
+    "HLG" -> "HLG"
+    else -> "HDR"
 }

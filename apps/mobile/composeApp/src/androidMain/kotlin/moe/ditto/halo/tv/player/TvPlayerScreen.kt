@@ -63,11 +63,15 @@ import kotlin.math.round
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import moe.ditto.halo.api.AddonSource
+import moe.ditto.halo.api.Stream
 import moe.ditto.halo.browse.Medal
 import moe.ditto.halo.NativePlayerSurface
 import moe.ditto.halo.PlaybackHost
-import moe.ditto.halo.player.classifyVideoQuality
+import moe.ditto.halo.player.PlaybackFailure
 import moe.ditto.halo.player.PlaybackStatus
+import moe.ditto.halo.player.playerQualityMedal
+import moe.ditto.halo.player.VideoFormat
 import moe.ditto.halo.player.PlayerSystemPort
 import moe.ditto.halo.screens.player.clampedDelay
 import moe.ditto.halo.screens.player.EpisodeChoice
@@ -118,6 +122,13 @@ internal fun TvPlayerScreen(
     onSelectEpisode: (EpisodeChoice) -> Unit,
     /** Null for a pasted link, which has no list to pick another source from. */
     onPickAnotherSource: (() -> Unit)?,
+    /**
+     * Moves on from a source whose picture this TV cannot play; null for a
+     * pasted link, which has no other sources.
+     */
+    sourceFallback: TvSourceFallback?,
+    /** Plays another source of the same video, in place of this player. */
+    onPlaySource: (AddonSource, Stream) -> Unit,
     onBack: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -144,7 +155,11 @@ internal fun TvPlayerScreen(
     val audioTrack = state.tracks.audio.firstOrNull { it.id == (state.tracks.selectedAudioId ?: state.tracks.audio.firstOrNull()?.id) }
     // Sound sent on untouched cannot be delayed or sped up here.
     val passthrough = passesThrough(spdifCodecs, audioTrack?.codec)
-    val medal = remember(state.videoFormat) { classifyVideoQuality(state.videoFormat) }
+    // The chosen source's medal until the decoder reports the picture. Only
+    // this item's own picture counts: the previous file's lingers for a moment.
+    val sourceInfo = remember(context) { context.sourceInfo() }
+    val decodedFormat = if (session.ownState) state.videoFormat else VideoFormat()
+    val medal = remember(decodedFormat, sourceInfo) { playerQualityMedal(decodedFormat, sourceInfo) }
     var panel by remember { mutableStateOf<TvPlayerPanel?>(null) }
     val seek = remember(session.item) { TvSeekTarget() }
     // The target shown in the bubble while a seek is built; mirrors [seek].
@@ -153,6 +168,28 @@ internal fun TvPlayerScreen(
     val barFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
     val upNextFocus = remember { FocusRequester() }
+
+    // A picture this TV cannot play: the next playable source takes over by
+    // itself, and only when there is none does the viewer see a card. Gated on
+    // this item's own state, since the previous player's failure is still in
+    // the shared state for a moment after this one takes over.
+    val unsupported = session.ownState && state.status == PlaybackStatus.Failed &&
+        state.failure == PlaybackFailure.UnsupportedVideo
+    var unsupportedCard by remember { mutableStateOf(false) }
+    LaunchedEffect(unsupported) {
+        if (!unsupported) return@LaunchedEffect
+        val next = sourceFallback?.next(context)
+        if (next == null) {
+            unsupportedCard = true
+            return@LaunchedEffect
+        }
+        session.leaveTo { onPlaySource(next.first, next.second) }
+    }
+    val switchingSource = sourceFallback?.switching == true
+    LaunchedEffect(session.ownState, state.opened, state.status) {
+        val settled = state.opened || (state.status == PlaybackStatus.Failed && !unsupported)
+        if (session.ownState && settled) sourceFallback?.settled()
+    }
 
     // The posters and backdrops of the screens behind sit in the image cache,
     // in the same memory the video's GPU work needs; on a 2 GB box that is
@@ -330,6 +367,7 @@ internal fun TvPlayerScreen(
         }
 
         when {
+            switchingSource || (unsupported && !unsupportedCard) -> StatusPill(SwitchingSourceNotice, Modifier.align(Alignment.Center))
             state.status == PlaybackStatus.Loading -> StatusPill("Loading…", Modifier.align(Alignment.Center))
             state.buffering != null -> StatusPill("Buffering ${state.buffering?.percent ?: 0}%", Modifier.align(Alignment.Center))
         }
@@ -348,7 +386,15 @@ internal fun TvPlayerScreen(
             )
         }
 
-        if (state.status == PlaybackStatus.Failed) {
+        if (unsupported) {
+            if (unsupportedCard) {
+                UnsupportedVideoCard(
+                    onPickAnotherSource = onPickAnotherSource?.let { pick -> { session.leaveTo(pick) } },
+                    onBack = session::leave,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+        } else if (state.status == PlaybackStatus.Failed) {
             ErrorCard(
                 message = state.error,
                 onRetry = session::retry,
@@ -406,7 +452,7 @@ internal fun TvPlayerScreen(
                 onDismiss = ::closePanel,
             )
             TvPlayerPanel.Episodes -> TvEpisodesPanel(
-                title = listOfNotNull(context.showTitle, context.episodeTag).joinToString(" · "),
+                showTitle = context.showTitle,
                 episodes = session.episodes,
                 currentVideoId = context.videoId,
                 onSelect = { episode ->
@@ -659,6 +705,36 @@ private fun ErrorCard(message: String?, onRetry: () -> Unit, onPickAnotherSource
         }
     }
 }
+
+/**
+ * The file opened, but its picture is in a format this TV cannot play and no
+ * other source could take over. Retrying the same file cannot help, so the
+ * only ways on are another source or back.
+ */
+@Composable
+private fun UnsupportedVideoCard(onPickAnotherSource: (() -> Unit)?, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    Column(
+        modifier
+            .width(520.dp)
+            .background(HaloColors.Surface, RoundedCornerShape(20.dp))
+            .padding(28.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Text("This TV can't play this video", style = TvType.Title)
+        Text("Its picture format isn't supported here. Choose another source.", style = TvType.Body, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (onPickAnotherSource != null) {
+                TvButton("Choose another source", onClick = onPickAnotherSource, style = TvButtonStyle.Primary, modifier = Modifier.focusRequester(first))
+            } else {
+                TvButton("Back", onClick = onBack, style = TvButtonStyle.Primary, modifier = Modifier.focusRequester(first))
+            }
+        }
+    }
+}
+
+private const val SwitchingSourceNotice = "That source isn't supported on this TV. Trying another one."
 
 private const val FadeMs = 180
 

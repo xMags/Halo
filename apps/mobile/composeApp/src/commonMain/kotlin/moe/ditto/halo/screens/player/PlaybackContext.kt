@@ -1,5 +1,9 @@
 package moe.ditto.halo.screens.player
 
+import moe.ditto.halo.api.Stream
+import moe.ditto.halo.api.StreamBehaviorHints
+import moe.ditto.halo.browse.SourceInfo
+import moe.ditto.halo.browse.parseSourceInfo
 import moe.ditto.halo.player.VideoFingerprint
 import moe.ditto.halo.sync.LibraryRepository
 
@@ -85,6 +89,20 @@ internal data class PlaybackContext(
      * should be in "continue watching" simply is not.
      */
     val itemId: String get() = LibraryRepository.itemId(type, metaId)
+
+    /**
+     * What the source's name says about the file, read by the same rules as
+     * the sources list, so the player can describe the source before the
+     * decoder does. A pasted link usually says nothing, which reads as nothing.
+     */
+    fun sourceInfo(): SourceInfo = parseSourceInfo(
+        Stream(
+            url = url,
+            name = streamName,
+            title = streamTitle,
+            behaviorHints = StreamBehaviorHints(filename = filename, videoSize = videoSize),
+        ),
+    )
 
     /**
      * What the addon already knew about the file, when it knew both halves.

@@ -482,6 +482,8 @@ internal fun StreamsContent(
     val state = streamsContentState(query)
     val answer = state as? StreamsContentState.Sources
     val resolve = remember(answer?.groups, answer?.failures, runtimeSeconds) {
+        // Every source stays listed: a phone's processor decodes in software
+        // whatever its video chip lacks, so its decoders are no reason to hide one.
         answer?.let { resolveSources(it.groups, it.failures, runtimeSeconds) }
     }
 

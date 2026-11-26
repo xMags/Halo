@@ -90,6 +90,8 @@ data class SourcesResolve(
     val providers: List<ProviderRow>,
     /** `54 sources · 3 addons`, or `6 sources · 1 of 2 addons` when one failed. */
     val summary: String,
+    /** Sources left out because this device cannot play their format; none of them is in [pool]. */
+    val unplayableCount: Int = 0,
 )
 
 fun tierOf(quality: SourceQuality?): QualityTier = when (quality) {
@@ -111,18 +113,28 @@ private fun statusOf(info: SourceInfo): SourceStatus = when (info.cached) {
  *
  * @param runtimeSeconds the video's length, for what each file needs from the
  *   line; zero or less when unknown.
+ * @param decoders what this device's video decoders can do. Sources it cannot
+ *   play are dropped before ranking, so nothing after this (the pick, the
+ *   groups, the counts, the provider rows) sees them; the default keeps all.
  */
 fun resolveSources(
     groups: List<AddonStreams>,
     errors: List<AddonError>,
     runtimeSeconds: Double,
+    decoders: VideoDecoderSupport = VideoDecoderSupport.Unrestricted,
 ): SourcesResolve {
     class Candidate(val key: String, val addon: AddonSource, val stream: Stream, val info: SourceInfo)
 
+    var unplayable = 0
     val kept = groups.map { group ->
         group.streams.mapIndexedNotNull { index, stream ->
             if (!stream.isPlayable) return@mapIndexedNotNull null
-            Candidate("${group.addon.id}:$index", group.addon, stream, parseSourceInfo(stream))
+            val info = parseSourceInfo(stream)
+            if (!isPlayableOn(info, decoders)) {
+                unplayable += 1
+                return@mapIndexedNotNull null
+            }
+            Candidate("${group.addon.id}:$index", group.addon, stream, info)
         }
     }
     val pool = kept.flatten()
@@ -147,7 +159,7 @@ fun resolveSources(
         }
         errors.forEach { add(ProviderRow(sanitizeAddonName(it.name), addonFailureCopy(it.code), false)) }
     }
-    return SourcesResolve(pool, providers, resolveSummary(pool.size, groups.size, errors.size))
+    return SourcesResolve(pool, providers, resolveSummary(pool.size, groups.size, errors.size), unplayable)
 }
 
 /** The ratio form ("1 of 2 addons") only appears when somebody failed. */

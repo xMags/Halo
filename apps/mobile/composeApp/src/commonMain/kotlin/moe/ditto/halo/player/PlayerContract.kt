@@ -116,8 +116,21 @@ sealed interface PlayerEvent {
      * file stays loaded and paused there, so playback carries on from here.
      */
     data object EndCleared : PlayerEvent
-    data class Error(val message: String) : PlayerEvent
+    data class Error(val message: String, val failure: PlaybackFailure = PlaybackFailure.Source) : PlayerEvent
     data object Teardown : PlayerEvent
+}
+
+/** What kind of failure ended playback, for a screen that says more than the engine's message. */
+enum class PlaybackFailure {
+    /** The source could not be opened or played; the engine's message says why. */
+    Source,
+
+    /**
+     * The file opened, but its picture is in a format this device cannot play
+     * at a usable speed. Retrying the same file cannot help. Only the TV's
+     * core reports it; other hosts never do.
+     */
+    UnsupportedVideo,
 }
 
 interface PlayerPort {

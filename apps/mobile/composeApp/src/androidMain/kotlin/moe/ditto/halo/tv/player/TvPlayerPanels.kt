@@ -1,27 +1,49 @@
 package moe.ditto.halo.tv.player
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.api.SubtitleOutline
 import moe.ditto.halo.player.PlayerTrack
 import moe.ditto.halo.player.PlayerTracks
@@ -39,10 +61,15 @@ import moe.ditto.halo.screens.player.subtitleLanguageGroups
 import moe.ditto.halo.screens.player.SubtitleOutlineChoices
 import moe.ditto.halo.tv.kit.TvButton
 import moe.ditto.halo.tv.kit.TvChoiceRow
+import moe.ditto.halo.tv.kit.TvMetrics
+import moe.ditto.halo.tv.kit.TvProgressBar
 import moe.ditto.halo.tv.kit.TvRowSurface
 import moe.ditto.halo.tv.kit.TvSidePanel
+import moe.ditto.halo.tv.kit.TvSurface
+import moe.ditto.halo.tv.kit.TvSurfaceColors
 import moe.ditto.halo.tv.kit.TvSwitchRow
 import moe.ditto.halo.tv.kit.TvType
+import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
 import moe.ditto.halo.ui.languageLabel
@@ -386,32 +413,159 @@ internal fun TvSpeedPanel(rate: Double, onSelect: (Double) -> Unit, onDismiss: (
     }
 }
 
+/**
+ * The season's episodes as cards: each still with its progress or watched
+ * mark, then its number, name and status. The episode playing has focus when
+ * the panel opens, with the one before it in view above, so the list reads
+ * from where the viewer is.
+ */
 @Composable
 internal fun TvEpisodesPanel(
-    title: String,
+    showTitle: String,
     episodes: List<PlayerEpisode>,
     currentVideoId: String,
     onSelect: (PlayerEpisode) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    TvSidePanel(title = "Episodes", subtitle = title, onDismiss = onDismiss, width = 480.dp) {
-        LazyColumn(Modifier.weight(1f), contentPadding = FocusRoom, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val currentIndex = remember(episodes, currentVideoId) { episodes.indexOfFirst { it.videoId == currentVideoId } }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (currentIndex - 1).coerceAtLeast(0))
+    val playing = remember { FocusRequester() }
+    // The panel moves focus to its first row as it opens; the playing row
+    // takes it from there once it is placed, a frame or two later.
+    LaunchedEffect(Unit) {
+        if (currentIndex < 0) return@LaunchedEffect
+        withTimeoutOrNull(EpisodeFocusClaimMs) {
+            while (!runCatching { playing.requestFocus(FocusDirection.Enter) }.getOrDefault(false)) withFrameNanos { }
+        }
+    }
+    TvSidePanel(
+        title = showTitle,
+        subtitle = episodesPanelSubtitle(episodes, currentVideoId),
+        onDismiss = onDismiss,
+        width = EpisodesPanelWidth,
+    ) {
+        LazyColumn(
+            Modifier.weight(1f),
+            state = listState,
+            contentPadding = FocusRoom,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             items(episodes, key = { it.videoId }) { episode ->
-                TvRowSurface(
-                    title = "${episode.tag} · ${episode.name}",
-                    hint = when {
-                        episode.videoId == currentVideoId -> "Playing now"
-                        episode.progress >= 0.95f -> "Watched"
-                        episode.progress > 0f -> "${(episode.progress * 100).roundToInt()}% watched"
-                        else -> null
-                    },
+                EpisodeRow(
+                    episode = episode,
+                    state = episodeRowState(episode, currentVideoId),
+                    status = episodeStatusLine(episode, currentVideoId),
                     onClick = { onSelect(episode) },
-                    trailing = { Selected(episode.videoId == currentVideoId) },
+                    modifier = if (episode.videoId == currentVideoId) Modifier.focusRequester(playing) else Modifier,
                 )
             }
         }
     }
 }
+
+@Composable
+private fun EpisodeRow(
+    episode: PlayerEpisode,
+    state: EpisodeRowState,
+    status: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val tag = episodeTagLabel(episode)
+    TvSurface(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = listOfNotNull(tag, episode.name, status).joinToString(", ") },
+        cornerRadius = 14.dp,
+        colors = TvSurfaceColors(Color.White.copy(alpha = 0.03f), HaloColors.SurfaceHigh),
+        focusScale = TvMetrics.RowFocusScale,
+        ringBackground = HaloColors.Surface,
+    ) { focused ->
+        Row(
+            Modifier.fillMaxWidth().padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            EpisodeStill(episode, watched = state == EpisodeRowState.Watched)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                tag?.let { Text(it, style = TvType.Overline, maxLines = 1) }
+                Text(
+                    episode.name,
+                    color = if (focused) HaloColors.Text else HaloColors.TextMeta,
+                    fontSize = 16.sp,
+                    lineHeight = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                status?.let { EpisodeStatus(it, state) }
+            }
+        }
+    }
+}
+
+/** The still, or a plate naming the episode when it has none or it fails to load. */
+@Composable
+private fun EpisodeStill(episode: PlayerEpisode, watched: Boolean) {
+    Box(Modifier.size(StillWidth, StillHeight).clip(RoundedCornerShape(10.dp))) {
+        HaloAsyncImage(
+            url = episode.thumbnail,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            placeholder = { StillPlate(episodePlateLabel(episode)) },
+            failure = { StillPlate(episodePlateLabel(episode)) },
+        )
+        if (watched) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
+            Icon(
+                HaloIcons.Check,
+                contentDescription = null,
+                tint = HaloColors.Success,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .clip(CircleShape)
+                    .background(HaloColors.OverlayPill)
+                    .padding(3.dp)
+                    .size(14.dp),
+            )
+        }
+        if (episodeShowsProgress(episode)) {
+            TvProgressBar(episode.progress, Modifier.align(Alignment.BottomCenter).padding(start = 8.dp, end = 8.dp, bottom = 7.dp))
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.StillPlate(label: String) {
+    Box(
+        Modifier.matchParentSize().background(Brush.linearGradient(listOf(HaloColors.SurfaceHigh, HaloColors.Surface))),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = HaloColors.TextMeta.copy(alpha = 0.6f), fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
+/** The status line; the episode playing says so in the accent colour, with a play glyph. */
+@Composable
+private fun EpisodeStatus(text: String, state: EpisodeRowState) {
+    if (state != EpisodeRowState.Playing) {
+        Text(text, style = TvType.Caption, maxLines = 1)
+        return
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(HaloIcons.Play, contentDescription = null, tint = HaloColors.AccentLight, modifier = Modifier.size(14.dp))
+        Text(text, style = TvType.Caption.copy(color = HaloColors.AccentLight, fontWeight = FontWeight.SemiBold), maxLines = 1)
+    }
+}
+
+private val EpisodesPanelWidth = 560.dp
+private val StillWidth = 176.dp
+private val StillHeight = 99.dp
+
+/** How long the playing row keeps asking for focus while the panel lays out. */
+private const val EpisodeFocusClaimMs = 600L
 
 /** "+0.2 s", "0.0 s". */
 private fun formatDelay(seconds: Double): String {

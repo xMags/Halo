@@ -81,11 +81,33 @@ internal object VideoPathPolicy {
     }
 
     /**
+     * Dolby Vision profiles whose base layer is no correct picture on its own,
+     * so only the engine's reshaping shows it right: 5 (`dvhe.stn`) and the
+     * retired 0 to 3, which had no cross-compatible base layer either. The
+     * others carry an HDR10, HLG or SDR base layer (4, 7, 8.x, 9), which the
+     * hardware decoder shows correctly by itself. mpv reports the profile but
+     * not the base layer's compatibility id, so profile 8.0 and 10.0, which
+     * also lack one, cannot be told from 8.1 or 10.1 and stay direct.
+     */
+    private val DolbyVisionProfilesNeedingProcessing = setOf(0, 1, 2, 3, 5)
+
+    /**
+     * True when the selected video track's Dolby Vision profile (mpv's
+     * `track-list/N/dolby-vision-profile`, null when the container states
+     * none) makes a picture that is wrong without Dolby Vision processing.
+     */
+    fun needsDolbyVisionProcessing(dolbyVisionProfile: Int?): Boolean =
+        dolbyVisionProfile != null && dolbyVisionProfile in DolbyVisionProfilesNeedingProcessing
+
+    /**
      * The path for the current file.
      *
      * [directFailure] is the reason the direct path failed for this file, or
      * null when it has not; once set it holds the file on the composed path
-     * whatever the subtitle does.
+     * whatever the subtitle does. [dolbyVisionProfile], when it
+     * [needsDolbyVisionProcessing], does the same: the direct output shows the
+     * decoder's frames untouched, and only the composed path applies the
+     * reshaping that makes the colours right.
      */
     fun decide(
         directAllowed: Boolean,
@@ -93,9 +115,13 @@ internal object VideoPathPolicy {
         subtitleSelected: Boolean,
         subtitleCodec: String?,
         keepScriptStyling: Boolean,
+        dolbyVisionProfile: Int? = null,
     ): VideoPathDecision {
         if (!directAllowed) return VideoPathDecision(VideoPath.Composed, "direct video not offered")
         if (directFailure != null) return VideoPathDecision(VideoPath.Composed, directFailure)
+        if (needsDolbyVisionProcessing(dolbyVisionProfile)) {
+            return VideoPathDecision(VideoPath.Composed, "Dolby Vision picture needs processing, profile $dolbyVisionProfile")
+        }
         val codec = subtitleCodec?.lowercase() ?: "unknown"
         return when (subtitleDrawing(subtitleSelected, subtitleCodec, keepScriptStyling)) {
             SubtitleDrawing.None -> VideoPathDecision(VideoPath.Direct, "no subtitle")
@@ -153,6 +179,10 @@ internal class VideoPathTracker(private val directAllowed: Boolean) {
 
     private var directFailure: String? = null
 
+    // The selected video track's Dolby Vision profile, read once the file's
+    // tracks are selected; null for none or not stated.
+    private var dolbyVisionProfile: Int? = null
+
     // Whether the app or the viewer has chosen this file's subtitle since the
     // last load. Until then the selection is mpv's own pick.
     private var subtitleChosen = false
@@ -179,6 +209,7 @@ internal class VideoPathTracker(private val directAllowed: Boolean) {
         subtitleSelected = subtitleSelected,
         subtitleCodec = subtitleCodec,
         keepScriptStyling = keepScriptStyling,
+        dolbyVisionProfile = dolbyVisionProfile,
     )
 
     /** True when [decision] names a path other than the one in effect. */
@@ -204,6 +235,7 @@ internal class VideoPathTracker(private val directAllowed: Boolean) {
     fun onLoadRequested(): VideoPathDecision {
         fileLoaded = false
         directFailure = null
+        dolbyVisionProfile = null
         subtitleChosen = false
         awaitingAddedTrack = false
         stylingChangedLast = false
@@ -219,6 +251,7 @@ internal class VideoPathTracker(private val directAllowed: Boolean) {
 
     fun onStopped() {
         fileLoaded = false
+        dolbyVisionProfile = null
         subtitleChosen = false
         awaitingAddedTrack = false
         stylingChangedLast = false
@@ -253,6 +286,20 @@ internal class VideoPathTracker(private val directAllowed: Boolean) {
         if (!directAllowed || directFailure != null) return false
         directFailure = reason
         return true
+    }
+
+    /**
+     * Records the selected video track's Dolby Vision profile, read when the
+     * file has loaded. A property of the file, not a choice: when it moves the
+     * decision, the core switches at once rather than debounced, and it holds
+     * until the next [onLoadRequested] or [onStopped]. True only when it newly
+     * holds the file composed, so the caller's immediate switch can never
+     * carry a subtitle change past its debounce.
+     */
+    fun onVideoTrack(dolbyVisionProfile: Int?): Boolean {
+        val before = VideoPathPolicy.needsDolbyVisionProcessing(this.dolbyVisionProfile)
+        this.dolbyVisionProfile = dolbyVisionProfile
+        return !before && VideoPathPolicy.needsDolbyVisionProcessing(dolbyVisionProfile)
     }
 
     /** True when the selected subtitle changed, which restarts the debounce. */

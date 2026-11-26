@@ -1,5 +1,6 @@
 package moe.ditto.halo.tv.browse
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,6 +49,7 @@ import kotlinx.coroutines.launch
 import moe.ditto.halo.api.AddonSource
 import moe.ditto.halo.api.Stream
 import moe.ditto.halo.browse.buildListing
+import moe.ditto.halo.browse.countLabel
 import moe.ditto.halo.browse.detailsFor
 import moe.ditto.halo.browse.filterCounts
 import moe.ditto.halo.browse.medalFor
@@ -59,6 +62,7 @@ import moe.ditto.halo.browse.SourceFilter
 import moe.ditto.halo.browse.SourcesListing
 import moe.ditto.halo.browse.SourceSort
 import moe.ditto.halo.browse.SourceStatus
+import moe.ditto.halo.browse.VideoDecoderSupport
 import moe.ditto.halo.cache.QueryState
 import moe.ditto.halo.screens.safeAddonFailure
 import moe.ditto.halo.screens.streamsContentState
@@ -95,11 +99,16 @@ private val PanelWidth = 540.dp
  * plays a source; Menu (or holding select) shows its file details. Sources
  * that must download before they play wait behind one row, as on the phone.
  * There is no download button: a TV keeps no downloads.
+ *
+ * Sources in a format this TV cannot play are left out altogether
+ * ([resolveSources]' decoders), so the viewer never has to judge a codec.
  */
 @Composable
 internal fun TvSourcesScreen(
     graph: SessionGraph,
     route: StreamsRoute,
+    /** What this TV's decoders play; null while they are still being read. */
+    decoders: VideoDecoderSupport?,
     onPlay: (AddonSource, Stream) -> Unit,
 ) {
     val memory = rememberTvFocusMemory()
@@ -109,8 +118,14 @@ internal fun TvSourcesScreen(
     val runtimeSeconds = (runtimeMinutes(meta.value?.runtime) ?: 0) * 60.0
     val state = streamsContentState(query)
     val answer = state as? StreamsContentState.Sources
-    val resolve = remember(answer?.groups, answer?.failures, runtimeSeconds) {
-        answer?.let { resolveSources(it.groups, it.failures, runtimeSeconds) }
+    val resolve = remember(answer?.groups, answer?.failures, runtimeSeconds, decoders) {
+        if (answer == null || decoders == null) null else resolveSources(answer.groups, answer.failures, runtimeSeconds, decoders)
+    }
+    LaunchedEffect(resolve) {
+        val result = resolve ?: return@LaunchedEffect
+        if (result.unplayableCount > 0) {
+            Log.i(LogTag, "sources: ${result.pool.size} listed, ${result.unplayableCount} left out as not playable on this TV")
+        }
     }
     var filter by remember { mutableStateOf(SourceFilter.All) }
     var sort by remember { mutableStateOf(SourceSort.Recommended) }
@@ -176,8 +191,15 @@ internal fun TvSourcesScreen(
                     is StreamsContentState.NoSources -> Failure(NoSourcesMessage, memory, retry)
                     is StreamsContentState.Sources -> {
                         val result = resolve
-                        if (result == null || result.pool.isEmpty()) {
-                            Failure(NoSourcesMessage, memory, retry)
+                        if (result == null && decoders == null) {
+                            // The decoders are read once, and long before an
+                            // answer usually arrives; this covers the rare wait.
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                repeat(4) { HaloSkeleton(Modifier.fillMaxWidth().height(64.dp)) }
+                            }
+                        } else if (result == null || result.pool.isEmpty()) {
+                            val unplayable = result?.unplayableCount ?: 0
+                            Failure(if (unplayable > 0) unplayableMessage(unplayable) else NoSourcesMessage, memory, retry)
                         } else {
                             val listing = remember(result, filter, sort, revealAll) {
                                 buildListing(result, filter, sort, revealAll)
@@ -490,5 +512,15 @@ private fun Fact(label: String, values: List<String>) {
     }
 }
 
+/** Every source the addons offered is in a format this TV cannot play. */
+private fun unplayableMessage(count: Int): String =
+    if (count == 1) {
+        "Found 1 source, but it isn't in a format this TV can play."
+    } else {
+        "Found ${countLabel(count, "source", "sources")}, but none in a format this TV can play."
+    }
+
 private const val NoSourcesMessage =
     "None of your addons offered a source for this. Add a streaming addon in Settings, or try again later."
+
+private const val LogTag = "HALO_TV"

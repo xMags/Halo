@@ -297,4 +297,87 @@ class VideoPathTrackerTest {
         tracker.onLoadRequested()
         assertFalse(tracker.fileLoaded)
     }
+
+    @Test
+    fun aDolbyVisionPictureWithoutACompatibleBaseLayerNeedsTheEngine() {
+        val decision = VideoPathPolicy.decide(
+            directAllowed = true,
+            directFailure = null,
+            subtitleSelected = false,
+            subtitleCodec = null,
+            keepScriptStyling = false,
+            dolbyVisionProfile = 5,
+        )
+        assertEquals(VideoPathDecision(VideoPath.Composed, "Dolby Vision picture needs processing, profile 5"), decision)
+        assertTrue(VideoPathPolicy.needsDolbyVisionProcessing(5))
+    }
+
+    @Test
+    fun dolbyVisionWithACompatibleBaseLayerOrNoneAtAllStaysDirect() {
+        for (profile in listOf(4, 7, 8, 9, null)) {
+            assertFalse(VideoPathPolicy.needsDolbyVisionProcessing(profile), "$profile")
+            val decision = VideoPathPolicy.decide(true, null, false, null, false, dolbyVisionProfile = profile)
+            assertEquals(VideoPathDecision(VideoPath.Direct, "no subtitle"), decision, "$profile")
+        }
+    }
+
+    @Test
+    fun profileFiveSwitchesAtFileLoadWithoutASettle() {
+        val tracker = VideoPathTracker(directAllowed = true)
+        tracker.onLoadRequested()
+        tracker.onFileLoaded()
+        // True asks the core to switch at once; no settle is involved.
+        assertTrue(tracker.onVideoTrack(5))
+        assertTrue(tracker.wantsSwitch())
+        assertEquals(VideoPath.Composed, tracker.decision().path)
+        assertEquals("Dolby Vision picture needs processing, profile 5", tracker.decision().reason)
+        // The same report again asks for nothing more.
+        assertFalse(tracker.onVideoTrack(5))
+    }
+
+    @Test
+    fun profileEightAndNoDolbyVisionNeverAskForASwitch() {
+        val tracker = VideoPathTracker(directAllowed = true)
+        tracker.onLoadRequested()
+        tracker.onFileLoaded()
+        assertFalse(tracker.onVideoTrack(8))
+        assertFalse(tracker.onVideoTrack(null))
+        assertFalse(tracker.wantsSwitch())
+        assertEquals(VideoPath.Direct, tracker.decision().path)
+    }
+
+    @Test
+    fun theDolbyVisionRequirementOutlivesSubtitleChanges() {
+        val tracker = VideoPathTracker(directAllowed = true)
+        tracker.onLoadRequested()
+        tracker.onFileLoaded()
+        tracker.onVideoTrack(5)
+        tracker.adopt(VideoPath.Composed)
+        tracker.onSubtitleSelectedByApp()
+        tracker.onSubtitleSelected(selected = true, codec = "subrip")
+        assertFalse(tracker.wantsSwitch())
+        assertEquals(VideoPath.Composed, tracker.decision().path)
+        tracker.onSubtitleSelected(selected = false, codec = null)
+        assertFalse(tracker.wantsSwitch())
+        tracker.onTrackStyling(keepScript = false)
+        assertFalse(tracker.wantsSwitch())
+    }
+
+    @Test
+    fun theDolbyVisionRequirementEndsWithTheFile() {
+        val tracker = VideoPathTracker(directAllowed = true)
+        tracker.onFileLoaded()
+        tracker.onVideoTrack(5)
+        assertEquals(VideoPathDecision(VideoPath.Direct, "new file"), tracker.onLoadRequested())
+        assertEquals(VideoPath.Direct, tracker.decision().path)
+
+        tracker.onFileLoaded()
+        tracker.onVideoTrack(5)
+        tracker.onStopped()
+        assertEquals(VideoPath.Direct, tracker.decision().path)
+        // A fresh file of the same kind is judged again.
+        tracker.onLoadRequested()
+        tracker.onFileLoaded()
+        assertTrue(tracker.onVideoTrack(5))
+    }
 }
