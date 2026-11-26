@@ -40,6 +40,12 @@ object StorageKeys {
     const val VideoFitMode = "halo.videoFitMode.v1"
 
     /**
+     * This device's measured line speed in megabits per second, for ranking
+     * sources. Not synced: each device has its own line. See [LineSpeedStore].
+     */
+    const val MeasuredLineSpeed = "halo.measuredLineMbps.v1"
+
+    /**
      * Downloaded videos and their transfer state. Device-local of necessity:
      * it describes files on this device, so syncing it would tell another
      * device it holds media it has never seen.

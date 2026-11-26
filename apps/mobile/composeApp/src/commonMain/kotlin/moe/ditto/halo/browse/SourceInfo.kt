@@ -70,17 +70,11 @@ fun parseSourceInfo(stream: Stream): SourceInfo {
     )
 }
 
-/** Rank weight for a quality; unknown sorts below everything recognised. */
-fun qualityRank(quality: SourceQuality?): Int = quality?.ordinal ?: SourceQuality.entries.size
-
 /**
- * Best-first ordering: a file that plays now beats a better file that has to
- * be fetched, then resolution, then the larger file at equal resolution
- * (bitrate is the only quality signal left once the labels match).
+ * Rank weight for a quality; unknown sorts below everything recognised. The
+ * order sources are listed in is [rankSources]'s, which reads this.
  */
-val SourceInfoOrder: Comparator<SourceInfo> = compareBy<SourceInfo> { if (it.cached == true) 0 else 1 }
-    .thenBy { qualityRank(it.quality) }
-    .thenByDescending { it.sizeBytes ?: 0L }
+fun qualityRank(quality: SourceQuality?): Int = quality?.ordinal ?: SourceQuality.entries.size
 
 private fun firstLine(value: String?): String? =
     value?.lineSequence()?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }

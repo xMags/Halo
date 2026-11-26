@@ -25,6 +25,9 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import moe.ditto.halo.auth.TokenProvider
+import moe.ditto.halo.browse.StreamRankingInput
+import moe.ditto.halo.browse.normalizeRankingInput
+import moe.ditto.halo.browse.rankingQueryValue
 import moe.ditto.halo.magnets.MagnetAnswerException
 import moe.ditto.halo.magnets.MagnetRequest
 import moe.ditto.halo.magnets.isMagnetId
@@ -151,13 +154,25 @@ class HaloClient(
         query = mapOf("type" to type, "id" to id),
     )
 
-    /** Fans out to every effective addon; playable streams grouped by addon. */
-    override suspend fun getStreams(type: String, videoId: String): StreamsResult = request(
-        HttpMethod.Get,
-        "/streams",
-        StreamsResult.serializer(),
-        query = mapOf("type" to type, "videoId" to videoId),
-    ).withoutActions()
+    /**
+     * Fans out to every effective addon; playable streams grouped by addon,
+     * ranked by the server for [ranking]. Unknown values are left out, which
+     * the server reads as unknown, and the answer records what it was asked
+     * for so a reader whose ranking has since changed ranks it itself.
+     */
+    override suspend fun getStreams(type: String, videoId: String, ranking: StreamRankingInput): StreamsResult {
+        val rankedFor = normalizeRankingInput(ranking)
+        val query = buildMap {
+            put("type", type)
+            put("videoId", videoId)
+            if (rankedFor.lineMbps > 0) put("lineMbps", rankingQueryValue(rankedFor.lineMbps))
+            if (rankedFor.screenHeight > 0) put("screenHeight", rankingQueryValue(rankedFor.screenHeight))
+            if (rankedFor.runtimeSeconds > 0) put("runtimeSeconds", rankingQueryValue(rankedFor.runtimeSeconds))
+        }
+        return request(HttpMethod.Get, "/streams", StreamsResult.serializer(), query = query)
+            .withoutActions()
+            .copy(rankedFor = rankedFor)
+    }
 
     /**
      * The episode following [videoId] plus, when the addon that served the

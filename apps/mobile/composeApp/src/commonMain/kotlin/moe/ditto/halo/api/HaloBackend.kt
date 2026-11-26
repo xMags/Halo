@@ -1,6 +1,7 @@
 package moe.ditto.halo.api
 
 import io.ktor.client.statement.HttpResponse
+import moe.ditto.halo.browse.StreamRankingInput
 import moe.ditto.halo.people.Capabilities
 import moe.ditto.halo.people.IdLookup
 import moe.ditto.halo.people.PeopleSearch
@@ -39,8 +40,17 @@ interface HaloBackend {
     /** First addon that can describe this type/id wins; 404 when none can. */
     suspend fun getMeta(type: String, id: String): MetaResponse
 
-    /** Asks every stream-capable addon; playable streams grouped by addon. */
-    suspend fun getStreams(type: String, videoId: String): StreamsResult
+    /**
+     * Asks every stream-capable addon; playable streams grouped by addon.
+     * [ranking] describes this device and title: a Halo server ranks the
+     * streams for it (`halo` on each stream, and [StreamsResult.rankedFor]
+     * saying what for); the device backend leaves ranking to the sources page.
+     */
+    suspend fun getStreams(
+        type: String,
+        videoId: String,
+        ranking: StreamRankingInput = StreamRankingInput.Unknown,
+    ): StreamsResult
 
     /** The episode after [videoId] and, when it can be matched, its stream. */
     suspend fun getNextEpisode(

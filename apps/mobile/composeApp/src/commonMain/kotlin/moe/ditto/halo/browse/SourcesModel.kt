@@ -73,10 +73,12 @@ data class SourceEntry(
     val info: SourceInfo,
     val status: SourceStatus,
     val tier: QualityTier,
-    /** Position in the whole answer's best-first order. */
+    /** Position in the whole answer's best-first order; 0 is the pick. */
     val rank: Int,
     /** Megabits per second the file needs; zero when size or runtime is unknown. */
     val neededMbps: Double,
+    /** How the source sits on this device's line and screen ([rankSources]). */
+    val fit: SourceFit,
 ) {
     val speed: StartSpeed get() = status.speed
     val sizeBytes: Long get() = info.sizeBytes ?: 0L
@@ -116,14 +118,25 @@ private fun statusOf(info: SourceInfo): SourceStatus = when (info.cached) {
  * @param decoders what this device's video decoders can do. Sources it cannot
  *   play are dropped before ranking, so nothing after this (the pick, the
  *   groups, the counts, the provider rows) sees them; the default keeps all.
+ * @param device this device's line and screen; unknown by default.
+ * @param annotatedFor what a server ranked these streams for
+ *   ([StreamsResult.rankedFor]); null when nobody did.
+ *
+ * The order is the one rule in [rankSources]: taken from the server's `halo`
+ * annotations when they apply ([servedRanks]), else computed here from the
+ * same facts, so both paths give every entry the same rank and fit.
  */
 fun resolveSources(
     groups: List<AddonStreams>,
     errors: List<AddonError>,
     runtimeSeconds: Double,
     decoders: VideoDecoderSupport = VideoDecoderSupport.Unrestricted,
+    device: RankingDevice = RankingDevice.Unknown,
+    annotatedFor: StreamRankingInput? = null,
 ): SourcesResolve {
     class Candidate(val key: String, val addon: AddonSource, val stream: Stream, val info: SourceInfo)
+
+    val ranking = normalizeRankingInput(StreamRankingInput(device.lineMbps, device.screenHeight, runtimeSeconds))
 
     var unplayable = 0
     val kept = groups.map { group ->
@@ -137,10 +150,16 @@ fun resolveSources(
             Candidate("${group.addon.id}:$index", group.addon, stream, info)
         }
     }
-    val pool = kept.flatten()
-        .sortedWith(compareBy(SourceInfoOrder) { it.info })
-        .mapIndexed { rank, candidate ->
-            val size = candidate.info.sizeBytes ?: 0L
+    val flat = kept.flatten()
+    val ranks = servedRanks(flat.map { it.stream }, annotatedFor, ranking)
+        ?: rankSources(flat.map { rankableSource(it.info, ranking.runtimeSeconds) }, ranking.device)
+    // Positions 0..n-1 in rank order, whatever gaps the server's ranks have:
+    // it ranked streams this page does not list (unplayable ones, formats
+    // this device cannot decode).
+    val pool = flat.indices
+        .sortedWith(compareBy<Int> { ranks[it].rank }.thenBy { it })
+        .mapIndexed { position, index ->
+            val candidate = flat[index]
             SourceEntry(
                 key = candidate.key,
                 addon = candidate.addon,
@@ -148,8 +167,9 @@ fun resolveSources(
                 info = candidate.info,
                 status = statusOf(candidate.info),
                 tier = tierOf(candidate.info.quality),
-                rank = rank,
-                neededMbps = if (size > 0 && runtimeSeconds > 0) size * 8.0 / runtimeSeconds / 1_000_000.0 else 0.0,
+                rank = position,
+                neededMbps = neededMbps(candidate.info.sizeBytes, ranking.runtimeSeconds),
+                fit = ranks[index].fit,
             )
         }
 
@@ -160,6 +180,23 @@ fun resolveSources(
         errors.forEach { add(ProviderRow(sanitizeAddonName(it.name), addonFailureCopy(it.code), false)) }
     }
     return SourcesResolve(pool, providers, resolveSummary(pool.size, groups.size, errors.size), unplayable)
+}
+
+/**
+ * The server's ranks, when they can stand for this device: every listed
+ * stream carries a well-formed one and the server ranked for the same line,
+ * screen and runtime as this page would. Otherwise null, and the page ranks
+ * the streams itself.
+ */
+private fun servedRanks(
+    streams: List<Stream>,
+    annotatedFor: StreamRankingInput?,
+    ranking: StreamRankingInput,
+): List<SourceRank>? {
+    if (annotatedFor == null || !sameRankingInput(normalizeRankingInput(annotatedFor), ranking)) return null
+    val ranks = ArrayList<SourceRank>(streams.size)
+    for (stream in streams) ranks += readSourceRank(stream.halo) ?: return null
+    return ranks
 }
 
 /** The ratio form ("1 of 2 addons") only appears when somebody failed. */
@@ -279,6 +316,16 @@ fun medalFor(quality: SourceQuality?, dynamicRange: String?): Medal {
     return Medal(plate, tag, finish)
 }
 
+/**
+ * Said only of a source that needs more than the line's safe share; null
+ * otherwise. A picture larger than the screen is ranked lower but not warned
+ * about: it plays fine. Nothing is hidden because of its fit.
+ */
+fun sourceWarning(entry: SourceEntry): String? =
+    if (entry.fit == SourceFit.OverBudget) MayBufferWarning else null
+
+const val MayBufferWarning = "May buffer on this connection"
+
 /** The quiet line under a row's status: codec, sound and size, each only when known. */
 fun metaLine(info: SourceInfo): String =
     listOfNotNull(info.codec, info.audio, info.sizeBytes?.let(::formatSourceSize)).joinToString(" · ")
@@ -346,8 +393,8 @@ fun detailsFor(entry: SourceEntry, heaviestMbps: Double): SourceDetails {
         cacheGood = entry.status == SourceStatus.Instant,
         mbpsLabel = if (measured) "${entry.neededMbps.roundToInt()} Mbps" else "Not available",
         heaviestLabel = if (heaviest > 0) "HEAVIEST ${heaviest.roundToInt()} MBPS" else "",
-        // The phone has no line-speed measurement, so the note says what the
-        // number rests on rather than comparing it with an unknown line.
+        // The note says what the number rests on; whether it suits the line
+        // is the row's own warning (see [sourceWarning]).
         bandwidthNote = if (measured) "Averaged over the runtime" else "File size or runtime is not listed",
         meterFraction = if (measured && heaviest > 0) (entry.neededMbps / heaviest).toFloat().coerceIn(0f, 1f) else 0f,
     )

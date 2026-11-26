@@ -14,6 +14,10 @@ import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.io.IOException
 import moe.ditto.halo.auth.TokenProvider
+import moe.ditto.halo.browse.SourceFit
+import moe.ditto.halo.browse.SourceRank
+import moe.ditto.halo.browse.StreamRankingInput
+import moe.ditto.halo.browse.readSourceRank
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -306,6 +310,53 @@ class HaloClientTest {
         client.getLibrary()
 
         assertNull(recorded.single().headers[HttpHeaders.Authorization])
+    }
+
+    @Test
+    fun theStreamsRequestCarriesTheRankingInputAndTheAnswerSaysWhatFor() = runTest {
+        val client = client { jsonResponse("""{"results":[],"errors":[]}""") }
+
+        val result = client.getStreams("movie", "tt1", StreamRankingInput(lineMbps = 37.456, screenHeight = 2160.0, runtimeSeconds = 7200.0))
+
+        val url = recorded.single().url
+        assertEquals("/streams", url.encodedPath)
+        assertEquals("37.46", url.parameters["lineMbps"])
+        assertEquals("2160", url.parameters["screenHeight"])
+        assertEquals("7200", url.parameters["runtimeSeconds"])
+        assertEquals(StreamRankingInput(37.46, 2160.0, 7200.0), result.rankedFor)
+    }
+
+    @Test
+    fun unknownRankingValuesAreLeftOutOfTheStreamsRequest() = runTest {
+        val client = client { jsonResponse("""{"results":[],"errors":[]}""") }
+
+        val result = client.getStreams("movie", "tt1", StreamRankingInput(lineMbps = 0.0, screenHeight = -4.0, runtimeSeconds = Double.NaN))
+
+        val parameters = recorded.single().url.parameters
+        assertEquals(setOf("type", "videoId"), parameters.names())
+        assertEquals(StreamRankingInput.Unknown, result.rankedFor)
+    }
+
+    @Test
+    fun aStreamsAnswerReadsWithItsAnnotationAbsentOrMalformed() = runTest {
+        val body = """
+            {"results":[{"addon":{"id":"a","name":"A"},"streams":[
+              {"url":"https://cdn.test/1","halo":{"rank":0,"fit":"fits"}},
+              {"url":"https://cdn.test/2"},
+              {"url":"https://cdn.test/3","halo":"best"},
+              {"url":"https://cdn.test/4","halo":{"rank":"x","fit":7,"extra":[1,2]}},
+              {"url":"https://cdn.test/5","halo":null}
+            ]}],"errors":[]}
+        """.trimIndent()
+        val client = client { jsonResponse(body) }
+
+        val streams = client.getStreams("movie", "tt1").results.single().streams
+
+        assertEquals(5, streams.size)
+        assertEquals(
+            listOf(SourceRank(0, SourceFit.Fits), null, null, null, null),
+            streams.map { readSourceRank(it.halo) },
+        )
     }
 
     @Test

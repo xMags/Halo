@@ -3,10 +3,12 @@ package moe.ditto.halo.player
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import dev.jdtech.mpv.MPVLib
 import moe.ditto.halo.browse.VideoDecoderSupport
+import moe.ditto.halo.storage.LineSpeedStore
 import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
 
@@ -37,6 +39,12 @@ internal class MpvCore private constructor(
      * software decoding; null on a profile that never stops a file for that.
      */
     private val videoDecoders: (() -> VideoDecoderSupport)?,
+    /**
+     * Where a network stream's line reading is kept once its session ends;
+     * null measures nothing. Only used with a [callbackExecutor], which is
+     * what serializes the sampler (see [lineSampler]).
+     */
+    private val lineSpeed: LineSpeedStore?,
 ) {
     interface Listener {
         fun onReady(durationSeconds: Double?)
@@ -121,6 +129,18 @@ internal class MpvCore private constructor(
     private val settleHandler: Handler? = if (profile.directVideo) Handler(Looper.getMainLooper()) else null
     private var settleTask: Runnable? = null
     private var settleToken = 0L
+
+    // The line measurement of the file playing now ([PlaybackLineSampler]),
+    // null while nothing is measured: no file, a file played from disk, or no
+    // store to keep a reading in. The main looper only times the one-second
+    // samples; each is taken on the executor, like every other field here,
+    // and the token makes a sample already on its way when the session ended
+    // do nothing.
+    private val lineHandler: Handler? =
+        if (lineSpeed != null && callbackExecutor != null) Handler(Looper.getMainLooper()) else null
+    private var lineSampler: PlaybackLineSampler? = null
+    private var lineTask: Runnable? = null
+    private var lineToken = 0L
 
     private val eventObserver = object : MPVLib.EventObserver {
         /**
@@ -256,6 +276,12 @@ internal class MpvCore private constructor(
         when (property) {
             "pause" -> listener?.onPauseChanged(value)
             "eof-reached" -> if (value) {
+                // The file has played out: what it showed of the line is kept
+                // now, and a seek back measures afresh.
+                if (lineSampler != null) {
+                    finishLineSession()
+                    startLineSession()
+                }
                 if (fileLifecycle.markEofReached()) reportEnd()
             } else if (fileLifecycle.clearEofReached()) {
                 // A seek back from the end: the next end has to count again.
@@ -263,6 +289,7 @@ internal class MpvCore private constructor(
             }
             "paused-for-cache" -> {
                 pausedForCache = value
+                lineSampler?.pausedForCache(value, SystemClock.elapsedRealtime())
                 emitBuffering()
             }
         }
@@ -272,6 +299,8 @@ internal class MpvCore private constructor(
         when (eventId) {
             MPVLib.MpvEvent.MPV_EVENT_START_FILE -> fileLifecycle.onFileStarted()
             MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED -> onFileLoaded()
+            MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> lineSampler?.playbackStarted()
+            MPVLib.MpvEvent.MPV_EVENT_SEEK -> lineSampler?.seeked(SystemClock.elapsedRealtime())
             MPVLib.MpvEvent.MPV_EVENT_END_FILE ->
                 fileLifecycle.endFileFailure()?.let { listener?.onError(it) }
             MPVLib.MpvEvent.MPV_EVENT_SHUTDOWN -> listener?.onEnded()
@@ -380,12 +409,17 @@ internal class MpvCore private constructor(
         unsupportedReported = false
         setTrackDolbyVision(false)
         startFileOnDirectPath()
+        // The file being replaced is done with; only a network stream says
+        // anything about the line, so a download played from disk is never measured.
+        finishLineSession()
+        if (isNetworkUrl(url)) startLineSession()
         fileLifecycle.onLoadRequested()
         mpv.command(arrayOf("loadfile", url))
     }
 
     fun stop() {
         if (destroyed) return
+        finishLineSession()
         setTrackDolbyVision(false)
         if (videoPaths != null) {
             cancelSubtitleSettle()
@@ -536,6 +570,8 @@ internal class MpvCore private constructor(
      */
     fun destroy() {
         if (destroyed) return
+        // Kept before teardown; the session reads nothing from mpv to finish.
+        finishLineSession()
         destroyed = true
         listener = null
         cancelSubtitleSettle()
@@ -774,6 +810,61 @@ internal class MpvCore private constructor(
         }
     }
 
+    // --- Line measurement: network streams only, see [PlaybackLineSampler] ---
+
+    /** Starts measuring the file now loading; executor only. */
+    private fun startLineSession() {
+        val handler = lineHandler ?: return
+        cancelLineTicks()
+        lineSampler = PlaybackLineSampler()
+        scheduleLineTick(handler, lineToken)
+    }
+
+    private fun scheduleLineTick(handler: Handler, token: Long) {
+        val task = Runnable { dispatch { onLineTick(token) } }
+        lineTask = task
+        handler.postDelayed(task, LineSampleIntervalMs)
+    }
+
+    /**
+     * One second's sample, read rather than observed: two property reads a
+     * second cost less than a callback for every change mpv reports. mpv
+     * reports no `demuxer-cache-idle` without a cache, which is no filling
+     * cache either.
+     */
+    private fun onLineTick(token: Long) {
+        if (destroyed || token != lineToken) return
+        val sampler = lineSampler ?: return
+        val handler = lineHandler ?: return
+        sampler.cacheIdleChanged(mpv.getPropertyBoolean("demuxer-cache-idle") != false)
+        // int64 in mpv; the JNI hands back an Int (see emitBuffering).
+        sampler.cacheSpeed(mpv.getPropertyInt("cache-speed")?.toDouble())
+        sampler.tick()
+        scheduleLineTick(handler, token)
+    }
+
+    private fun cancelLineTicks() {
+        lineToken += 1
+        val task = lineTask ?: return
+        lineTask = null
+        lineHandler?.removeCallbacks(task)
+    }
+
+    /**
+     * Ends the current session, if one is measuring, and folds what it showed
+     * into the kept reading. A failed write only loses this one reading.
+     */
+    private fun finishLineSession() {
+        cancelLineTicks()
+        val sampler = lineSampler ?: return
+        lineSampler = null
+        val store = lineSpeed ?: return
+        val session = sampler.session()
+        runCatching { store.record(session.peakMbps, session.stalled) }
+            .onSuccess { next -> if (next != null) Log.i(LOG_TAG, "[$id] line speed now ${"%.1f".format(next)} Mbps") }
+            .onFailure { Log.w(LOG_TAG, "[$id] line speed could not be kept", it) }
+    }
+
     /** Forwards `sub-text` while the app draws subtitles, which is only on the direct path with a surface. */
     private fun onSubtitleText(text: String) {
         val paths = videoPaths ?: return
@@ -874,6 +965,7 @@ internal class MpvCore private constructor(
             profile: MpvProfile,
             callbackExecutor: Executor? = null,
             videoDecoders: (() -> VideoDecoderSupport)? = null,
+            lineSpeed: LineSpeedStore? = null,
         ): MpvCore {
             // The direct path switches outputs from mpv callbacks and a timer,
             // which must run on the caller's executor, never on mpv's thread.
@@ -909,7 +1001,7 @@ internal class MpvCore private constructor(
             // Pre-init: libass builds its font provider during initialisation.
             SubtitleFontLibrary.prepare(context)?.let { mpv.setOptionString("sub-fonts-dir", it) }
 
-            val core = MpvCore(mpv, id, callbackExecutor, profile, videoDecoders.takeIf { profile.directVideo })
+            val core = MpvCore(mpv, id, callbackExecutor, profile, videoDecoders.takeIf { profile.directVideo }, lineSpeed)
             mpv.addLogObserver(core.logObserver)
             mpv.addObserver(core.eventObserver)
             mpv.init()
@@ -1034,6 +1126,13 @@ internal fun endedShortOfDuration(positionSeconds: Double?, durationSeconds: Dou
 private const val EndAllowanceSeconds = 30.0
 private const val EndAllowanceFraction = 0.02
 private const val SourceLostMessage = "The connection to this source was lost."
+
+/** One line-speed sample a second while a network stream plays. */
+private const val LineSampleIntervalMs = 1_000L
+
+/** Only these reach the line over the network; a file path or `file://` is a download on disk. */
+internal fun isNetworkUrl(url: String): Boolean =
+    url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)
 
 private const val VideoWidth = "video-params/dw"
 private const val VideoHeight = "video-params/dh"

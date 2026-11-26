@@ -51,6 +51,7 @@ import moe.ditto.halo.browse.SourceStatus
 import moe.ditto.halo.browse.medalFor
 import moe.ditto.halo.browse.metaLine
 import moe.ditto.halo.browse.parseSourceInfo
+import moe.ditto.halo.browse.sourceWarning
 import moe.ditto.halo.downloads.DownloadEntry
 import moe.ditto.halo.magnets.MagnetCopy
 import moe.ditto.halo.magnets.MagnetFile
@@ -225,6 +226,8 @@ internal fun PickCard(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 10.dp),
         )
+        // The pick is over budget only when nothing fits; it still leads, and says so.
+        sourceWarning(entry)?.let { SourceWarningLine(it, Modifier.padding(top = 8.dp)) }
         PlaySaveButtons(save = save, onPlay = onPlay, onSave = onSave, modifier = Modifier.padding(top = HaloSpacing.Md))
     }
 }
@@ -426,6 +429,7 @@ internal fun SourceRow(entry: SourceEntry, save: SaveState, onPlay: () -> Unit, 
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            sourceWarning(entry)?.let { SourceWarningLine(it) }
         }
         RowSaveMark(save)
         Box(
@@ -619,6 +623,22 @@ internal fun StatusDot(status: SourceStatus, modifier: Modifier = Modifier) {
 }
 
 /** Green plays now, amber is a short wait, and a wait of unknown length is grey. */
+/**
+ * A source's caution under its facts ([sourceWarning]), in the same caution
+ * ink as a status that means a wait.
+ */
+@Composable
+private fun SourceWarningLine(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        color = SourcesPalette.Caution,
+        fontSize = 12.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier,
+    )
+}
+
 internal fun statusInk(status: SourceStatus): Color = when (status) {
     SourceStatus.Instant -> SourcesPalette.StatusGreen
     SourceStatus.Caching -> SourcesPalette.Caution

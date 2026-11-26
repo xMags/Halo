@@ -2,6 +2,7 @@ package moe.ditto.halo.api
 
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonElement
@@ -11,6 +12,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
+import moe.ditto.halo.browse.StreamRankingInput
 
 /**
  * DTOs owned by the Halo API itself (as opposed to the addon protocol).
@@ -162,6 +164,13 @@ data class AddonStreams(
 data class StreamsResult(
     val results: List<AddonStreams> = emptyList(),
     val errors: List<AddonError> = emptyList(),
+    /**
+     * The normalized ranking input this answer was asked for, which a server
+     * ranked the streams' `halo` for. Set by the account client, never read
+     * off the wire; null when nobody ranked the answer (the device backend),
+     * so the sources page ranks it itself.
+     */
+    @Transient val rankedFor: StreamRankingInput? = null,
 )
 
 @Serializable

@@ -50,8 +50,10 @@ import moe.ditto.halo.api.Stream
 import moe.ditto.halo.api.StreamBehaviorHints
 import moe.ditto.halo.api.StreamsResult
 import moe.ditto.halo.api.UserSettings
+import moe.ditto.halo.browse.RankingDevice
 import moe.ditto.halo.browse.SourceDetails
 import moe.ditto.halo.browse.SourceEntry
+import moe.ditto.halo.browse.StreamRankingInput
 import moe.ditto.halo.browse.SourceFilter
 import moe.ditto.halo.browse.SourceSort
 import moe.ditto.halo.browse.SourcesResolve
@@ -225,12 +227,20 @@ internal fun SourcesPicker(
         bottom = HaloSpacing.Xl,
     ),
 ) {
-    val streams by remember(graph, type, videoId) {
-        graph.browse.streams(type, videoId)
-    }.collectAsState(QueryState())
     // Usually already cached by the title page; only the runtime is read, for
     // what each file asks of the line.
     val meta by remember(graph, type, metaId) { graph.browse.meta(type, metaId) }.collectAsState(QueryState())
+    val runtimeSeconds = (runtimeMinutes(meta.value?.runtime) ?: 0) * 60.0
+    // This device's line and screen, which the sources are ranked for. The
+    // line is read once per visit: the player updates it only after playback.
+    val screenHeight = rememberScreenShortSidePixels()
+    val lineMbps = remember(graph) { graph.lineSpeed.current() }
+    val device = remember(lineMbps, screenHeight) { RankingDevice(lineMbps, screenHeight.toDouble()) }
+    val streams by remember(graph, type, videoId) {
+        // What the server ranks for when this asks; the answer says so, and
+        // the list ranks again itself if the runtime arrives later.
+        graph.browse.streams(type, videoId, StreamRankingInput(device.lineMbps, device.screenHeight, runtimeSeconds))
+    }.collectAsState(QueryState())
     val settings by remember(graph) { graph.settings.observe() }.collectAsState(QueryState())
     val scope = rememberCoroutineScope()
 
@@ -289,7 +299,8 @@ internal fun SourcesPicker(
                 // played as a source of no addon: no headers, and no addon to
                 // ask for what follows it.
                 onPlayMagnet = { file -> onPlay(MagnetAddon, magnetStream(file)) },
-                runtimeSeconds = (runtimeMinutes(meta.value?.runtime) ?: 0) * 60.0,
+                runtimeSeconds = runtimeSeconds,
+                device = device,
                 view = view,
                 onOpenSort = { sortOpen = true },
                 onOpenDetails = { entry, read -> details = SourceDetailsRequest(entry, read) },
@@ -405,6 +416,8 @@ internal sealed interface StreamsContentState {
         val failures: List<AddonError>,
         val refreshFailure: String?,
         override val isFetching: Boolean,
+        /** What a server ranked these streams for; null when nobody did. */
+        val rankedFor: StreamRankingInput? = null,
     ) : StreamsContentState
 }
 
@@ -427,6 +440,7 @@ internal fun streamsContentState(query: QueryState<StreamsResult>): StreamsConte
         failures = value.errors,
         refreshFailure = query.error?.let(::safeStreamsRequestMessage),
         isFetching = query.isFetching,
+        rankedFor = value.rankedFor,
     )
 }
 
@@ -466,6 +480,8 @@ internal fun StreamsContent(
     onPlayMagnet: (MagnetFile) -> Unit = {},
     /** The video's length, for what each file asks of the line; zero when unknown. */
     runtimeSeconds: Double = 0.0,
+    /** This device's line and screen, which the sources are ranked for; unknown by default. */
+    device: RankingDevice = RankingDevice.Unknown,
     view: SourcesView = remember { SourcesView() },
     onOpenSort: () -> Unit = {},
     onOpenDetails: (SourceEntry, SourceDetails) -> Unit = { _, _ -> },
@@ -481,10 +497,12 @@ internal fun StreamsContent(
 ) {
     val state = streamsContentState(query)
     val answer = state as? StreamsContentState.Sources
-    val resolve = remember(answer?.groups, answer?.failures, runtimeSeconds) {
+    val resolve = remember(answer?.groups, answer?.failures, answer?.rankedFor, runtimeSeconds, device) {
         // Every source stays listed: a phone's processor decodes in software
         // whatever its video chip lacks, so its decoders are no reason to hide one.
-        answer?.let { resolveSources(it.groups, it.failures, runtimeSeconds) }
+        answer?.let {
+            resolveSources(it.groups, it.failures, runtimeSeconds, device = device, annotatedFor = it.rankedFor)
+        }
     }
 
     // The heading outlives every state below it: a screen that swaps itself

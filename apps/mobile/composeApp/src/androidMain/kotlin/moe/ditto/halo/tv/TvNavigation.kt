@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
@@ -34,6 +35,7 @@ import moe.ditto.halo.tv.player.TvSourceFallback
 import moe.ditto.halo.tv.player.tvVideoDecoders
 import moe.ditto.halo.screens.ShelfSnapshots
 import moe.ditto.halo.screens.TitleNavigation
+import moe.ditto.halo.screens.rememberScreenShortSidePixels
 import moe.ditto.halo.screens.rememberTitleMenuHost
 import moe.ditto.halo.shell.DetailRoute
 import moe.ditto.halo.shell.HomeRoute
@@ -84,8 +86,10 @@ internal fun TvShell(
     val decoders by produceState<VideoDecoderSupport?>(null, playbackPreferences) {
         value = tvVideoDecoders(playbackPreferences.hardwareDecodingAtStart)
     }
+    // Read when a fallback ranks, so a display mode change since is honoured.
+    val screenHeight by rememberUpdatedState(rememberScreenShortSidePixels())
     val sourceFallback = remember(graph, playbackPreferences) {
-        TvSourceFallback(graph, playbackPreferences.hardwareDecodingAtStart)
+        TvSourceFallback(graph, playbackPreferences.hardwareDecodingAtStart, screenHeight = { screenHeight })
     }
 
     val titleMenus = rememberTitleMenuHost(

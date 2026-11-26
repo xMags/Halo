@@ -104,10 +104,19 @@ class BrowseRepository(
      * The complete result is retained because a failed addon is materially
      * different from one that answered with no playable source. Screens use
      * that distinction for partial warnings and manual recovery.
+     *
+     * The key leaves [ranking] out on purpose: the title page and the sources
+     * page share one answer, and a new line reading must not ask every addon
+     * again. The answer says what it was ranked for ([StreamsResult.rankedFor]),
+     * so a reader whose ranking differs ranks the streams itself.
      */
-    fun streams(type: String, videoId: String): Flow<QueryState<StreamsResult>> {
+    fun streams(
+        type: String,
+        videoId: String,
+        ranking: StreamRankingInput = StreamRankingInput.Unknown,
+    ): Flow<QueryState<StreamsResult>> {
         val key = HaloKey.Streams(type, videoId)
-        return cache.query(key, key.staleMs) { client.getStreams(type, videoId) }
+        return cache.query(key, key.staleMs) { client.getStreams(type, videoId, ranking) }
     }
 
     /** Manual retry only. Invalidation reuses the active query's fetcher and never loops. */

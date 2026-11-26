@@ -26,6 +26,7 @@ import moe.ditto.halo.api.StreamsResult
 import moe.ditto.halo.api.SubtitlesResult
 import moe.ditto.halo.api.UserSettings
 import moe.ditto.halo.api.WatchState
+import moe.ditto.halo.browse.StreamRankingInput
 import moe.ditto.halo.auth.EpochClock
 import kotlinx.serialization.json.JsonElement
 import moe.ditto.halo.people.Capabilities
@@ -175,7 +176,12 @@ internal class DeviceBackend(
         return resolver.metaWithCast(resolvableAddons(), type, id) ?: throw apiError(404, "no metadata found")
     }
 
-    override suspend fun getStreams(type: String, videoId: String): StreamsResult {
+    /**
+     * [ranking] is not used here: the answer leaves [StreamsResult.rankedFor]
+     * null, so the sources page ranks these streams itself with the same rule
+     * a server would, and any `halo` an addon put on a stream is never trusted.
+     */
+    override suspend fun getStreams(type: String, videoId: String, ranking: StreamRankingInput): StreamsResult {
         if (type.isEmpty() || videoId.isEmpty()) throw apiError(400, "type and videoId are required")
         return resolver.streams(resolvableAddons(), type, videoId)
     }

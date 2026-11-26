@@ -18,6 +18,7 @@ import moe.ditto.halo.player.MpvProfile
 import moe.ditto.halo.player.SubtitleFontLibrary
 import moe.ditto.halo.player.VideoFrameSource
 import moe.ditto.halo.storage.AndroidPreferencesStore
+import moe.ditto.halo.storage.LineSpeedStore
 import java.io.File
 
 /**
@@ -41,7 +42,13 @@ internal class AndroidActivityHosts(
         storage = secureStorage,
         wire = KtorAndroidOidcWire(authHttpClient),
     )
-    val playerHost = AndroidMpvPlayerHost(activity.applicationContext, playerProfile)
+    // The same store and key the sources pages read through the session
+    // graph, so the phone and the TV rank by what this player measured.
+    val playerHost = AndroidMpvPlayerHost(
+        activity.applicationContext,
+        playerProfile,
+        lineSpeed = LineSpeedStore(AndroidPreferencesStore(activity.applicationContext)),
+    )
     val playerSystemPort = AndroidPlayerSystemPort(activity)
     private val application = activity.application as HaloApplication
     private val applicationContext = activity.applicationContext

@@ -291,6 +291,14 @@ data class Stream(
     val description: String? = null,
     val subtitles: List<Subtitle> = emptyList(),
     val behaviorHints: StreamBehaviorHints? = null,
+    /**
+     * Where a Halo server ranked this stream for the device the request
+     * described (`{ rank, fit }`), across every addon of the answer. Kept raw
+     * on purpose: an older server sends none and a server is untrusted input,
+     * so a missing or malformed value must never fail the whole answer.
+     * Read only through [moe.ditto.halo.browse.readSourceRank].
+     */
+    val halo: JsonElement? = null,
 ) {
     /** Halo plays direct URLs only; everything else is listed nowhere. */
     val isPlayable: Boolean

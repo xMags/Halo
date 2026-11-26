@@ -38,6 +38,7 @@ import moe.ditto.halo.downloads.DownloadStoragePort
 import moe.ditto.halo.player.StreamVideoHasher
 import moe.ditto.halo.player.SubtitleFileCache
 import moe.ditto.halo.storage.KeyValueStore
+import moe.ditto.halo.storage.LineSpeedStore
 import moe.ditto.halo.storage.SearchHistoryStore
 import moe.ditto.halo.storage.SubtitleChoiceStore
 import moe.ditto.halo.storage.VideoFitModeStore
@@ -204,6 +205,9 @@ internal class SessionGraph(
     val searchHistory = SearchHistoryStore(keyValueStore)
     val subtitleChoices = SubtitleChoiceStore(keyValueStore, clock)
     val videoFitMode = VideoFitModeStore(keyValueStore)
+
+    /** This device's measured line speed, which the player writes and the sources pages rank by. */
+    val lineSpeed = LineSpeedStore(keyValueStore)
 
     private val _addonsNotMoved = MutableStateFlow<List<String>>(emptyList())
 

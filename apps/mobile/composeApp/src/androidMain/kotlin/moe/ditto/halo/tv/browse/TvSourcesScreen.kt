@@ -54,7 +54,10 @@ import moe.ditto.halo.browse.detailsFor
 import moe.ditto.halo.browse.filterCounts
 import moe.ditto.halo.browse.medalFor
 import moe.ditto.halo.browse.metaLine
+import moe.ditto.halo.browse.RankingDevice
 import moe.ditto.halo.browse.resolveSources
+import moe.ditto.halo.browse.sourceWarning
+import moe.ditto.halo.browse.StreamRankingInput
 import moe.ditto.halo.browse.sanitizeAddonName
 import moe.ditto.halo.browse.SourceDetails
 import moe.ditto.halo.browse.SourceEntry
@@ -64,6 +67,7 @@ import moe.ditto.halo.browse.SourceSort
 import moe.ditto.halo.browse.SourceStatus
 import moe.ditto.halo.browse.VideoDecoderSupport
 import moe.ditto.halo.cache.QueryState
+import moe.ditto.halo.screens.rememberScreenShortSidePixels
 import moe.ditto.halo.screens.safeAddonFailure
 import moe.ditto.halo.screens.streamsContentState
 import moe.ditto.halo.screens.StreamsContentState
@@ -113,13 +117,24 @@ internal fun TvSourcesScreen(
 ) {
     val memory = rememberTvFocusMemory()
     val scope = rememberCoroutineScope()
-    val query by remember(graph, route.type, route.videoId) { graph.browse.streams(route.type, route.videoId) }.collectAsState(QueryState())
     val meta by remember(graph, route.type, route.metaId) { graph.browse.meta(route.type, route.metaId) }.collectAsState(QueryState())
     val runtimeSeconds = (runtimeMinutes(meta.value?.runtime) ?: 0) * 60.0
+    // The panel's own mode (2160 on a 4K set) and this TV's measured line,
+    // which the sources are ranked for, as on the phone.
+    val screenHeight = rememberScreenShortSidePixels()
+    val lineMbps = remember(graph) { graph.lineSpeed.current() }
+    val device = remember(lineMbps, screenHeight) { RankingDevice(lineMbps, screenHeight.toDouble()) }
+    val query by remember(graph, route.type, route.videoId) {
+        graph.browse.streams(route.type, route.videoId, StreamRankingInput(device.lineMbps, device.screenHeight, runtimeSeconds))
+    }.collectAsState(QueryState())
     val state = streamsContentState(query)
     val answer = state as? StreamsContentState.Sources
-    val resolve = remember(answer?.groups, answer?.failures, runtimeSeconds, decoders) {
-        if (answer == null || decoders == null) null else resolveSources(answer.groups, answer.failures, runtimeSeconds, decoders)
+    val resolve = remember(answer?.groups, answer?.failures, answer?.rankedFor, runtimeSeconds, decoders, device) {
+        if (answer == null || decoders == null) {
+            null
+        } else {
+            resolveSources(answer.groups, answer.failures, runtimeSeconds, decoders, device, answer.rankedFor)
+        }
     }
     LaunchedEffect(resolve) {
         val result = resolve ?: return@LaunchedEffect
@@ -452,13 +467,22 @@ private fun statusColor(status: SourceStatus): Color = when (status) {
 @Composable
 private fun SourceRow(entry: SourceEntry, onClick: () -> Unit, onMenu: () -> Unit, modifier: Modifier = Modifier) {
     val medal = medalFor(entry.info)
+    val warning = sourceWarning(entry)
     TvSurface(
         onClick = onClick,
         onMenu = onMenu,
         modifier = modifier
             .fillMaxWidth()
-            .height(68.dp)
-            .semantics { contentDescription = "${listOfNotNull(medal.plate, medal.tag).joinToString(" ")}, ${entry.status.label}, ${metaLine(entry.info)}" },
+            // Taller only for the caution line, so every other row keeps its size.
+            .height(if (warning == null) 68.dp else 86.dp)
+            .semantics {
+                contentDescription = listOfNotNull(
+                    listOfNotNull(medal.plate, medal.tag).joinToString(" "),
+                    entry.status.label,
+                    metaLine(entry.info),
+                    warning,
+                ).joinToString(", ")
+            },
         cornerRadius = 14.dp,
         colors = TvSurfaceColors(Color.White.copy(alpha = 0.03f), HaloColors.SurfaceHigh),
         focusScale = TvMetrics.RowFocusScale,
@@ -481,6 +505,10 @@ private fun SourceRow(entry: SourceEntry, onClick: () -> Unit, onMenu: () -> Uni
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                // In the caution ink the panel already uses for addons that failed.
+                warning?.let {
+                    Text(it, style = TvType.Meta.copy(color = HaloColors.Gold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
     }

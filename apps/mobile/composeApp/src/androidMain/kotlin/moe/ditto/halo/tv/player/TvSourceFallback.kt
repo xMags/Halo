@@ -8,12 +8,15 @@ import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.SessionGraph
 import moe.ditto.halo.api.AddonSource
 import moe.ditto.halo.api.Stream
+import moe.ditto.halo.browse.RankingDevice
 import moe.ditto.halo.browse.SourceEntry
+import moe.ditto.halo.browse.SourceFit
 import moe.ditto.halo.browse.StartSpeed
 import moe.ditto.halo.browse.resolveSources
 import moe.ditto.halo.screens.StreamsContentState
 import moe.ditto.halo.screens.player.PlaybackContext
 import moe.ditto.halo.screens.streamsContentState
+import moe.ditto.halo.sync.runtimeMinutes
 
 /** At most this many automatic source changes for one video before the viewer is asked. */
 internal const val MaxAutomaticSourceSwitches = 3
@@ -29,6 +32,11 @@ internal const val MaxAutomaticSourceSwitches = 3
  * ([failedNeedsDownload]): the viewer chose to wait for that one, not for a
  * different file. A source whose name does not say its codec may be taken;
  * if it fails as well, it joins [tried] and costs one of the switches.
+ *
+ * Among those, a source that may buffer on this connection
+ * ([SourceFit.OverBudget]) is taken only when no other is left: the rank
+ * puts a cached file ahead of an uncached one whatever its fit, but a switch
+ * the viewer did not ask for should not trade a format failure for stalls.
  */
 internal fun nextFallbackSource(
     pool: List<SourceEntry>,
@@ -38,11 +46,12 @@ internal fun nextFallbackSource(
     switchesUsed: Int,
 ): SourceEntry? {
     if (switchesUsed >= MaxAutomaticSourceSwitches) return null
-    return pool.sortedBy { it.rank }.firstOrNull { entry ->
+    val candidates = pool.sortedBy { it.rank }.filter { entry ->
         val url = entry.stream.url
         url != null && url != failedUrl && url !in tried &&
             (failedNeedsDownload || entry.speed != StartSpeed.NeedsDownload)
     }
+    return candidates.firstOrNull { it.fit != SourceFit.OverBudget } ?: candidates.firstOrNull()
 }
 
 /**
@@ -59,6 +68,8 @@ internal class TvSourceFallback(
     private val graph: SessionGraph,
     /** The setting the running player was built with; see [tvVideoDecoders]. */
     private val hardwareDecodingAtStart: Boolean,
+    /** The panel's shorter side in physical pixels, for ranking as the sources page does; 0 when unknown. */
+    private val screenHeight: () -> Int,
 ) {
     private var videoKey: String? = null
     private val tried = HashSet<String>()
@@ -103,7 +114,20 @@ internal class TvSourceFallback(
             switching = false
             return null
         }
-        val resolve = resolveSources(answer.groups, answer.failures, runtimeSeconds = 0.0, tvVideoDecoders(hardwareDecodingAtStart))
+        // The runtime turns sizes into bitrates, so the fits match the sources
+        // page; the title's details are normally cached by now, and without
+        // them every bitrate is unknown and every source fits.
+        val runtimeSeconds = withTimeoutOrNull(MetaLookupTimeoutMs) {
+            graph.browse.meta(context.type, context.metaId).first { it.value != null || it.error != null }
+        }?.value?.runtime?.let(::runtimeMinutes)?.let { it * 60.0 } ?: 0.0
+        val resolve = resolveSources(
+            answer.groups,
+            answer.failures,
+            runtimeSeconds,
+            tvVideoDecoders(hardwareDecodingAtStart),
+            device = RankingDevice(graph.lineSpeed.current(), screenHeight().toDouble()),
+            annotatedFor = answer.rankedFor,
+        )
         val chosen = nextFallbackSource(
             pool = resolve.pool,
             failedUrl = context.url,
@@ -133,5 +157,8 @@ internal class TvSourceFallback(
     private companion object {
         /** Past this the cached answer is not coming, and the viewer is asked instead. */
         const val LookupTimeoutMs = 15_000L
+
+        /** The runtime only refines the order, so it is not waited on for long. */
+        const val MetaLookupTimeoutMs = 3_000L
     }
 }

@@ -36,6 +36,7 @@ import moe.ditto.halo.player.PlayerPort
 import moe.ditto.halo.player.PlayerTracks
 import moe.ditto.halo.player.VideoFormat
 import moe.ditto.halo.player.headerLines
+import moe.ditto.halo.storage.LineSpeedStore
 
 /**
  * Android-side owner of one libmpv core and one render [SurfaceView], kept above
@@ -49,6 +50,8 @@ internal class AndroidMpvPlayerHost(
     private val appContext: Context,
     /** Engine options for the device class this host serves. */
     private val profile: MpvProfile,
+    /** Where network playback keeps its line reading; null measures nothing. */
+    private val lineSpeed: LineSpeedStore? = null,
 ) {
 
     private var coreSequence = 0
@@ -116,6 +119,7 @@ internal class AndroidMpvPlayerHost(
             coreExecutor,
             // Read on this executor, and only when a picture falls to software.
             videoDecoders = { DeviceVideoDecoders.current },
+            lineSpeed = lineSpeed,
         )
         coreCreationCount += 1
         core = created
