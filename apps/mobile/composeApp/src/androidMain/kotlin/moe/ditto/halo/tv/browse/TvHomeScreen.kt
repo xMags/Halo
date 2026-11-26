@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -103,8 +104,9 @@ private val HeroCompactHeight = 140.dp
 /**
  * TV Home: a hero for the focused title at the top, then the personal rows
  * (Continue watching, Recently watched, My library) and one row per catalog.
- * The hero follows the focused card after a short pause, and its buttons act
- * on whatever it shows. It is full size only while the rows are at their top
+ * The hero follows the focused card after a short pause, and returns to the
+ * featured titles when focus moves back up onto it; its buttons act on
+ * whatever it shows. It is full size only while the rows are at their top
  * (the hero's buttons or the first row have focus); further down it keeps
  * just its title and facts, which leaves room for a poster row with its
  * heading and captions. Built on the same row and shelf rules as the phone
@@ -199,7 +201,21 @@ internal fun TvHomeScreen(graph: SessionGraph, navigation: TvBrowseNavigation, m
     Box(Modifier.fillMaxSize()) {
         shown?.let { HeroBackdrop(graph, it.meta, heroHeight) }
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxWidth().height(heroHeight).clipToBounds()) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(heroHeight)
+                    .clipToBounds()
+                    // Back above the rows, the hero is the featured banner
+                    // again: a card only holds it while a card has focus.
+                    // Clearing the focused title also drops a follow that
+                    // was still waiting out its pause.
+                    .onFocusChanged { state ->
+                        if (!state.hasFocus) return@onFocusChanged
+                        focusedTitle = null
+                        hero = null
+                    },
+            ) {
                 shown?.let { title ->
                     HeroInfo(
                         graph = graph,
