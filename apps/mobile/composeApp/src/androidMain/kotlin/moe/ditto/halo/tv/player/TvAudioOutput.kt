@@ -7,11 +7,15 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import moe.ditto.halo.AndroidMpvPlayerHost
+import moe.ditto.halo.player.AudioPassthroughState
+import moe.ditto.halo.player.PassthroughForLoad
 import moe.ditto.halo.storage.KeyValueStore
 
 /** Compressed surround formats a receiver or soundbar can decode itself. */
@@ -82,22 +86,48 @@ internal fun formatsCarrying(spdifCodecs: String?, codec: String?): Set<Passthro
     return carriers.filterTo(mutableSetOf()) { it.mpvName in names }
 }
 
+/** How mpv names its pass-through decoders: `spdif_` and the codec. */
+private const val PassthroughDecoderPrefix = "spdif_"
+
+/**
+ * True while the selected audio track goes to the receiver untouched, so it
+ * cannot be delayed or sped up here. The [decoder] mpv chose decides once it
+ * is known: mpv falls back to decoding here by itself when a pass-through
+ * output will not open, whatever was asked. Until then the answer is what
+ * was asked: [spdifCodecs] for a track of [codec].
+ */
+internal fun passthroughActive(decoder: String?, spdifCodecs: String?, codec: String?): Boolean {
+    if (decoder != null) return decoder.startsWith(PassthroughDecoderPrefix)
+    return passesThrough(spdifCodecs, codec)
+}
+
 /**
  * The TV's sound output: which compressed formats it takes as they are, and
  * telling the engine to send those through. Asked again for every title,
  * because a receiver can be switched on or off between them; only formats
  * seen failing on this same output are remembered ([PassthroughFailures], in
  * [store]).
+ *
+ * The player host asks it for every file before loading it
+ * ([PassthroughForLoad]); the activity installs it there.
  */
-internal class TvAudioOutput(context: Context, private val host: AndroidMpvPlayerHost, store: KeyValueStore) {
+internal class TvAudioOutput(
+    context: Context,
+    private val host: AndroidMpvPlayerHost,
+    private val store: KeyValueStore,
+) : PassthroughForLoad {
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private val contentResolver = context.contentResolver
     private val failures = PassthroughFailures(store)
     private val watchdog = TvPassthroughWatchdog(host, failures::record)
 
+    /** What the file last loaded plays with; see [AudioPassthroughState]. */
+    val passthroughState: StateFlow<AudioPassthroughState?> get() = host.audioPassthrough
+
     /**
      * Blocking: before Android 10 it opens a test output per listed format.
-     * Never on the main thread; [apply] runs it on the IO dispatcher.
+     * Never on the main thread; [spdifCodecsForNextFile] runs it on the IO
+     * dispatcher.
      */
     fun supportedFormats(): Set<PassthroughFormat> {
         val surround = encodedSurroundOutput()
@@ -115,11 +145,17 @@ internal class TvAudioOutput(context: Context, private val host: AndroidMpvPlaye
         return confirmed
     }
 
-    /** Applies [choice] for the next title and returns the `audio-spdif` value used. */
-    suspend fun apply(choice: SurroundSound): String? {
-        val codecs = withContext(Dispatchers.IO) { codecsFor(choice) }
-        host.setAudioPassthrough(codecs)
-        return codecs
+    /**
+     * The viewer's surround setting as stored now, applied to what the output
+     * takes now: asked for every file, since the setting or the receiver may
+     * have changed since the last one. The host sets the answer just before
+     * the file loads.
+     */
+    override suspend fun spdifCodecsForNextFile(): String? = withContext(Dispatchers.IO) {
+        val started = SystemClock.elapsedRealtime()
+        val codecs = codecsFor(TvPlaybackPreferences.surroundSoundIn(store))
+        Log.i(LogTag, "next file: audio-spdif ${codecs ?: "empty"}, decided in ${SystemClock.elapsedRealtime() - started} ms")
+        codecs
     }
 
     /** Blocking, like [supportedFormats]. Off asks nothing of the output. */
@@ -147,10 +183,9 @@ internal class TvAudioOutput(context: Context, private val host: AndroidMpvPlaye
     /**
      * Watches the start of the opened file's [codec] track sent on under
      * [spdifCodecs], and decodes it here if it never starts. See
-     * [TvPassthroughWatchdog]; [onFallback] gets the value then in force.
+     * [TvPassthroughWatchdog]; a fallback shows in [passthroughState].
      */
-    suspend fun guardStart(spdifCodecs: String, codec: String?, onFallback: (PassthroughFallback) -> Unit) =
-        watchdog.watch(spdifCodecs, codec, onFallback)
+    suspend fun guardStart(spdifCodecs: String, codec: String?) = watchdog.watch(spdifCodecs, codec)
 
     /** The system's surround switch, where the device has one; null otherwise. */
     private fun encodedSurroundOutput(): Int? = runCatching {

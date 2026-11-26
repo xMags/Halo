@@ -70,6 +70,8 @@ internal class TvSourceFallback(
     private val hardwareDecodingAtStart: Boolean,
     /** The panel's shorter side in physical pixels, for ranking as the sources page does; 0 when unknown. */
     private val screenHeight: () -> Int,
+    /** What this TV learned about Dolby Vision sources, applied as the sources page applies it. */
+    private val dolbyVision: TvDolbyVisionSources,
 ) {
     private var videoKey: String? = null
     private val tried = HashSet<String>()
@@ -120,14 +122,16 @@ internal class TvSourceFallback(
         val runtimeSeconds = withTimeoutOrNull(MetaLookupTimeoutMs) {
             graph.browse.meta(context.type, context.metaId).first { it.value != null || it.error != null }
         }?.value?.runtime?.let(::runtimeMinutes)?.let { it * 60.0 } ?: 0.0
-        val resolve = resolveSources(
-            answer.groups,
-            answer.failures,
-            runtimeSeconds,
-            tvVideoDecoders(hardwareDecodingAtStart),
-            device = RankingDevice(graph.lineSpeed.current(), screenHeight().toDouble()),
-            annotatedFor = answer.rankedFor,
-        )
+        val resolve = dolbyVision.adjust(
+            resolveSources(
+                answer.groups,
+                answer.failures,
+                runtimeSeconds,
+                tvVideoDecoders(hardwareDecodingAtStart),
+                device = RankingDevice(graph.lineSpeed.current(), screenHeight().toDouble()),
+                annotatedFor = answer.rankedFor,
+            ),
+        ).resolve
         val chosen = nextFallbackSource(
             pool = resolve.pool,
             failedUrl = context.url,

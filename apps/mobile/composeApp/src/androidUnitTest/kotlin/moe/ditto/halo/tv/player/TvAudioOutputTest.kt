@@ -34,6 +34,23 @@ class TvAudioOutputTest {
     }
 
     @Test
+    fun theEnginesDecoderDecidesWhetherSoundPassesThrough() {
+        assertTrue(passthroughActive(decoder = "spdif_eac3", spdifCodecs = "ac3,eac3", codec = "eac3"))
+        // mpv fell back to decoding here although passthrough was asked for.
+        assertFalse(passthroughActive(decoder = "eac3", spdifCodecs = "ac3,eac3", codec = "eac3"))
+        // A pass-through decoder is the truth even when the list was already emptied.
+        assertTrue(passthroughActive(decoder = "spdif_ac3", spdifCodecs = null, codec = "ac3"))
+        assertFalse(passthroughActive(decoder = "aac", spdifCodecs = "ac3,eac3", codec = "aac"))
+    }
+
+    @Test
+    fun untilTheDecoderIsKnownWhatWasAskedDecides() {
+        assertTrue(passthroughActive(decoder = null, spdifCodecs = "ac3,eac3", codec = "eac3"))
+        assertFalse(passthroughActive(decoder = null, spdifCodecs = null, codec = "eac3"))
+        assertFalse(passthroughActive(decoder = null, spdifCodecs = "ac3", codec = "eac3"))
+    }
+
+    @Test
     fun aFormatCountsOnlyWhenListedAndItOpens() {
         val listed = setOf(PassthroughFormat.Ac3, PassthroughFormat.Eac3)
         assertEquals(listed, confirmedFormats(listed, encodedSurroundOutput = null) { true })

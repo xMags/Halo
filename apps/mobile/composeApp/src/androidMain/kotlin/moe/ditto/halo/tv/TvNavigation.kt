@@ -28,6 +28,7 @@ import moe.ditto.halo.shell.playbackContext
 import moe.ditto.halo.shell.sourcesRoute
 import moe.ditto.halo.shell.withContext
 import moe.ditto.halo.tv.player.TvAudioOutput
+import moe.ditto.halo.tv.player.TvDolbyVisionSources
 import moe.ditto.halo.tv.settings.TvSettingsScreen
 import moe.ditto.halo.tv.player.TvPlaybackPreferences
 import moe.ditto.halo.tv.player.TvPlayerScreen
@@ -72,6 +73,8 @@ internal fun TvShell(
     /** This TV's own playback settings (frame rate, surround). */
     playbackPreferences: TvPlaybackPreferences,
     audioOutput: TvAudioOutput,
+    /** Dolby Vision sources this TV shows wrongly, for the sources page, the fallback and the player. */
+    dolbyVision: TvDolbyVisionSources,
     onSignOut: () -> Unit,
     /** Halo without an account: back to the sign-in screen. */
     onSignIn: () -> Unit,
@@ -88,8 +91,8 @@ internal fun TvShell(
     }
     // Read when a fallback ranks, so a display mode change since is honoured.
     val screenHeight by rememberUpdatedState(rememberScreenShortSidePixels())
-    val sourceFallback = remember(graph, playbackPreferences) {
-        TvSourceFallback(graph, playbackPreferences.hardwareDecodingAtStart, screenHeight = { screenHeight })
+    val sourceFallback = remember(graph, playbackPreferences, dolbyVision) {
+        TvSourceFallback(graph, playbackPreferences.hardwareDecodingAtStart, screenHeight = { screenHeight }, dolbyVision = dolbyVision)
     }
 
     val titleMenus = rememberTitleMenuHost(
@@ -158,7 +161,7 @@ internal fun TvShell(
                 }
                 composable<StreamsRoute> { entry ->
                     val route = entry.toRoute<StreamsRoute>()
-                    TvSourcesScreen(graph, route, decoders) { addon, stream ->
+                    TvSourcesScreen(graph, route, decoders, dolbyVision) { addon, stream ->
                         val url = stream.url ?: return@TvSourcesScreen
                         // The viewer's own choice starts a new run of automatic switches.
                         sourceFallback.reset()
@@ -178,6 +181,7 @@ internal fun TvShell(
                         system = playerSystem,
                         preferences = playbackPreferences,
                         audioOutput = audioOutput,
+                        dolbyVision = dolbyVision,
                         context = route.playbackContext(),
                         // Both replace the player rather than stacking on it, so
                         // Back still returns to the title.

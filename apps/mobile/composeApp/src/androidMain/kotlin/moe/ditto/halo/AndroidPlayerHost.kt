@@ -13,6 +13,7 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,8 +22,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.ditto.halo.player.AppSubtitleState
+import moe.ditto.halo.player.AudioPassthroughState
 import moe.ditto.halo.player.AudioStartSample
 import moe.ditto.halo.player.DeviceVideoDecoders
 import moe.ditto.halo.player.DirectVideoFrame
@@ -31,6 +35,7 @@ import moe.ditto.halo.player.MediaItem
 import moe.ditto.halo.player.MpvCore
 import moe.ditto.halo.player.MpvProfile
 import moe.ditto.halo.player.PlaybackFailure
+import moe.ditto.halo.player.PassthroughForLoad
 import moe.ditto.halo.player.PlaybackFile
 import moe.ditto.halo.player.PlayerBuffering
 import moe.ditto.halo.player.PlayerEvent
@@ -104,6 +109,19 @@ internal class AndroidMpvPlayerHost(
     private val appSubtitles = MutableStateFlow(AppSubtitleState())
     val videoFrame: StateFlow<DirectVideoFrame> = directFrame.asStateFlow()
     val subtitleOverlay: StateFlow<AppSubtitleState> = appSubtitles.asStateFlow()
+
+    /**
+     * Decides each file's passthrough list before [load] queues it; null on
+     * a device that never passes sound through (the phone), whose loads then
+     * leave `audio-spdif` as it is. Set once, by the activity, before any load.
+     */
+    @Volatile var passthroughForLoad: PassthroughForLoad? = null
+
+    // The passthrough of the file last loaded. Written only on [coreExecutor]
+    // (the load, the decoder observation and the fallback), each by an atomic
+    // update, and read by Compose on the main thread.
+    private val passthrough = MutableStateFlow<AudioPassthroughState?>(null)
+    val audioPassthrough: StateFlow<AudioPassthroughState?> = passthrough.asStateFlow()
 
     init {
         coreExecutor.execute {
@@ -187,6 +205,11 @@ internal class AndroidMpvPlayerHost(
         override fun onSubtitleText(text: String) {
             if (!isCurrentCore(generation)) return
             updateAppSubtitles { it.copy(text = text) }
+        }
+
+        override fun onAudioDecoder(decoder: String?) {
+            if (!isCurrentCore(generation)) return
+            passthrough.update { it?.copy(decoder = decoder) }
         }
     }
 
@@ -299,11 +322,40 @@ internal class AndroidMpvPlayerHost(
         }
 
     // --- Player control surface, all suspendable so callers await queue order ---
-    suspend fun load(item: MediaItem) = enqueue("load") {
-        loadCount += 1
-        it.setVideoEnabled(true)
-        it.load(item.url, headerLines(item.headers))
+    /**
+     * The passthrough list is decided first, off the executor (it may open
+     * test outputs), and then set in the same executor task as the load and
+     * just before it: no other call can come between the two, and mpv reads
+     * the list when it builds the new file's audio chain, after `loadfile`.
+     * A decision that fails decodes this file here.
+     *
+     * Loads are taken one at a time, first come first served, so a load
+     * whose decision takes longer can never be queued after a later one and
+     * end up as the file that plays.
+     */
+    suspend fun load(item: MediaItem) = loadOrder.withLock {
+        val decider = passthroughForLoad
+        val codecs = try {
+            decider?.spdifCodecsForNextFile()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Exception) {
+            android.util.Log.w(LOG_TAG, "passthrough decision failed; decoding this file here", failure)
+            null
+        }
+        enqueue("load") {
+            loadCount += 1
+            if (decider != null) {
+                it.setAudioPassthrough(codecs)
+                passthrough.value = AudioPassthroughState(item, codecs)
+            }
+            it.setVideoEnabled(true)
+            it.load(item.url, headerLines(item.headers))
+        }
     }
+
+    // Serializes [load]: see there.
+    private val loadOrder = Mutex()
 
     /**
      * Releases the video decoder while the surface is still alive. The wait is
@@ -326,8 +378,6 @@ internal class AndroidMpvPlayerHost(
     suspend fun selectSubtitleTrack(id: String?) = enqueue("subtitle-track") { it.selectSubtitleTrack(id) }
     suspend fun setPlaybackRate(rate: Double) = enqueue("playback-rate") { it.setPlaybackRate(rate) }
     suspend fun setAudioDelay(seconds: Double) = enqueue("audio-delay") { it.setAudioDelay(seconds) }
-    suspend fun setAudioPassthrough(codecs: String?) = enqueue("audio-spdif") { it.setAudioPassthrough(codecs) }
-
     /** The current file's sound start, as [MpvCore.audioStart] reads it; null once the player has shut down. */
     suspend fun audioStartSample(): AudioStartSample? {
         var sample: AudioStartSample? = null
@@ -348,6 +398,8 @@ internal class AndroidMpvPlayerHost(
         enqueue("audio-decode-here") { target ->
             if (activeCoreGeneration != file.core || target.loadGeneration != file.load) return@enqueue
             rebuilt = target.decodeAudioHere()
+            // The same file, so the state is still this file's.
+            if (rebuilt) passthrough.update { it?.copy(spdifCodecs = null) }
         }
         return rebuilt
     }
@@ -392,6 +444,9 @@ internal class AndroidMpvPlayerHost(
     }
     suspend fun addSubtitle(url: String, title: String?, lang: String?) =
         enqueue("subtitle-add") { it.addSubtitle(url, title, lang) }
+
+    /** [MpvCore.showDolbyVisionAsIs]: the current file plays on without the processing it was found not to get. */
+    suspend fun showDolbyVisionAsIs() = enqueue("dolby-vision-as-is") { it.showDolbyVisionAsIs() }
 
     suspend fun teardown() = enqueue("teardown") {
         teardownCount += 1

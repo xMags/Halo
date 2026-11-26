@@ -9,6 +9,7 @@ import moe.ditto.halo.player.MpvProfile
 import moe.ditto.halo.player.NoVideoFrameSource
 import moe.ditto.halo.storage.AndroidPreferencesStore
 import moe.ditto.halo.tv.player.TvAudioOutput
+import moe.ditto.halo.tv.player.TvDolbyVisionSources
 import moe.ditto.halo.tv.player.TvPlaybackPreferences
 
 /**
@@ -37,18 +38,37 @@ class TvActivity : ComponentActivity() {
             downloadStorage = NoDownloadStorage,
             videoFrameSource = NoVideoFrameSource,
         )
+        val dolbyVision = TvDolbyVisionSources(
+            store = deviceStore,
+            setup = dolbyVisionSetup(hardwareDecoding),
+            showAsIs = { hosts.playerHost.showDolbyVisionAsIs() },
+        )
+
         // Debug-only, like every launch extra: any app can start this activity.
         val showKitGallery = hosts.diagnosticsEnabled && intent?.getBooleanExtra("tvKitGallery", false) == true
         // The same device-local store as the setting above: what this TV's
         // sound output failed to start is never synced.
         val audioOutput = TvAudioOutput(applicationContext, hosts.playerHost, deviceStore)
+        // Before any screen, so every load asks it for its passthrough list.
+        hosts.playerHost.passthroughForLoad = audioOutput
         setContent {
-            TvApp(dependencies, audioOutput = audioOutput, onExitApp = { finish() }, showKitGallery = showKitGallery)
+            TvApp(dependencies, audioOutput = audioOutput, dolbyVision = dolbyVision, onExitApp = { finish() }, showKitGallery = showKitGallery)
         }
     }
 
     override fun onDestroy() {
         if (::hosts.isInitialized) hosts.close()
         super.onDestroy()
+    }
+
+    /**
+     * What decides whether the engine can process a Dolby Vision picture
+     * here: this install of the app (its time changes with every update) and
+     * whether the video chip decodes. A change of either may change the
+     * answer, so what was learned under the old one is forgotten.
+     */
+    private fun dolbyVisionSetup(hardwareDecoding: Boolean): String {
+        val installed = runCatching { packageManager.getPackageInfo(packageName, 0).lastUpdateTime }.getOrDefault(0L)
+        return "app:$installed;hardware:$hardwareDecoding"
     }
 }

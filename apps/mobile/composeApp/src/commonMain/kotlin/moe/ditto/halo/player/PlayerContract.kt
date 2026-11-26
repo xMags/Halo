@@ -80,6 +80,17 @@ data class VideoFormat(
     val dolbyVision: Boolean = false,
     /** Frames per second as the file states it, or as decoding measures it; null before either is known. */
     val frameRate: Double? = null,
+    /**
+     * The Dolby Vision profile the video track states, null for none or not
+     * stated. Only hosts that read it report it; it decides nothing on its own.
+     */
+    val dolbyVisionProfile: Int? = null,
+    /**
+     * For a [dolbyVisionProfile] whose picture is wrong without Dolby Vision
+     * processing: whether the engine was seen to apply it to the frames it
+     * draws. Null until judged, and for every other picture.
+     */
+    val dolbyVisionProcessed: Boolean? = null,
 )
 
 sealed interface PlayerEvent {

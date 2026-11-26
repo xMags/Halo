@@ -17,9 +17,7 @@ internal class TvPlaybackPreferences(private val store: KeyValueStore) {
     var matchFrameRate: Boolean by mutableStateOf(store.read(MatchFrameRateKey) != "false")
         private set
 
-    var surroundSound: SurroundSound by mutableStateOf(
-        SurroundSound.entries.firstOrNull { it.name == store.read(SurroundSoundKey) } ?: SurroundSound.Auto,
-    )
+    var surroundSound: SurroundSound by mutableStateOf(surroundSoundIn(store))
         private set
 
     fun updateMatchFrameRate(enabled: Boolean) {
@@ -64,5 +62,9 @@ internal class TvPlaybackPreferences(private val store: KeyValueStore) {
 
         /** For the activity, which builds the player before any screen exists. */
         fun hardwareDecodingIn(store: KeyValueStore): Boolean = store.read(HardwareDecodingKey) != "false"
+
+        /** For the sound output, which decides each file's passthrough as the player loads it. */
+        fun surroundSoundIn(store: KeyValueStore): SurroundSound =
+            SurroundSound.entries.firstOrNull { it.name == store.read(SurroundSoundKey) } ?: SurroundSound.Auto
     }
 }

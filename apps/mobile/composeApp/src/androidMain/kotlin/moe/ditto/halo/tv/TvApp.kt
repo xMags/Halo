@@ -19,6 +19,7 @@ import moe.ditto.halo.tv.kit.LocalTvFocusTracker
 import moe.ditto.halo.tv.kit.TvFocusTracker
 import moe.ditto.halo.tv.kit.TvKitGallery
 import moe.ditto.halo.tv.player.TvAudioOutput
+import moe.ditto.halo.tv.player.TvDolbyVisionSources
 import moe.ditto.halo.tv.player.TvPlaybackPreferences
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloTheme
@@ -32,6 +33,8 @@ internal fun TvApp(
     dependencies: PlatformDependencies,
     /** The TV's sound output, for surround passthrough. */
     audioOutput: TvAudioOutput,
+    /** What this TV learned about Dolby Vision sources it shows wrongly. */
+    dolbyVision: TvDolbyVisionSources,
     /** Closes the app; the TV root confirms first. */
     onExitApp: () -> Unit,
     /** Debug builds only: opens the TV kit gallery instead of the app. */
@@ -45,13 +48,18 @@ internal fun TvApp(
     val focusTracker = remember { TvFocusTracker() }
     HaloTheme {
         CompositionLocalProvider(LocalTvFocusTracker provides focusTracker) {
-            if (showKitGallery) TvKitGallery() else TvRoot(dependencies, audioOutput, onExitApp)
+            if (showKitGallery) TvKitGallery() else TvRoot(dependencies, audioOutput, dolbyVision, onExitApp)
         }
     }
 }
 
 @Composable
-private fun TvRoot(dependencies: PlatformDependencies, audioOutput: TvAudioOutput, onExitApp: () -> Unit) {
+private fun TvRoot(
+    dependencies: PlatformDependencies,
+    audioOutput: TvAudioOutput,
+    dolbyVision: TvDolbyVisionSources,
+    onExitApp: () -> Unit,
+) {
     var screen by remember { mutableStateOf(TvScreen.SignIn) }
     // The device's, not the account's: it outlives every session.
     val playbackPreferences = remember { TvPlaybackPreferences(dependencies.keyValueStore) }
@@ -91,6 +99,7 @@ private fun TvRoot(dependencies: PlatformDependencies, audioOutput: TvAudioOutpu
                     playerSystem = dependencies.playerSystemPort,
                     playbackPreferences = playbackPreferences,
                     audioOutput = audioOutput,
+                    dolbyVision = dolbyVision,
                     onSignOut = { session.sessionController.signOut() },
                     onSignIn = { session.sessionController.startSignIn() },
                     onExitApp = onExitApp,

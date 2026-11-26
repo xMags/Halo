@@ -87,6 +87,7 @@ import moe.ditto.halo.tv.kit.TvSidePanel
 import moe.ditto.halo.tv.kit.TvSurface
 import moe.ditto.halo.tv.kit.TvSurfaceColors
 import moe.ditto.halo.tv.kit.TvType
+import moe.ditto.halo.tv.player.TvDolbyVisionSources
 import moe.ditto.halo.ui.HaloAsyncImage
 import moe.ditto.halo.ui.HaloColors
 import moe.ditto.halo.ui.HaloIcons
@@ -113,6 +114,8 @@ internal fun TvSourcesScreen(
     route: StreamsRoute,
     /** What this TV's decoders play; null while they are still being read. */
     decoders: VideoDecoderSupport?,
+    /** Dolby Vision sources this TV shows wrongly: left out when it has opened them, moved down by name. */
+    dolbyVision: TvDolbyVisionSources,
     onPlay: (AddonSource, Stream) -> Unit,
 ) {
     val memory = rememberTvFocusMemory()
@@ -129,17 +132,25 @@ internal fun TvSourcesScreen(
     }.collectAsState(QueryState())
     val state = streamsContentState(query)
     val answer = state as? StreamsContentState.Sources
-    val resolve = remember(answer?.groups, answer?.failures, answer?.rankedFor, runtimeSeconds, decoders, device) {
+    val adjusted = remember(answer?.groups, answer?.failures, answer?.rankedFor, runtimeSeconds, decoders, device, dolbyVision.revision) {
         if (answer == null || decoders == null) {
             null
         } else {
-            resolveSources(answer.groups, answer.failures, runtimeSeconds, decoders, device, answer.rankedFor)
+            dolbyVision.adjust(resolveSources(answer.groups, answer.failures, runtimeSeconds, decoders, device, answer.rankedFor))
         }
     }
-    LaunchedEffect(resolve) {
-        val result = resolve ?: return@LaunchedEffect
-        if (result.unplayableCount > 0) {
-            Log.i(LogTag, "sources: ${result.pool.size} listed, ${result.unplayableCount} left out as not playable on this TV")
+    val resolve = adjusted?.resolve
+    LaunchedEffect(adjusted) {
+        val result = adjusted ?: return@LaunchedEffect
+        if (result.leftOut > 0 || result.movedDown > 0) {
+            Log.i(
+                LogTag,
+                "sources: ${result.leftOut} left out as Dolby Vision this TV showed wrongly, " +
+                    "${result.movedDown} named only Dolby Vision moved down",
+            )
+        }
+        if (result.resolve.unplayableCount > 0) {
+            Log.i(LogTag, "sources: ${result.resolve.pool.size} listed, ${result.resolve.unplayableCount} left out as not playable on this TV")
         }
     }
     var filter by remember { mutableStateOf(SourceFilter.All) }

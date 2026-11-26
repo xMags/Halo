@@ -101,9 +101,6 @@ internal class PassthroughStartWatch(
     }
 }
 
-/** The `audio-spdif` value in force after a fallback; null decodes everything here. */
-internal data class PassthroughFallback(val spdifCodecs: String?)
-
 /**
  * Makes sure sound sent on untouched cannot freeze playback. A receiver path
  * can accept a format on paper and still never start: mpv then holds the
@@ -124,10 +121,10 @@ internal class TvPassthroughWatchdog(
     /**
      * Watches the opened file's start while its [codec] track passes through
      * under [spdifCodecs], until the sound starts, the file changes, the
-     * player closes or the caller is cancelled. When it had to decode here,
-     * [onFallback] gets the value now in force, on the caller's thread.
+     * player closes or the caller is cancelled. A fallback empties the list
+     * in the host's passthrough state for this file.
      */
-    suspend fun watch(spdifCodecs: String, codec: String?, onFallback: (PassthroughFallback) -> Unit) {
+    suspend fun watch(spdifCodecs: String, codec: String?) {
         val failing = formatsCarrying(spdifCodecs, codec)
         if (failing.isEmpty()) return
         val first = host.audioStartSample() ?: return
@@ -148,7 +145,7 @@ internal class TvPassthroughWatchdog(
                     return
                 }
                 PassthroughStartVerdict.Stuck -> {
-                    fallBack(sample, codec, failing, onFallback)
+                    fallBack(sample, codec, failing)
                     return
                 }
             }
@@ -158,25 +155,23 @@ internal class TvPassthroughWatchdog(
     /**
      * Not cancellable once begun: the rebuild deselects the track for a
      * moment, which recomposes the caller and can cancel it, and the engine
-     * change, the record and the caller's new value must not come apart.
+     * change and the record must not come apart.
+     *
+     * The line names no audio output: one still open at this point is the
+     * previous title's, which mpv keeps open between files.
      */
-    private suspend fun fallBack(
-        sample: AudioStartSample,
-        codec: String?,
-        failing: Set<PassthroughFormat>,
-        onFallback: (PassthroughFallback) -> Unit,
-    ) = withContext(NonCancellable) {
-        if (!host.decodeAudioHere(sample.file)) return@withContext
-        // The record is written to storage, which stays off the main thread.
-        withContext(Dispatchers.IO) { onFailed(failing) }
-        Log.i(
-            LogTag,
-            "passthrough did not start, decoding here instead: $codec, no sound ${PassthroughStartWindowMs / 1000} s " +
-                "after the picture (output ${sample.reading.audioOutput ?: "none"}); " +
-                "${failing.map { it.mpvName }} off on this output for ${PassthroughFailureExpiryMs / DayMs} days or until it changes",
-        )
-        onFallback(PassthroughFallback(spdifCodecs = null))
-    }
+    private suspend fun fallBack(sample: AudioStartSample, codec: String?, failing: Set<PassthroughFormat>) =
+        withContext(NonCancellable) {
+            if (!host.decodeAudioHere(sample.file)) return@withContext
+            // The record is written to storage, which stays off the main thread.
+            withContext(Dispatchers.IO) { onFailed(failing) }
+            Log.i(
+                LogTag,
+                "passthrough did not start, decoding here instead: $codec, no sound ${PassthroughStartWindowMs / 1000} s " +
+                    "after the picture; ${failing.map { it.mpvName }} off on this output for " +
+                    "${PassthroughFailureExpiryMs / DayMs} days or until it changes",
+            )
+        }
 
     private companion object {
         const val LogTag = "HALO_TV"

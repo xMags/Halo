@@ -1,5 +1,6 @@
 package moe.ditto.halo.tv.player
 
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -118,6 +120,8 @@ internal fun TvPlayerScreen(
     system: PlayerSystemPort,
     preferences: TvPlaybackPreferences,
     audioOutput: TvAudioOutput,
+    /** Where a source found to be Dolby Vision this TV shows wrongly is remembered. */
+    dolbyVision: TvDolbyVisionSources,
     context: PlaybackContext,
     onSelectEpisode: (EpisodeChoice) -> Unit,
     /** Null for a pasted link, which has no list to pick another source from. */
@@ -149,12 +153,20 @@ internal fun TvPlayerScreen(
     val state = session.state
     val paused = state.status != PlaybackStatus.Playing
     TvFrameRateMatching(frameRate = state.videoFormat.frameRate, enabled = preferences.matchFrameRate)
-    // Surround formats the receiver takes as they are, asked again per title.
-    var spdifCodecs by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(session.item, preferences.surroundSound) { spdifCodecs = audioOutput.apply(preferences.surroundSound) }
+    // Surround formats the receiver takes as they are: decided for every file
+    // as the player loads it (TvAudioOutput), and read back here only for this
+    // item's own file; the previous one's lingers until the load lands.
+    val passthroughState by audioOutput.passthroughState.collectAsState()
+    val ownPassthrough = passthroughState?.takeIf { it.item == session.item }
+    val spdifCodecs = ownPassthrough?.spdifCodecs
     val audioTrack = state.tracks.audio.firstOrNull { it.id == (state.tracks.selectedAudioId ?: state.tracks.audio.firstOrNull()?.id) }
-    // Sound sent on untouched cannot be delayed or sped up here.
-    val passthrough = passesThrough(spdifCodecs, audioTrack?.codec)
+    // Sound sent on untouched cannot be delayed or sped up here. The engine's
+    // own decoder says whether it is, once this file has one.
+    val passthrough = passthroughActive(
+        decoder = ownPassthrough?.decoder?.takeIf { session.ownState && state.opened },
+        spdifCodecs = spdifCodecs,
+        codec = audioTrack?.codec,
+    )
     // An output can accept a format and still never start it, which would
     // hold the first frame forever; this file's start is watched, and decoded
     // here if it does not come. Only with a track actually selected: none
@@ -163,7 +175,7 @@ internal fun TvPlayerScreen(
     LaunchedEffect(session.item, watchStart, spdifCodecs, audioTrack?.id) {
         if (!watchStart) return@LaunchedEffect
         val codecs = spdifCodecs ?: return@LaunchedEffect
-        audioOutput.guardStart(codecs, audioTrack?.codec) { fallback -> spdifCodecs = fallback.spdifCodecs }
+        audioOutput.guardStart(codecs, audioTrack?.codec)
     }
     // The chosen source's medal until the decoder reports the picture. Only
     // this item's own picture counts: the previous file's lingers for a moment.
@@ -198,7 +210,31 @@ internal fun TvPlayerScreen(
     val switchingSource = sourceFallback?.switching == true
     LaunchedEffect(session.ownState, state.opened, state.status) {
         val settled = state.opened || (state.status == PlaybackStatus.Failed && !unsupported)
-        if (session.ownState && settled) sourceFallback?.settled()
+        // A player on its way out to the next source has not settled anything:
+        // its pause on the way out must not take the notice down early.
+        if (session.ownState && settled && !session.leaving) sourceFallback?.settled()
+    }
+
+    // A Dolby Vision picture the engine was seen not to process on this TV
+    // ([dolbyVisionShownWrongly]): remembered on this device, so its list
+    // leaves it out from now on, and moved on from like any picture this TV
+    // cannot play. With no other source it plays on as it is, back at full
+    // size on the direct path, which is better than nothing. Where the engine
+    // does process it, none of this happens and the file plays.
+    val ownFormat = if (session.ownState && state.opened) state.videoFormat else VideoFormat()
+    val wrongColours = dolbyVisionShownWrongly(ownFormat)
+    LaunchedEffect(session.item, wrongColours) {
+        val profile = ownFormat.dolbyVisionProfile
+        if (!wrongColours || profile == null) return@LaunchedEffect
+        dolbyVision.remember(context.url, profile)
+        val next = sourceFallback?.next(context)
+        if (next == null) {
+            Log.i(LogTag, "Dolby Vision profile $profile is not processed on this TV; no other source, playing it as it is")
+            dolbyVision.playOnAsIs()
+            return@LaunchedEffect
+        }
+        Log.i(LogTag, "Dolby Vision profile $profile is not processed on this TV; moving to another source")
+        session.leaveTo { onPlaySource(next.first, next.second) }
     }
 
     // The posters and backdrops of the screens behind sit in the image cache,
@@ -346,7 +382,10 @@ internal fun TvPlayerScreen(
                         )
                         TvButton("Audio", onClick = { panel = TvPlayerPanel.Audio })
                         TvButton("Subtitles", onClick = { panel = TvPlayerPanel.Subtitles })
-                        if (!passthrough) {
+                        // Kept while a speed other than normal is in force,
+                        // so a title that turns to passthrough mid-way (a
+                        // track switch) can still be put back to normal.
+                        if (!passthrough || state.playbackRate != 1.0) {
                             TvButton("Speed ${formatRate(state.playbackRate)}", onClick = { panel = TvPlayerPanel.Speed })
                         }
                         // Letterboxed to fit, or cropped to fill the screen: wide
@@ -417,7 +456,8 @@ internal fun TvPlayerScreen(
             TvPlayerPanel.Audio -> TvAudioPanel(
                 tracks = state.tracks,
                 delaySeconds = state.audioDelaySeconds,
-                delayAvailable = !passthrough,
+                // As for speed: a delay set before passthrough began can still be undone.
+                delayAvailable = !passthrough || state.audioDelaySeconds != 0.0,
                 onSelect = { id -> scope.launch { playback.selectAudioTrack(id) } },
                 onDelay = { seconds -> scope.launch { playback.setAudioDelay(clampedDelay(seconds)) } },
                 onDismiss = ::closePanel,
@@ -751,3 +791,4 @@ private const val FadeMs = 180
 /** How long a control keeps asking for focus while it fades in. */
 private const val FocusClaimMs = 600L
 private const val CaptionLiftPercent = 30
+private const val LogTag = "HALO_TV"

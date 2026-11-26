@@ -78,6 +78,13 @@ internal class MpvCore private constructor(
          * error and in place of any end.
          */
         fun onVideoUnsupported() {}
+
+        /**
+         * The selected audio track's decoder by mpv's short name (`eac3`,
+         * or `spdif_eac3` while it is passed through untouched); null while
+         * none is known.
+         */
+        fun onAudioDecoder(decoder: String?) {}
     }
 
     @Volatile private var listener: Listener? = null
@@ -129,6 +136,9 @@ internal class MpvCore private constructor(
     // at file load. Part of [videoFormat]'s Dolby Vision flag, so the same
     // executor-only rule applies.
     private var trackDolbyVision = false
+
+    // Where the current file is in [judgeDolbyVisionProcessing]. Executor only.
+    private var dolbyVisionJudgement = DolbyVisionJudgement.None
 
     // The subtitle debounce. The main looper only times it: the callback is
     // dispatched onto the executor, and the token makes a callback that was
@@ -226,6 +236,7 @@ internal class MpvCore private constructor(
             // The check reads both back rather than trusting this event.
             HwdecCurrent, "vid" -> checkDirectVideo()
             SubText -> onSubtitleText("")
+            AudioDecoder -> listener?.onAudioDecoder(null)
             // A value-less observation of the picture means mpv has none right
             // now (between files, or audio only), so that part of it is gone.
             VideoWidth -> updateVideoFormat(videoFormat.copy(width = 0))
@@ -255,9 +266,20 @@ internal class MpvCore private constructor(
             VideoGamma -> updateVideoFormat(videoFormat.copy(gamma = value.ifEmpty { null }))
             // mpv names a Dolby Vision picture through its colour matrix only
             // where it reshapes it; the track's profile says so everywhere.
-            VideoColorMatrix -> updateVideoFormat(videoFormat.copy(dolbyVision = value == DolbyVisionMatrix || trackDolbyVision))
-            HwdecCurrent -> if (!checkUnsupportedVideo()) checkDirectVideo()
+            VideoColorMatrix -> {
+                updateVideoFormat(videoFormat.copy(dolbyVision = value == DolbyVisionMatrix || trackDolbyVision))
+                judgeDolbyVisionProcessing(value)
+            }
+            HwdecCurrent -> {
+                // The composed path's own decoder is up; the next picture it
+                // reports is the one the processing is judged on.
+                if (dolbyVisionJudgement == DolbyVisionJudgement.AwaitingComposedPicture && videoPaths?.path == VideoPath.Composed) {
+                    dolbyVisionJudgement = DolbyVisionJudgement.Pending
+                }
+                if (!checkUnsupportedVideo()) checkDirectVideo()
+            }
             SubText -> onSubtitleText(value)
+            AudioDecoder -> listener?.onAudioDecoder(value.ifEmpty { null })
         }
     }
 
@@ -491,10 +513,16 @@ internal class MpvCore private constructor(
     /**
      * The compressed formats sent untouched to the receiver, as mpv's
      * `audio-spdif` list (`ac3,eac3`), or null to decode everything here.
+     *
+     * Left alone when it already holds that list: mpv rebuilds the audio
+     * chain of whatever file is loaded on every change of it, and before a
+     * load that is the previous title, paused, whose sound nobody hears.
      */
     fun setAudioPassthrough(codecs: String?) {
         if (destroyed) return
-        mpv.setPropertyString("audio-spdif", codecs.orEmpty())
+        val wanted = codecs.orEmpty()
+        if (mpv.getPropertyString("audio-spdif") == wanted) return
+        mpv.setPropertyString("audio-spdif", wanted)
     }
 
     /** Whether the current file's sound has started; read, not observed, and only while someone is waiting for it. */
@@ -517,20 +545,22 @@ internal class MpvCore private constructor(
      * here instead, keeping the place. False when no track is selected, so
      * there was nothing to rebuild.
      *
-     * Setting `audio-spdif` alone does not do it: mpv applies a change to it
-     * by reloading the audio output, and does nothing when no output is open,
-     * which is exactly the case of a passthrough start that never opened one.
-     * The decoder only reads the setting when the audio chain is built, so
-     * the track is deselected and selected again; selecting the track that is
-     * already current is a no-op in mpv. mpv syncs the rebuilt chain to the
-     * picture's position by itself, as for a viewer's track switch.
+     * One rebuild, in this order. Deselecting the track first tears down its
+     * audio chain and closes the audio output, which may still be the one
+     * the previous title opened. With no chain, mpv's own handling of an
+     * `audio-spdif` change (rebuild the chain, only if there is one) does
+     * nothing, so clearing it then only sets what the next decoder reads.
+     * Selecting the track again builds that decoder once; selecting the track
+     * that is already current would be a no-op in mpv, hence the deselect.
+     * The picture keeps going meanwhile and mpv syncs the new chain to its
+     * position, as for a viewer's track switch.
      */
     fun decodeAudioHere(): Boolean {
         if (destroyed) return false
         val aid = mpv.getPropertyString("aid")
         if (aid == null || aid == "no") return false
-        mpv.setPropertyString("audio-spdif", "")
         mpv.setPropertyString("aid", "no")
+        mpv.setPropertyString("audio-spdif", "")
         mpv.setPropertyString("aid", aid)
         return true
     }
@@ -653,8 +683,19 @@ internal class MpvCore private constructor(
         // repeat an unchanged value, so the direct path is judged here too.
         val dolbyVisionProfile = selectedVideoTrack()?.dolbyVisionProfile
         if (dolbyVisionProfile != null) Log.i(LOG_TAG, "[$id] video track states Dolby Vision profile $dolbyVisionProfile")
-        setTrackDolbyVision(dolbyVisionProfile != null)
-        val paths = videoPaths ?: return
+        setTrackDolbyVision(dolbyVisionProfile != null, dolbyVisionProfile)
+        // Whether the engine applies the processing such a picture needs is
+        // read off the picture it draws (see [judgeDolbyVisionProcessing]).
+        dolbyVisionJudgement = if (VideoPathPolicy.needsDolbyVisionProcessing(dolbyVisionProfile)) {
+            DolbyVisionJudgement.Pending
+        } else {
+            DolbyVisionJudgement.None
+        }
+        val paths = videoPaths
+        if (paths == null) {
+            judgeDolbyVisionProcessing(mpv.getPropertyString(VideoColorMatrix))
+            return
+        }
         paths.onFileLoaded()
         if (checkUnsupportedVideo()) return
         // The earliest point the selected track is known. A picture that needs
@@ -664,9 +705,47 @@ internal class MpvCore private constructor(
         // switches here.
         if (paths.onVideoTrack(dolbyVisionProfile) && paths.wantsSwitch()) {
             cancelSubtitleSettle()
+            // The direct decoder's picture is about to go; only the composed
+            // path's own counts.
+            if (dolbyVisionJudgement == DolbyVisionJudgement.Pending) dolbyVisionJudgement = DolbyVisionJudgement.AwaitingComposedPicture
             applyVideoPath(paths.decision())
+        } else {
+            judgeDolbyVisionProcessing(mpv.getPropertyString(VideoColorMatrix))
         }
         checkDirectVideo()
+    }
+
+    /**
+     * Decides, once, whether the engine applies the Dolby Vision processing
+     * the current file needs, from the colour system it reports for the
+     * frames it draws ([matrix], mpv's `video-params/colormatrix`): it names
+     * Dolby Vision only when the frames came with the data and the processing
+     * is applied. Judged on the composed output only, where the engine draws;
+     * null [matrix] means no picture yet. The answer goes out with the
+     * picture's format ([VideoFormat.dolbyVisionProcessed]).
+     */
+    private fun judgeDolbyVisionProcessing(matrix: String?) {
+        if (dolbyVisionJudgement != DolbyVisionJudgement.Pending) return
+        if (videoPaths != null && videoPaths.path != VideoPath.Composed) return
+        if (!videoEnabled || matrix.isNullOrEmpty()) return
+        val processed = matrix == DolbyVisionMatrix
+        dolbyVisionJudgement = DolbyVisionJudgement.Done
+        Log.i(LOG_TAG, "[$id] Dolby Vision processing ${if (processed) "applied" else "not applied"}: colour matrix $matrix")
+        updateVideoFormat(videoFormat.copy(dolbyVisionProcessed = processed))
+    }
+
+    /**
+     * Shows the current file without the Dolby Vision processing it needs,
+     * after it was found not to be applied: back on the direct path, which
+     * shows the same colours at the file's full size. Only for a file held
+     * composed for that processing; otherwise nothing changes.
+     */
+    fun showDolbyVisionAsIs() {
+        if (destroyed) return
+        val paths = videoPaths ?: return
+        if (!paths.onDolbyVisionShownAsIs()) return
+        cancelSubtitleSettle()
+        applyVideoPath(paths.decision())
     }
 
     /**
@@ -695,12 +774,17 @@ internal class MpvCore private constructor(
     /**
      * Records whether the selected video track states a Dolby Vision profile
      * and folds it into the reported picture with the colour matrix's own
-     * signal, read back here. Cleared for every load and stop.
+     * signal, read back here, along with the [profile] itself. Cleared for
+     * every load and stop.
      */
-    private fun setTrackDolbyVision(dolbyVision: Boolean) {
+    private fun setTrackDolbyVision(dolbyVision: Boolean, profile: Int? = null) {
         trackDolbyVision = dolbyVision
+        // A new track, a load or a stop: nothing is judged about it yet.
+        dolbyVisionJudgement = DolbyVisionJudgement.None
         val matrixSays = !destroyed && mpv.getPropertyString(VideoColorMatrix) == DolbyVisionMatrix
-        updateVideoFormat(videoFormat.copy(dolbyVision = dolbyVision || matrixSays))
+        updateVideoFormat(
+            videoFormat.copy(dolbyVision = dolbyVision || matrixSays, dolbyVisionProfile = profile, dolbyVisionProcessed = null),
+        )
     }
 
     private class SelectedVideoTrack(val codec: String?, val width: Int, val height: Int, val dolbyVisionProfile: Int?)
@@ -1063,6 +1147,12 @@ internal class MpvCore private constructor(
             // the engine rather than from what the UI last asked for.
             mpv.observeProperty("sid", MPVLib.MpvFormat.MPV_FORMAT_NONE)
             mpv.observeProperty("aid", MPVLib.MpvFormat.MPV_FORMAT_NONE)
+            // Whether the sound is decoded here or passed through as it is,
+            // for the controls that only work on decoded sound. mpv reports it
+            // again whenever the audio chain or its output is rebuilt, which
+            // covers its own fallback from a passthrough output that would not
+            // open.
+            mpv.observeProperty(AudioDecoder, MPVLib.MpvFormat.MPV_FORMAT_STRING)
             mpv.observeProperty("paused-for-cache", MPVLib.MpvFormat.MPV_FORMAT_FLAG)
             mpv.observeProperty("cache-buffering-state", MPVLib.MpvFormat.MPV_FORMAT_INT64)
             mpv.observeProperty("demuxer-cache-time", MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
@@ -1086,6 +1176,21 @@ internal class MpvCore private constructor(
             return core
         }
     }
+}
+
+/** Whether the engine applies the current file's Dolby Vision processing, as far as it has been judged. */
+private enum class DolbyVisionJudgement {
+    /** The file needs none, or nothing is loaded. */
+    None,
+
+    /** Moved to the composed path for it; that path's decoder is not up yet. */
+    AwaitingComposedPicture,
+
+    /** The next picture the engine draws decides. */
+    Pending,
+
+    /** Decided for this file. */
+    Done,
 }
 
 /**
@@ -1190,6 +1295,7 @@ private const val ContainerFps = "container-fps"
 private const val EstimatedFps = "estimated-vf-fps"
 private const val HwdecCurrent = "hwdec-current"
 private const val SubText = "sub-text"
+private const val AudioDecoder = "current-tracks/audio/decoder"
 
 /**
  * How long a subtitle track mpv selected on its own for a fresh file must

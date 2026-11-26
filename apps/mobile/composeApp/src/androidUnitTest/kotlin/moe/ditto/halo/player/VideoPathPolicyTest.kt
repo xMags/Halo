@@ -380,4 +380,45 @@ class VideoPathTrackerTest {
         tracker.onFileLoaded()
         assertTrue(tracker.onVideoTrack(5))
     }
+
+    @Test
+    fun aDolbyVisionPictureShownAsIsGoesBackDirect() {
+        val tracker = VideoPathTracker(directAllowed = true)
+        tracker.onLoadRequested()
+        tracker.onFileLoaded()
+        tracker.onVideoTrack(5)
+        tracker.adopt(VideoPath.Composed)
+        assertTrue(tracker.awaitsDolbyVisionProcessing)
+        assertTrue(tracker.onDolbyVisionShownAsIs())
+        assertFalse(tracker.awaitsDolbyVisionProcessing)
+        assertTrue(tracker.wantsSwitch())
+        assertEquals(VideoPathDecision(VideoPath.Direct, "no subtitle"), tracker.decision())
+        // Once is enough, and a picture subtitle still goes composed.
+        assertFalse(tracker.onDolbyVisionShownAsIs())
+        tracker.onSubtitleSelected(selected = true, codec = "hdmv_pgs_subtitle")
+        assertEquals(VideoPath.Composed, tracker.decision().path)
+    }
+
+    @Test
+    fun onlyAFileHeldForProcessingCanBeShownAsIs() {
+        val tracker = VideoPathTracker(directAllowed = true)
+        tracker.onLoadRequested()
+        tracker.onFileLoaded()
+        tracker.onVideoTrack(8)
+        assertFalse(tracker.awaitsDolbyVisionProcessing)
+        assertFalse(tracker.onDolbyVisionShownAsIs())
+    }
+
+    @Test
+    fun shownAsIsEndsWithTheFile() {
+        val tracker = VideoPathTracker(directAllowed = true)
+        tracker.onLoadRequested()
+        tracker.onFileLoaded()
+        tracker.onVideoTrack(5)
+        tracker.onDolbyVisionShownAsIs()
+        tracker.onLoadRequested()
+        tracker.onFileLoaded()
+        assertTrue(tracker.onVideoTrack(5))
+        assertEquals(VideoPath.Composed, tracker.decision().path)
+    }
 }
